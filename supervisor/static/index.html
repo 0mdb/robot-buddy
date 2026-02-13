@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Robot Buddy</title>
+<style>
+:root {
+  --bg: #1a1a2e;
+  --panel: #16213e;
+  --border: #0f3460;
+  --text: #e0e0e0;
+  --accent: #00adb5;
+  --red: #e23636;
+  --green: #4caf50;
+  --yellow: #ffc107;
+  --dim: #666;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+header h1 { font-size: 16px; font-weight: 600; }
+#conn-status {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: var(--red);
+}
+#conn-status.ok { background: var(--green); }
+
+/* Mobile tab bar */
+.tab-bar {
+  display: none;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+.tab-bar button {
+  flex: 1;
+  padding: 10px 0;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--dim);
+  font-size: 13px;
+  cursor: pointer;
+}
+.tab-bar button.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.main {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* Left panel */
+.panel-left {
+  width: 200px;
+  padding: 12px;
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.mode-btn {
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 13px;
+  text-align: center;
+}
+.mode-btn:hover { border-color: var(--accent); }
+.mode-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+#btn-estop {
+  margin-top: auto;
+  padding: 16px;
+  background: var(--red);
+  color: white;
+  border: 2px solid #ff0000;
+  border-radius: 8px;
+  font-size: 18px;
+  font-weight: bold;
+  cursor: pointer;
+}
+#btn-estop:hover { background: #ff0000; }
+#btn-clear {
+  padding: 8px;
+  background: var(--panel);
+  color: var(--yellow);
+  border: 1px solid var(--yellow);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+/* Center panel */
+.panel-center {
+  flex: 1;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+}
+.gauge-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+}
+.gauge {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px;
+}
+.gauge-label { font-size: 11px; color: var(--dim); text-transform: uppercase; }
+.gauge-value { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.gauge-unit { font-size: 11px; color: var(--dim); }
+
+.faults {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px;
+}
+.fault-chip {
+  display: inline-block;
+  padding: 2px 8px;
+  margin: 2px;
+  border-radius: 10px;
+  font-size: 11px;
+  background: var(--dim);
+}
+.fault-chip.active { background: var(--red); color: white; }
+
+.caps {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px;
+  font-size: 12px;
+}
+
+/* Joystick */
+.joystick-area {
+  display: flex;
+  justify-content: center;
+  padding: 12px;
+}
+#joystick {
+  width: 180px;
+  height: 180px;
+  background: var(--panel);
+  border: 2px solid var(--border);
+  border-radius: 50%;
+  position: relative;
+  touch-action: none;
+}
+#joy-knob {
+  width: 40px;
+  height: 40px;
+  background: var(--accent);
+  border-radius: 50%;
+  position: absolute;
+  left: 70px;
+  top: 70px;
+  pointer-events: none;
+}
+
+/* Right panel */
+.panel-right {
+  width: 280px;
+  padding: 12px;
+  border-left: 1px solid var(--border);
+  overflow-y: auto;
+}
+.param-group { margin-bottom: 12px; }
+.param-group h3 {
+  font-size: 12px;
+  color: var(--accent);
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.param-row {
+  margin-bottom: 8px;
+}
+.param-row label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--dim);
+  margin-bottom: 2px;
+}
+.param-row input[type=range] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+/* Collapsible sections */
+.collapsible {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.collapsible summary {
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  text-transform: uppercase;
+  cursor: pointer;
+  user-select: none;
+}
+.collapsible summary::-webkit-details-marker { color: var(--dim); }
+.collapsible > .gauge-grid,
+.collapsible > .faults,
+.collapsible > .caps,
+.collapsible > div {
+  padding: 0 12px 10px;
+}
+
+/* Mobile status bar (hidden on desktop) */
+.mobile-status-bar {
+  display: none;
+  gap: 12px;
+  padding: 6px 8px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  justify-content: space-around;
+  flex-wrap: wrap;
+}
+.ms-item { font-size: 12px; white-space: nowrap; }
+.ms-label { color: var(--dim); font-size: 10px; text-transform: uppercase; }
+.ms-val { font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* ---- Mobile responsive ---- */
+@media (max-width: 768px) {
+  .tab-bar {
+    display: flex;
+  }
+  .main {
+    flex-direction: column;
+    position: relative;
+  }
+  .panel-left, .panel-right {
+    display: none;
+    width: 100%;
+    border: none;
+    flex: 1;
+    overflow-y: auto;
+  }
+  .panel-center {
+    display: none;
+    flex: 1;
+    padding: 12px;
+  }
+  /* Show active tab panel */
+  .panel-left.tab-active,
+  .panel-center.tab-active,
+  .panel-right.tab-active {
+    display: flex;
+  }
+
+  /* Mobile: modes in a row */
+  .panel-left {
+    flex-direction: column;
+    padding: 12px;
+  }
+  .mode-row {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .mode-row .mode-btn {
+    flex: 1;
+    min-width: 70px;
+  }
+
+  /* Bigger joystick on mobile */
+  #joystick {
+    width: 220px;
+    height: 220px;
+  }
+  #joy-knob {
+    width: 50px;
+    height: 50px;
+    left: 85px;
+    top: 85px;
+  }
+
+  /* Show compact status bar on mobile */
+  .mobile-status-bar { display: flex; }
+
+  /* Compact gauges on mobile */
+  .collapsible .gauge-grid {
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 6px;
+  }
+  .collapsible .gauge { padding: 6px; }
+  .collapsible .gauge-value { font-size: 16px; }
+
+  /* Faults/caps inside collapsible: remove double border */
+  .collapsible .faults,
+  .collapsible .caps {
+    border: none;
+    border-radius: 0;
+    padding: 4px 0;
+  }
+
+  /* E-stop always visible at bottom on drive tab */
+  .mobile-estop {
+    display: block;
+    padding: 8px 12px;
+    background: var(--panel);
+    border-top: 1px solid var(--border);
+  }
+  .mobile-estop button {
+    width: 100%;
+    padding: 14px;
+    background: var(--red);
+    color: white;
+    border: 2px solid #ff0000;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+  }
+}
+
+/* Desktop: hide mobile-only elements */
+@media (min-width: 769px) {
+  .mobile-estop { display: none; }
+  .panel-left, .panel-center, .panel-right {
+    display: flex !important;
+  }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Robot Buddy</h1>
+  <span id="conn-status">disconnected</span>
+</header>
+
+<div class="tab-bar">
+  <button class="active" data-tab="center">Drive</button>
+  <button data-tab="left">Modes</button>
+  <button data-tab="right">Params</button>
+</div>
+
+<div class="main">
+  <!-- Left: Mode + E-Stop -->
+  <div class="panel-left">
+    <div class="mode-row">
+      <div class="mode-btn active" data-mode="IDLE">IDLE</div>
+      <div class="mode-btn" data-mode="TELEOP">TELEOP</div>
+      <div class="mode-btn" data-mode="WANDER">WANDER</div>
+    </div>
+    <button id="btn-clear">Clear Faults</button>
+    <button id="btn-estop">E-STOP</button>
+  </div>
+
+  <!-- Center: Telemetry + Joystick -->
+  <div class="panel-center">
+    <!-- Mobile: compact status bar above joystick -->
+    <div class="mobile-status-bar">
+      <span class="ms-item"><span class="ms-label">MODE</span> <span class="ms-val" id="ms-mode">BOOT</span></span>
+      <span class="ms-item"><span class="ms-label">v</span> <span class="ms-val" id="ms-v">0</span></span>
+      <span class="ms-item"><span class="ms-label">rng</span> <span class="ms-val" id="ms-range">--</span></span>
+      <span class="ms-item"><span class="ms-label">bat</span> <span class="ms-val" id="ms-batt">--</span></span>
+    </div>
+
+    <div class="joystick-area">
+      <div id="joystick"><div id="joy-knob"></div></div>
+    </div>
+
+    <details class="collapsible" open>
+      <summary>Telemetry</summary>
+      <div class="gauge-grid">
+        <div class="gauge"><div class="gauge-label">v meas</div><div class="gauge-value" id="g-v">0</div><div class="gauge-unit">mm/s</div></div>
+        <div class="gauge"><div class="gauge-label">w meas</div><div class="gauge-value" id="g-w">0</div><div class="gauge-unit">mrad/s</div></div>
+        <div class="gauge"><div class="gauge-label">range</div><div class="gauge-value" id="g-range">--</div><div class="gauge-unit">mm</div></div>
+        <div class="gauge"><div class="gauge-label">battery</div><div class="gauge-value" id="g-batt">--</div><div class="gauge-unit">mV</div></div>
+        <div class="gauge"><div class="gauge-label">v cmd</div><div class="gauge-value" id="g-vcmd">0</div><div class="gauge-unit">mm/s</div></div>
+        <div class="gauge"><div class="gauge-label">w cmd</div><div class="gauge-value" id="g-wcmd">0</div><div class="gauge-unit">mrad/s</div></div>
+        <div class="gauge"><div class="gauge-label">tick dt</div><div class="gauge-value" id="g-dt">--</div><div class="gauge-unit">ms</div></div>
+        <div class="gauge"><div class="gauge-label">mode</div><div class="gauge-value" id="g-mode">BOOT</div><div class="gauge-unit"></div></div>
+        <div class="gauge"><div class="gauge-label">clear conf</div><div class="gauge-value" id="g-clear">--</div><div class="gauge-unit"></div></div>
+        <div class="gauge"><div class="gauge-label">ball conf</div><div class="gauge-value" id="g-ball">--</div><div class="gauge-unit"></div></div>
+        <div class="gauge"><div class="gauge-label">ball bearing</div><div class="gauge-value" id="g-bearing">--</div><div class="gauge-unit">deg</div></div>
+        <div class="gauge"><div class="gauge-label">vision fps</div><div class="gauge-value" id="g-vfps">--</div><div class="gauge-unit"></div></div>
+      </div>
+    </details>
+
+    <details class="collapsible">
+      <summary>Faults &amp; Speed Caps</summary>
+      <div class="faults">
+        <div class="gauge-label">Fault Flags</div>
+        <div id="fault-chips"></div>
+      </div>
+      <div class="caps">
+        <div class="gauge-label">Speed Caps</div>
+        <div id="cap-list">none</div>
+      </div>
+    </details>
+
+    <details class="collapsible">
+      <summary>Video</summary>
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+        <button id="btn-video" style="padding:6px 12px; background:var(--panel); color:var(--accent); border:1px solid var(--accent); border-radius:4px; cursor:pointer; font-size:12px;">Toggle Video</button>
+        <span id="video-status" style="font-size:11px; color:var(--dim);">off</span>
+      </div>
+      <div id="video-container" style="display:none; margin-bottom:8px;">
+        <img id="video-feed" style="max-width:100%; border:1px solid var(--border); border-radius:4px;">
+      </div>
+    </details>
+  </div>
+
+  <!-- Right: Parameters -->
+  <div class="panel-right">
+    <h3 style="font-size:12px; margin-bottom:8px; color:var(--accent);">Parameters</h3>
+    <div id="params-container"></div>
+  </div>
+</div>
+
+<div class="mobile-estop">
+  <button id="btn-estop-mobile">E-STOP</button>
+</div>
+
+<script>
+const FAULT_NAMES = ['CMD_TIMEOUT','ESTOP','TILT','STALL','IMU_FAIL','BROWNOUT','OBSTACLE'];
+const MAX_V = 500, MAX_W = 2000;
+
+let ws = null;
+let joyActive = false;
+let joyX = 0, joyY = 0;
+
+// -- WebSocket connection ---------------------------------------------------
+
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(`${proto}//${location.host}/ws`);
+
+  ws.onopen = () => {
+    document.getElementById('conn-status').textContent = 'connected';
+    document.getElementById('conn-status').classList.add('ok');
+    loadParams();
+  };
+
+  ws.onclose = () => {
+    document.getElementById('conn-status').textContent = 'disconnected';
+    document.getElementById('conn-status').classList.remove('ok');
+    setTimeout(connect, 1000);
+  };
+
+  ws.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === 'telemetry') updateTelemetry(msg.payload);
+  };
+}
+
+// -- Telemetry display ------------------------------------------------------
+
+function updateTelemetry(p) {
+  document.getElementById('g-v').textContent = p.v_meas;
+  document.getElementById('g-w').textContent = p.w_meas;
+  document.getElementById('g-range').textContent = p.range_mm;
+  document.getElementById('g-batt').textContent = p.battery_mv;
+  document.getElementById('g-vcmd').textContent = p.v_capped;
+  document.getElementById('g-wcmd').textContent = p.w_capped;
+  document.getElementById('g-dt').textContent = p.tick_dt_ms;
+  document.getElementById('g-mode').textContent = p.mode;
+  document.getElementById('g-clear').textContent = p.clear_conf >= 0 ? p.clear_conf : '--';
+  document.getElementById('g-ball').textContent = p.ball_conf > 0 ? p.ball_conf : '--';
+  document.getElementById('g-bearing').textContent = p.ball_conf > 0 ? p.ball_bearing : '--';
+  document.getElementById('g-vfps').textContent = p.vision_fps > 0 ? p.vision_fps : '--';
+
+  // Mobile status bar
+  document.getElementById('ms-mode').textContent = p.mode;
+  document.getElementById('ms-v').textContent = p.v_meas;
+  document.getElementById('ms-range').textContent = p.range_mm;
+  document.getElementById('ms-batt').textContent = p.battery_mv;
+
+  // Update mode buttons
+  document.querySelectorAll('.mode-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.mode === p.mode);
+  });
+
+  // Fault chips
+  const fc = document.getElementById('fault-chips');
+  fc.innerHTML = FAULT_NAMES.map((name, i) => {
+    const active = (p.fault_flags >> i) & 1;
+    return `<span class="fault-chip${active ? ' active' : ''}">${name}</span>`;
+  }).join('');
+
+  // Speed caps
+  const cl = document.getElementById('cap-list');
+  if (p.speed_caps.length === 0) {
+    cl.textContent = 'none';
+  } else {
+    cl.textContent = p.speed_caps.map(c => `${c.reason} (${Math.round(c.scale*100)}%)`).join(', ');
+  }
+}
+
+// -- Mode buttons -----------------------------------------------------------
+
+document.querySelectorAll('.mode-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    send({ type: 'set_mode', mode: btn.dataset.mode });
+  });
+});
+
+document.getElementById('btn-estop').addEventListener('click', () => {
+  send({ type: 'e_stop' });
+});
+
+document.getElementById('btn-clear').addEventListener('click', () => {
+  send({ type: 'clear' });
+});
+
+function send(obj) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(obj));
+  }
+}
+
+// -- Joystick ---------------------------------------------------------------
+
+const joystick = document.getElementById('joystick');
+const knob = document.getElementById('joy-knob');
+
+function getJoyMetrics() {
+  const knobSize = knob.offsetWidth;
+  const joySize = joystick.offsetWidth;
+  const center = (joySize - knobSize) / 2;
+  const maxR = center;
+  return { center, maxR };
+}
+
+function joyStart(e) {
+  joyActive = true;
+  e.preventDefault();
+  joyMove(e);
+}
+
+function joyMove(e) {
+  if (!joyActive) return;
+  e.preventDefault();
+  const { center, maxR } = getJoyMetrics();
+  const rect = joystick.getBoundingClientRect();
+  const cx = rect.left + rect.width / 2;
+  const cy = rect.top + rect.height / 2;
+
+  const pt = e.touches ? e.touches[0] : e;
+  let dx = pt.clientX - cx;
+  let dy = pt.clientY - cy;
+
+  const dist = Math.sqrt(dx*dx + dy*dy);
+  if (dist > maxR) {
+    dx = dx / dist * maxR;
+    dy = dy / dist * maxR;
+  }
+
+  knob.style.left = (center + dx) + 'px';
+  knob.style.top = (center + dy) + 'px';
+
+  joyX = dx / maxR;  // -1..1
+  joyY = -dy / maxR; // -1..1 (inverted)
+}
+
+function joyEnd() {
+  joyActive = false;
+  const { center } = getJoyMetrics();
+  knob.style.left = center + 'px';
+  knob.style.top = center + 'px';
+  joyX = 0;
+  joyY = 0;
+}
+
+joystick.addEventListener('mousedown', joyStart);
+joystick.addEventListener('touchstart', joyStart);
+window.addEventListener('mousemove', joyMove);
+window.addEventListener('touchmove', joyMove, { passive: false });
+window.addEventListener('mouseup', joyEnd);
+window.addEventListener('touchend', joyEnd);
+
+// Send twist at 20 Hz
+setInterval(() => {
+  const v = Math.round(joyY * MAX_V);
+  const w = Math.round(-joyX * MAX_W);  // right = negative w (clockwise)
+  send({ type: 'twist', v, w });
+}, 50);
+
+// -- WASD support -----------------------------------------------------------
+
+const keys = {};
+window.addEventListener('keydown', e => {
+  if (['w','a','s','d',' '].includes(e.key)) {
+    keys[e.key] = true;
+    if (e.key === ' ') send({ type: 'e_stop' });
+  }
+});
+window.addEventListener('keyup', e => { keys[e.key] = false; });
+
+setInterval(() => {
+  if (joyActive) return; // joystick takes priority
+  let v = 0, w = 0;
+  if (keys['w']) v += MAX_V * 0.5;
+  if (keys['s']) v -= MAX_V * 0.5;
+  if (keys['a']) w += MAX_W * 0.5;
+  if (keys['d']) w -= MAX_W * 0.5;
+  if (v !== 0 || w !== 0) {
+    send({ type: 'twist', v: Math.round(v), w: Math.round(w) });
+  }
+}, 50);
+
+// -- Parameters -------------------------------------------------------------
+
+async function loadParams() {
+  try {
+    const res = await fetch('/params');
+    const params = await res.json();
+    renderParams(params);
+  } catch (e) {
+    console.warn('Failed to load params:', e);
+  }
+}
+
+function renderParams(params) {
+  const container = document.getElementById('params-container');
+  container.innerHTML = '';
+
+  const groups = {};
+  params.forEach(p => {
+    const g = p.owner || 'other';
+    if (!groups[g]) groups[g] = [];
+    groups[g].push(p);
+  });
+
+  for (const [owner, items] of Object.entries(groups)) {
+    const div = document.createElement('div');
+    div.className = 'param-group';
+    div.innerHTML = `<h3>${owner}</h3>`;
+
+    items.forEach(p => {
+      const row = document.createElement('div');
+      row.className = 'param-row';
+
+      if (p.mutable === 'boot_only') {
+        // Read-only: show name + value as static text
+        row.innerHTML = `<label><span>${p.name}</span><span style="color:var(--text)">${p.value}</span></label>`;
+        div.appendChild(row);
+        return;
+      }
+
+      const step = p.step || (p.type === 'float' ? 0.01 : 1);
+      const valSpan = `<span id="pval-${p.name}">${p.value}</span>`;
+
+      row.innerHTML = `
+        <label><span>${p.name}</span>${valSpan}</label>
+        <input type="range" min="${p.min}" max="${p.max}" step="${step}"
+               value="${p.value}" data-param="${p.name}">
+      `;
+
+      const input = row.querySelector('input');
+      input.addEventListener('input', () => {
+        document.getElementById(`pval-${p.name}`).textContent = input.value;
+      });
+      input.addEventListener('change', async () => {
+        const val = p.type === 'float' ? parseFloat(input.value) : parseInt(input.value);
+        await fetch('/params', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ items: { [p.name]: val } }),
+        });
+      });
+
+      div.appendChild(row);
+    });
+
+    container.appendChild(div);
+  }
+}
+
+// -- Video toggle -----------------------------------------------------------
+
+let videoOn = false;
+document.getElementById('btn-video').addEventListener('click', async () => {
+  videoOn = !videoOn;
+  document.getElementById('video-status').textContent = videoOn ? 'on' : 'off';
+  document.getElementById('video-container').style.display = videoOn ? 'block' : 'none';
+  if (videoOn) {
+    document.getElementById('video-feed').src = '/video';
+    await fetch('/params', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items: { 'vision.mjpeg_enabled': true } }),
+    });
+  } else {
+    document.getElementById('video-feed').src = '';
+    await fetch('/params', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items: { 'vision.mjpeg_enabled': false } }),
+    });
+  }
+});
+
+// -- Mobile tabs ------------------------------------------------------------
+
+const tabMap = { left: '.panel-left', center: '.panel-center', right: '.panel-right' };
+const tabButtons = document.querySelectorAll('.tab-bar button');
+
+function switchTab(tabName) {
+  tabButtons.forEach(b => b.classList.toggle('active', b.dataset.tab === tabName));
+  for (const [key, sel] of Object.entries(tabMap)) {
+    document.querySelector(sel).classList.toggle('tab-active', key === tabName);
+  }
+}
+
+tabButtons.forEach(btn => {
+  btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+});
+
+// Set initial active tab on mobile
+switchTab('center');
+
+// On mobile, collapse telemetry by default (status bar shows key values)
+if (window.matchMedia('(max-width: 768px)').matches) {
+  document.querySelectorAll('.collapsible[open]').forEach(d => d.removeAttribute('open'));
+}
+
+// Mobile e-stop
+document.getElementById('btn-estop-mobile').addEventListener('click', () => {
+  send({ type: 'e_stop' });
+});
+
+// -- Init -------------------------------------------------------------------
+connect();
+</script>
+</body>
+</html>

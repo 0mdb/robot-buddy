@@ -1,0 +1,15 @@
+# Target: ESP32-S3
+CONFIG_IDF_TARGET="esp32s3"
+
+# Console over native USB CDC
+CONFIG_ESP_CONSOLE_USB_CDC=y
+
+# Logging
+CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+
+# FreeRTOS: both cores enabled (default on S3, but be explicit)
+CONFIG_FREERTOS_UNICORE=n
+
+# Task watchdog — we'll register control_task with it
+CONFIG_ESP_TASK_WDT_EN=y
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=3
