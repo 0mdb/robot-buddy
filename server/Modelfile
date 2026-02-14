@@ -1,0 +1,14 @@
+# Ollama Modelfile for Robot Buddy personality model.
+#
+# Create with:  ollama create robot-buddy -f Modelfile
+# Run with:     ollama run robot-buddy
+#
+# This just pins inference parameters on top of the base model.
+# The system prompt is managed by the FastAPI server, not here,
+# so the model stays reusable for other experiments.
+
+FROM qwen3:14b
+
+PARAMETER temperature 0.7
+PARAMETER top_p 0.9
+PARAMETER num_ctx 4096
