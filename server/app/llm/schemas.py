@@ -24,8 +24,8 @@ class WorldState(BaseModel):
     ball_bearing_deg: float = 0.0
     speed_l_mm_s: int = 0
     speed_r_mm_s: int = 0
-    v_capped: int = 0
-    w_capped: int = 0
+    v_capped: float = 0.0
+    w_capped: float = 0.0
     trigger: str = "heartbeat"
 
 

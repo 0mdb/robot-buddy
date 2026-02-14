@@ -104,10 +104,12 @@ class OllamaClient:
         )
         return plan
 
-    async def warm(self) -> None:
+    async def warm(self, timeout_s: float = 120.0) -> None:
         """Send a trivial request to load the model into GPU memory."""
         assert self._client is not None
-        log.info("Warming model %s ...", self._model)
+        log.info("Warming model %s (timeout %gs) ...", self._model, timeout_s)
+        saved = self._client.timeout
+        self._client.timeout = httpx.Timeout(timeout_s, connect=10.0)
         try:
             dummy = WorldState(
                 mode="IDLE",
@@ -119,3 +121,5 @@ class OllamaClient:
             log.info("Model warm-up complete.")
         except Exception:
             log.warning("Model warm-up failed (server may still be loading).")
+        finally:
+            self._client.timeout = saved

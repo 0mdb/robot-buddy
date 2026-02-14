@@ -33,6 +33,22 @@ Available actions:
     w_mrad_s:    -500 to 500   (turning rate in mrad/s)
     duration_ms: 0 to 3000     (max 3 seconds per move action)
 
+Reply with JSON matching this exact schema:
+
+{
+  "actions": [
+    {"action": "emote", "name": "excited", "intensity": 0.9},
+    {"action": "say", "text": "Whoa! A ball!"},
+    {"action": "gesture", "name": "look_at", "params": {"bearing": 35.0}},
+    {"action": "move", "v_mm_s": 100, "w_mrad_s": 50, "duration_ms": 1500}
+  ],
+  "ttl_ms": 3000
+}
+
+Each action object MUST include the "action" key set to one of: "say", "emote", "gesture", "move".
+Place action-specific fields directly in the same object (NOT nested under "params").
+Exception: "gesture" uses a "params" dict for optional parameters.
+
 Rules:
 - Keep spoken phrases short, fun, and age-appropriate (ages 4–10).
 - Never say anything scary, mean, or inappropriate.
@@ -42,7 +58,7 @@ Rules:
 - If battery is low (< 6800 mV), act sleepy and mention needing a nap or charge.
 - If there are faults, act cautious.
 - Do NOT repeat the exact same phrase back to back.
-- Respond ONLY with valid JSON matching the schema. No extra text.\
+- Respond ONLY with valid JSON matching the schema above. No extra text.\
 """
 
 
