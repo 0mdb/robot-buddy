@@ -13,6 +13,7 @@ def test_system_prompt_not_empty():
 def test_system_prompt_mentions_actions():
     assert "say(" in SYSTEM_PROMPT
     assert "emote(" in SYSTEM_PROMPT
+    assert "sfx(" in SYSTEM_PROMPT
     assert "gesture(" in SYSTEM_PROMPT
     assert "move(" in SYSTEM_PROMPT
 
@@ -24,6 +25,22 @@ def test_system_prompt_mentions_safety():
     )
 
 
+def test_system_prompt_mentions_emotions():
+    assert "happy" in SYSTEM_PROMPT
+    assert "excited" in SYSTEM_PROMPT
+    assert "sleepy" in SYSTEM_PROMPT
+
+
+def test_system_prompt_mentions_sfx():
+    assert "boop" in SYSTEM_PROMPT
+    assert "wheee" in SYSTEM_PROMPT
+
+
+def test_system_prompt_mentions_mood():
+    assert "valence" in SYSTEM_PROMPT
+    assert "arousal" in SYSTEM_PROMPT
+
+
 def test_format_user_prompt_basic():
     ws = WorldState(mode="IDLE", battery_mv=8000, range_mm=1000)
     prompt = format_user_prompt(ws)
@@ -31,6 +48,8 @@ def test_format_user_prompt_basic():
     assert "Battery: 8000 mV" in prompt
     assert "Range sensor: 1000 mm" in prompt
     assert "Trigger: heartbeat" in prompt
+    assert "Mood: valence=0.0  arousal=0.0" in prompt
+    assert "Recent actions: none" in prompt
 
 
 def test_format_user_prompt_ball_detected():
@@ -71,3 +90,26 @@ def test_format_user_prompt_with_vision():
     )
     prompt = format_user_prompt(ws)
     assert "95%" in prompt
+
+
+def test_format_user_prompt_with_mood():
+    ws = WorldState(
+        mode="WANDER",
+        battery_mv=8000,
+        range_mm=1000,
+        mood={"valence": 0.6, "arousal": -0.3},
+    )
+    prompt = format_user_prompt(ws)
+    assert "valence=0.6" in prompt
+    assert "arousal=-0.3" in prompt
+
+
+def test_format_user_prompt_with_recent_actions():
+    ws = WorldState(
+        mode="WANDER",
+        battery_mv=8000,
+        range_mm=1000,
+        recent_actions=["say:Hello!", "emote:happy"],
+    )
+    prompt = format_user_prompt(ws)
+    assert "say:Hello!, emote:happy" in prompt

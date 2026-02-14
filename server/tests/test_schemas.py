@@ -8,9 +8,11 @@ from pydantic import ValidationError
 from app.llm.schemas import (
     EmoteAction,
     GestureAction,
+    Mood,
     MoveAction,
     PlanResponse,
     SayAction,
+    SfxAction,
     WorldState,
 )
 
@@ -27,6 +29,26 @@ def test_say_valid():
 def test_say_too_long():
     with pytest.raises(ValidationError):
         SayAction(text="x" * 201)
+
+
+def test_say_emotion_defaults():
+    a = SayAction(text="Hi!")
+    assert a.emotion == "neutral"
+    assert a.intensity == 0.5
+
+
+def test_say_with_emotion():
+    a = SayAction(text="A ball!", emotion="excited", intensity=0.9)
+    assert a.emotion == "excited"
+    assert a.intensity == 0.9
+
+
+def test_say_intensity_bounds():
+    with pytest.raises(ValidationError):
+        SayAction(text="Hi!", intensity=1.5)
+
+    with pytest.raises(ValidationError):
+        SayAction(text="Hi!", intensity=-0.1)
 
 
 # -- EmoteAction --------------------------------------------------------------
@@ -49,6 +71,20 @@ def test_emote_intensity_clamped():
 def test_emote_default_intensity():
     a = EmoteAction(name="curious")
     assert a.intensity == 0.5
+
+
+# -- SfxAction ----------------------------------------------------------------
+
+
+def test_sfx_valid():
+    a = SfxAction(name="boop")
+    assert a.action == "sfx"
+    assert a.name == "boop"
+
+
+def test_sfx_requires_name():
+    with pytest.raises(ValidationError):
+        SfxAction()
 
 
 # -- GestureAction ------------------------------------------------------------
@@ -92,6 +128,26 @@ def test_move_duration_bounds():
         MoveAction(duration_ms=-1)
 
 
+# -- Mood ---------------------------------------------------------------------
+
+
+def test_mood_defaults():
+    m = Mood()
+    assert m.valence == 0.0
+    assert m.arousal == 0.0
+
+
+def test_mood_bounds():
+    m = Mood(valence=1.0, arousal=-1.0)
+    assert m.valence == 1.0
+
+    with pytest.raises(ValidationError):
+        Mood(valence=1.5)
+
+    with pytest.raises(ValidationError):
+        Mood(arousal=-1.1)
+
+
 # -- PlanResponse -------------------------------------------------------------
 
 
@@ -131,18 +187,21 @@ def test_plan_response_from_json():
     raw = """{
         "actions": [
             {"action": "emote", "name": "excited", "intensity": 0.9},
-            {"action": "say", "text": "A ball!"},
+            {"action": "say", "text": "A ball!", "emotion": "excited", "intensity": 0.8},
+            {"action": "sfx", "name": "boop"},
             {"action": "gesture", "name": "look_at", "params": {"bearing": 15.0}},
             {"action": "move", "v_mm_s": 150, "w_mrad_s": 50, "duration_ms": 1500}
         ],
         "ttl_ms": 2000
     }"""
     plan = PlanResponse.model_validate_json(raw)
-    assert len(plan.actions) == 4
+    assert len(plan.actions) == 5
     assert plan.actions[0].action == "emote"
     assert plan.actions[1].action == "say"
-    assert plan.actions[2].action == "gesture"
-    assert plan.actions[3].action == "move"
+    assert plan.actions[1].emotion == "excited"
+    assert plan.actions[2].action == "sfx"
+    assert plan.actions[3].action == "gesture"
+    assert plan.actions[4].action == "move"
 
 
 def test_plan_json_schema_has_discriminator():
@@ -159,6 +218,9 @@ def test_world_state_minimal():
     ws = WorldState(mode="IDLE", battery_mv=8000, range_mm=1000)
     assert ws.trigger == "heartbeat"
     assert ws.faults == []
+    assert ws.mood.valence == 0.0
+    assert ws.mood.arousal == 0.0
+    assert ws.recent_actions == []
 
 
 def test_world_state_full():
@@ -175,6 +237,10 @@ def test_world_state_full():
         v_capped=80,
         w_capped=0,
         trigger="ball_seen",
+        mood={"valence": 0.7, "arousal": 0.5},
+        recent_actions=["say:Whoa!", "emote:excited"],
     )
     assert ws.ball_detected is True
     assert ws.trigger == "ball_seen"
+    assert ws.mood.valence == 0.7
+    assert ws.recent_actions == ["say:Whoa!", "emote:excited"]

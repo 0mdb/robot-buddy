@@ -12,6 +12,8 @@ from fastapi.responses import JSONResponse
 from app.config import settings
 from app.llm.client import OllamaClient
 from app.routers.plan import router as plan_router
+from app.routers.tts import router as tts_router
+from app.tts.synth import create_synthesiser
 
 log = logging.getLogger(__name__)
 
@@ -22,6 +24,8 @@ async def lifespan(app: FastAPI):
     client = OllamaClient()
     await client.start()
     app.state.ollama = client
+
+    app.state.tts = create_synthesiser()
 
     healthy = await client.health_check()
     if healthy:
@@ -42,6 +46,7 @@ app = FastAPI(
 )
 
 app.include_router(plan_router)
+app.include_router(tts_router)
 
 
 @app.get("/health")

@@ -8,6 +8,50 @@ from pydantic import BaseModel, Field
 
 
 # ---------------------------------------------------------------------------
+# Emotions — shared vocabulary for face, speech prosody, and mood
+# ---------------------------------------------------------------------------
+
+EMOTIONS: list[str] = [
+    "happy",
+    "sad",
+    "surprised",
+    "curious",
+    "excited",
+    "sleepy",
+    "scared",
+    "neutral",
+    "love",
+]
+
+# ---------------------------------------------------------------------------
+# Sound-effect identifiers (pre-baked audio on the Pi)
+# ---------------------------------------------------------------------------
+
+SFX_NAMES: list[str] = [
+    "boop",
+    "oof",
+    "wheee",
+    "beep_beep",
+    "yawn",
+    "giggle",
+    "gasp",
+    "hum",
+]
+
+
+# ---------------------------------------------------------------------------
+# Mood (persistent emotional colouring)
+# ---------------------------------------------------------------------------
+
+
+class Mood(BaseModel):
+    """Russell circumplex mood: valence (sad↔happy) × arousal (sleepy↔excited)."""
+
+    valence: float = Field(ge=-1.0, le=1.0, default=0.0)
+    arousal: float = Field(ge=-1.0, le=1.0, default=0.0)
+
+
+# ---------------------------------------------------------------------------
 # World state (incoming from supervisor)
 # ---------------------------------------------------------------------------
 
@@ -27,6 +71,12 @@ class WorldState(BaseModel):
     v_capped: float = 0.0
     w_capped: float = 0.0
     trigger: str = "heartbeat"
+    mood: Mood = Field(default_factory=Mood)
+    recent_actions: list[str] = Field(
+        default_factory=list,
+        max_length=5,
+        description="Last few action summaries for continuity, e.g. ['say:Whoa!', 'emote:excited']",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -37,12 +87,23 @@ class WorldState(BaseModel):
 class SayAction(BaseModel):
     action: Literal["say"] = "say"
     text: str = Field(max_length=200)
+    emotion: str = Field(default="neutral", description="Prosody hint for TTS")
+    intensity: float = Field(
+        ge=0.0, le=1.0, default=0.5, description="Emotion strength for TTS prosody"
+    )
 
 
 class EmoteAction(BaseModel):
     action: Literal["emote"] = "emote"
     name: str
     intensity: float = Field(ge=0.0, le=1.0, default=0.5)
+
+
+class SfxAction(BaseModel):
+    """Trigger a pre-baked sound effect (low-latency, no TTS needed)."""
+
+    action: Literal["sfx"] = "sfx"
+    name: str = Field(description="Sound effect identifier")
 
 
 class GestureAction(BaseModel):
@@ -59,7 +120,7 @@ class MoveAction(BaseModel):
 
 
 PlanAction = Annotated[
-    Union[SayAction, EmoteAction, GestureAction, MoveAction],
+    Union[SayAction, EmoteAction, SfxAction, GestureAction, MoveAction],
     Field(discriminator="action"),
 ]
 

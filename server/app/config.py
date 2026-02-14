@@ -19,5 +19,11 @@ class Settings:
     host: str = os.environ.get("SERVER_HOST", "0.0.0.0")
     port: int = int(os.environ.get("SERVER_PORT", "8100"))
 
+    # TTS settings
+    tts_backend: str = os.environ.get("TTS_BACKEND", "stub")
+    tts_sample_rate: int = int(os.environ.get("TTS_SAMPLE_RATE", "24000"))
+    tts_audio_format: str = os.environ.get("TTS_AUDIO_FORMAT", "wav")
+    tts_timeout_s: float = float(os.environ.get("TTS_TIMEOUT_S", "5.0"))
+
 
 settings = Settings()
