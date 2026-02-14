@@ -37,7 +37,7 @@ robot-buddy/
 |-----------|-------|
 | Supervisor | Python 3.11+, asyncio, FastAPI, uvicorn, pyserial, OpenCV |
 | ESP32 firmware | C/C++, ESP-IDF (FreeRTOS), CMake |
-| Build (Python) | Hatchling via pyproject.toml |
+| Build (Python) | Hatchling via pyproject.toml, uv for dependency management |
 | Build (ESP32) | `idf.py build` (CMake) |
 | Tests | pytest, pytest-asyncio |
 | Linting | ruff (>=0.15.1) |
@@ -79,6 +79,15 @@ ruff check --fix supervisor/
 
 # Format
 ruff format supervisor/
+```
+
+### Running the Server
+
+```bash
+cd server
+uv sync --extra dev       # Install deps
+uv run python -m app.main # Start server (Ollama must be running)
+uv run pytest tests/ -v   # Run tests
 ```
 
 ### ESP32 Firmware
@@ -167,7 +176,7 @@ Layered defense-in-depth:
   - Sections: serial, control, safety, network, logging, vision
   - Default serial devices: `/dev/robot_reflex`, `/dev/robot_face` (udev symlinks)
 - **ESP32 config:** `sdkconfig.defaults` + `config.h` header constants
-- **Dependencies:** `supervisor/pyproject.toml` (core, rpi optional, dev groups)
+- **Dependencies:** managed via `uv` with `pyproject.toml` + `uv.lock` in both `supervisor/` and `server/`
 
 ## Files to Avoid Committing
 

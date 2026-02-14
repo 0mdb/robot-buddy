@@ -38,7 +38,7 @@ ollama create robot-buddy -f Modelfile
 
 ```bash
 cd server/
-pip install -e ".[dev]"
+uv sync --extra dev
 ```
 
 ### 4. Run
@@ -46,7 +46,7 @@ pip install -e ".[dev]"
 ```bash
 # Make sure Ollama is running (ollama serve)
 cd server/
-python -m app.main
+uv run python -m app.main
 ```
 
 The server starts on `http://0.0.0.0:8100`.
@@ -130,7 +130,7 @@ Accepts a world-state snapshot, returns a bounded performance plan.
 
 ```bash
 cd server/
-python -m pytest tests/ -v
+uv run pytest tests/ -v
 ```
 
 ## TODO
