@@ -1,7 +1,7 @@
 # Protocols
 
 ## Transport
-USB serial between Jetson and each ESP32.
+USB serial between Raspberry Pi 5 and each ESP32.
 
 ## Face MCU protocol (v0)
 Binary fixed-size packets.
