@@ -81,6 +81,20 @@ bool config_apply(uint8_t param_id, const uint8_t* value_bytes)
         ESP_LOGI(TAG, "max_aw_mrad_s2 = %d", g_cfg.max_aw_mrad_s2);
         return true;
 
+    // IMU (boot_only — values take effect on next reinit/reboot)
+    case ConfigParam::IMU_ODR_HZ:
+        g_cfg.imu_odr_hz = static_cast<uint16_t>(read_u32(value_bytes));
+        ESP_LOGI(TAG, "imu_odr_hz = %u", g_cfg.imu_odr_hz);
+        return true;
+    case ConfigParam::IMU_GYRO_RANGE_DPS:
+        g_cfg.imu_gyro_range_dps = static_cast<uint16_t>(read_u32(value_bytes));
+        ESP_LOGI(TAG, "imu_gyro_range_dps = %u", g_cfg.imu_gyro_range_dps);
+        return true;
+    case ConfigParam::IMU_ACCEL_RANGE_G:
+        g_cfg.imu_accel_range_g = static_cast<uint8_t>(read_u32(value_bytes));
+        ESP_LOGI(TAG, "imu_accel_range_g = %u", g_cfg.imu_accel_range_g);
+        return true;
+
     // Yaw damping
     case ConfigParam::K_YAW:
         g_cfg.K_yaw = read_float(value_bytes);

@@ -1,4 +1,6 @@
 #include "imu.h"
+#include "bmi270_config.h"
+#include "config.h"
 #include "pin_map.h"
 #include "shared_state.h"
 
@@ -15,36 +17,98 @@
 
 static const char* TAG = "imu";
 
-// ---- LSM6DSV16X register map (subset) ----
-static constexpr uint8_t LSM6_ADDR        = 0x6A;  // SDO/SA0 to GND
-static constexpr uint8_t REG_WHO_AM_I     = 0x0F;
-static constexpr uint8_t WHO_AM_I_VALUE   = 0x70;
+// ---- BMI270 register map ----
+static constexpr uint8_t BMI270_ADDR          = 0x68;  // SDO/SA0 to GND (0x69 if SDO→VDDIO)
+static constexpr uint8_t REG_CHIP_ID          = 0x00;
+static constexpr uint8_t BMI270_CHIP_ID_VAL   = 0x24;
 
-static constexpr uint8_t REG_CTRL1        = 0x10;  // accel ODR + FS
-static constexpr uint8_t REG_CTRL2        = 0x11;  // gyro ODR + FS
-static constexpr uint8_t REG_CTRL3        = 0x12;  // BDU, IF_INC, SW_RESET
-static constexpr uint8_t REG_STATUS       = 0x1E;
+static constexpr uint8_t REG_STATUS           = 0x03;
+static constexpr uint8_t REG_ACC_DATA_X_LSB   = 0x0C;  // accel data: 6 bytes (0x0C–0x11)
+static constexpr uint8_t REG_GYR_DATA_X_LSB   = 0x12;  // gyro data:  6 bytes (0x12–0x17)
+static constexpr uint8_t REG_INTERNAL_STATUS  = 0x21;
 
-static constexpr uint8_t REG_OUTX_L_G     = 0x22;  // gyro data starts here (6 bytes)
-static constexpr uint8_t REG_OUTX_L_A     = 0x28;  // accel data starts here (6 bytes)
+static constexpr uint8_t REG_ACC_CONF         = 0x40;
+static constexpr uint8_t REG_ACC_RANGE        = 0x41;
+static constexpr uint8_t REG_GYR_CONF         = 0x42;
+static constexpr uint8_t REG_GYR_RANGE        = 0x43;
 
-// CTRL1: accel ODR + FS
-// ODR bits [7:4], FS bits [3:2]
-// ODR=0110 → 240 Hz, FS=00 → ±2g
-static constexpr uint8_t CTRL1_VAL = 0x60;  // 240 Hz, ±2g
+static constexpr uint8_t REG_INIT_CTRL        = 0x59;
+static constexpr uint8_t REG_INIT_DATA        = 0x5E;
 
-// CTRL2: gyro ODR + FS
-// ODR bits [7:4], FS bits [3:0]
-// ODR=0110 → 240 Hz, FS=0010 → ±500 dps
-static constexpr uint8_t CTRL2_VAL = 0x62;  // 240 Hz, ±500 dps
+static constexpr uint8_t REG_PWR_CONF         = 0x7C;
+static constexpr uint8_t REG_PWR_CTRL         = 0x7D;
+static constexpr uint8_t REG_CMD              = 0x7E;
 
-// CTRL3: BDU=1 (block data update), IF_INC=1 (auto-increment address)
-static constexpr uint8_t CTRL3_VAL = 0x44;
+// ---- ACC_CONF register: [7] acc_filter_perf | [6:4] acc_bwp | [3:0] acc_odr ----
+// ODR encoding (acc_odr field):
+//   0x05=25Hz, 0x06=25Hz, 0x07=50Hz, 0x08=100Hz,
+//   0x09=200Hz, 0x0A=400Hz, 0x0B=800Hz, 0x0C=1600Hz
+// BWP: 0x02=normal, 0x01=OSR2, 0x00=OSR4
+// filter_perf: 1=high perf (recommended when ODR>=100Hz)
+static constexpr uint8_t ACC_ODR_200HZ  = 0x09;
+static constexpr uint8_t ACC_ODR_400HZ  = 0x0A;
+static constexpr uint8_t ACC_ODR_800HZ  = 0x0B;
+static constexpr uint8_t ACC_BWP_NORM   = 0x02;
+static constexpr uint8_t ACC_FILTER_HP  = 0x01;  // bit 7
 
-// Sensitivity constants
-static constexpr float GYRO_SENSITIVITY_DPS  = 17.50f / 1000.0f;   // ±500 dps: 17.50 mdps/LSB → dps/LSB
-static constexpr float GYRO_SENSITIVITY_RAD  = GYRO_SENSITIVITY_DPS * (M_PI / 180.0f);
-static constexpr float ACCEL_SENSITIVITY_G   = 0.061f / 1000.0f;    // ±2g: 0.061 mg/LSB → g/LSB
+// ---- ACC_RANGE register [1:0] ----
+static constexpr uint8_t ACC_RANGE_2G   = 0x00;
+static constexpr uint8_t ACC_RANGE_4G   = 0x01;
+static constexpr uint8_t ACC_RANGE_8G   = 0x02;
+static constexpr uint8_t ACC_RANGE_16G  = 0x03;
+
+// ---- GYR_CONF register: [7] gyr_filter_perf | [6] gyr_noise_perf | [5:4] gyr_bwp | [3:0] gyr_odr ----
+// ODR encoding (same as accel): 0x09=200Hz, 0x0A=400Hz, 0x0B=800Hz, ...
+static constexpr uint8_t GYR_ODR_200HZ  = 0x09;
+static constexpr uint8_t GYR_ODR_400HZ  = 0x0A;
+static constexpr uint8_t GYR_ODR_800HZ  = 0x0B;
+static constexpr uint8_t GYR_BWP_NORM   = 0x02;
+static constexpr uint8_t GYR_NOISE_HP   = 0x01;  // bit 6
+static constexpr uint8_t GYR_FILTER_HP  = 0x01;  // bit 7
+
+// ---- GYR_RANGE register [2:0] ----
+static constexpr uint8_t GYR_RANGE_2000 = 0x00;  // ±2000 dps
+static constexpr uint8_t GYR_RANGE_1000 = 0x01;  // ±1000 dps
+static constexpr uint8_t GYR_RANGE_500  = 0x02;  // ±500 dps
+static constexpr uint8_t GYR_RANGE_250  = 0x03;  // ±250 dps
+static constexpr uint8_t GYR_RANGE_125  = 0x04;  // ±125 dps
+
+// ---- PWR_CTRL bits ----
+static constexpr uint8_t PWR_CTRL_AUX_EN  = 0x01;
+static constexpr uint8_t PWR_CTRL_GYR_EN  = 0x02;
+static constexpr uint8_t PWR_CTRL_ACC_EN  = 0x04;
+static constexpr uint8_t PWR_CTRL_TEMP_EN = 0x08;
+
+// ---- Sensitivity lookup tables (LSB/unit) ----
+// Accelerometer: LSB/g for each range setting
+static constexpr float ACCEL_SENS_TABLE[] = {
+    // ACC_RANGE_2G  → 16384 LSB/g  → 0.0000610 g/LSB
+    // ACC_RANGE_4G  → 8192  LSB/g  → 0.000122  g/LSB
+    // ACC_RANGE_8G  → 4096  LSB/g  → 0.000244  g/LSB
+    // ACC_RANGE_16G → 2048  LSB/g  → 0.000488  g/LSB
+    1.0f / 16384.0f,  // ±2g
+    1.0f / 8192.0f,   // ±4g
+    1.0f / 4096.0f,   // ±8g
+    1.0f / 2048.0f,   // ±16g
+};
+
+// Gyroscope: (dps/LSB) for each range setting
+static constexpr float GYRO_SENS_DPS_TABLE[] = {
+    // GYR_RANGE_2000 → 16.4 LSB/dps  → 0.061035 dps/LSB
+    // GYR_RANGE_1000 → 32.8 LSB/dps  → 0.030518 dps/LSB
+    // GYR_RANGE_500  → 65.5 LSB/dps  → 0.015267 dps/LSB
+    // GYR_RANGE_250  → 131.1 LSB/dps → 0.007630 dps/LSB
+    // GYR_RANGE_125  → 262.1 LSB/dps → 0.003815 dps/LSB
+    1.0f / 16.4f,    // ±2000 dps
+    1.0f / 32.8f,    // ±1000 dps
+    1.0f / 65.5f,    // ±500 dps
+    1.0f / 131.1f,   // ±250 dps
+    1.0f / 262.1f,   // ±125 dps
+};
+
+// Runtime sensitivity values — set during configure() from g_cfg range selections
+static float s_accel_sens_g  = ACCEL_SENS_TABLE[ACC_RANGE_2G];
+static float s_gyro_sens_rad = GYRO_SENS_DPS_TABLE[GYR_RANGE_500] * (M_PI / 180.0f);
 
 // ---- I²C driver state ----
 static i2c_master_bus_handle_t s_bus = nullptr;
@@ -54,14 +118,13 @@ static i2c_master_dev_handle_t s_dev = nullptr;
 // If SDA is stuck low (slave holding it), bit-bang SCL to clock out the
 // stuck slave, then issue a STOP condition, then re-init the driver.
 
-static constexpr int    RECOVERY_CLK_PULSES = 9;
-static constexpr int    RECOVERY_HALF_PERIOD_US = 5;  // ~100 kHz
+static constexpr int RECOVERY_CLK_PULSES    = 9;
+static constexpr int RECOVERY_HALF_PERIOD_US = 5;  // ~100 kHz
 
 static void i2c_bus_recover()
 {
     ESP_LOGW(TAG, "attempting I²C bus recovery...");
 
-    // Tear down driver so we can bit-bang the pins
     if (s_dev) {
         i2c_master_bus_rm_device(s_dev);
         s_dev = nullptr;
@@ -71,7 +134,6 @@ static void i2c_bus_recover()
         s_bus = nullptr;
     }
 
-    // Configure SCL as open-drain output, SDA as open-drain input
     gpio_config_t scl_cfg = {};
     scl_cfg.pin_bit_mask = 1ULL << PIN_IMU_SCL;
     scl_cfg.mode = GPIO_MODE_INPUT_OUTPUT_OD;
@@ -84,17 +146,14 @@ static void i2c_bus_recover()
     sda_cfg.pull_up_en = GPIO_PULLUP_ENABLE;
     gpio_config(&sda_cfg);
 
-    // Release SDA (high)
     gpio_set_level(PIN_IMU_SDA, 1);
 
-    // Clock SCL 9 times to free a stuck slave
     for (int i = 0; i < RECOVERY_CLK_PULSES; i++) {
         gpio_set_level(PIN_IMU_SCL, 0);
         ets_delay_us(RECOVERY_HALF_PERIOD_US);
         gpio_set_level(PIN_IMU_SCL, 1);
         ets_delay_us(RECOVERY_HALF_PERIOD_US);
 
-        // Check if SDA is released
         if (gpio_get_level(PIN_IMU_SDA) == 1) {
             ESP_LOGI(TAG, "SDA released after %d clocks", i + 1);
             break;
@@ -109,7 +168,6 @@ static void i2c_bus_recover()
     gpio_set_level(PIN_IMU_SDA, 1);
     ets_delay_us(RECOVERY_HALF_PERIOD_US);
 
-    // Reset GPIO config — i2c_new_master_bus will reconfigure them
     gpio_reset_pin(PIN_IMU_SCL);
     gpio_reset_pin(PIN_IMU_SDA);
 
@@ -121,12 +179,12 @@ static void i2c_bus_recover()
 static bool i2c_driver_init()
 {
     i2c_master_bus_config_t bus_cfg = {};
-    bus_cfg.i2c_port = I2C_NUM_1;  // dedicated bus for IMU
+    bus_cfg.i2c_port = I2C_NUM_1;
     bus_cfg.sda_io_num = PIN_IMU_SDA;
     bus_cfg.scl_io_num = PIN_IMU_SCL;
     bus_cfg.clk_source = I2C_CLK_SRC_DEFAULT;
     bus_cfg.glitch_ignore_cnt = 7;
-    bus_cfg.flags.enable_internal_pullup = true;  // use external pull-ups in production
+    bus_cfg.flags.enable_internal_pullup = true;
 
     esp_err_t err = i2c_new_master_bus(&bus_cfg, &s_bus);
     if (err != ESP_OK) {
@@ -136,7 +194,7 @@ static bool i2c_driver_init()
 
     i2c_device_config_t dev_cfg = {};
     dev_cfg.dev_addr_length = I2C_ADDR_BIT_LEN_7;
-    dev_cfg.device_address = LSM6_ADDR;
+    dev_cfg.device_address = BMI270_ADDR;
     dev_cfg.scl_speed_hz = 400000;  // 400 kHz fast mode
 
     err = i2c_master_bus_add_device(s_bus, &dev_cfg, &s_dev);
@@ -161,36 +219,148 @@ static esp_err_t reg_read(uint8_t reg, uint8_t* data, size_t len)
     return i2c_master_transmit_receive(s_dev, &reg, 1, data, len, 50);
 }
 
-// ---- IMU configuration ----
-
-static bool lsm6_configure()
+// Burst write for config file upload. The BMI270 auto-increments the
+// write address within INIT_DATA, so we can chunk the upload.
+static esp_err_t burst_write(uint8_t reg, const uint8_t* data, size_t len)
 {
-    // Check WHO_AM_I
-    uint8_t who = 0;
-    if (reg_read(REG_WHO_AM_I, &who, 1) != ESP_OK || who != WHO_AM_I_VALUE) {
-        ESP_LOGE(TAG, "WHO_AM_I failed: got 0x%02X, expected 0x%02X", who, WHO_AM_I_VALUE);
+    // I2C frame: [reg] [data...].  Max ~256 bytes per transaction
+    // to avoid hogging the bus.  The ESP-IDF I2C driver handles framing.
+    static constexpr size_t CHUNK = 128;
+
+    for (size_t off = 0; off < len; off += CHUNK) {
+        size_t n = (len - off > CHUNK) ? CHUNK : (len - off);
+
+        // Build frame: register byte + payload
+        uint8_t buf[1 + CHUNK];
+        buf[0] = reg;
+        memcpy(&buf[1], &data[off], n);
+
+        esp_err_t err = i2c_master_transmit(s_dev, buf, 1 + n, 100);
+        if (err != ESP_OK) return err;
+    }
+    return ESP_OK;
+}
+
+// ---- BMI270 configuration ----
+
+// Map config enum values to ODR register values for ACC_CONF / GYR_CONF
+static uint8_t imu_odr_to_reg(uint16_t odr_hz)
+{
+    if (odr_hz >= 1600) return 0x0C;
+    if (odr_hz >= 800)  return 0x0B;
+    if (odr_hz >= 400)  return 0x0A;
+    if (odr_hz >= 200)  return 0x09;
+    if (odr_hz >= 100)  return 0x08;
+    if (odr_hz >= 50)   return 0x07;
+    return 0x06;  // 25 Hz
+}
+
+// Map config gyro range enum to GYR_RANGE register value
+static uint8_t gyro_range_dps_to_reg(uint16_t range_dps)
+{
+    if (range_dps >= 2000) return GYR_RANGE_2000;
+    if (range_dps >= 1000) return GYR_RANGE_1000;
+    if (range_dps >= 500)  return GYR_RANGE_500;
+    if (range_dps >= 250)  return GYR_RANGE_250;
+    return GYR_RANGE_125;
+}
+
+// Map config accel range enum to ACC_RANGE register value
+static uint8_t accel_range_g_to_reg(uint8_t range_g)
+{
+    if (range_g >= 16) return ACC_RANGE_16G;
+    if (range_g >= 8)  return ACC_RANGE_8G;
+    if (range_g >= 4)  return ACC_RANGE_4G;
+    return ACC_RANGE_2G;
+}
+
+static bool bmi270_configure()
+{
+    // Step 1: Read and verify CHIP_ID
+    uint8_t chip_id = 0;
+    if (reg_read(REG_CHIP_ID, &chip_id, 1) != ESP_OK || chip_id != BMI270_CHIP_ID_VAL) {
+        ESP_LOGE(TAG, "CHIP_ID failed: got 0x%02X, expected 0x%02X", chip_id, BMI270_CHIP_ID_VAL);
         return false;
     }
-    ESP_LOGI(TAG, "LSM6DSV16X detected (WHO_AM_I=0x%02X)", who);
+    ESP_LOGI(TAG, "BMI270 detected (CHIP_ID=0x%02X)", chip_id);
 
-    // Software reset
-    esp_err_t err = reg_write(REG_CTRL3, 0x01);  // SW_RESET bit
+    // Step 2: Soft reset
+    esp_err_t err = reg_write(REG_CMD, 0xB6);
     if (err != ESP_OK) return false;
-    vTaskDelay(pdMS_TO_TICKS(20));  // wait for reset
+    vTaskDelay(pdMS_TO_TICKS(2));  // BMI270 needs ~2 ms after soft reset
 
-    // Configure: BDU + IF_INC
-    err = reg_write(REG_CTRL3, CTRL3_VAL);
+    // Re-verify chip ID after reset
+    if (reg_read(REG_CHIP_ID, &chip_id, 1) != ESP_OK || chip_id != BMI270_CHIP_ID_VAL) {
+        ESP_LOGE(TAG, "CHIP_ID after reset: 0x%02X", chip_id);
+        return false;
+    }
+
+    // Step 3: Disable advanced power save for config load
+    err = reg_write(REG_PWR_CONF, 0x00);
+    if (err != ESP_OK) return false;
+    ets_delay_us(450);  // datasheet: wait ≥450 µs
+
+    // Step 4: Prepare config load
+    err = reg_write(REG_INIT_CTRL, 0x00);
     if (err != ESP_OK) return false;
 
-    // Accel: 240 Hz, ±2g
-    err = reg_write(REG_CTRL1, CTRL1_VAL);
+    // Step 5: Burst-write config file to INIT_DATA
+    err = burst_write(REG_INIT_DATA, BMI270_CONFIG_FILE, BMI270_CONFIG_FILE_SIZE);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "config file upload failed: %s", esp_err_to_name(err));
+        return false;
+    }
+
+    // Step 6: Complete config load
+    err = reg_write(REG_INIT_CTRL, 0x01);
     if (err != ESP_OK) return false;
 
-    // Gyro: 240 Hz, ±500 dps
-    err = reg_write(REG_CTRL2, CTRL2_VAL);
+    // Step 7: Wait for INTERNAL_STATUS == 0x01 (init OK), up to 20 ms
+    vTaskDelay(pdMS_TO_TICKS(20));
+    uint8_t status = 0;
+    if (reg_read(REG_INTERNAL_STATUS, &status, 1) != ESP_OK || (status & 0x0F) != 0x01) {
+        ESP_LOGE(TAG, "INTERNAL_STATUS = 0x%02X (expected 0x01), init failed", status);
+        return false;
+    }
+    ESP_LOGI(TAG, "config file loaded OK (INTERNAL_STATUS=0x%02X)", status);
+
+    // Step 8: Configure accelerometer
+    uint8_t acc_range_reg = accel_range_g_to_reg(g_cfg.imu_accel_range_g);
+    uint8_t acc_odr_reg   = imu_odr_to_reg(g_cfg.imu_odr_hz);
+    uint8_t acc_conf = (ACC_FILTER_HP << 7) | (ACC_BWP_NORM << 4) | acc_odr_reg;
+
+    err = reg_write(REG_ACC_CONF, acc_conf);
+    if (err != ESP_OK) return false;
+    err = reg_write(REG_ACC_RANGE, acc_range_reg);
     if (err != ESP_OK) return false;
 
-    ESP_LOGI(TAG, "LSM6DSV16X configured: gyro 240Hz ±500dps, accel 240Hz ±2g");
+    // Step 9: Configure gyroscope
+    uint8_t gyr_range_reg = gyro_range_dps_to_reg(g_cfg.imu_gyro_range_dps);
+    uint8_t gyr_odr_reg   = imu_odr_to_reg(g_cfg.imu_odr_hz);
+    uint8_t gyr_conf = (GYR_FILTER_HP << 7) | (GYR_NOISE_HP << 6) | (GYR_BWP_NORM << 4) | gyr_odr_reg;
+
+    err = reg_write(REG_GYR_CONF, gyr_conf);
+    if (err != ESP_OK) return false;
+    err = reg_write(REG_GYR_RANGE, gyr_range_reg);
+    if (err != ESP_OK) return false;
+
+    // Step 10: Enable accel + gyro + temp
+    err = reg_write(REG_PWR_CTRL, PWR_CTRL_ACC_EN | PWR_CTRL_GYR_EN | PWR_CTRL_TEMP_EN);
+    if (err != ESP_OK) return false;
+
+    // Step 11: Set power mode — disable adv_power_save for continuous operation
+    err = reg_write(REG_PWR_CONF, 0x02);  // fifo_self_wake=1, adv_power_save=0
+    if (err != ESP_OK) return false;
+
+    // Compute runtime sensitivity values from selected ranges
+    s_accel_sens_g  = ACCEL_SENS_TABLE[acc_range_reg];
+    s_gyro_sens_rad = GYRO_SENS_DPS_TABLE[gyr_range_reg] * (M_PI / 180.0f);
+
+    ESP_LOGI(TAG, "BMI270 configured: ODR %u Hz, gyro ±%u dps, accel ±%u g",
+             g_cfg.imu_odr_hz, g_cfg.imu_gyro_range_dps, g_cfg.imu_accel_range_g);
+    ESP_LOGI(TAG, "  accel sens: %.6f g/LSB, gyro sens: %.6f rad/s/LSB",
+             s_accel_sens_g, s_gyro_sens_rad);
+
     return true;
 }
 
@@ -207,8 +377,8 @@ bool imu_init()
         }
     }
 
-    if (!lsm6_configure()) {
-        ESP_LOGE(TAG, "LSM6DSV16X configuration failed");
+    if (!bmi270_configure()) {
+        ESP_LOGE(TAG, "BMI270 configuration failed");
         return false;
     }
 
@@ -217,31 +387,26 @@ bool imu_init()
 
 void imu_task(void* arg)
 {
-    // Task runs at ~240 Hz to match IMU ODR
-    const TickType_t period = pdMS_TO_TICKS(4);  // ~250 Hz
+    // Task period derived from configured ODR.
+    // Run slightly faster than ODR to avoid missing samples.
+    const uint32_t period_ms = (g_cfg.imu_odr_hz >= 400) ? 2 : 4;
+    const TickType_t period = pdMS_TO_TICKS(period_ms);
     int consecutive_errors = 0;
     static constexpr int MAX_ERRORS_BEFORE_RECOVERY = 10;
 
-    ESP_LOGI(TAG, "imu_task started");
+    ESP_LOGI(TAG, "imu_task started (period=%lu ms)", (unsigned long)period_ms);
 
     TickType_t last_wake = xTaskGetTickCount();
 
     while (true) {
         vTaskDelayUntil(&last_wake, period);
 
-        // Read gyro (6 bytes) + accel (6 bytes) in one burst
-        // Registers are contiguous: gyro at 0x22, accel at 0x28
-        // But there's a gap (0x28 - 0x28 = 0), so read separately.
-        // Actually gyro is 0x22-0x27 (6 bytes), then status/temp, then accel 0x28-0x2D.
-        // Read them as two separate reads for clarity.
+        // BMI270 data registers: accel at 0x0C (6 bytes), gyro at 0x12 (6 bytes).
+        // They are contiguous (0x0C–0x17 = 12 bytes), so read in one burst.
+        uint8_t raw[12];
+        esp_err_t err = reg_read(REG_ACC_DATA_X_LSB, raw, 12);
 
-        uint8_t gyro_raw[6];
-        uint8_t accel_raw[6];
-
-        esp_err_t err1 = reg_read(REG_OUTX_L_G, gyro_raw, 6);
-        esp_err_t err2 = reg_read(REG_OUTX_L_A, accel_raw, 6);
-
-        if (err1 != ESP_OK || err2 != ESP_OK) {
+        if (err != ESP_OK) {
             consecutive_errors++;
             if (consecutive_errors >= MAX_ERRORS_BEFORE_RECOVERY) {
                 ESP_LOGW(TAG, "I²C errors (%d consecutive), attempting recovery",
@@ -249,7 +414,7 @@ void imu_task(void* arg)
                 g_fault_flags.fetch_or(static_cast<uint16_t>(Fault::IMU_FAIL),
                                        std::memory_order_relaxed);
                 i2c_bus_recover();
-                if (i2c_driver_init() && lsm6_configure()) {
+                if (i2c_driver_init() && bmi270_configure()) {
                     ESP_LOGI(TAG, "I²C recovery + reinit succeeded");
                     consecutive_errors = 0;
                 } else {
@@ -262,25 +427,24 @@ void imu_task(void* arg)
         // Successful read — clear error count and IMU_FAIL fault
         if (consecutive_errors > 0) {
             consecutive_errors = 0;
-            // Clear IMU_FAIL if it was set
             g_fault_flags.fetch_and(~static_cast<uint16_t>(Fault::IMU_FAIL),
                                     std::memory_order_relaxed);
         }
 
-        // Parse raw data (little-endian 16-bit signed)
-        // Only gz is needed for yaw damping; gx/gy unused in v1.
-        int16_t gz = static_cast<int16_t>(gyro_raw[4] | (gyro_raw[5] << 8));
-
-        int16_t ax = static_cast<int16_t>(accel_raw[0] | (accel_raw[1] << 8));
-        int16_t ay = static_cast<int16_t>(accel_raw[2] | (accel_raw[3] << 8));
-        int16_t az = static_cast<int16_t>(accel_raw[4] | (accel_raw[5] << 8));
+        // Parse raw data (little-endian 16-bit two's complement)
+        // Accel: raw[0..5] → ax, ay, az
+        // Gyro:  raw[6..11] → gx, gy, gz
+        int16_t ax = static_cast<int16_t>(raw[0]  | (raw[1]  << 8));
+        int16_t ay = static_cast<int16_t>(raw[2]  | (raw[3]  << 8));
+        int16_t az = static_cast<int16_t>(raw[4]  | (raw[5]  << 8));
+        int16_t gz = static_cast<int16_t>(raw[10] | (raw[11] << 8));
 
         // Convert and publish
         ImuSample* slot = g_imu.write_slot();
-        slot->gyro_z_rad_s = static_cast<float>(gz) * GYRO_SENSITIVITY_RAD;
-        slot->accel_x_g    = static_cast<float>(ax) * ACCEL_SENSITIVITY_G;
-        slot->accel_y_g    = static_cast<float>(ay) * ACCEL_SENSITIVITY_G;
-        slot->accel_z_g    = static_cast<float>(az) * ACCEL_SENSITIVITY_G;
+        slot->gyro_z_rad_s = static_cast<float>(gz) * s_gyro_sens_rad;
+        slot->accel_x_g    = static_cast<float>(ax) * s_accel_sens_g;
+        slot->accel_y_g    = static_cast<float>(ay) * s_accel_sens_g;
+        slot->accel_z_g    = static_cast<float>(az) * s_accel_sens_g;
         slot->timestamp_us = static_cast<uint32_t>(esp_timer_get_time());
         g_imu.publish();
     }

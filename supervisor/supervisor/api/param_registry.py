@@ -515,6 +515,47 @@ def create_default_registry() -> ParamRegistry:
         )
     )
 
+    # -- IMU parameters (boot_only — require MCU reboot to take effect) --
+    reg.register(
+        ParamDef(
+            name="reflex.imu_odr_hz",
+            type="int",
+            min=25,
+            max=1600,
+            step=1,
+            default=400,
+            owner="reflex",
+            mutable="boot_only",
+            doc="IMU output data rate (Hz). Valid: 25, 50, 100, 200, 400, 800, 1600",
+        )
+    )
+    reg.register(
+        ParamDef(
+            name="reflex.imu_gyro_range_dps",
+            type="int",
+            min=125,
+            max=2000,
+            step=1,
+            default=500,
+            owner="reflex",
+            mutable="boot_only",
+            doc="Gyroscope full-scale range (dps). Valid: 125, 250, 500, 1000, 2000",
+        )
+    )
+    reg.register(
+        ParamDef(
+            name="reflex.imu_accel_range_g",
+            type="int",
+            min=2,
+            max=16,
+            step=1,
+            default=2,
+            owner="reflex",
+            mutable="boot_only",
+            doc="Accelerometer full-scale range (g). Valid: 2, 4, 8, 16",
+        )
+    )
+
     # -- Vision parameters (runtime-tunable) --
     reg.register(
         ParamDef(

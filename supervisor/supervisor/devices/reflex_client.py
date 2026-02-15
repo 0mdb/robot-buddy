@@ -48,6 +48,9 @@ REFLEX_PARAM_IDS: dict[str, int] = {
     "reflex.stall_speed_thresh": 0x35,
     "reflex.range_stop_mm": 0x40,
     "reflex.range_release_mm": 0x41,
+    "reflex.imu_odr_hz": 0x50,
+    "reflex.imu_gyro_range_dps": 0x51,
+    "reflex.imu_accel_range_g": 0x52,
 }
 
 
