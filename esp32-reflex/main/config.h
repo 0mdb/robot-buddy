@@ -29,6 +29,11 @@ struct ReflexConfig {
     int16_t  max_w_mrad_s;         // max angular rate
     int16_t  max_aw_mrad_s2;       // max angular accel
 
+    // -- IMU (BMI270) --
+    uint16_t imu_odr_hz;           // accel + gyro output data rate (25–1600)
+    uint16_t imu_gyro_range_dps;   // gyro full-scale: 125, 250, 500, 1000, 2000
+    uint8_t  imu_accel_range_g;    // accel full-scale: 2, 4, 8, 16
+
     // -- Yaw damping --
     float    K_yaw;                // gyro yaw correction gain
 
@@ -76,6 +81,11 @@ constexpr ReflexConfig CFG_DEFAULTS = {
     .max_w_mrad_s     = 2000,      // ~115 deg/s
     .max_aw_mrad_s2   = 4000,
 
+    // IMU (BMI270)
+    .imu_odr_hz          = 400,    // 400 Hz — headroom above 100 Hz control loop
+    .imu_gyro_range_dps  = 500,    // ±500 dps — good for wheeled robot yaw rates
+    .imu_accel_range_g   = 2,      // ±2g — max resolution for tilt detection
+
     // Yaw damping
     .K_yaw            = 0.1f,      // conservative, tune up
 
@@ -116,6 +126,11 @@ enum class ConfigParam : uint8_t {
     MAX_A_MM_S2     = 0x11,
     MAX_W_MRAD_S    = 0x12,
     MAX_AW_MRAD_S2  = 0x13,
+
+    // IMU (boot_only — requires reinit, sent as u32)
+    IMU_ODR_HZ          = 0x50,  // u16 as u32
+    IMU_GYRO_RANGE_DPS  = 0x51,  // u16 as u32
+    IMU_ACCEL_RANGE_G   = 0x52,  // u8 as u32
 
     // Yaw damping (float)
     K_YAW           = 0x20,

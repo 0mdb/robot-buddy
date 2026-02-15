@@ -22,7 +22,7 @@ constexpr gpio_num_t PIN_ENC_L_B     = GPIO_NUM_10;
 constexpr gpio_num_t PIN_ENC_R_A     = GPIO_NUM_11;
 constexpr gpio_num_t PIN_ENC_R_B     = GPIO_NUM_12;
 
-// ---- IMU (LSM6DSV16X) — dedicated I²C bus 1 ----
+// ---- IMU (BMI270) — dedicated I²C bus 1 ----
 constexpr gpio_num_t PIN_IMU_SDA     = GPIO_NUM_17;
 constexpr gpio_num_t PIN_IMU_SCL     = GPIO_NUM_18;
 
