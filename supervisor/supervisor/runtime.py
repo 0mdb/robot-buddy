@@ -6,6 +6,13 @@ import asyncio
 import logging
 import time
 
+from supervisor.devices.face_client import FaceClient
+from supervisor.devices.personality_client import (
+    PersonalityClient,
+    PersonalityError,
+    PersonalityPlan,
+)
+from supervisor.devices.protocol import FaceGesture, FaceMood, FaceSystemMode, Fault
 from supervisor.devices.reflex_client import ReflexClient
 from supervisor.inputs.camera_vision import VisionProcess
 from supervisor.state.datatypes import DesiredTwist, Mode, RobotState
@@ -20,6 +27,35 @@ TELEMETRY_HZ = 20
 _TELEM_EVERY_N = TICK_HZ // TELEMETRY_HZ  # broadcast every N ticks
 
 _JITTER_WARN_MS = 5.0
+_PLAN_PERIOD_S = 1.0
+_PLAN_RETRY_S = 3.0
+
+_EMOTE_TO_MOOD = {
+    "neutral": int(FaceMood.DEFAULT),
+    "curious": int(FaceMood.DEFAULT),
+    "happy": int(FaceMood.HAPPY),
+    "excited": int(FaceMood.HAPPY),
+    "love": int(FaceMood.HAPPY),
+    "surprised": int(FaceMood.HAPPY),
+    "sad": int(FaceMood.TIRED),
+    "sleepy": int(FaceMood.TIRED),
+    "tired": int(FaceMood.TIRED),
+    "scared": int(FaceMood.ANGRY),
+    "angry": int(FaceMood.ANGRY),
+}
+
+_GESTURE_TO_ID = {
+    "blink": int(FaceGesture.BLINK),
+    "wink_l": int(FaceGesture.WINK_L),
+    "wink_r": int(FaceGesture.WINK_R),
+    "confused": int(FaceGesture.CONFUSED),
+    "laugh": int(FaceGesture.LAUGH),
+    "surprise": int(FaceGesture.SURPRISE),
+    "heart": int(FaceGesture.HEART),
+    "x_eyes": int(FaceGesture.X_EYES),
+    "sleepy": int(FaceGesture.SLEEPY),
+    "rage": int(FaceGesture.RAGE),
+}
 
 
 class Runtime:
@@ -30,9 +66,13 @@ class Runtime:
         reflex: ReflexClient,
         on_telemetry: callable | None = None,
         vision: VisionProcess | None = None,
+        face: FaceClient | None = None,
+        personality: PersonalityClient | None = None,
     ) -> None:
         self._reflex = reflex
+        self._face = face
         self._vision = vision
+        self._personality = personality
         self._sm = SupervisorSM()
         self._state = RobotState()
         self._teleop_twist = DesiredTwist()
@@ -40,6 +80,11 @@ class Runtime:
         self._running = False
         self._tick_count = 0
         self._last_tick_mono = 0.0
+        self._personality_task: asyncio.Task[PersonalityPlan] | None = None
+        self._next_plan_mono = 0.0
+
+        if personality:
+            self._state.personality_enabled = True
 
     @property
     def state(self) -> RobotState:
@@ -65,6 +110,7 @@ class Runtime:
             self._last_tick_mono = t0
 
             self._tick(t0, dt_ms)
+            self._step_personality(t0)
 
             elapsed = time.monotonic() - t0
             sleep_s = max(0.0, TICK_PERIOD_S - elapsed)
@@ -72,6 +118,8 @@ class Runtime:
 
     def stop(self) -> None:
         self._running = False
+        if self._personality_task and not self._personality_task.done():
+            self._personality_task.cancel()
 
     def request_mode(self, target: Mode) -> tuple[bool, str]:
         return self._sm.request_mode(
@@ -112,6 +160,15 @@ class Runtime:
         s.v_meas_mm_s = tel.v_meas_mm_s
         s.w_meas_mrad_s = tel.w_meas_mrad_s
 
+        # 1a. Snapshot face telemetry
+        if self._face:
+            s.face_connected = self._face.connected
+            ft = self._face.telemetry
+            s.face_mood = ft.mood_id
+            s.face_gesture = ft.active_gesture
+            s.face_system_mode = ft.system_mode
+            s.face_touch_active = ft.touch_active
+
         # 1.5. Read latest vision snapshot (non-blocking)
         if self._vision:
             snap = self._vision.latest()
@@ -148,7 +205,113 @@ class Runtime:
             else:
                 self._reflex.send_twist(s.twist_capped.v_mm_s, s.twist_capped.w_mrad_s)
 
-        # 6. Broadcast telemetry at decimated rate
+        # 6. Push system mode to face
+        if self._face and self._face.connected:
+            if s.mode == Mode.BOOT:
+                self._face.send_system_mode(FaceSystemMode.BOOTING)
+            elif s.mode == Mode.ERROR:
+                self._face.send_system_mode(FaceSystemMode.ERROR_DISPLAY)
+            else:
+                self._face.send_system_mode(FaceSystemMode.NONE)
+
+        # 7. Broadcast telemetry at decimated rate
         self._tick_count += 1
         if self._on_telemetry and (self._tick_count % _TELEM_EVERY_N == 0):
             self._on_telemetry(s)
+
+    def _step_personality(self, t0: float) -> None:
+        if not self._personality:
+            return
+
+        s = self._state
+
+        if self._personality_task and self._personality_task.done():
+            try:
+                plan = self._personality_task.result()
+                s.personality_connected = True
+                s.personality_last_error = ""
+                self._apply_personality_plan(plan)
+                self._next_plan_mono = t0 + _PLAN_PERIOD_S
+            except asyncio.CancelledError:
+                self._next_plan_mono = t0 + _PLAN_RETRY_S
+            except PersonalityError as e:
+                s.personality_connected = False
+                s.personality_last_error = str(e)
+                self._next_plan_mono = t0 + _PLAN_RETRY_S
+                log.warning("personality: %s", e)
+            except Exception as e:
+                s.personality_connected = False
+                s.personality_last_error = str(e)
+                self._next_plan_mono = t0 + _PLAN_RETRY_S
+                log.warning("personality: unexpected error: %s", e)
+            finally:
+                self._personality_task = None
+
+        if self._personality_task is None and t0 >= self._next_plan_mono:
+            world_state = self._build_world_state()
+            self._personality_task = asyncio.create_task(
+                self._personality.request_plan(world_state)
+            )
+
+    def _build_world_state(self) -> dict:
+        s = self._state
+        trigger = "ball_seen" if s.ball_confidence >= 0.7 else "heartbeat"
+        return {
+            "mode": s.mode.value,
+            "battery_mv": s.battery_mv,
+            "range_mm": s.range_mm,
+            "faults": self._fault_names(s.fault_flags),
+            "clear_confidence": s.clear_confidence,
+            "ball_detected": s.ball_confidence >= 0.5,
+            "ball_bearing_deg": s.ball_bearing_deg,
+            "speed_l_mm_s": s.speed_l_mm_s,
+            "speed_r_mm_s": s.speed_r_mm_s,
+            "v_capped": s.twist_capped.v_mm_s,
+            "w_capped": s.twist_capped.w_mrad_s,
+            "trigger": trigger,
+        }
+
+    @staticmethod
+    def _fault_names(flags: int) -> list[str]:
+        names: list[str] = []
+        for fault in Fault:
+            if fault == Fault.NONE:
+                continue
+            if flags & int(fault):
+                names.append(fault.name)
+        return names
+
+    def _apply_personality_plan(self, plan: PersonalityPlan) -> None:
+        s = self._state
+        s.personality_last_plan_mono_ms = time.monotonic() * 1000.0
+        s.personality_last_plan_actions = len(plan.actions)
+
+        if not self._face or not self._face.connected:
+            return
+
+        for action in plan.actions:
+            action_type = action.get("action")
+
+            if action_type == "emote":
+                name = str(action.get("name", "")).lower()
+                mood = _EMOTE_TO_MOOD.get(name)
+                if mood is None:
+                    continue
+                intensity = action.get("intensity", 0.7)
+                if not isinstance(intensity, (int, float)):
+                    intensity = 0.7
+                self._face.send_state(
+                    emotion_id=mood,
+                    intensity=max(0.0, min(1.0, float(intensity))),
+                )
+
+            elif action_type == "gesture":
+                name = str(action.get("name", "")).lower()
+                gesture_id = _GESTURE_TO_ID.get(name)
+                if gesture_id is not None:
+                    self._face.send_gesture(gesture_id)
+
+            elif action_type == "say":
+                text = action.get("text")
+                if isinstance(text, str) and text:
+                    log.info("personality say: %s", text[:120])

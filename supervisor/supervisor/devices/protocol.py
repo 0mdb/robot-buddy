@@ -55,6 +55,56 @@ class RangeStatus(IntEnum):
     NOT_READY = 3
 
 
+# -- Face command types (host → face MCU): 0x20–0x2F -----------------------
+
+
+class FaceCmdType(IntEnum):
+    SET_STATE = 0x20
+    GESTURE = 0x21
+    SET_SYSTEM = 0x22
+    SET_CONFIG = 0x25
+
+
+class FaceTelType(IntEnum):
+    FACE_STATUS = 0x90
+    TOUCH_EVENT = 0x91
+
+
+class FaceMood(IntEnum):
+    DEFAULT = 0
+    TIRED = 1
+    ANGRY = 2
+    HAPPY = 3
+
+
+class FaceGesture(IntEnum):
+    BLINK = 0
+    WINK_L = 1
+    WINK_R = 2
+    CONFUSED = 3
+    LAUGH = 4
+    SURPRISE = 5
+    HEART = 6
+    X_EYES = 7
+    SLEEPY = 8
+    RAGE = 9
+
+
+class FaceSystemMode(IntEnum):
+    NONE = 0
+    BOOTING = 1
+    ERROR_DISPLAY = 2
+    LOW_BATTERY = 3
+    UPDATING = 4
+    SHUTTING_DOWN = 5
+
+
+class TouchEventType(IntEnum):
+    PRESS = 0
+    RELEASE = 1
+    DRAG = 2
+
+
 # -- Telemetry payloads -----------------------------------------------------
 
 
@@ -76,6 +126,37 @@ class StatePayload:
             raise ValueError(f"STATE payload too short: {len(data)} < {cls._FMT.size}")
         fields = cls._FMT.unpack_from(data)
         return cls(*fields)
+
+
+@dataclass(slots=True)
+class FaceStatusPayload:
+    mood_id: int
+    active_gesture: int
+    system_mode: int
+    flags: int
+
+    _FMT = struct.Struct("<BBBB")  # 4 bytes
+
+    @classmethod
+    def unpack(cls, data: bytes) -> FaceStatusPayload:
+        if len(data) < cls._FMT.size:
+            raise ValueError(f"FACE_STATUS payload too short: {len(data)}")
+        return cls(*cls._FMT.unpack_from(data))
+
+
+@dataclass(slots=True)
+class TouchEventPayload:
+    event_type: int
+    x: int
+    y: int
+
+    _FMT = struct.Struct("<BHH")  # 5 bytes
+
+    @classmethod
+    def unpack(cls, data: bytes) -> TouchEventPayload:
+        if len(data) < cls._FMT.size:
+            raise ValueError(f"TOUCH_EVENT payload too short: {len(data)}")
+        return cls(*cls._FMT.unpack_from(data))
 
 
 # -- Packet building --------------------------------------------------------
@@ -117,6 +198,37 @@ def build_set_config(seq: int, param_id: int, value_bytes: bytes) -> bytes:
     return build_packet(
         CmdType.SET_CONFIG, seq, _CONFIG_FMT.pack(param_id, value_bytes)
     )
+
+
+# -- Face packet building ----------------------------------------------------
+
+_FACE_SET_STATE_FMT = struct.Struct("<BBbbB")  # mood, intensity, gaze_x, gaze_y, brightness
+_FACE_GESTURE_FMT = struct.Struct("<BH")  # gesture_id, duration_ms
+_FACE_SET_SYSTEM_FMT = struct.Struct("<BBB")  # mode, phase, param
+
+
+def build_face_set_state(
+    seq: int,
+    mood_id: int,
+    intensity: int = 255,
+    gaze_x: int = 0,
+    gaze_y: int = 0,
+    brightness: int = 200,
+) -> bytes:
+    payload = _FACE_SET_STATE_FMT.pack(mood_id, intensity, gaze_x, gaze_y, brightness)
+    return build_packet(FaceCmdType.SET_STATE, seq, payload)
+
+
+def build_face_gesture(seq: int, gesture_id: int, duration_ms: int = 0) -> bytes:
+    payload = _FACE_GESTURE_FMT.pack(gesture_id, duration_ms)
+    return build_packet(FaceCmdType.GESTURE, seq, payload)
+
+
+def build_face_set_system(
+    seq: int, mode: int, phase: int = 0, param: int = 0
+) -> bytes:
+    payload = _FACE_SET_SYSTEM_FMT.pack(mode, phase, param)
+    return build_packet(FaceCmdType.SET_SYSTEM, seq, payload)
 
 
 # -- Packet parsing ----------------------------------------------------------

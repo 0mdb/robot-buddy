@@ -68,6 +68,19 @@ class RobotState:
     # Connection state
     reflex_connected: bool = False
     face_connected: bool = False
+    personality_enabled: bool = False
+    personality_connected: bool = False
+
+    # Face telemetry
+    face_mood: int = 0
+    face_gesture: int = 0xFF  # 0xFF = none
+    face_system_mode: int = 0
+    face_touch_active: bool = False
+
+    # Personality server
+    personality_last_plan_mono_ms: float = 0.0
+    personality_last_plan_actions: int = 0
+    personality_last_error: str = ""
 
     # Safety
     speed_caps: list[SpeedCap] = field(default_factory=list)
@@ -109,6 +122,15 @@ class RobotState:
             "range_status": self.range_status,
             "reflex_connected": self.reflex_connected,
             "face_connected": self.face_connected,
+            "personality_enabled": self.personality_enabled,
+            "personality_connected": self.personality_connected,
+            "face_mood": self.face_mood,
+            "face_gesture": self.face_gesture,
+            "face_system_mode": self.face_system_mode,
+            "face_touch_active": self.face_touch_active,
+            "personality_last_plan_mono_ms": round(self.personality_last_plan_mono_ms, 1),
+            "personality_last_plan_actions": self.personality_last_plan_actions,
+            "personality_last_error": self.personality_last_error,
             "speed_caps": [
                 {"scale": c.scale, "reason": c.reason} for c in self.speed_caps
             ],

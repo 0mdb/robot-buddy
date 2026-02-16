@@ -4,6 +4,7 @@ Usage:
     python -m supervisor                    # default (expects real hardware)
     python -m supervisor --mock             # use mock reflex MCU
     python -m supervisor --port /dev/...    # specify serial port
+    python -m supervisor --server-api http://10.0.0.20:8100
 """
 
 from __future__ import annotations
@@ -18,6 +19,8 @@ import uvicorn
 from supervisor.api.http_server import create_app
 from supervisor.api.param_registry import create_default_registry
 from supervisor.api.ws_hub import WsHub
+from supervisor.devices.face_client import FaceClient
+from supervisor.devices.personality_client import PersonalityClient
 from supervisor.devices.reflex_client import REFLEX_PARAM_IDS, ReflexClient
 from supervisor.inputs.camera_vision import VisionProcess
 from supervisor.io.serial_transport import SerialTransport
@@ -27,6 +30,7 @@ from supervisor.runtime import Runtime
 log = logging.getLogger("supervisor")
 
 DEFAULT_PORT = "/dev/robot_reflex"
+DEFAULT_FACE_PORT = "/dev/robot_face"
 HTTP_PORT = 8080
 
 
@@ -36,6 +40,19 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--port", default=DEFAULT_PORT, help="Reflex serial port")
     p.add_argument("--http-port", type=int, default=HTTP_PORT, help="HTTP/WS port")
     p.add_argument("--no-vision", action="store_true", help="Disable vision process")
+    p.add_argument("--face-port", default=DEFAULT_FACE_PORT, help="Face serial port")
+    p.add_argument("--no-face", action="store_true", help="Disable face MCU")
+    p.add_argument(
+        "--server-api",
+        default="",
+        help="Personality server base URL (e.g. http://10.0.0.20:8100)",
+    )
+    p.add_argument(
+        "--server-timeout",
+        type=float,
+        default=6.0,
+        help="Personality server HTTP timeout in seconds",
+    )
     p.add_argument("--log-level", default="INFO", help="Log level")
     return p.parse_args()
 
@@ -54,6 +71,24 @@ async def async_main(args: argparse.Namespace) -> None:
     # Serial transport + reflex client
     transport = SerialTransport(port, label="reflex")
     reflex = ReflexClient(transport)
+
+    # Face transport + client
+    face_transport: SerialTransport | None = None
+    face: FaceClient | None = None
+    if not args.no_face:
+        face_transport = SerialTransport(args.face_port, label="face")
+        face = FaceClient(face_transport)
+
+    # Personality server client (optional)
+    personality: PersonalityClient | None = None
+    if args.server_api:
+        personality = PersonalityClient(args.server_api, timeout_s=args.server_timeout)
+        await personality.start()
+        healthy = await personality.health_check()
+        if healthy:
+            log.info("personality server reachable at %s", args.server_api)
+        else:
+            log.warning("personality server not reachable at startup: %s", args.server_api)
 
     # Vision process
     vision: VisionProcess | None = None
@@ -74,13 +109,21 @@ async def async_main(args: argparse.Namespace) -> None:
     ws_hub = WsHub()
 
     # Runtime with telemetry wired to WS broadcast
-    runtime = Runtime(reflex, on_telemetry=ws_hub.broadcast_telemetry, vision=vision)
+    runtime = Runtime(
+        reflex,
+        on_telemetry=ws_hub.broadcast_telemetry,
+        vision=vision,
+        face=face,
+        personality=personality,
+    )
 
     # FastAPI app
     app = create_app(runtime, registry, ws_hub, vision=vision)
 
-    # Start serial transport
+    # Start serial transports
     await transport.start()
+    if face_transport:
+        await face_transport.start()
 
     # Start uvicorn + tick loop concurrently
     config = uvicorn.Config(
@@ -100,7 +143,11 @@ async def async_main(args: argparse.Namespace) -> None:
         runtime.stop()
         if vision:
             vision.stop()
+        if face_transport:
+            await face_transport.stop()
         await transport.stop()
+        if personality:
+            await personality.stop()
         if mock:
             mock.stop()
 
