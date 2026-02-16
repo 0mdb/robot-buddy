@@ -296,18 +296,20 @@ void face_ui_task(void* arg)
         if (cmd_us != last_cmd_us) {
             last_cmd_us = cmd_us;
 
-            // Apply mood
-            if (cmd->mood_id <= static_cast<uint8_t>(Mood::HAPPY)) {
-                face_set_mood(fs, static_cast<Mood>(cmd->mood_id));
+            if (cmd->has_state) {
+                // Apply mood
+                if (cmd->mood_id <= static_cast<uint8_t>(Mood::HAPPY)) {
+                    face_set_mood(fs, static_cast<Mood>(cmd->mood_id));
+                }
+
+                // Apply gaze (scale i8 to float: -128..127 → -MAX_GAZE..+MAX_GAZE)
+                float gx = static_cast<float>(cmd->gaze_x) / 128.0f * MAX_GAZE;
+                float gy = static_cast<float>(cmd->gaze_y) / 128.0f * MAX_GAZE;
+                face_set_gaze(fs, gx, gy);
+
+                // Apply brightness
+                display_set_backlight(cmd->brightness);
             }
-
-            // Apply gaze (scale i8 to float: -128..127 → -MAX_GAZE..+MAX_GAZE)
-            float gx = static_cast<float>(cmd->gaze_x) / 128.0f * MAX_GAZE;
-            float gy = static_cast<float>(cmd->gaze_y) / 128.0f * MAX_GAZE;
-            face_set_gaze(fs, gx, gy);
-
-            // Apply brightness
-            display_set_backlight(cmd->brightness);
 
             // Apply gesture (one-shot)
             if (cmd->has_gesture && cmd->gesture_id <= static_cast<uint8_t>(GestureId::RAGE)) {

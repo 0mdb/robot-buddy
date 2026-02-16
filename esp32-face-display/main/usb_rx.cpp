@@ -74,6 +74,7 @@ static void handle_packet(const ParsedPacket& pkt)
         memcpy(&sp, pkt.data, sizeof(sp));
 
         FaceCommand* slot = g_face_cmd.write_slot();
+        slot->has_state  = true;
         slot->mood_id    = sp.mood_id;
         slot->intensity  = sp.intensity;
         slot->gaze_x     = sp.gaze_x;
@@ -91,6 +92,7 @@ static void handle_packet(const ParsedPacket& pkt)
         memcpy(&gp, pkt.data, sizeof(gp));
 
         FaceCommand* slot = g_face_cmd.write_slot();
+        slot->has_state    = false;
         slot->has_gesture  = true;
         slot->gesture_id   = gp.gesture_id;
         slot->gesture_dur  = gp.duration_ms;
@@ -105,6 +107,7 @@ static void handle_packet(const ParsedPacket& pkt)
         memcpy(&sysp, pkt.data, sizeof(sysp));
 
         FaceCommand* slot = g_face_cmd.write_slot();
+        slot->has_state    = false;
         slot->has_gesture  = false;
         slot->has_system   = true;
         slot->system_mode  = sysp.mode;

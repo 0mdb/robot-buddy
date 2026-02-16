@@ -450,6 +450,10 @@ void face_trigger_gesture(FaceState& fs, GestureId gesture)
 
 void face_set_system_mode(FaceState& fs, SystemMode mode, float param)
 {
+    if (fs.system.mode == mode) {
+        fs.system.param = param;
+        return;
+    }
     fs.system.mode  = mode;
     fs.system.timer = now_s();
     fs.system.phase = 0;

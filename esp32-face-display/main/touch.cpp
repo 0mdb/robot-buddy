@@ -33,6 +33,7 @@ void touch_init(lv_display_t* disp)
     esp_lcd_panel_io_handle_t tp_io_handle = nullptr;
     esp_lcd_panel_io_i2c_config_t tp_io_cfg =
         ESP_LCD_TOUCH_IO_I2C_FT5x06_CONFIG();
+    tp_io_cfg.scl_speed_hz = 400000;  // Required by new i2c_master API (must be > 0)
     ESP_ERROR_CHECK(esp_lcd_new_panel_io_i2c(i2c_bus, &tp_io_cfg, &tp_io_handle));
 
     // 3. Touch controller

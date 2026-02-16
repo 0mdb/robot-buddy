@@ -9,6 +9,7 @@
 // ---- Face command buffer (writer: usb_rx_task, reader: face_ui_task) ----
 
 struct FaceCommand {
+    bool     has_state     = false;
     uint8_t  mood_id      = 0;
     uint8_t  intensity    = 255;
     int8_t   gaze_x       = 0;
