@@ -26,7 +26,7 @@ from supervisor.devices.protocol import (
 
 log = logging.getLogger(__name__)
 
-_STATE_FMT = struct.Struct("<hhhHHHB")  # matches StatePayload
+_STATE_FMT = struct.Struct("<hhhHHHBH")  # matches StatePayload
 
 
 class MockReflex:
@@ -172,6 +172,9 @@ class MockReflex:
         speed_l = int(v - half_w)
         speed_r = int(v + half_w)
 
+        # Simulate echo_us from range_mm (reverse of distance conversion)
+        echo_us = int(self.range_mm * 5.83) if self.range_mm > 0 else 0
+
         payload = _STATE_FMT.pack(
             speed_l,
             speed_r,
@@ -180,6 +183,7 @@ class MockReflex:
             self.fault_flags,
             self.range_mm,
             self.range_status,
+            echo_us,
         )
         pkt = build_packet(TelType.STATE, self._next_seq(), payload)
         try:

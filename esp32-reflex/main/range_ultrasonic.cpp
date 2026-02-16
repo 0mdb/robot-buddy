@@ -24,8 +24,41 @@ static QueueHandle_t s_rx_queue = nullptr;
 // RMT resolution: 1 MHz → 1 tick = 1 µs
 static constexpr uint32_t RMT_RESOLUTION_HZ = 1000000;
 
-// Speed of sound: ~343 m/s → round-trip: 1 mm ≈ 5.83 µs → distance = ticks / 58
+// Speed of sound: ~343 m/s → round-trip: 1 mm ≈ 5.83 µs → distance = ticks / 5.83
 static constexpr float US_PER_MM_ROUNDTRIP = 5.83f;
+
+// Plausibility bounds for echo duration.
+// Min: 116 µs ≈ 20 mm (anything shorter is ringing or electrical noise from
+// the transducer / level shifter — the HC-SR04 datasheet specifies 2 cm min).
+// Max: bounded by timeout_us (configurable, default 25000 µs ≈ 4.3 m).
+static constexpr uint32_t ECHO_MIN_US = 116;
+
+// ---- 3-sample sliding median filter ----
+// Removes single-sample spikes from HC-SR04 jitter / multipath without
+// adding latency (only needs 3 samples, no averaging delay).
+
+static uint16_t s_median_buf[3] = {0, 0, 0};
+static uint8_t  s_median_idx = 0;
+static uint8_t  s_median_count = 0;  // ramp up: don't filter until we have 3 samples
+
+static uint16_t median3(uint16_t a, uint16_t b, uint16_t c)
+{
+    if (a > b) { uint16_t t = a; a = b; b = t; }
+    if (b > c) { b = c; }
+    if (a > b) { b = a; }
+    return b;
+}
+
+static uint16_t median_filter(uint16_t raw_mm)
+{
+    s_median_buf[s_median_idx] = raw_mm;
+    s_median_idx = (s_median_idx + 1) % 3;
+    if (s_median_count < 3) s_median_count++;
+
+    if (s_median_count < 3) return raw_mm;  // not enough samples yet
+
+    return median3(s_median_buf[0], s_median_buf[1], s_median_buf[2]);
+}
 
 // ---- RMT receive-done callback ----
 
@@ -101,6 +134,7 @@ static void do_measurement(uint32_t timeout_us)
     if (err != ESP_OK) {
         RangeSample* ws = g_range.write_slot();
         ws->range_mm = 0;
+        ws->echo_us = 0;
         ws->status = RangeStatus::TIMEOUT;
         ws->timestamp_us = now;
         g_range.publish();
@@ -123,32 +157,32 @@ static void do_measurement(uint32_t timeout_us)
     if (xQueueReceive(s_rx_queue, &rx_data, wait_ticks) != pdTRUE) {
         // No echo received
         ws->range_mm = 0;
+        ws->echo_us = 0;
         ws->status = RangeStatus::TIMEOUT;
         g_range.publish();
         return;
     }
 
-    // Parse RMT symbols — look for the first high-level pulse (echo)
+    // Parse RMT symbols — find the first high-level pulse (echo).
+    // HC-SR04 holds ECHO high for the round-trip duration.
     if (rx_data.num_symbols == 0) {
         ws->range_mm = 0;
+        ws->echo_us = 0;
         ws->status = RangeStatus::TIMEOUT;
         g_range.publish();
         return;
     }
 
-    // The echo pin goes high for the duration proportional to distance.
-    // RMT captures both the high and low portions of the signal.
-    // We want the duration of the first high pulse.
+    // Walk symbols looking for the first high-level pulse.
+    // Each RMT symbol has two phases: (level0, duration0) then (level1, duration1).
     uint32_t echo_us = 0;
     for (size_t i = 0; i < rx_data.num_symbols; i++) {
         rmt_symbol_word_t sym = rx_data.received_symbols[i];
-        // level0 is the first half of the symbol
-        if (sym.level0 == 1) {
+        if (sym.level0 == 1 && sym.duration0 > 0) {
             echo_us = sym.duration0;
             break;
         }
-        // level1 is the second half
-        if (sym.level1 == 1) {
+        if (sym.level1 == 1 && sym.duration1 > 0) {
             echo_us = sym.duration1;
             break;
         }
@@ -156,22 +190,36 @@ static void do_measurement(uint32_t timeout_us)
 
     if (echo_us == 0) {
         ws->range_mm = 0;
+        ws->echo_us = 0;
         ws->status = RangeStatus::TIMEOUT;
         g_range.publish();
         return;
     }
 
-    // Convert echo duration to distance in mm
-    uint16_t range_mm = static_cast<uint16_t>(echo_us / US_PER_MM_ROUNDTRIP);
+    // Store raw echo duration for diagnostics
+    ws->echo_us = static_cast<uint16_t>(echo_us > 0xFFFF ? 0xFFFF : echo_us);
 
-    if (echo_us >= timeout_us) {
-        ws->range_mm = range_mm;
-        ws->status = RangeStatus::OUT_OF_RANGE;
-    } else {
-        ws->range_mm = range_mm;
-        ws->status = RangeStatus::OK;
+    // Plausibility check: reject echoes that are too short (ringing/noise)
+    // or beyond our timeout (should not happen, but guard anyway)
+    if (echo_us < ECHO_MIN_US) {
+        ws->range_mm = 0;
+        ws->status = RangeStatus::TIMEOUT;
+        g_range.publish();
+        return;
     }
 
+    if (echo_us >= timeout_us) {
+        uint16_t raw_mm = static_cast<uint16_t>(echo_us / US_PER_MM_ROUNDTRIP);
+        ws->range_mm = median_filter(raw_mm);
+        ws->status = RangeStatus::OUT_OF_RANGE;
+        g_range.publish();
+        return;
+    }
+
+    // Valid reading — convert and apply median filter
+    uint16_t raw_mm = static_cast<uint16_t>(echo_us / US_PER_MM_ROUNDTRIP);
+    ws->range_mm = median_filter(raw_mm);
+    ws->status = RangeStatus::OK;
     g_range.publish();
 }
 

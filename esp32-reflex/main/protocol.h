@@ -57,6 +57,7 @@ struct __attribute__((packed)) StatePayload {
     uint16_t fault_flags;
     uint16_t range_mm;
     uint8_t  range_status;
+    uint16_t echo_us;           // raw echo duration for diagnostics
 };
 
 // ---- COBS encode/decode ----

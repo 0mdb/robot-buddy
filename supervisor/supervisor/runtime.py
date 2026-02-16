@@ -9,7 +9,7 @@ import time
 from supervisor.devices.reflex_client import ReflexClient
 from supervisor.inputs.camera_vision import VisionProcess
 from supervisor.state.datatypes import DesiredTwist, Mode, RobotState
-from supervisor.state.policies import apply_safety
+from supervisor.state.policies import SafetyConfig, apply_safety
 from supervisor.state.supervisor_sm import SupervisorSM
 
 log = logging.getLogger(__name__)
@@ -30,9 +30,11 @@ class Runtime:
         reflex: ReflexClient,
         on_telemetry: callable | None = None,
         vision: VisionProcess | None = None,
+        param_registry: object | None = None,
     ) -> None:
         self._reflex = reflex
         self._vision = vision
+        self._registry = param_registry
         self._sm = SupervisorSM()
         self._state = RobotState()
         self._teleop_twist = DesiredTwist()
@@ -85,6 +87,19 @@ class Runtime:
         self._reflex.send_clear_faults()
         return self._sm.clear_error(self._reflex.connected, self._state.fault_flags)
 
+    def _build_safety_config(self) -> SafetyConfig | None:
+        """Build SafetyConfig from param registry, or None to use defaults."""
+        r = self._registry
+        if r is None:
+            return None
+        return SafetyConfig(
+            range_close_mm=r.get_value("speed_cap_close_mm", 300),
+            range_medium_mm=r.get_value("speed_cap_medium_mm", 500),
+            speed_cap_close_scale=r.get_value("speed_cap_close_scale", 0.25),
+            speed_cap_medium_scale=r.get_value("speed_cap_medium_scale", 0.50),
+            speed_cap_stale_scale=r.get_value("speed_cap_stale_scale", 0.50),
+        )
+
     # -- tick ----------------------------------------------------------------
 
     def _tick(self, t0: float, dt_ms: float) -> None:
@@ -107,6 +122,7 @@ class Runtime:
         s.fault_flags = tel.fault_flags
         s.range_mm = tel.range_mm
         s.range_status = tel.range_status
+        s.echo_us = tel.echo_us
         s.reflex_seq = tel.seq
         s.reflex_rx_mono_ms = tel.rx_mono_ms
         s.v_meas_mm_s = tel.v_meas_mm_s
@@ -137,8 +153,9 @@ class Runtime:
         else:
             s.twist_cmd = DesiredTwist(0, 0)
 
-        # 4. Apply safety policy
-        s.twist_capped = apply_safety(s.twist_cmd, s)
+        # 4. Apply safety policy (with live params from registry)
+        safety_cfg = self._build_safety_config()
+        s.twist_capped = apply_safety(s.twist_cmd, s, safety_cfg)
 
         # 5. Send to reflex
         if s.reflex_connected:

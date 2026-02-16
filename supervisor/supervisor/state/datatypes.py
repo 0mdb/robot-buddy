@@ -58,6 +58,7 @@ class RobotState:
     fault_flags: int = 0
     range_mm: int = 0
     range_status: int = RangeStatus.NOT_READY
+    echo_us: int = 0
     reflex_seq: int = 0
     reflex_rx_mono_ms: float = 0.0
 
@@ -107,6 +108,7 @@ class RobotState:
             "fault_flags": self.fault_flags,
             "range_mm": self.range_mm,
             "range_status": self.range_status,
+            "echo_us": self.echo_us,
             "reflex_connected": self.reflex_connected,
             "face_connected": self.face_connected,
             "speed_caps": [

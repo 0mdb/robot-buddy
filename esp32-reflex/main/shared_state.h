@@ -114,6 +114,7 @@ enum class RangeStatus : uint8_t {
 
 struct RangeSample {
     uint16_t    range_mm      = 0;
+    uint16_t    echo_us       = 0;      // raw echo duration (diagnostic)
     RangeStatus status        = RangeStatus::NOT_READY;
     uint32_t    timestamp_us  = 0;
 };

@@ -65,6 +65,7 @@ class ReflexTelemetry:
     fault_flags: int = 0
     range_mm: int = 0
     range_status: int = RangeStatus.NOT_READY
+    echo_us: int = 0
     rx_mono_ms: float = 0.0
     seq: int = 0
 
@@ -165,6 +166,7 @@ class ReflexClient:
             t.fault_flags = state.fault_flags
             t.range_mm = state.range_mm
             t.range_status = state.range_status
+            t.echo_us = state.echo_us
             t.rx_mono_ms = time.monotonic() * 1000.0
             t.seq = pkt.seq
 

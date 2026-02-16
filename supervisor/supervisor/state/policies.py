@@ -5,6 +5,8 @@ Defense-in-depth above the reflex MCU's own safety (250mm hard stop, tilt, etc).
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from supervisor.devices.protocol import RangeStatus
 from supervisor.state.datatypes import (
     DesiredTwist,
@@ -14,11 +16,33 @@ from supervisor.state.datatypes import (
 )
 
 
-def apply_safety(desired: DesiredTwist, state: RobotState) -> DesiredTwist:
+@dataclass(slots=True)
+class SafetyConfig:
+    """Tunable thresholds for safety policies, populated from param registry."""
+
+    range_close_mm: int = 300
+    range_medium_mm: int = 500
+    speed_cap_close_scale: float = 0.25
+    speed_cap_medium_scale: float = 0.50
+    speed_cap_stale_scale: float = 0.50
+
+
+# Module-level default used when no config is provided (tests, standalone).
+DEFAULT_SAFETY_CONFIG = SafetyConfig()
+
+
+def apply_safety(
+    desired: DesiredTwist,
+    state: RobotState,
+    cfg: SafetyConfig | None = None,
+) -> DesiredTwist:
     """Apply safety policy to desired twist, returning capped twist.
 
     Also populates state.speed_caps with reasons for any limiting.
     """
+    if cfg is None:
+        cfg = DEFAULT_SAFETY_CONFIG
+
     state.speed_caps.clear()
     v = desired.v_mm_s
     w = desired.w_mrad_s
@@ -40,20 +64,24 @@ def apply_safety(desired: DesiredTwist, state: RobotState) -> DesiredTwist:
 
     # 4. Ultrasonic speed governor (defense-in-depth above reflex's 250mm stop)
     if state.range_status == RangeStatus.OK and state.range_mm > 0:
-        if state.range_mm < 300:
-            scale = 0.25
-            state.speed_caps.append(SpeedCap(scale, f"range={state.range_mm}mm<300"))
+        if state.range_mm < cfg.range_close_mm:
+            scale = cfg.speed_cap_close_scale
+            state.speed_caps.append(
+                SpeedCap(scale, f"range={state.range_mm}mm<{cfg.range_close_mm}")
+            )
             v = int(v * scale)
             w = int(w * scale)
-        elif state.range_mm < 500:
-            scale = 0.50
-            state.speed_caps.append(SpeedCap(scale, f"range={state.range_mm}mm<500"))
+        elif state.range_mm < cfg.range_medium_mm:
+            scale = cfg.speed_cap_medium_scale
+            state.speed_caps.append(
+                SpeedCap(scale, f"range={state.range_mm}mm<{cfg.range_medium_mm}")
+            )
             v = int(v * scale)
             w = int(w * scale)
 
     # 5. Stale range — if NOT_READY or TIMEOUT, be conservative
     if state.range_status in (RangeStatus.TIMEOUT, RangeStatus.NOT_READY):
-        scale = 0.50
+        scale = cfg.speed_cap_stale_scale
         state.speed_caps.append(SpeedCap(scale, f"range_stale={state.range_status}"))
         v = int(v * scale)
         w = int(w * scale)

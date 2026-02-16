@@ -69,7 +69,7 @@ class TestBuildAndParse:
 
 class TestStatePayload:
     def test_unpack(self):
-        data = struct.pack("<hhhHHHB", -100, 150, -500, 7400, 0x0003, 1234, 0)
+        data = struct.pack("<hhhHHHBH", -100, 150, -500, 7400, 0x0003, 1234, 0, 7194)
         state = StatePayload.unpack(data)
         assert state.speed_l_mm_s == -100
         assert state.speed_r_mm_s == 150
@@ -78,6 +78,7 @@ class TestStatePayload:
         assert state.fault_flags == 0x0003
         assert state.range_mm == 1234
         assert state.range_status == 0
+        assert state.echo_us == 7194
 
     def test_unpack_too_short(self):
         with pytest.raises(ValueError, match="too short"):
@@ -86,7 +87,7 @@ class TestStatePayload:
 
 class TestStateTelemetryPacket:
     def test_build_and_parse_state(self):
-        payload = struct.pack("<hhhHHHB", 100, 110, 50, 7200, 0, 500, 0)
+        payload = struct.pack("<hhhHHHBH", 100, 110, 50, 7200, 0, 500, 0, 2915)
         pkt = build_packet(TelType.STATE, 42, payload)
         parsed = parse_frame(pkt[:-1])
         assert parsed.pkt_type == TelType.STATE
@@ -95,6 +96,7 @@ class TestStateTelemetryPacket:
         assert state.speed_l_mm_s == 100
         assert state.speed_r_mm_s == 110
         assert state.range_mm == 500
+        assert state.echo_us == 2915
 
 
 class TestCrcValidation:

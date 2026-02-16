@@ -62,6 +62,7 @@ void telemetry_task(void* arg)
         sp.fault_flags   = snap.fault_flags;
         sp.range_mm      = range->range_mm;
         sp.range_status  = static_cast<uint8_t>(range->status);
+        sp.echo_us       = range->echo_us;
 
         // Build wire packet
         uint8_t wire_buf[32];

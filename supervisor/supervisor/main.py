@@ -74,7 +74,12 @@ async def async_main(args: argparse.Namespace) -> None:
     ws_hub = WsHub()
 
     # Runtime with telemetry wired to WS broadcast
-    runtime = Runtime(reflex, on_telemetry=ws_hub.broadcast_telemetry, vision=vision)
+    runtime = Runtime(
+        reflex,
+        on_telemetry=ws_hub.broadcast_telemetry,
+        vision=vision,
+        param_registry=registry,
+    )
 
     # FastAPI app
     app = create_app(runtime, registry, ws_hub, vision=vision)

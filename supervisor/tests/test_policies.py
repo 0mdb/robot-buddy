@@ -2,7 +2,7 @@
 
 from supervisor.devices.protocol import Fault, RangeStatus
 from supervisor.state.datatypes import DesiredTwist, Mode, RobotState
-from supervisor.state.policies import apply_safety
+from supervisor.state.policies import SafetyConfig, apply_safety
 
 
 def _make_state(**kwargs) -> RobotState:
@@ -107,6 +107,28 @@ class TestUltrasonicCaps:
         s = _make_state(range_mm=0, range_status=RangeStatus.NOT_READY)
         result = apply_safety(DesiredTwist(200, 400), s)
         assert result.v_mm_s == 100
+
+
+class TestCustomSafetyConfig:
+    def test_custom_close_threshold(self):
+        cfg = SafetyConfig(range_close_mm=200, speed_cap_close_scale=0.10)
+        s = _make_state(range_mm=150, range_status=RangeStatus.OK)
+        result = apply_safety(DesiredTwist(200, 400), s, cfg)
+        assert result.v_mm_s == 20  # 200 * 0.10
+        assert result.w_mrad_s == 40
+
+    def test_custom_medium_threshold(self):
+        cfg = SafetyConfig(range_close_mm=100, range_medium_mm=800,
+                           speed_cap_medium_scale=0.75)
+        s = _make_state(range_mm=600, range_status=RangeStatus.OK)
+        result = apply_safety(DesiredTwist(200, 400), s, cfg)
+        assert result.v_mm_s == 150  # 200 * 0.75
+
+    def test_custom_stale_scale(self):
+        cfg = SafetyConfig(speed_cap_stale_scale=0.30)
+        s = _make_state(range_mm=0, range_status=RangeStatus.TIMEOUT)
+        result = apply_safety(DesiredTwist(200, 400), s, cfg)
+        assert result.v_mm_s == 60  # 200 * 0.30
 
 
 class TestSpeedCapsCleared:

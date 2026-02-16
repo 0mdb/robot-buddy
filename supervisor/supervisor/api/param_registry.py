@@ -143,6 +143,18 @@ def create_default_registry() -> ParamRegistry:
     )
     reg.register(
         ParamDef(
+            name="speed_cap_close_mm",
+            type="int",
+            min=50,
+            max=2000,
+            step=10,
+            default=300,
+            owner="supervisor",
+            doc="Range threshold for close speed cap (mm)",
+        )
+    )
+    reg.register(
+        ParamDef(
             name="speed_cap_close_scale",
             type="float",
             min=0.0,
@@ -150,7 +162,19 @@ def create_default_registry() -> ParamRegistry:
             step=0.05,
             default=0.25,
             owner="supervisor",
-            doc="Speed scale when range < 300mm",
+            doc="Speed scale when range < close threshold",
+        )
+    )
+    reg.register(
+        ParamDef(
+            name="speed_cap_medium_mm",
+            type="int",
+            min=100,
+            max=3000,
+            step=10,
+            default=500,
+            owner="supervisor",
+            doc="Range threshold for medium speed cap (mm)",
         )
     )
     reg.register(
@@ -162,7 +186,7 @@ def create_default_registry() -> ParamRegistry:
             step=0.05,
             default=0.50,
             owner="supervisor",
-            doc="Speed scale when range < 500mm",
+            doc="Speed scale when range < medium threshold",
         )
     )
     reg.register(

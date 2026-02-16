@@ -67,8 +67,9 @@ class StatePayload:
     fault_flags: int
     range_mm: int
     range_status: int
+    echo_us: int
 
-    _FMT = struct.Struct("<hhhHHHB")  # 15 bytes
+    _FMT = struct.Struct("<hhhHHHBH")  # 15 bytes
 
     @classmethod
     def unpack(cls, data: bytes) -> StatePayload:
