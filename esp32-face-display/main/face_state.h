@@ -8,23 +8,34 @@
 // ---- Enums ----
 
 enum class Mood : uint8_t {
-    DEFAULT = 0,
-    TIRED   = 1,
-    ANGRY   = 2,
-    HAPPY   = 3,
+    NEUTRAL   = 0,   // calm, attentive default
+    HAPPY     = 1,   // pleased, upturned eyes
+    EXCITED   = 2,   // wide open, high energy
+    CURIOUS   = 3,   // one brow raised, attentive
+    SAD       = 4,   // droopy, glistening
+    SCARED    = 5,   // wide eyes, shrunk pupils
+    ANGRY     = 6,   // narrowed, intense (mild for kids)
+    SURPRISED = 7,   // wide open, raised brows
+    SLEEPY    = 8,   // half-closed, slow blinks
+    LOVE      = 9,   // heart-shaped / warm glow
+    SILLY     = 10,  // cross-eyed or asymmetric
+    THINKING  = 11,  // looking up/aside
 };
 
 enum class GestureId : uint8_t {
-    BLINK    = 0,
-    WINK_L   = 1,
-    WINK_R   = 2,
-    CONFUSED = 3,
-    LAUGH    = 4,
-    SURPRISE = 5,
-    HEART    = 6,
-    X_EYES   = 7,
-    SLEEPY   = 8,
-    RAGE     = 9,
+    BLINK     = 0,
+    WINK_L    = 1,
+    WINK_R    = 2,
+    CONFUSED  = 3,
+    LAUGH     = 4,
+    SURPRISE  = 5,
+    HEART     = 6,
+    X_EYES    = 7,
+    SLEEPY    = 8,
+    RAGE      = 9,
+    NOD       = 10,
+    HEADSHAKE = 11,
+    WIGGLE    = 12,
 };
 
 enum class SystemMode : uint8_t {
@@ -141,10 +152,14 @@ struct FaceState {
     EffectsState fx;
     SystemState  system;
 
-    Mood  mood       = Mood::DEFAULT;
+    Mood  mood       = Mood::NEUTRAL;
     float brightness = 1.0f;
     bool  solid_eye  = true;
     bool  show_mouth = true;
+
+    // Talking animation (driven by supervisor during TTS playback)
+    bool  talking        = false;
+    float talking_energy = 0.0f;  // 0.0–1.0, current audio energy level
 
     // Mouth state
     float mouth_curve          = 0.2f;

@@ -16,10 +16,12 @@
 // Face telemetry (MCU → host): 0x90+
 
 enum class FaceCmdId : uint8_t {
-    SET_STATE  = 0x20,   // mood + gaze + brightness
-    GESTURE    = 0x21,   // trigger one-shot gesture
-    SET_SYSTEM = 0x22,   // system mode overlay
-    SET_CONFIG = 0x25,   // tunable config parameters
+    SET_STATE   = 0x20,   // mood + gaze + brightness
+    GESTURE     = 0x21,   // trigger one-shot gesture
+    SET_SYSTEM  = 0x22,   // system mode overlay
+    SET_TALKING = 0x23,   // speaking animation state + energy
+    AUDIO_DATA  = 0x24,   // PCM audio chunk for speaker playback
+    SET_CONFIG  = 0x25,   // tunable config parameters
 };
 
 enum class FaceCfgId : uint8_t {
@@ -31,12 +33,14 @@ enum class FaceCfgId : uint8_t {
 enum class FaceTelId : uint8_t {
     FACE_STATUS  = 0x90,  // current mood/gesture/system/flags
     TOUCH_EVENT  = 0x91,  // touch press/release/drag
+    MIC_PROBE    = 0x92,  // microphone probe diagnostic result
+    HEARTBEAT    = 0x93,  // periodic liveness + telemetry counters
 };
 
 // ---- Payload structs (packed, little-endian) ----
 
 struct __attribute__((packed)) FaceSetStatePayload {
-    uint8_t mood_id;       // Mood enum (0=DEFAULT, 1=TIRED, 2=ANGRY, 3=HAPPY)
+    uint8_t mood_id;       // Mood enum (0-11, see face_state.h)
     uint8_t intensity;     // 0-255
     int8_t  gaze_x;        // -128..+127, scaled to +-MAX_GAZE
     int8_t  gaze_y;        // -128..+127, scaled to +-MAX_GAZE
@@ -70,6 +74,52 @@ struct __attribute__((packed)) TouchEventPayload {
     uint8_t  event_type;   // 0=press, 1=release, 2=drag
     uint16_t x;
     uint16_t y;
+};
+
+struct __attribute__((packed)) FaceSetTalkingPayload {
+    uint8_t talking;       // 0=stopped, 1=speaking
+    uint8_t energy;        // 0-255, audio energy level for eye animation
+};
+
+struct __attribute__((packed)) FaceAudioDataPayload {
+    uint16_t chunk_len;    // PCM data length in bytes
+    // Followed by chunk_len bytes of 16-bit signed 16 kHz mono PCM
+};
+
+struct __attribute__((packed)) FaceMicProbePayload {
+    uint32_t probe_seq;
+    uint32_t duration_ms;
+    uint32_t sample_count;
+    uint16_t read_timeouts;
+    uint16_t read_errors;
+    uint16_t selected_rms_x10;
+    uint16_t selected_peak;
+    int16_t  selected_dbfs_x10;
+    uint8_t  selected_channel;  // 0=mono, 1=left, 2=right
+    uint8_t  active;
+};
+
+struct __attribute__((packed)) FaceHeartbeatPayload {
+    uint32_t uptime_ms;
+    uint32_t status_tx_count;
+    uint32_t touch_tx_count;
+    uint32_t mic_probe_seq;
+    uint8_t  mic_activity;
+    // Optional transport diagnostics (appended for backward compatibility).
+    uint32_t usb_tx_calls;
+    uint32_t usb_tx_bytes_requested;
+    uint32_t usb_tx_bytes_queued;
+    uint32_t usb_tx_short_writes;
+    uint32_t usb_tx_flush_ok;
+    uint32_t usb_tx_flush_not_finished;
+    uint32_t usb_tx_flush_timeout;
+    uint32_t usb_tx_flush_error;
+    uint32_t usb_rx_calls;
+    uint32_t usb_rx_bytes;
+    uint32_t usb_rx_errors;
+    uint32_t usb_line_state_events;
+    uint8_t  usb_dtr;
+    uint8_t  usb_rts;
 };
 
 // ---- COBS encode/decode ----

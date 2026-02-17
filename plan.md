@@ -1,244 +1,166 @@
-# AI Personality Server — Implementation Plan
+# Robot Buddy Emotion Protocol & Conversation Pipeline
 
-## Model Selection
+## Context
 
-**Primary: Qwen 3 14B (Q4_K_M)** — ~9 GB VRAM, best-in-class tool-calling accuracy, leaves ~15 GB headroom for context + TTS later.
+Robot Buddy needs a full emotional pipeline — from LLM response generation through TTS
+with prosody to face animation — to make the robot charming, expressive, and capable of
+real conversations with kids aged 5–12. The robot should introduce the potential of AI
+to young kids with guardrails to make it safe but exciting.
 
-**Fallback: Qwen 3 8B (Q4_K_M)** — ~5 GB VRAM, faster inference (~50 tok/s), nearly identical tool-calling accuracy. Good if we need room for a TTS model simultaneously.
+### Hardware Status & Known Gaps
 
-**Serving framework: Ollama** — simplest path to an OpenAI-compatible API with structured output support. Handles model management, quantization, and GPU allocation. If we outgrow it, we can swap to vLLM later (same OpenAI-compatible API surface).
+| Component | Status | Notes |
+|-----------|--------|-------|
+| ESP32 face display (TX/telemetry) | **Working** | FACE_STATUS, TOUCH_EVENT streaming OK |
+| ESP32 face USB RX (commands in) | **Not working** | Commands not reliably received; needs debug |
+| ESP32 mic (ES8311) | **Untested** | Hardware roughed in, needs bring-up & test |
+| ESP32 speaker (ES8311) | **Intermittent** | Boot tone works, runtime playback unreliable |
+| ESP32 face rendering (LVGL) | **Working** | Eyes + mouth render, animation runs |
 
-Why not vLLM: vLLM is more powerful but heavier to set up and has had structured output bugs across releases. Ollama is rock-solid for single-model serving and trivial to install.
+**Strategy**: Define the protocol and build the server/supervisor layers now. ESP32
+hardware bring-up runs in parallel.
 
-## Architecture
+---
 
-```
-┌─────────────────────────────────────────────────────┐
-│ 3090 Ti Box                                          │
-│                                                      │
-│  ┌──────────┐     ┌──────────────────────────────┐  │
-│  │ Ollama   │     │ Personality Server (FastAPI)  │  │
-│  │ qwen3:14b│◄────┤                              │  │
-│  │ :11434   │     │  POST /plan                  │  │
-│  └──────────┘     │  POST /tts  (future)         │  │
-│                   │  GET  /health                 │  │
-│                   │  :8100                        │  │
-│                   └──────────────────────────────┘  │
-└─────────────────────────────────────────────────────┘
-        ▲
-        │ HTTP (LAN)
-        │
-┌───────┴─────────┐
-│ Supervisor (Pi5) │
-│ PersonalityClient│
-└─────────────────┘
-```
+## 1. Emotion Taxonomy (12 Emotions)
 
-The personality server is a thin FastAPI layer between the supervisor and Ollama. It owns the system prompt, formats the world state into the LLM prompt, validates the structured response, and returns a clean plan. The supervisor never talks to Ollama directly.
+Each with intensity 0.0–1.0. Designed for clear, exaggerated kid-readable expressions:
 
-## File Structure
+| ID | Name | Eye Expression | Voice Prosody |
+|----|------|----------------|---------------|
+| 0 | `neutral` | Calm, attentive | Even pace, warm tone |
+| 1 | `happy` | Upturned crescents | Bright, melodic |
+| 2 | `excited` | Wide open, sparkly | Fast, high pitch, energetic |
+| 3 | `curious` | One brow raised, tilted | Rising intonation, thoughtful pauses |
+| 4 | `sad` | Droopy, glistening | Slow, lower pitch, soft |
+| 5 | `scared` | Wide, shrunk pupils | Breathy, trembling, quick |
+| 6 | `angry` | Narrowed, intense | Firm, clipped (kept mild for kids) |
+| 7 | `surprised` | Wide open, raised brows | Sharp intake, rising pitch |
+| 8 | `sleepy` | Half-closed, slow blinks | Slow, mumbling, yawning |
+| 9 | `love` | Heart-shaped / warm glow | Warm, gentle, adoring |
+| 10 | `silly` | Cross-eyed or asymmetric | Goofy pitch wobble, giggly |
+| 11 | `thinking` | Looking up/aside | Measured pace, "hmm" fillers |
 
-```
-server/
-├── app/
-│   ├── main.py              # FastAPI app, lifespan, /health
-│   ├── routers/
-│   │   └── plan.py          # POST /plan endpoint
-│   ├── llm/
-│   │   ├── client.py        # Ollama HTTP client (async httpx)
-│   │   ├── prompts.py       # System prompt, user prompt template
-│   │   └── schemas.py       # Pydantic models for plan actions
-│   └── config.py            # Settings (model name, Ollama URL, timeouts)
-├── tests/
-│   ├── test_plan.py         # Endpoint integration tests
-│   ├── test_prompts.py      # Prompt formatting tests
-│   └── test_schemas.py      # Schema validation tests
-├── pyproject.toml           # Dependencies, metadata
-├── Modelfile                # Ollama Modelfile for custom params
-└── README.md                # Updated docs
-```
+### Gestures (13 One-Shot Animations)
 
-## Step-by-Step Implementation
+| ID | Name | Trigger |
+|----|------|---------|
+| 0–9 | blink, wink_l, wink_r, confused, laugh, surprise, heart, x_eyes, sleepy, rage | (existing) |
+| 10 | `nod` | Agreement/acknowledgment |
+| 11 | `headshake` | Disagreement/no |
+| 12 | `wiggle` | Playful shimmy |
 
-### Step 1: Project scaffolding & dependencies
+---
 
-Create `pyproject.toml` with:
-- `fastapi`, `uvicorn[standard]` — HTTP server
-- `httpx` — async HTTP client for Ollama
-- `pydantic` >= 2.0 — request/response schemas + structured output schema
-- `ruff` — linting (match supervisor conventions)
+## 2. TTS: Orpheus TTS
 
-Create `app/config.py`:
-- `Settings` dataclass with env-var overrides
-- `OLLAMA_URL` (default `http://localhost:11434`)
-- `MODEL_NAME` (default `qwen3:14b`)
-- `PLAN_TIMEOUT_S` (default `5.0`)
-- `MAX_ACTIONS` (default `5`)
-- `TEMPERATURE` (default `0.7`)
+**Primary: Orpheus TTS** (3B param, ~6GB VRAM) — built-in emotion tags (`<happy>`,
+`<sad>`, etc.), expressive prosody, streaming output, Llama-based architecture.
 
-### Step 2: Pydantic schemas for plan actions
+**Fallback: Kokoro TTS** (82M params, <1GB VRAM) — extremely fast, good for
+real-time if Orpheus is too slow.
 
-`app/llm/schemas.py` — define the structured output contract:
+**Emotion → Prosody Tag Mapping:**
 
 ```python
-class SayAction(BaseModel):
-    action: Literal["say"]
-    text: str = Field(max_length=200)
-
-class EmoteAction(BaseModel):
-    action: Literal["emote"]
-    name: str           # "happy", "surprised", "curious", ...
-    intensity: float = Field(ge=0.0, le=1.0)
-
-class GestureAction(BaseModel):
-    action: Literal["gesture"]
-    name: str           # "nod", "shake", "look_at", "wiggle"
-    params: dict = {}   # gesture-specific (e.g. {"bearing": 15.2})
-
-class MoveAction(BaseModel):
-    action: Literal["move"]
-    v_mm_s: int = Field(ge=-300, le=300)
-    w_mrad_s: int = Field(ge=-500, le=500)
-    duration_ms: int = Field(ge=0, le=3000)  # bounded!
-
-PlanAction = SayAction | EmoteAction | GestureAction | MoveAction
-
-class PlanResponse(BaseModel):
-    actions: list[PlanAction] = Field(max_length=5)
-    ttl_ms: int = Field(default=2000, ge=500, le=5000)
-
-class WorldState(BaseModel):
-    """Incoming world state from supervisor."""
-    mode: str
-    battery_mv: int
-    range_mm: int
-    faults: list[str]
-    clear_confidence: float
-    ball_detected: bool
-    ball_bearing_deg: float
-    speed_l_mm_s: int
-    speed_r_mm_s: int
-    v_capped: int
-    w_capped: int
-    trigger: str            # "heartbeat", "ball_seen", "obstacle", "mode_change"
+EMOTION_TO_PROSODY_TAG = {
+    "neutral": "",  "happy": "<happy>",  "excited": "<excited>",
+    "curious": "",  "sad": "<sad>",      "scared": "<scared>",
+    "angry": "<angry>",  "surprised": "<surprised>",  "sleepy": "<yawn>",
+    "love": "<happy>",   "silly": "<laughing>",       "thinking": "",
+}
 ```
 
-### Step 3: System prompt & user prompt template
+---
 
-`app/llm/prompts.py`:
-
-**System prompt** — defines the robot's personality and output format:
+## 3. Conversation Pipeline
 
 ```
-You are the personality of Robot Buddy, a small wheeled robot for kids.
-You are curious, playful, and friendly. You express yourself through
-emotions, gestures, short spoken phrases, and movement.
-
-You receive the robot's current world state and respond with a short
-performance plan — a list of 1-5 actions the robot should take right now.
-
-Available actions:
-- say(text): Speak a short phrase (max 200 chars, kid-friendly language)
-- emote(name, intensity): Show an emotion on the LED face
-  Names: happy, sad, surprised, curious, excited, sleepy, scared, angry, love, neutral
-  Intensity: 0.0 to 1.0
-- gesture(name, params): Physical gesture
-  Names: nod, shake, look_at, wiggle, spin, back_up
-  Params vary by gesture (e.g. look_at takes {"bearing": degrees})
-- move(v_mm_s, w_mrad_s, duration_ms): Move for a bounded duration
-  v_mm_s: -300 to 300 (forward/backward speed)
-  w_mrad_s: -500 to 500 (turning rate)
-  duration_ms: 0 to 3000 (max 3 seconds per action)
-
-Rules:
-- Keep spoken phrases short, fun, and age-appropriate (ages 4-10)
-- Never say anything scary, mean, or inappropriate
-- Match emotions to the situation
-- If the robot sees a ball, act excited
-- If an obstacle is close (range < 500mm), prefer backing up or turning
-- If battery is low (< 6800mV), mention being sleepy
-- Do not repeat the same phrase twice in a row
-- Respond ONLY with valid JSON matching the schema. No other text.
+Kid speaks → ESP32 mic → Pi supervisor → 3090 Ti server
+  → Whisper STT → Qwen3 14B LLM → Orpheus TTS
+  → emotion + audio stream back to Pi → ESP32 face + speaker
 ```
 
-**User prompt template** — formats world state into a concise prompt:
+**Key design**: Emotion is sent before audio so the face changes expression before
+the robot starts speaking — this feels more natural.
 
-```
-World state:
-- Mode: {mode}
-- Battery: {battery_mv}mV
-- Range sensor: {range_mm}mm
-- Faults: {faults}
-- Path clear confidence: {clear_confidence:.0%}
-- Ball detected: {ball_detected} (bearing: {ball_bearing_deg}°)
-- Current speed: L={speed_l_mm_s} R={speed_r_mm_s} mm/s
-- Speed after safety caps: v={v_capped} w={w_capped}
-- Trigger: {trigger}
+### Latency Budget (Target: <2s end-to-end)
 
-What should Robot Buddy do right now?
-```
+| Stage | Target |
+|-------|--------|
+| VAD + utterance detection | ~300ms |
+| STT (Whisper) | ~500ms |
+| LLM first token | ~300ms |
+| Emotion event sent | ~50ms |
+| TTS first chunk | ~200ms |
+| **Total to first audio** | **~1.4s** |
 
-### Step 4: Ollama async client
+**VRAM budget**: Whisper ~3GB + Qwen3 ~9GB + Orpheus ~6GB = ~18GB (3090 Ti has 24GB)
 
-`app/llm/client.py`:
-- Async `httpx.AsyncClient` calling `POST /api/chat` on Ollama
-- Pass the `format` parameter with the JSON schema from `PlanResponse.model_json_schema()` — Ollama uses this for structured output (grammar-constrained generation)
-- Timeout via `httpx.Timeout(PLAN_TIMEOUT_S)`
-- Parse response, validate against `PlanResponse`
-- Return validated plan or raise on timeout/parse error
+### Two Emotion Modes (coexisting)
 
-Key implementation detail: Ollama's `/api/chat` accepts a `format` field with a JSON schema. This constrains token generation so the output always matches our Pydantic schema. No post-hoc parsing failures.
+- **Reactive** (existing `/plan`): world-state-driven (obstacles, battery, ball)
+- **Conversational** (new `WS /converse`): speech-driven, takes priority while speaking
 
-### Step 5: `/plan` endpoint
+---
 
-`app/routers/plan.py`:
-- `POST /plan` accepts `WorldState` body
-- Calls the LLM client with formatted prompts
-- Returns `PlanResponse` on success
-- Returns 504 on LLM timeout
-- Returns 502 on Ollama connection error
-- Returns 422 on validation failure (shouldn't happen with structured output, but defense in depth)
+## 4. Wire Protocol (v2)
 
-### Step 6: `/health` endpoint & lifespan
+### Commands (supervisor → MCU)
 
-`app/main.py`:
-- FastAPI app with lifespan handler
-- On startup: verify Ollama is reachable, model is loaded (warm the model with a dummy request)
-- `GET /health` returns `{"status": "ok", "model": "qwen3:14b", "ollama": true/false}`
+| ID | Name | Payload |
+|----|------|---------|
+| 0x20 | SET_STATE | mood(u8) intensity(u8) gaze_x(i8) gaze_y(i8) brightness(u8) |
+| 0x21 | GESTURE | gesture_id(u8) duration_ms(u16-LE) |
+| 0x22 | SET_SYSTEM | mode(u8) phase(u8) param(u8) |
+| 0x23 | **SET_TALKING** | talking(u8) energy(u8) |
+| 0x24 | **AUDIO_DATA** | chunk_len(u16-LE) pcm_data(N) |
+| 0x25 | SET_CONFIG | param_id(u8) value(4 bytes) |
 
-### Step 7: Ollama Modelfile
+### Server WebSocket: `WS /converse`
 
-`server/Modelfile` — custom parameters for serving:
+Client → Server: `audio` chunks, `end_utterance`, `cancel`
+Server → Client: `emotion` (immediate), `audio` (streaming), `transcription`, `done`
 
-```
-FROM qwen3:14b
-PARAMETER temperature 0.7
-PARAMETER top_p 0.9
-PARAMETER num_ctx 4096
-PARAMETER stop </s>
-```
+---
 
-This keeps context window small (4096 tokens is plenty — our prompts are short) which maximizes throughput and minimizes latency.
+## 5. Implementation Status
 
-### Step 8: Tests
+### Phase 1: Protocol Definition — DONE
+- [x] `esp32-face-display/main/protocol.h` — expanded enums, new command IDs
+- [x] `esp32-face-display/main/face_state.h` — 12 moods, 13 gestures, talking state
+- [x] `esp32-face-display/main/face_state.cpp` — eyelid/mouth/color mappings for all moods
+- [x] `supervisor/supervisor/devices/protocol.py` — matching Python enums + builders
+- [x] `supervisor/supervisor/devices/face_client.py` — send_talking, send_audio_data
+- [x] `supervisor/supervisor/runtime.py` — 1:1 emotion mapping (no more lossy collapse)
+- [x] `supervisor/supervisor/state/datatypes.py` — face_talking state
+- [x] `server/app/llm/prompts.py` — expanded personality + emotion taxonomy
+- [x] `server/app/llm/schemas.py` — VALID_EMOTIONS set
+- [x] `docs/protocols.md` — v2 protocol spec
+- [x] Tests pass, linter clean
 
-- `test_schemas.py`: Validate that example plans parse correctly, invalid plans are rejected, field bounds are enforced
-- `test_prompts.py`: Verify prompt formatting produces expected strings for various world states
-- `test_plan.py`: Integration test with a mock Ollama response (patch httpx), verify the endpoint returns valid plans, handles timeouts, handles connection errors
+### Phase 2: Server Conversation Endpoint — DONE
+- [x] `server/app/stt/whisper.py` — Whisper STT (faster-whisper, lazy-loaded)
+- [x] `server/app/tts/orpheus.py` — Orpheus TTS with prosody tags, streaming chunks
+- [x] `server/app/routers/converse.py` — WS /converse (audio+text input, emotion+audio output)
+- [x] `server/app/llm/conversation.py` — history, structured JSON prompt, Ollama integration
+- [x] `server/app/main.py` — converse router wired up
+- [x] `server/pyproject.toml` — optional deps for stt/tts
+- [x] Tests pass, linter clean
 
-### Step 9: Update README.md
+### Phase 3: Supervisor Pipeline — DONE
+- [x] `supervisor/supervisor/devices/conversation_manager.py` — WebSocket client,
+      emotion→face, audio→speaker with RMS energy, talking animation, gesture dispatch
+- [x] Tests pass, linter clean
 
-Document:
-- How to install Ollama and pull the model
-- How to start the server
-- Environment variables
-- API contract
-- Example curl commands
+### Phase 4: ESP32 Hardware Bring-Up (parallel with 2 & 3)
+- [ ] **Debug USB RX** — gate for all ESP32 command reception
+- [ ] **Test mic** — ES8311 I2S input, RMS/noise floor
+- [ ] **Fix speaker** — intermittent runtime playback
+- [ ] Mic streaming, speaker streaming, SET_TALKING/AUDIO_DATA handlers
 
-## What This Plan Does NOT Include (deferred)
-
-- **TTS endpoint** — add later when we wire up audio playback on the Pi
-- **Interaction history / memory** — start stateless, add conversation context later
-- **Caching** — premature until we see real latency numbers
-- **Supervisor PersonalityClient** — separate task, lives in the supervisor codebase
-- **Multiple model support** — start with one model, swap via config if needed
+### Phase 5: Face Expression Design
+- [ ] New Python face simulator (320×240 landscape, eyes only)
+- [ ] Design eye expressions for all 12 emotions
+- [ ] Talking animation (eye pulse synced to energy)
+- [ ] Port to ESP32

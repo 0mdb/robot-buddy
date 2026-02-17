@@ -125,15 +125,35 @@ void face_state_update(FaceState& fs)
     }
 
     // ---- Mood → eyelid targets ----
-    fs.eyelids.tired_target = (fs.mood == Mood::TIRED) ? 1.0f : 0.0f;
-    fs.eyelids.angry_target = (fs.mood == Mood::ANGRY) ? 1.0f : 0.0f;
-    fs.eyelids.happy_target = (fs.mood == Mood::HAPPY) ? 1.0f : 0.0f;
+    // Tired eyelids: SAD, SLEEPY, THINKING
+    fs.eyelids.tired_target =
+        (fs.mood == Mood::SAD || fs.mood == Mood::SLEEPY || fs.mood == Mood::THINKING)
+        ? 1.0f : 0.0f;
+    // Angry eyelids: ANGRY, SCARED
+    fs.eyelids.angry_target =
+        (fs.mood == Mood::ANGRY || fs.mood == Mood::SCARED)
+        ? 1.0f : 0.0f;
+    // Happy eyelids: HAPPY, EXCITED, LOVE, SILLY
+    fs.eyelids.happy_target =
+        (fs.mood == Mood::HAPPY || fs.mood == Mood::EXCITED
+         || fs.mood == Mood::LOVE || fs.mood == Mood::SILLY)
+        ? 1.0f : 0.0f;
 
     // ---- Mood → mouth targets ----
-    if (fs.mood == Mood::HAPPY)       fs.mouth_curve_target = 0.8f;
-    else if (fs.mood == Mood::ANGRY)  fs.mouth_curve_target = -0.6f;
-    else if (fs.mood == Mood::TIRED)  fs.mouth_curve_target = -0.3f;
-    else                              fs.mouth_curve_target = 0.2f;
+    switch (fs.mood) {
+    case Mood::HAPPY:
+    case Mood::EXCITED:
+    case Mood::LOVE:
+    case Mood::SILLY:     fs.mouth_curve_target =  0.8f; break;
+    case Mood::ANGRY:
+    case Mood::SCARED:    fs.mouth_curve_target = -0.6f; break;
+    case Mood::SAD:
+    case Mood::SLEEPY:    fs.mouth_curve_target = -0.3f; break;
+    case Mood::CURIOUS:
+    case Mood::THINKING:  fs.mouth_curve_target =  0.1f; break;
+    case Mood::SURPRISED: fs.mouth_curve_target =  0.0f; break;
+    default:              fs.mouth_curve_target =  0.2f; break;
+    }
 
     // ---- Auto-blink ----
     if (fs.anim.autoblink && now >= fs.anim.next_blink) {
@@ -376,10 +396,20 @@ void face_get_emotion_color(const FaceState& fs, uint8_t& r, uint8_t& g, uint8_t
         float elapsed = now_s() - fs.anim.surprise_timer;
         if (elapsed < 0.15f) { r = 200; g = 220; b = 255; return; }
     }
-    if (fs.mood == Mood::HAPPY)  { r = 50;  g = 180; b = 255; return; }
-    if (fs.mood == Mood::TIRED)  { r = 20;  g = 60;  b = 160; return; }
-    if (fs.mood == Mood::ANGRY)  { r = 60;  g = 80;  b = 220; return; }
-    r = 30; g = 120; b = 255;  // default blue
+    switch (fs.mood) {
+    case Mood::HAPPY:     r = 50;  g = 180; b = 255; return; // cyan
+    case Mood::EXCITED:   r = 80;  g = 220; b = 255; return; // bright cyan
+    case Mood::CURIOUS:   r = 40;  g = 160; b = 240; return; // sky blue
+    case Mood::SAD:       r = 20;  g = 60;  b = 160; return; // deep blue
+    case Mood::SCARED:    r = 100; g = 60;  b = 200; return; // violet
+    case Mood::ANGRY:     r = 60;  g = 80;  b = 220; return; // indigo
+    case Mood::SURPRISED: r = 200; g = 220; b = 255; return; // flash white-blue
+    case Mood::SLEEPY:    r = 20;  g = 40;  b = 120; return; // navy
+    case Mood::LOVE:      r = 255; g = 100; b = 180; return; // pink
+    case Mood::SILLY:     r = 180; g = 255; b = 100; return; // lime green
+    case Mood::THINKING:  r = 60;  g = 120; b = 200; return; // muted blue
+    default:              r = 30;  g = 120; b = 255; return; // default blue
+    }
 }
 
 // ---- Convenience triggers ----
@@ -444,6 +474,19 @@ void face_trigger_gesture(FaceState& fs, GestureId gesture)
     case GestureId::RAGE:
         fs.anim.rage = true;
         fs.anim.rage_timer = now;
+        break;
+    case GestureId::NOD:
+        // Reuse short vertical shake path as an acknowledgement nod.
+        fs.anim.laugh = true;
+        break;
+    case GestureId::HEADSHAKE:
+        // Reuse short horizontal shake path as a "no" gesture.
+        fs.anim.confused = true;
+        break;
+    case GestureId::WIGGLE:
+        // Combine horizontal + vertical one-shots for a playful wiggle.
+        fs.anim.confused = true;
+        fs.anim.laugh = true;
         break;
     }
 }

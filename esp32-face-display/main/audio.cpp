@@ -28,6 +28,12 @@ constexpr int AUDIO_VOLUME_PERCENT = 100;
 constexpr uint8_t ES8311_MIC_GAIN_24DB = 4;
 constexpr uint32_t DEFAULT_TONE_MS = 1000;
 constexpr uint32_t DEFAULT_MIC_PROBE_MS = 2000;
+constexpr double MIC_ACTIVITY_RMS_THRESHOLD = 300.0;
+constexpr bool MIC_PROBE_RESULT_TONE = true;  // Temporary diagnostics aid.
+constexpr uint32_t MIC_PROBE_PASS_TONE_HZ = 1600;
+constexpr uint32_t MIC_PROBE_FAIL_TONE_HZ = 320;
+constexpr uint32_t MIC_PROBE_RESULT_TONE_MS = 140;
+constexpr int16_t MIC_PROBE_RESULT_TONE_AMP = 10000;
 constexpr uint32_t DIAG_TONE_FREQ_HZ = 1000;
 constexpr int16_t DIAG_TONE_AMP = 28000;
 constexpr uint32_t BOOT_TONE_FREQ_HZ = 660;
@@ -39,7 +45,8 @@ constexpr bool KEEP_AMP_ENABLED_BETWEEN_PLAYS = false;  // Normal behavior: gate
 constexpr uint32_t AMP_WAKE_DELAY_MS = 40;
 constexpr bool FORCE_SYNC_DIAGNOSTICS = false;  // Keep false for normal async behavior.
 constexpr uint32_t AUDIO_WORKER_STACK_BYTES = 8192;  // 4k was unstable in async diagnostics.
-constexpr UBaseType_t AUDIO_WORKER_PRIORITY = 7;  // Keep above usb_rx to avoid command-consumer starvation.
+constexpr BaseType_t AUDIO_WORKER_CORE = 0;  // Keep heavy audio work off USB/TinyUSB core.
+constexpr UBaseType_t AUDIO_WORKER_PRIORITY = 5;  // Below face_ui(6), above default LVGL task(4).
 
 constexpr uint8_t REG00 = 0x00;
 constexpr uint8_t REG01 = 0x01;
@@ -85,6 +92,80 @@ std::atomic<bool> s_ready{false};
 std::atomic<bool> s_playing{false};
 std::atomic<bool> s_abort{false};
 std::atomic<bool> s_mic_activity{false};
+std::atomic<uint32_t> s_probe_seq{0};
+std::atomic<uint32_t> s_probe_duration_ms{0};
+std::atomic<uint32_t> s_probe_sample_count{0};
+std::atomic<uint32_t> s_probe_read_timeouts{0};
+std::atomic<uint32_t> s_probe_read_errors{0};
+std::atomic<uint32_t> s_probe_selected_rms_x10{0};
+std::atomic<uint32_t> s_probe_selected_peak{0};
+std::atomic<int32_t> s_probe_selected_dbfs_x10{-1200};
+std::atomic<uint8_t> s_probe_selected_channel{0};  // 0=mono, 1=left, 2=right
+
+struct ProbeStats {
+    uint64_t sum_sq = 0;
+    int32_t peak = 0;
+    uint32_t sample_count = 0;
+};
+
+void probe_stats_add_sample(ProbeStats* stats, int16_t sample)
+{
+    if (stats == nullptr) {
+        return;
+    }
+    const int32_t s = static_cast<int32_t>(sample);
+    const int32_t a = (s < 0) ? -s : s;
+    stats->peak = std::max(stats->peak, a);
+    stats->sum_sq += static_cast<uint64_t>(s * s);
+    stats->sample_count++;
+}
+
+double probe_stats_rms(const ProbeStats& stats)
+{
+    if (stats.sample_count == 0) {
+        return 0.0;
+    }
+    return std::sqrt(static_cast<double>(stats.sum_sq) / static_cast<double>(stats.sample_count));
+}
+
+double rms_to_dbfs(double rms)
+{
+    return (rms > 0.0) ? (20.0 * std::log10(rms / 32768.0)) : -120.0;
+}
+
+uint32_t clamp_u32(double v)
+{
+    if (v <= 0.0) {
+        return 0;
+    }
+    const double max_v = static_cast<double>(UINT32_MAX);
+    if (v >= max_v) {
+        return UINT32_MAX;
+    }
+    return static_cast<uint32_t>(std::lround(v));
+}
+
+void publish_mic_probe_stats(uint32_t duration_ms,
+                             uint32_t sample_count,
+                             uint32_t read_timeouts,
+                             uint32_t read_errors,
+                             double selected_rms,
+                             int32_t selected_peak,
+                             double selected_dbfs,
+                             uint8_t selected_channel,
+                             bool active)
+{
+    s_probe_duration_ms.store(duration_ms, std::memory_order_relaxed);
+    s_probe_sample_count.store(sample_count, std::memory_order_relaxed);
+    s_probe_read_timeouts.store(read_timeouts, std::memory_order_relaxed);
+    s_probe_read_errors.store(read_errors, std::memory_order_relaxed);
+    s_probe_selected_rms_x10.store(clamp_u32(selected_rms * 10.0), std::memory_order_relaxed);
+    s_probe_selected_peak.store(clamp_u32(static_cast<double>(selected_peak)), std::memory_order_relaxed);
+    s_probe_selected_dbfs_x10.store(static_cast<int32_t>(std::lround(selected_dbfs * 10.0)), std::memory_order_relaxed);
+    s_probe_selected_channel.store(selected_channel, std::memory_order_relaxed);
+    s_mic_activity.store(active, std::memory_order_release);
+    s_probe_seq.fetch_add(1, std::memory_order_release);
+}
 
 void set_amp_enabled(bool enabled)
 {
@@ -321,7 +402,7 @@ esp_err_t i2s_init(void)
 
     i2s_std_config_t std_cfg = {
         .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(AUDIO_SAMPLE_RATE_HZ),
-        .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO),
+        .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_MONO),
         .gpio_cfg = {
             .mclk = PIN_I2S_MCK,
             .bclk = PIN_I2S_BCK,
@@ -335,8 +416,8 @@ esp_err_t i2s_init(void)
             },
         },
     };
-    // ESP32-S3 macro defaults to SLOT_BOTH + left_align=true.
-    // Match ESP-IDF i2s_es8311 example: STEREO + SLOT_BOTH.
+    // Match Freenove's working echo setup: mono stream on LEFT slot.
+    std_cfg.slot_cfg.slot_mask = I2S_STD_SLOT_LEFT;
     std_cfg.clk_cfg.mclk_multiple = I2S_MCLK_MULTIPLE_256;
 
     ESP_RETURN_ON_ERROR(i2s_channel_init_std_mode(s_tx, &std_cfg), TAG, "i2s tx init failed");
@@ -374,8 +455,7 @@ void run_tone(uint32_t duration_ms, uint32_t freq_hz, int16_t amp)
 
     constexpr size_t kChunkFrames = 256;
     constexpr double kPi = 3.14159265358979323846;
-    // Stereo interleaved: two int16_t per frame (L, R).
-    int16_t out[kChunkFrames * 2];
+    int16_t out[kChunkFrames];
     size_t bytes_written = 0;
     double phase = 0.0;
     const double phase_step = 2.0 * kPi * static_cast<double>(freq_hz) / static_cast<double>(AUDIO_SAMPLE_RATE_HZ);
@@ -402,20 +482,19 @@ void run_tone(uint32_t duration_ms, uint32_t freq_hz, int16_t amp)
             const float release = (frames_remaining < fade_frames) ? (static_cast<float>(frames_remaining) / static_cast<float>(fade_frames)) : 1.0f;
             const float env = std::min(attack, release);
             const int16_t v = static_cast<int16_t>(std::sin(phase) * static_cast<double>(amp) * static_cast<double>(env));
-            out[2 * i]     = v;  // L
-            out[2 * i + 1] = v;  // R
+            out[i] = v;
             phase += phase_step;
             if (phase >= 2.0 * kPi) {
                 phase -= 2.0 * kPi;
             }
         }
 
-        esp_err_t err = i2s_channel_write(s_tx, out, frames * sizeof(int16_t) * 2, &bytes_written, I2S_TIMEOUT_MS);
+        esp_err_t err = i2s_channel_write(s_tx, out, frames * sizeof(int16_t), &bytes_written, I2S_TIMEOUT_MS);
         if (err != ESP_OK) {
             ESP_LOGE(TAG, "tone write failed: %s", esp_err_to_name(err));
             break;
         }
-        const size_t frames_committed = bytes_written / (sizeof(int16_t) * 2);
+        const size_t frames_committed = bytes_written / sizeof(int16_t);
         if (frames_committed < frames) {
             ESP_LOGW(TAG, "tone short write: committed=%u requested=%u",
                      static_cast<unsigned>(frames_committed),
@@ -445,39 +524,122 @@ void run_mic_probe(uint32_t duration_ms)
 
     constexpr size_t kChunkBytes = 1024;
     int16_t in[kChunkBytes / sizeof(int16_t)];
-    uint64_t sum_sq = 0;
-    int32_t peak = 0;
-    uint32_t sample_count = 0;
+    ProbeStats left = {};
+    ProbeStats right = {};
+    ProbeStats mono = {};
+    uint32_t read_timeouts = 0;
+    uint32_t read_errors = 0;
     const int64_t deadline_us = esp_timer_get_time() + static_cast<int64_t>(duration_ms) * 1000;
 
     while (esp_timer_get_time() < deadline_us && !s_abort.load(std::memory_order_acquire)) {
         size_t bytes_read = 0;
         esp_err_t err = i2s_channel_read(s_rx, in, sizeof(in), &bytes_read, 200);
-        if (err != ESP_OK || bytes_read == 0) {
+        if (err != ESP_OK) {
+            read_errors++;
+            continue;
+        }
+        if (bytes_read == 0) {
+            read_timeouts++;
             continue;
         }
 
-        // Stereo interleaved: process left channel (even indices) only.
         const size_t n = bytes_read / sizeof(int16_t);
-        for (size_t i = 0; i < n; i += 2) {
-            const int32_t s = static_cast<int32_t>(in[i]);
-            const int32_t a = (s < 0) ? -s : s;
-            peak = std::max(peak, a);
-            sum_sq += static_cast<uint64_t>(s * s);
-            sample_count++;
+        for (size_t i = 0; i < n; i++) {
+            const int16_t sample = in[i];
+            probe_stats_add_sample(&mono, sample);
+            if ((i & 1u) == 0u) {
+                probe_stats_add_sample(&left, sample);
+            } else {
+                probe_stats_add_sample(&right, sample);
+            }
         }
     }
 
-    const double rms = (sample_count > 0) ? std::sqrt(static_cast<double>(sum_sq) / static_cast<double>(sample_count)) : 0.0;
-    const double dbfs = (rms > 0.0) ? (20.0 * std::log10(rms / 32768.0)) : -120.0;
-    // Tuned for 16-bit PCM level meter; silence/noise floor should remain below this.
-    s_mic_activity.store(rms >= 600.0, std::memory_order_release);
-    ESP_LOGI(TAG, "mic probe: duration_ms=%u samples=%u rms=%.1f peak=%d dbfs=%.1f",
+    if (mono.sample_count == 0) {
+        publish_mic_probe_stats(
+            duration_ms,
+            0,
+            read_timeouts,
+            read_errors,
+            0.0,
+            0,
+            -120.0,
+            0,   // mono
+            false);
+        ESP_LOGW(TAG, "mic probe: no samples read (duration_ms=%u, read_timeouts=%u, read_errors=%u)",
+                 static_cast<unsigned>(duration_ms),
+                 static_cast<unsigned>(read_timeouts),
+                 static_cast<unsigned>(read_errors));
+        if (MIC_PROBE_RESULT_TONE) {
+            // Two low beeps means RX path produced no samples.
+            run_tone(MIC_PROBE_RESULT_TONE_MS, MIC_PROBE_FAIL_TONE_HZ, MIC_PROBE_RESULT_TONE_AMP);
+            vTaskDelay(pdMS_TO_TICKS(60));
+            run_tone(MIC_PROBE_RESULT_TONE_MS, MIC_PROBE_FAIL_TONE_HZ, MIC_PROBE_RESULT_TONE_AMP);
+        }
+        return;
+    }
+
+    const double rms_left = probe_stats_rms(left);
+    const double rms_right = probe_stats_rms(right);
+    const double rms_mono = probe_stats_rms(mono);
+
+    const bool left_valid = left.sample_count > 0;
+    const bool right_valid = right.sample_count > 0;
+    double active_rms = rms_mono;
+    int32_t active_peak = mono.peak;
+    const char* active_slot = "mono";
+    if (left_valid || right_valid) {
+        if (right_valid && (!left_valid || rms_right > rms_left)) {
+            active_rms = rms_right;
+            active_peak = right.peak;
+            active_slot = "right";
+        } else {
+            active_rms = rms_left;
+            active_peak = left.peak;
+            active_slot = "left";
+        }
+    }
+
+    // Use the strongest slot to avoid false negatives when wiring/slot layout differs.
+    const bool active = active_rms >= MIC_ACTIVITY_RMS_THRESHOLD;
+    const double active_dbfs = rms_to_dbfs(active_rms);
+    uint8_t selected_channel = 0;  // mono
+    if (left_valid || right_valid) {
+        selected_channel = (active_slot[0] == 'r') ? 2 : 1;
+    }
+    publish_mic_probe_stats(
+        duration_ms,
+        mono.sample_count,
+        read_timeouts,
+        read_errors,
+        active_rms,
+        active_peak,
+        active_dbfs,
+        selected_channel,
+        active);
+    ESP_LOGI(TAG,
+             "mic probe: duration_ms=%u samples=%u to=%u err=%u "
+             "left(rms=%.1f peak=%d n=%u) right(rms=%.1f peak=%d n=%u) "
+             "selected=%s rms=%.1f peak=%d dbfs=%.1f",
              static_cast<unsigned>(duration_ms),
-             static_cast<unsigned>(sample_count),
-             rms,
-             static_cast<int>(peak),
-             dbfs);
+             static_cast<unsigned>(mono.sample_count),
+             static_cast<unsigned>(read_timeouts),
+             static_cast<unsigned>(read_errors),
+             rms_left,
+             static_cast<int>(left.peak),
+             static_cast<unsigned>(left.sample_count),
+             rms_right,
+             static_cast<int>(right.peak),
+             static_cast<unsigned>(right.sample_count),
+             active_slot,
+             active_rms,
+             static_cast<int>(active_peak),
+             active_dbfs);
+    if (MIC_PROBE_RESULT_TONE) {
+        run_tone(MIC_PROBE_RESULT_TONE_MS,
+                 active ? MIC_PROBE_PASS_TONE_HZ : MIC_PROBE_FAIL_TONE_HZ,
+                 MIC_PROBE_RESULT_TONE_AMP);
+    }
 }
 
 void audio_worker_task(void* arg)
@@ -594,7 +756,13 @@ void audio_init(void)
     if (s_cmd_queue == nullptr) {
         ESP_LOGW(TAG, "audio cmd queue allocation failed; using sync diagnostics path");
     } else {
-        BaseType_t task_ok = xTaskCreatePinnedToCore(audio_worker_task, "audio_diag", AUDIO_WORKER_STACK_BYTES, nullptr, AUDIO_WORKER_PRIORITY, &s_worker_task, 1);
+        BaseType_t task_ok = xTaskCreatePinnedToCore(audio_worker_task,
+                                                     "audio_diag",
+                                                     AUDIO_WORKER_STACK_BYTES,
+                                                     nullptr,
+                                                     AUDIO_WORKER_PRIORITY,
+                                                     &s_worker_task,
+                                                     AUDIO_WORKER_CORE);
         if (task_ok != pdPASS) {
             ESP_LOGW(TAG, "audio worker task create failed; using sync diagnostics path");
             vQueueDelete(s_cmd_queue);
@@ -616,7 +784,7 @@ void audio_play_pcm(const int16_t* samples, size_t num_samples)
     }
 
     constexpr size_t kChunkSamples = 256;
-    int16_t out[kChunkSamples * 2];
+    int16_t out[kChunkSamples];
     size_t pos = 0;
     size_t bytes_written = 0;
 
@@ -626,17 +794,16 @@ void audio_play_pcm(const int16_t* samples, size_t num_samples)
 
     while (pos < num_samples && !s_abort.load(std::memory_order_acquire)) {
         const size_t n = std::min(kChunkSamples, num_samples - pos);
-        // Duplicate mono input to stereo interleaved (L, R per frame).
+        // TX path is configured MONO+LEFT; write one sample per frame.
         for (size_t i = 0; i < n; i++) {
-            out[2 * i]     = samples[pos + i];
-            out[2 * i + 1] = samples[pos + i];
+            out[i] = samples[pos + i];
         }
-        esp_err_t err = i2s_channel_write(s_tx, out, n * sizeof(int16_t) * 2, &bytes_written, I2S_TIMEOUT_MS);
+        esp_err_t err = i2s_channel_write(s_tx, out, n * sizeof(int16_t), &bytes_written, I2S_TIMEOUT_MS);
         if (err != ESP_OK) {
             ESP_LOGE(TAG, "pcm write failed: %s", esp_err_to_name(err));
             break;
         }
-        const size_t samples_committed = bytes_written / (sizeof(int16_t) * 2);
+        const size_t samples_committed = bytes_written / sizeof(int16_t);
         if (samples_committed < n) {
             ESP_LOGW(TAG, "pcm short write: committed=%u requested=%u",
                      static_cast<unsigned>(samples_committed),
@@ -726,6 +893,22 @@ bool audio_is_ready(void)
 bool audio_mic_activity_detected(void)
 {
     return s_mic_activity.load(std::memory_order_acquire);
+}
+
+MicProbeStats audio_get_mic_probe_stats(void)
+{
+    MicProbeStats stats = {};
+    stats.probe_seq = s_probe_seq.load(std::memory_order_acquire);
+    stats.duration_ms = s_probe_duration_ms.load(std::memory_order_acquire);
+    stats.sample_count = s_probe_sample_count.load(std::memory_order_acquire);
+    stats.read_timeouts = s_probe_read_timeouts.load(std::memory_order_acquire);
+    stats.read_errors = s_probe_read_errors.load(std::memory_order_acquire);
+    stats.selected_rms_x10 = s_probe_selected_rms_x10.load(std::memory_order_acquire);
+    stats.selected_peak = s_probe_selected_peak.load(std::memory_order_acquire);
+    stats.selected_dbfs_x10 = s_probe_selected_dbfs_x10.load(std::memory_order_acquire);
+    stats.selected_channel = s_probe_selected_channel.load(std::memory_order_acquire);
+    stats.active = s_mic_activity.load(std::memory_order_acquire);
+    return stats;
 }
 
 void audio_dump_codec_regs(void)

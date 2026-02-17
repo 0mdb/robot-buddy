@@ -26,12 +26,14 @@ void usb_rx_task(void* arg)
     bool    discard = false;
 
     uint8_t decode_buf[MAX_FRAME];
+    const TickType_t idle_delay_ticks = (pdMS_TO_TICKS(1) > 0) ? pdMS_TO_TICKS(1) : 1;
 
     while (true) {
         uint8_t rx_buf[64];
         int n = usb_cdc_read(rx_buf, sizeof(rx_buf), 50);
         if (n <= 0) {
-            vTaskDelay(pdMS_TO_TICKS(1));
+            // Prevent starvation on low tick-rate configs (e.g. 100 Hz where 1 ms -> 0 ticks).
+            vTaskDelay(idle_delay_ticks);
             continue;
         }
 
@@ -70,7 +72,9 @@ static void handle_packet(const ParsedPacket& pkt)
     switch (static_cast<FaceCmdId>(pkt.type)) {
 
     case FaceCmdId::SET_STATE: {
-        if (pkt.data_len < sizeof(FaceSetStatePayload)) break;
+        if (pkt.data_len < sizeof(FaceSetStatePayload)) {
+            break;
+        }
         FaceSetStatePayload sp;
         memcpy(&sp, pkt.data, sizeof(sp));
 
@@ -88,7 +92,9 @@ static void handle_packet(const ParsedPacket& pkt)
     }
 
     case FaceCmdId::GESTURE: {
-        if (pkt.data_len < sizeof(FaceGesturePayload)) break;
+        if (pkt.data_len < sizeof(FaceGesturePayload)) {
+            break;
+        }
         FaceGesturePayload gp;
         memcpy(&gp, pkt.data, sizeof(gp));
 
@@ -103,7 +109,9 @@ static void handle_packet(const ParsedPacket& pkt)
     }
 
     case FaceCmdId::SET_SYSTEM: {
-        if (pkt.data_len < sizeof(FaceSetSystemPayload)) break;
+        if (pkt.data_len < sizeof(FaceSetSystemPayload)) {
+            break;
+        }
         FaceSetSystemPayload sysp;
         memcpy(&sysp, pkt.data, sizeof(sysp));
 
@@ -118,7 +126,9 @@ static void handle_packet(const ParsedPacket& pkt)
     }
 
     case FaceCmdId::SET_CONFIG: {
-        if (pkt.data_len < sizeof(FaceSetConfigPayload)) break;
+        if (pkt.data_len < sizeof(FaceSetConfigPayload)) {
+            break;
+        }
         FaceSetConfigPayload cfg;
         memcpy(&cfg, pkt.data, sizeof(cfg));
 

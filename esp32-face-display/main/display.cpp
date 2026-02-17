@@ -85,7 +85,8 @@ lv_display_t* display_init(void)
     ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(panel_handle, true));
 
     // 5. LVGL port
-    const lvgl_port_cfg_t lvgl_cfg = ESP_LVGL_PORT_INIT_CONFIG();
+    lvgl_port_cfg_t lvgl_cfg = ESP_LVGL_PORT_INIT_CONFIG();
+    lvgl_cfg.task_affinity = 0;  // keep LVGL engine with UI rendering on core 0
     ESP_ERROR_CHECK(lvgl_port_init(&lvgl_cfg));
 
     // 6. Add display to LVGL

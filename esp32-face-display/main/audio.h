@@ -5,6 +5,19 @@
 #include <cstdint>
 #include <cstddef>
 
+struct MicProbeStats {
+    uint32_t probe_seq;
+    uint32_t duration_ms;
+    uint32_t sample_count;
+    uint32_t read_timeouts;
+    uint32_t read_errors;
+    uint32_t selected_rms_x10;
+    uint32_t selected_peak;
+    int32_t  selected_dbfs_x10;
+    uint8_t  selected_channel;  // 0=mono, 1=left, 2=right
+    bool     active;
+};
+
 // Initialize ES8311 codec via shared I2C bus and I2S peripheral.
 void audio_init(void);
 
@@ -32,6 +45,9 @@ bool audio_is_ready(void);
 
 // True if last mic probe detected meaningful input level.
 bool audio_mic_activity_detected(void);
+
+// Snapshot the latest mic probe diagnostics.
+MicProbeStats audio_get_mic_probe_stats(void);
 
 // Dump all ES8311 registers to serial log (for comparing against known-good).
 void audio_dump_codec_regs(void);

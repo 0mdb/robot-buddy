@@ -33,51 +33,40 @@ Normal mode for supervisor integration is:
 #define DIAG_DISABLE_TINYUSB 0
 ```
 
-## Audio Firmware Status (Frozen Baseline, 2026-02-17)
+## Current Runtime Status (2026-02-17)
 
-Current freeze state:
+### Resolved blocker
 
-- Boot is stable and startup tone is now shorter/less piercing.
-- Runtime audio command path over face CDC works (`SET_CONFIG` + `AUDIO_TEST_TONE_MS`).
-- Runtime speaker output is **intermittent**:
-  - it can be audible right after reset,
-  - then later tone commands may become silent while command sends still succeed.
-- Board reset restores runtime tone in this intermittent state.
-- Mic probe command executes, but `mic_activity` has not reliably asserted in recent runs.
+- Face MCU -> supervisor serial telemetry is now working in runtime.
+- Verified in supervisor `/debug/devices` on runtime USB alias:
+  - `face.connected=true`
+  - `rx_face_status_packets` increments continuously
+  - `rx_heartbeat_packets` increments continuously
+  - `face_mic_probe` action increments `rx_mic_probe_packets` and populates
+    `last_mic_probe`
+  - `transport.rx_bytes` and `transport.frames_ok` increment as expected
 
-### Confirmed working
+### Root cause and firmware fix
 
-- Hardware is fundamentally good:
-  - Freenove vendor firmware produced audible prompt.
-  - This firmware produces audible startup tone.
-  - This firmware can produce audible runtime tone after reset.
-- Audio bring-up is stable:
-  - ES8311 init over I2C succeeds.
-  - I2S TX/RX init succeeds at 16 kHz.
-- Face CDC transport is active and accepts audio config commands.
+- Root cause: `usb_rx_task` used `vTaskDelay(pdMS_TO_TICKS(1))` in its idle
+  path. With `CONFIG_FREERTOS_HZ=100`, this converts to `0` ticks and can
+  starve lower-priority tasks.
+- Fix: clamp the idle delay to at least one tick in `main/usb_rx.cpp`:
+  `idle_delay_ticks = max(pdMS_TO_TICKS(1), 1)`.
 
-### Confirmed unresolved
+### Production cleanup completed
 
-- Runtime tone audibility is not deterministic over time (intermittent silent behavior).
-- Root cause is not isolated yet (likely in runtime playback state management rather than basic hardware bring-up).
-- Mic activity detection still needs threshold/path tuning and validation.
+- Removed temporary debug ACK telemetry packet from firmware:
+  - removed `FaceTelId::CMD_ACK` (`0x94`)
+  - removed `FaceCmdAckPayload`
+  - removed `send_cmd_ack(...)` path in RX command handler
+  - removed telemetry loop debug counter API used only by CMD_ACK
+- Result: `rx_unknown_packets` stays at `0` in normal operation.
 
-### What was changed before freeze
+### Remaining observation
 
-1. ES8311 init flow aligned to working reference sequence.
-2. I2S mapping and stereo framing validated (mono duplicated to L/R).
-3. Amp gate control validated (`GPIO1`, active LOW).
-4. Worker stack/priority and queue-liveness checks improved for runtime command handling.
-5. Startup tone path moved to synchronous boot self-test and tuned to gentler sound.
-
-### Freeze guidance
-
-- Keep this state as baseline for next iteration.
-- Do not introduce broad refactors before isolating intermittent runtime silence.
-- Next debug pass should focus on:
-  1. long-run runtime tone soak test with explicit state logging (`playing`, amp gate, i2s write result),
-  2. mic-activity threshold calibration with captured RMS/peak logs,
-  3. supervisor-visible telemetry consistency (`face_audio_playing`, `face_mic_activity`).
+- A small number of bad CRC frames can occur during initial USB attach, but
+  telemetry recovers and packet flow remains stable.
 
 ## Verified Pi5 Integration Workflow (Face-Only)
 
@@ -89,9 +78,12 @@ Use this when testing face MCU + supervisor before reflex MCU is connected.
 ls -l /dev/serial/by-id
 ```
 
-Expected runtime descriptor in current build:
+Runtime descriptor can switch during flashing/reset cycles. Common aliases seen:
 
-- `usb-Espressif_Systems_Espressif_Device_123456-if00`
+- `usb-Espressif_Systems_Espressif_Device_123456-if00` (runtime app CDC)
+- `usb-Espressif_USB_JTAG_serial_debug_unit_3C:0F:02:DD:C4:B4-if00` (flash/debug path)
+
+Use whichever alias exists at runtime.
 
 2. Run supervisor in face-only mode (`--mock` reflex):
 
@@ -146,6 +138,24 @@ Target status fields:
 - `"personality_connected": true`
 - `"personality_last_error": ""`
 
+## Supervisor Diagnostics (Added for Face Audio Bring-up)
+
+Use these endpoints while diagnosing face RX/mic issues:
+
+```bash
+curl -s http://127.0.0.1:8080/debug/devices
+curl -s -X POST http://127.0.0.1:8080/actions \
+  -H 'content-type: application/json' \
+  -d '{"action":"face_mic_probe","duration_ms":1800}'
+```
+
+Most important fields under `face`:
+
+- `transport.rx_bytes`, `transport.tx_bytes`
+- `transport.frames_ok`, `transport.frames_bad`
+- `rx_face_status_packets`, `rx_mic_probe_packets`, `rx_heartbeat_packets`
+- `last_mic_probe`, `last_heartbeat`
+
 ## Audio Driver Diagnostics (Current Firmware)
 
 Audio bring-up is now wired for:
@@ -185,8 +195,8 @@ Target behavior:
 - During tone playback, `/status` shows `"face_audio_playing": true`
 - After mic probe, `/status` shows `"face_mic_activity": true` when speech/clap is detected
 
-Current known deviation (2026-02-17 freeze):
+Current known deviation (latest on 2026-02-17):
 
-- Runtime tone over CDC is intermittent: audible after some resets, then can become silent later without command-send failure.
-- CDC telemetry capture during diagnostics is not always consistent enough yet for root-cause isolation.
-- Mic activity flag has not been consistently observed in current tests.
+- No blocking face telemetry deviations are currently known.
+- On some attaches, `frames_bad` may briefly increment from a CRC mismatch
+  before the stream stabilizes.
