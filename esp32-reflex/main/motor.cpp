@@ -98,6 +98,17 @@ void motor_brake()
     }
 }
 
+void motor_stop()
+{
+    for (int s = 0; s < 2; s++) {
+        // Stop/coast: IN1=L, IN2=L (TB6612 high-impedance outputs)
+        gpio_set_level(DIR_PINS[s][0], 0);
+        gpio_set_level(DIR_PINS[s][1], 0);
+        ledc_set_duty(PWM_MODE, PWM_CHS[s], 0);
+        ledc_update_duty(PWM_MODE, PWM_CHS[s]);
+    }
+}
+
 void motor_hard_kill()
 {
     // PWM off + brake direction first, then STBY low

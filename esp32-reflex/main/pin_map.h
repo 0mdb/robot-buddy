@@ -13,7 +13,7 @@ constexpr gpio_num_t PIN_AIN1        = GPIO_NUM_6;   // left fwd
 constexpr gpio_num_t PIN_AIN2        = GPIO_NUM_7;   // left rev
 constexpr gpio_num_t PIN_BIN1        = GPIO_NUM_15;  // right fwd
 constexpr gpio_num_t PIN_BIN2        = GPIO_NUM_16;  // right rev
-// Standby (active-high enable; external pulldown required)
+// Standby (active-high enable; IC has internal 200kΩ pulldown)
 constexpr gpio_num_t PIN_STBY        = GPIO_NUM_8;
 
 // ---- Encoders (quadrature, directly to PCNT) ----
