@@ -37,6 +37,10 @@ def create_app(
     async def get_status():
         return JSONResponse(runtime.state.to_dict())
 
+    @app.get("/debug/devices")
+    async def get_device_debug():
+        return JSONResponse(runtime.debug_devices())
+
     @app.get("/params")
     async def get_params():
         return JSONResponse(registry.get_all())
@@ -74,6 +78,29 @@ def create_app(
             return JSONResponse({"ok": True, "reason": "e_stop sent"})
         elif action == "clear_e_stop":
             ok, reason = runtime.request_clear()
+            return JSONResponse({"ok": ok, "reason": reason})
+        elif action == "face_audio_tone":
+            try:
+                ms = int(body.get("duration_ms", 1000))
+            except (TypeError, ValueError):
+                return JSONResponse(
+                    {"ok": False, "reason": "duration_ms must be an integer"},
+                    status_code=400,
+                )
+            ok, reason = runtime.request_face_audio_tone(ms)
+            return JSONResponse({"ok": ok, "reason": reason, "duration_ms": ms})
+        elif action == "face_mic_probe":
+            try:
+                ms = int(body.get("duration_ms", 2000))
+            except (TypeError, ValueError):
+                return JSONResponse(
+                    {"ok": False, "reason": "duration_ms must be an integer"},
+                    status_code=400,
+                )
+            ok, reason = runtime.request_face_mic_probe(ms)
+            return JSONResponse({"ok": ok, "reason": reason, "duration_ms": ms})
+        elif action == "face_audio_reg_dump":
+            ok, reason = runtime.request_face_audio_reg_dump()
             return JSONResponse({"ok": ok, "reason": reason})
         else:
             return JSONResponse(

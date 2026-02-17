@@ -78,6 +78,10 @@ class RobotState:
     face_touch_active: bool = False
     face_audio_playing: bool = False
     face_mic_activity: bool = False
+    face_talking: bool = False
+    face_talking_energy: int = 0
+    face_seq: int = 0
+    face_rx_mono_ms: float = 0.0
 
     # Personality server
     personality_last_plan_mono_ms: float = 0.0
@@ -132,6 +136,9 @@ class RobotState:
             "face_touch_active": self.face_touch_active,
             "face_audio_playing": self.face_audio_playing,
             "face_mic_activity": self.face_mic_activity,
+            "face_talking": self.face_talking,
+            "face_seq": self.face_seq,
+            "face_rx_mono_ms": round(self.face_rx_mono_ms, 1),
             "personality_last_plan_mono_ms": round(self.personality_last_plan_mono_ms, 1),
             "personality_last_plan_actions": self.personality_last_plan_actions,
             "personality_last_error": self.personality_last_error,

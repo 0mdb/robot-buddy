@@ -92,6 +92,10 @@ class ReflexClient:
         self._seq = 0
         self.telemetry = ReflexTelemetry()
         self._on_telemetry: Callable[[ReflexTelemetry], None] | None = None
+        self._tx_packets = 0
+        self._rx_state_packets = 0
+        self._rx_bad_payload_packets = 0
+        self._rx_unknown_packets = 0
 
         transport.on_packet(self._handle_packet)
 
@@ -105,18 +109,22 @@ class ReflexClient:
     def send_twist(self, v_mm_s: int, w_mrad_s: int) -> None:
         pkt = build_set_twist(self._next_seq(), v_mm_s, w_mrad_s)
         self._transport.write(pkt)
+        self._tx_packets += 1
 
     def send_stop(self, reason: int = 0) -> None:
         pkt = build_stop(self._next_seq(), reason)
         self._transport.write(pkt)
+        self._tx_packets += 1
 
     def send_estop(self) -> None:
         pkt = build_estop(self._next_seq())
         self._transport.write(pkt)
+        self._tx_packets += 1
 
     def send_clear_faults(self, mask: int = 0xFFFF) -> None:
         pkt = build_clear_faults(self._next_seq(), mask)
         self._transport.write(pkt)
+        self._tx_packets += 1
 
     def send_set_config(self, param_name: str, value: int | float) -> bool:
         """Send a SET_CONFIG command for a named parameter.
@@ -138,9 +146,30 @@ class ReflexClient:
             value_bytes = struct.pack("<i", int(value))
 
         pkt = build_set_config(self._next_seq(), param_id, value_bytes)
-        self._transport.write(pkt)
+        sent = self._transport.write(pkt)
+        self._tx_packets += 1
+        if not sent:
+            log.warning("SET_CONFIG send failed %s (0x%02X)", param_name, param_id)
+            return False
         log.info("SET_CONFIG %s (0x%02X) = %s", param_name, param_id, value)
         return True
+
+    def debug_snapshot(self) -> dict:
+        now_ms = time.monotonic() * 1000.0
+        age_ms = 0.0
+        if self.telemetry.rx_mono_ms > 0:
+            age_ms = max(0.0, now_ms - self.telemetry.rx_mono_ms)
+
+        return {
+            "connected": self.connected,
+            "tx_packets": self._tx_packets,
+            "rx_state_packets": self._rx_state_packets,
+            "rx_bad_payload_packets": self._rx_bad_payload_packets,
+            "rx_unknown_packets": self._rx_unknown_packets,
+            "last_state_seq": self.telemetry.seq,
+            "last_state_age_ms": round(age_ms, 1),
+            "transport": self._transport.debug_snapshot(),
+        }
 
     # -- internals -----------------------------------------------------------
 
@@ -154,8 +183,10 @@ class ReflexClient:
             try:
                 state = StatePayload.unpack(pkt.payload)
             except ValueError as e:
+                self._rx_bad_payload_packets += 1
                 log.warning("reflex: bad STATE payload: %s", e)
                 return
+            self._rx_state_packets += 1
 
             t = self.telemetry
             t.speed_l_mm_s = state.speed_l_mm_s
@@ -171,4 +202,5 @@ class ReflexClient:
             if self._on_telemetry:
                 self._on_telemetry(t)
         else:
+            self._rx_unknown_packets += 1
             log.debug("reflex: unknown packet type 0x%02X", pkt.pkt_type)

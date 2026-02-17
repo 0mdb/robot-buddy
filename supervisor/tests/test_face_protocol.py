@@ -6,6 +6,9 @@ import pytest
 
 from supervisor.devices.protocol import (
     FaceCmdType,
+    FaceCfgId,
+    FaceHeartbeatPayload,
+    FaceMicProbePayload,
     FaceGesture,
     FaceMood,
     FaceStatusPayload,
@@ -13,6 +16,7 @@ from supervisor.devices.protocol import (
     FaceTelType,
     TouchEventPayload,
     TouchEventType,
+    build_face_set_config,
     build_face_gesture,
     build_face_set_state,
     build_face_set_system,
@@ -78,11 +82,30 @@ class TestFaceSetSystem:
         assert param == 42
 
 
+class TestFaceSetConfig:
+    def test_round_trip_tone_ms(self):
+        pkt = build_face_set_config(seq=4, param_id=FaceCfgId.AUDIO_TEST_TONE_MS, value_u32=1500)
+        parsed = parse_frame(pkt[:-1])
+        assert parsed.pkt_type == FaceCmdType.SET_CONFIG
+        assert parsed.seq == 4
+        param_id, value = struct.unpack("<B4s", parsed.payload)
+        assert param_id == FaceCfgId.AUDIO_TEST_TONE_MS
+        assert struct.unpack("<I", value)[0] == 1500
+
+    def test_round_trip_reg_dump(self):
+        pkt = build_face_set_config(seq=9, param_id=FaceCfgId.AUDIO_REG_DUMP, value_u32=0)
+        parsed = parse_frame(pkt[:-1])
+        assert parsed.pkt_type == FaceCmdType.SET_CONFIG
+        param_id, value = struct.unpack("<B4s", parsed.payload)
+        assert param_id == FaceCfgId.AUDIO_REG_DUMP
+        assert struct.unpack("<I", value)[0] == 0
+
+
 class TestFaceStatusPayload:
     def test_unpack(self):
-        data = struct.pack("<BBBB", FaceMood.TIRED, 0xFF, FaceSystemMode.NONE, 0x03)
+        data = struct.pack("<BBBB", FaceMood.SLEEPY, 0xFF, FaceSystemMode.NONE, 0x03)
         status = FaceStatusPayload.unpack(data)
-        assert status.mood_id == FaceMood.TIRED
+        assert status.mood_id == FaceMood.SLEEPY
         assert status.active_gesture == 0xFF
         assert status.system_mode == FaceSystemMode.NONE
         assert status.flags == 0x03
@@ -125,16 +148,136 @@ class TestTouchEventPayload:
         assert te.y == 200
 
 
+class TestMicProbePayload:
+    def test_unpack(self):
+        data = struct.pack(
+            "<IIIHHHHhBB",
+            7,      # probe_seq
+            3000,   # duration_ms
+            1234,   # sample_count
+            5,      # read_timeouts
+            1,      # read_errors
+            3210,   # selected_rms_x10
+            1450,   # selected_peak
+            -123,   # selected_dbfs_x10
+            2,      # selected_channel
+            1,      # active
+        )
+        mp = FaceMicProbePayload.unpack(data)
+        assert mp.probe_seq == 7
+        assert mp.duration_ms == 3000
+        assert mp.sample_count == 1234
+        assert mp.read_timeouts == 5
+        assert mp.read_errors == 1
+        assert mp.selected_rms_x10 == 3210
+        assert mp.selected_peak == 1450
+        assert mp.selected_dbfs_x10 == -123
+        assert mp.selected_channel == 2
+        assert mp.active == 1
+
+    def test_unpack_too_short(self):
+        with pytest.raises(ValueError, match="too short"):
+            FaceMicProbePayload.unpack(b"\x00\x01")
+
+    def test_as_telemetry_packet(self):
+        payload = struct.pack("<IIIHHHHhBB", 1, 2000, 800, 2, 0, 900, 500, -180, 1, 0)
+        pkt = build_packet(FaceTelType.MIC_PROBE, 12, payload)
+        parsed = parse_frame(pkt[:-1])
+        assert parsed.pkt_type == FaceTelType.MIC_PROBE
+        mp = FaceMicProbePayload.unpack(parsed.payload)
+        assert mp.probe_seq == 1
+        assert mp.selected_channel == 1
+        assert mp.active == 0
+
+
+class TestHeartbeatPayload:
+    def test_unpack(self):
+        data = struct.pack(
+            "<IIIIB",
+            12345,  # uptime_ms
+            77,     # status_tx_count
+            3,      # touch_tx_count
+            5,      # mic_probe_seq
+            1,      # mic_activity
+        )
+        hb = FaceHeartbeatPayload.unpack(data)
+        assert hb.uptime_ms == 12345
+        assert hb.status_tx_count == 77
+        assert hb.touch_tx_count == 3
+        assert hb.mic_probe_seq == 5
+        assert hb.mic_activity == 1
+        assert hb.usb_tx_calls == 0
+        assert hb.usb_tx_bytes_requested == 0
+        assert hb.usb_dtr == 0
+        assert hb.usb_rts == 0
+
+    def test_unpack_with_usb_diag_extension(self):
+        base = struct.pack("<IIIIB", 12345, 77, 3, 5, 1)
+        usb = struct.pack(
+            "<IIIIIIIIIIIIBB",
+            10,    # usb_tx_calls
+            1100,  # usb_tx_bytes_requested
+            1000,  # usb_tx_bytes_queued
+            2,     # usb_tx_short_writes
+            9,     # usb_tx_flush_ok
+            1,     # usb_tx_flush_not_finished
+            0,     # usb_tx_flush_timeout
+            0,     # usb_tx_flush_error
+            55,    # usb_rx_calls
+            321,   # usb_rx_bytes
+            4,     # usb_rx_errors
+            3,     # usb_line_state_events
+            1,     # usb_dtr
+            1,     # usb_rts
+        )
+        hb = FaceHeartbeatPayload.unpack(base + usb)
+        assert hb.usb_tx_calls == 10
+        assert hb.usb_tx_bytes_requested == 1100
+        assert hb.usb_tx_bytes_queued == 1000
+        assert hb.usb_tx_short_writes == 2
+        assert hb.usb_tx_flush_ok == 9
+        assert hb.usb_tx_flush_not_finished == 1
+        assert hb.usb_rx_bytes == 321
+        assert hb.usb_line_state_events == 3
+        assert hb.usb_dtr == 1
+        assert hb.usb_rts == 1
+
+    def test_unpack_too_short(self):
+        with pytest.raises(ValueError, match="too short"):
+            FaceHeartbeatPayload.unpack(b"\x00\x01")
+
+    def test_as_telemetry_packet(self):
+        payload = struct.pack("<IIIIB", 5000, 100, 2, 9, 0)
+        pkt = build_packet(FaceTelType.HEARTBEAT, 18, payload)
+        parsed = parse_frame(pkt[:-1])
+        assert parsed.pkt_type == FaceTelType.HEARTBEAT
+        hb = FaceHeartbeatPayload.unpack(parsed.payload)
+        assert hb.uptime_ms == 5000
+        assert hb.status_tx_count == 100
+        assert hb.mic_activity == 0
+
+
 class TestFaceEnums:
     def test_mood_values(self):
-        assert FaceMood.DEFAULT == 0
-        assert FaceMood.TIRED == 1
-        assert FaceMood.ANGRY == 2
-        assert FaceMood.HAPPY == 3
+        assert FaceMood.NEUTRAL == 0
+        assert FaceMood.HAPPY == 1
+        assert FaceMood.EXCITED == 2
+        assert FaceMood.CURIOUS == 3
+        assert FaceMood.SAD == 4
+        assert FaceMood.SCARED == 5
+        assert FaceMood.ANGRY == 6
+        assert FaceMood.SURPRISED == 7
+        assert FaceMood.SLEEPY == 8
+        assert FaceMood.LOVE == 9
+        assert FaceMood.SILLY == 10
+        assert FaceMood.THINKING == 11
 
     def test_gesture_values(self):
         assert FaceGesture.BLINK == 0
         assert FaceGesture.RAGE == 9
+        assert FaceGesture.NOD == 10
+        assert FaceGesture.HEADSHAKE == 11
+        assert FaceGesture.WIGGLE == 12
 
     def test_system_mode_values(self):
         assert FaceSystemMode.NONE == 0

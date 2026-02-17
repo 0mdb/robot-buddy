@@ -31,17 +31,20 @@ _PLAN_PERIOD_S = 1.0
 _PLAN_RETRY_S = 3.0
 
 _EMOTE_TO_MOOD = {
-    "neutral": int(FaceMood.DEFAULT),
-    "curious": int(FaceMood.DEFAULT),
+    "neutral": int(FaceMood.NEUTRAL),
     "happy": int(FaceMood.HAPPY),
-    "excited": int(FaceMood.HAPPY),
-    "love": int(FaceMood.HAPPY),
-    "surprised": int(FaceMood.HAPPY),
-    "sad": int(FaceMood.TIRED),
-    "sleepy": int(FaceMood.TIRED),
-    "tired": int(FaceMood.TIRED),
-    "scared": int(FaceMood.ANGRY),
+    "excited": int(FaceMood.EXCITED),
+    "curious": int(FaceMood.CURIOUS),
+    "sad": int(FaceMood.SAD),
+    "scared": int(FaceMood.SCARED),
     "angry": int(FaceMood.ANGRY),
+    "surprised": int(FaceMood.SURPRISED),
+    "sleepy": int(FaceMood.SLEEPY),
+    "love": int(FaceMood.LOVE),
+    "silly": int(FaceMood.SILLY),
+    "thinking": int(FaceMood.THINKING),
+    # Legacy aliases
+    "tired": int(FaceMood.SLEEPY),
 }
 
 _GESTURE_TO_ID = {
@@ -55,6 +58,9 @@ _GESTURE_TO_ID = {
     "x_eyes": int(FaceGesture.X_EYES),
     "sleepy": int(FaceGesture.SLEEPY),
     "rage": int(FaceGesture.RAGE),
+    "nod": int(FaceGesture.NOD),
+    "headshake": int(FaceGesture.HEADSHAKE),
+    "wiggle": int(FaceGesture.WIGGLE),
 }
 
 
@@ -82,6 +88,7 @@ class Runtime:
         self._last_tick_mono = 0.0
         self._personality_task: asyncio.Task[PersonalityPlan] | None = None
         self._next_plan_mono = 0.0
+        self._last_face_system_mode: int | None = None
 
         if personality:
             self._state.personality_enabled = True
@@ -133,6 +140,46 @@ class Runtime:
         self._reflex.send_clear_faults()
         return self._sm.clear_error(self._reflex.connected, self._state.fault_flags)
 
+    def request_face_audio_tone(self, duration_ms: int) -> tuple[bool, str]:
+        if not self._face:
+            return False, "face disabled"
+        if not self._face.connected:
+            return False, "face not connected"
+        ms = max(1, int(duration_ms))
+        ok = self._face.run_audio_tone(ms)
+        return (True, f"face tone requested ({ms} ms)") if ok else (False, "send failed")
+
+    def request_face_mic_probe(self, duration_ms: int) -> tuple[bool, str]:
+        if not self._face:
+            return False, "face disabled"
+        if not self._face.connected:
+            return False, "face not connected"
+        ms = max(1, int(duration_ms))
+        ok = self._face.run_mic_probe(ms)
+        return (True, f"face mic probe requested ({ms} ms)") if ok else (False, "send failed")
+
+    def request_face_audio_reg_dump(self) -> tuple[bool, str]:
+        if not self._face:
+            return False, "face disabled"
+        if not self._face.connected:
+            return False, "face not connected"
+        ok = self._face.dump_audio_regs()
+        return (True, "face audio register dump requested") if ok else (False, "send failed")
+
+    def debug_devices(self) -> dict:
+        debug = {
+            "reflex": self._reflex.debug_snapshot(),
+            "face": {
+                "enabled": self._face is not None,
+                "connected": False,
+            },
+            "tick_hz": TICK_HZ,
+            "telemetry_hz": TELEMETRY_HZ,
+        }
+        if self._face is not None:
+            debug["face"] = self._face.debug_snapshot()
+        return debug
+
     # -- tick ----------------------------------------------------------------
 
     def _tick(self, t0: float, dt_ms: float) -> None:
@@ -170,6 +217,8 @@ class Runtime:
             s.face_touch_active = ft.touch_active
             s.face_audio_playing = ft.audio_playing
             s.face_mic_activity = ft.mic_activity
+            s.face_seq = ft.seq
+            s.face_rx_mono_ms = ft.rx_mono_ms
 
         # 1.5. Read latest vision snapshot (non-blocking)
         if self._vision:
@@ -208,13 +257,20 @@ class Runtime:
                 self._reflex.send_twist(s.twist_capped.v_mm_s, s.twist_capped.w_mrad_s)
 
         # 6. Push system mode to face
-        if self._face and self._face.connected:
-            if s.mode == Mode.BOOT:
-                self._face.send_system_mode(FaceSystemMode.BOOTING)
-            elif s.mode == Mode.ERROR:
-                self._face.send_system_mode(FaceSystemMode.ERROR_DISPLAY)
+        if self._face:
+            if self._face.connected:
+                if s.mode == Mode.BOOT:
+                    desired_face_mode = int(FaceSystemMode.BOOTING)
+                elif s.mode == Mode.ERROR:
+                    desired_face_mode = int(FaceSystemMode.ERROR_DISPLAY)
+                else:
+                    desired_face_mode = int(FaceSystemMode.NONE)
+
+                if desired_face_mode != self._last_face_system_mode:
+                    self._face.send_system_mode(desired_face_mode)
+                    self._last_face_system_mode = desired_face_mode
             else:
-                self._face.send_system_mode(FaceSystemMode.NONE)
+                self._last_face_system_mode = None
 
         # 7. Broadcast telemetry at decimated rate
         self._tick_count += 1

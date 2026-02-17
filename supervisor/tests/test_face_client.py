@@ -5,6 +5,7 @@ import struct
 from supervisor.devices.face_client import FaceClient, FaceTelemetry, TouchEvent
 from supervisor.devices.protocol import (
     FaceCmdType,
+    FaceCfgId,
     FaceGesture,
     FaceMood,
     FaceStatusPayload,
@@ -24,16 +25,21 @@ class FakeTransport:
         self.connected = True
         self.written: list[bytes] = []
         self._on_packet = None
+        self._debug = {"connected": True, "rx_bytes": 0, "tx_bytes": 0}
 
     def on_packet(self, cb):
         self._on_packet = cb
 
-    def write(self, data: bytes) -> None:
+    def write(self, data: bytes) -> bool:
         self.written.append(data)
+        return True
 
     def inject_packet(self, pkt: ParsedPacket) -> None:
         if self._on_packet:
             self._on_packet(pkt)
+
+    def debug_snapshot(self) -> dict:
+        return dict(self._debug)
 
 
 class TestFaceClientCommands:
@@ -81,11 +87,36 @@ class TestFaceClientCommands:
         assert mode == 2
         assert param == 10
 
+    def test_send_audio_tone_diag(self):
+        assert self.client.run_audio_tone(1500) is True
+        parsed = parse_frame(self.transport.written[0][:-1])
+        assert parsed.pkt_type == FaceCmdType.SET_CONFIG
+        param_id, raw = struct.unpack("<B4s", parsed.payload)
+        assert param_id == FaceCfgId.AUDIO_TEST_TONE_MS
+        assert struct.unpack("<I", raw)[0] == 1500
+
+    def test_send_mic_probe_diag(self):
+        assert self.client.run_mic_probe(3000) is True
+        parsed = parse_frame(self.transport.written[0][:-1])
+        assert parsed.pkt_type == FaceCmdType.SET_CONFIG
+        param_id, raw = struct.unpack("<B4s", parsed.payload)
+        assert param_id == FaceCfgId.AUDIO_MIC_PROBE_MS
+        assert struct.unpack("<I", raw)[0] == 3000
+
+    def test_send_reg_dump_diag(self):
+        assert self.client.dump_audio_regs() is True
+        parsed = parse_frame(self.transport.written[0][:-1])
+        assert parsed.pkt_type == FaceCmdType.SET_CONFIG
+        param_id, raw = struct.unpack("<B4s", parsed.payload)
+        assert param_id == FaceCfgId.AUDIO_REG_DUMP
+        assert struct.unpack("<I", raw)[0] == 0
+
     def test_no_send_when_disconnected(self):
         self.transport.connected = False
         self.client.send_state(emotion_id=1)
         self.client.send_gesture(0)
         self.client.send_system_mode(1)
+        assert self.client.run_audio_tone(500) is False
         assert len(self.transport.written) == 0
 
     def test_seq_increments(self):
@@ -139,6 +170,98 @@ class TestFaceClientTelemetry:
         assert events[0].event_type == TouchEventType.RELEASE
         assert events[0].x == 50
 
+    def test_mic_probe_updates_last_mic_probe(self):
+        payload = struct.pack(
+            "<IIIHHHHhBB",
+            3,      # probe_seq
+            2500,   # duration
+            1200,   # samples
+            4,      # timeouts
+            0,      # errors
+            1450,   # rms x10
+            900,    # peak
+            -210,   # dbfs x10
+            1,      # selected channel
+            1,      # active
+        )
+        pkt = ParsedPacket(pkt_type=FaceTelType.MIC_PROBE, seq=8, payload=payload)
+        self.transport.inject_packet(pkt)
+
+        assert self.client.last_mic_probe is not None
+        assert self.client.last_mic_probe.probe_seq == 3
+        assert self.client.last_mic_probe.duration_ms == 2500
+        assert self.client.last_mic_probe.sample_count == 1200
+        assert self.client.last_mic_probe.selected_channel == 1
+        assert self.client.last_mic_probe.active is True
+
+    def test_heartbeat_updates_last_heartbeat(self):
+        payload = struct.pack(
+            "<IIIIB",
+            1234,  # uptime_ms
+            44,    # status_tx_count
+            1,     # touch_tx_count
+            7,     # mic_probe_seq
+            1,     # mic_activity
+        )
+        pkt = ParsedPacket(pkt_type=FaceTelType.HEARTBEAT, seq=9, payload=payload)
+        self.transport.inject_packet(pkt)
+
+        assert self.client.last_heartbeat is not None
+        assert self.client.last_heartbeat.uptime_ms == 1234
+        assert self.client.last_heartbeat.status_tx_count == 44
+        assert self.client.last_heartbeat.touch_tx_count == 1
+        assert self.client.last_heartbeat.mic_probe_seq == 7
+        assert self.client.last_heartbeat.mic_activity is True
+        assert self.client.last_heartbeat.usb_tx_calls == 0
+        assert self.client.last_heartbeat.usb_dtr is False
+        assert self.client.last_heartbeat.seq == 9
+
+    def test_heartbeat_with_usb_diag_extension(self):
+        payload = struct.pack(
+            "<IIIIBIIIIIIIIIIIIBB",
+            2000,  # uptime_ms
+            80,    # status_tx_count
+            2,     # touch_tx_count
+            11,    # mic_probe_seq
+            0,     # mic_activity
+            50,    # usb_tx_calls
+            5000,  # usb_tx_bytes_requested
+            4900,  # usb_tx_bytes_queued
+            3,     # usb_tx_short_writes
+            47,    # usb_tx_flush_ok
+            2,     # usb_tx_flush_not_finished
+            0,     # usb_tx_flush_timeout
+            0,     # usb_tx_flush_error
+            61,    # usb_rx_calls
+            777,   # usb_rx_bytes
+            1,     # usb_rx_errors
+            4,     # usb_line_state_events
+            1,     # usb_dtr
+            1,     # usb_rts
+        )
+        pkt = ParsedPacket(pkt_type=FaceTelType.HEARTBEAT, seq=10, payload=payload)
+        self.transport.inject_packet(pkt)
+
+        assert self.client.last_heartbeat is not None
+        assert self.client.last_heartbeat.usb_tx_calls == 50
+        assert self.client.last_heartbeat.usb_tx_bytes_requested == 5000
+        assert self.client.last_heartbeat.usb_tx_bytes_queued == 4900
+        assert self.client.last_heartbeat.usb_tx_short_writes == 3
+        assert self.client.last_heartbeat.usb_rx_bytes == 777
+        assert self.client.last_heartbeat.usb_line_state_events == 4
+        assert self.client.last_heartbeat.usb_dtr is True
+        assert self.client.last_heartbeat.usb_rts is True
+
+    def test_bad_mic_probe_payload_ignored(self):
+        pkt = ParsedPacket(pkt_type=FaceTelType.MIC_PROBE, seq=0, payload=b"\x00\x01")
+        self.transport.inject_packet(pkt)
+        assert self.client.last_mic_probe is None
+
+    def test_bad_heartbeat_payload_ignored(self):
+        pkt = ParsedPacket(pkt_type=FaceTelType.HEARTBEAT, seq=0, payload=b"\x00\x01")
+        self.transport.inject_packet(pkt)
+        assert self.client.last_heartbeat is None
+
     def test_bad_status_payload_ignored(self):
         pkt = ParsedPacket(pkt_type=FaceTelType.FACE_STATUS, seq=0, payload=b"\x00")
         self.transport.inject_packet(pkt)
@@ -148,6 +271,14 @@ class TestFaceClientTelemetry:
     def test_unknown_packet_type_ignored(self):
         pkt = ParsedPacket(pkt_type=0xFE, seq=0, payload=b"")
         self.transport.inject_packet(pkt)  # should not raise
+
+    def test_debug_snapshot_contains_transport(self):
+        snap = self.client.debug_snapshot()
+        assert "transport" in snap
+        assert snap["connected"] is True
+        assert "last_mic_probe" in snap
+        assert "last_heartbeat" in snap
+        assert "rx_heartbeat_packets" in snap
 
 
 class TestFaceTelemetryProperties:

@@ -39,6 +39,12 @@ class SayAction(BaseModel):
     text: str = Field(max_length=200)
 
 
+VALID_EMOTIONS = frozenset({
+    "neutral", "happy", "excited", "curious", "sad", "scared",
+    "angry", "surprised", "sleepy", "love", "silly", "thinking",
+})
+
+
 class EmoteAction(BaseModel):
     action: Literal["emote"] = "emote"
     name: str

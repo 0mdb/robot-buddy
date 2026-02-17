@@ -62,19 +62,37 @@ class FaceCmdType(IntEnum):
     SET_STATE = 0x20
     GESTURE = 0x21
     SET_SYSTEM = 0x22
+    SET_TALKING = 0x23
+    AUDIO_DATA = 0x24
     SET_CONFIG = 0x25
 
 
 class FaceTelType(IntEnum):
     FACE_STATUS = 0x90
     TOUCH_EVENT = 0x91
+    MIC_PROBE = 0x92
+    HEARTBEAT = 0x93
+
+
+class FaceCfgId(IntEnum):
+    AUDIO_TEST_TONE_MS = 0xA0
+    AUDIO_MIC_PROBE_MS = 0xA1
+    AUDIO_REG_DUMP = 0xA2
 
 
 class FaceMood(IntEnum):
-    DEFAULT = 0
-    TIRED = 1
-    ANGRY = 2
-    HAPPY = 3
+    NEUTRAL = 0
+    HAPPY = 1
+    EXCITED = 2
+    CURIOUS = 3
+    SAD = 4
+    SCARED = 5
+    ANGRY = 6
+    SURPRISED = 7
+    SLEEPY = 8
+    LOVE = 9
+    SILLY = 10
+    THINKING = 11
 
 
 class FaceGesture(IntEnum):
@@ -88,6 +106,9 @@ class FaceGesture(IntEnum):
     X_EYES = 7
     SLEEPY = 8
     RAGE = 9
+    NOD = 10
+    HEADSHAKE = 11
+    WIGGLE = 12
 
 
 class FaceSystemMode(IntEnum):
@@ -159,6 +180,81 @@ class TouchEventPayload:
         return cls(*cls._FMT.unpack_from(data))
 
 
+@dataclass(slots=True)
+class FaceMicProbePayload:
+    probe_seq: int
+    duration_ms: int
+    sample_count: int
+    read_timeouts: int
+    read_errors: int
+    selected_rms_x10: int
+    selected_peak: int
+    selected_dbfs_x10: int
+    selected_channel: int
+    active: int
+
+    _FMT = struct.Struct("<IIIHHHHhBB")  # 24 bytes
+
+    @classmethod
+    def unpack(cls, data: bytes) -> FaceMicProbePayload:
+        if len(data) < cls._FMT.size:
+            raise ValueError(f"MIC_PROBE payload too short: {len(data)}")
+        return cls(*cls._FMT.unpack_from(data))
+
+
+@dataclass(slots=True)
+class FaceHeartbeatPayload:
+    uptime_ms: int
+    status_tx_count: int
+    touch_tx_count: int
+    mic_probe_seq: int
+    mic_activity: int
+    usb_tx_calls: int
+    usb_tx_bytes_requested: int
+    usb_tx_bytes_queued: int
+    usb_tx_short_writes: int
+    usb_tx_flush_ok: int
+    usb_tx_flush_not_finished: int
+    usb_tx_flush_timeout: int
+    usb_tx_flush_error: int
+    usb_rx_calls: int
+    usb_rx_bytes: int
+    usb_rx_errors: int
+    usb_line_state_events: int
+    usb_dtr: int
+    usb_rts: int
+
+    _BASE_FMT = struct.Struct("<IIIIB")  # 17 bytes
+    _USB_FMT = struct.Struct("<IIIIIIIIIIIIBB")  # 50 bytes
+
+    @classmethod
+    def unpack(cls, data: bytes) -> FaceHeartbeatPayload:
+        if len(data) < cls._BASE_FMT.size:
+            raise ValueError(f"HEARTBEAT payload too short: {len(data)}")
+        base = cls._BASE_FMT.unpack_from(data)
+
+        usb = (
+            0,  # usb_tx_calls
+            0,  # usb_tx_bytes_requested
+            0,  # usb_tx_bytes_queued
+            0,  # usb_tx_short_writes
+            0,  # usb_tx_flush_ok
+            0,  # usb_tx_flush_not_finished
+            0,  # usb_tx_flush_timeout
+            0,  # usb_tx_flush_error
+            0,  # usb_rx_calls
+            0,  # usb_rx_bytes
+            0,  # usb_rx_errors
+            0,  # usb_line_state_events
+            0,  # usb_dtr
+            0,  # usb_rts
+        )
+        if len(data) >= (cls._BASE_FMT.size + cls._USB_FMT.size):
+            usb = cls._USB_FMT.unpack_from(data, cls._BASE_FMT.size)
+
+        return cls(*base, *usb)
+
+
 # -- Packet building --------------------------------------------------------
 
 _TWIST_FMT = struct.Struct("<hh")
@@ -205,6 +301,8 @@ def build_set_config(seq: int, param_id: int, value_bytes: bytes) -> bytes:
 _FACE_SET_STATE_FMT = struct.Struct("<BBbbB")  # mood, intensity, gaze_x, gaze_y, brightness
 _FACE_GESTURE_FMT = struct.Struct("<BH")  # gesture_id, duration_ms
 _FACE_SET_SYSTEM_FMT = struct.Struct("<BBB")  # mode, phase, param
+_FACE_SET_TALKING_FMT = struct.Struct("<BB")  # talking, energy
+_FACE_AUDIO_DATA_HDR_FMT = struct.Struct("<H")  # chunk_len
 
 
 def build_face_set_state(
@@ -229,6 +327,25 @@ def build_face_set_system(
 ) -> bytes:
     payload = _FACE_SET_SYSTEM_FMT.pack(mode, phase, param)
     return build_packet(FaceCmdType.SET_SYSTEM, seq, payload)
+
+
+def build_face_set_config(seq: int, param_id: int, value_u32: int) -> bytes:
+    """Build a face SET_CONFIG packet using a 32-bit little-endian value."""
+    value_bytes = struct.pack("<I", value_u32 & 0xFFFFFFFF)
+    payload = _CONFIG_FMT.pack(param_id & 0xFF, value_bytes)
+    return build_packet(FaceCmdType.SET_CONFIG, seq, payload)
+
+
+def build_face_set_talking(seq: int, talking: bool, energy: int = 0) -> bytes:
+    """Build a SET_TALKING packet (speaking animation state + energy)."""
+    payload = _FACE_SET_TALKING_FMT.pack(1 if talking else 0, max(0, min(255, energy)))
+    return build_packet(FaceCmdType.SET_TALKING, seq, payload)
+
+
+def build_face_audio_data(seq: int, pcm_chunk: bytes) -> bytes:
+    """Build an AUDIO_DATA packet with PCM audio chunk (16-bit, 16 kHz, mono)."""
+    payload = _FACE_AUDIO_DATA_HDR_FMT.pack(len(pcm_chunk)) + pcm_chunk
+    return build_packet(FaceCmdType.AUDIO_DATA, seq, payload)
 
 
 # -- Packet parsing ----------------------------------------------------------
