@@ -3,6 +3,7 @@
 #include "config.h"
 #include "shared_state.h"
 #include "usb_composite.h"
+#include "audio.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -30,6 +31,12 @@ void telemetry_task(void* arg)
         status.flags = 0;
         if (g_touch_active.load(std::memory_order_relaxed)) {
             status.flags |= 0x01;
+        }
+        if (audio_is_playing()) {
+            status.flags |= 0x02;
+        }
+        if (audio_mic_activity_detected()) {
+            status.flags |= 0x04;
         }
 
         size_t len = packet_build(

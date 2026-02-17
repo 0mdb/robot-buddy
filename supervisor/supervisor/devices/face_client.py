@@ -40,6 +40,10 @@ class FaceTelemetry:
     def audio_playing(self) -> bool:
         return bool(self.flags & 0x02)
 
+    @property
+    def mic_activity(self) -> bool:
+        return bool(self.flags & 0x04)
+
 
 @dataclass(slots=True)
 class TouchEvent:

@@ -341,7 +341,7 @@ void face_ui_task(void* arg)
         g_system_mode.store(static_cast<uint8_t>(fs.system.mode), std::memory_order_relaxed);
 
         // 5. Render under LVGL lock
-        if (lvgl_port_lock(0)) {
+        if (lvgl_port_lock(100)) {
             face_ui_update(fs);
             lvgl_port_unlock();
         }

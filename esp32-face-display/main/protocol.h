@@ -22,6 +22,12 @@ enum class FaceCmdId : uint8_t {
     SET_CONFIG = 0x25,   // tunable config parameters
 };
 
+enum class FaceCfgId : uint8_t {
+    AUDIO_TEST_TONE_MS = 0xA0,  // value: u32 duration in ms (1kHz sine)
+    AUDIO_MIC_PROBE_MS = 0xA1,  // value: u32 probe window in ms
+    AUDIO_REG_DUMP     = 0xA2,  // value: ignored; dumps ES8311 registers to log
+};
+
 enum class FaceTelId : uint8_t {
     FACE_STATUS  = 0x90,  // current mood/gesture/system/flags
     TOUCH_EVENT  = 0x91,  // touch press/release/drag
@@ -48,11 +54,16 @@ struct __attribute__((packed)) FaceSetSystemPayload {
     uint8_t param;         // mode-specific (e.g. battery level 0-255)
 };
 
+struct __attribute__((packed)) FaceSetConfigPayload {
+    uint8_t param_id;      // FaceCfgId
+    uint8_t value[4];      // little-endian u32 payload
+};
+
 struct __attribute__((packed)) FaceStatusPayload {
     uint8_t mood_id;
     uint8_t active_gesture;  // 0xFF = none
     uint8_t system_mode;
-    uint8_t flags;           // bit0: touch_active, bit1: audio_playing
+    uint8_t flags;           // bit0: touch_active, bit1: audio_playing, bit2: mic_activity
 };
 
 struct __attribute__((packed)) TouchEventPayload {

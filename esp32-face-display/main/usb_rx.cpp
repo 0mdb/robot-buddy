@@ -2,6 +2,7 @@
 #include "protocol.h"
 #include "usb_composite.h"
 #include "shared_state.h"
+#include "audio.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -113,6 +114,34 @@ static void handle_packet(const ParsedPacket& pkt)
         slot->system_mode  = sysp.mode;
         slot->system_param = sysp.param;
         g_face_cmd.publish(static_cast<uint32_t>(esp_timer_get_time()));
+        break;
+    }
+
+    case FaceCmdId::SET_CONFIG: {
+        if (pkt.data_len < sizeof(FaceSetConfigPayload)) break;
+        FaceSetConfigPayload cfg;
+        memcpy(&cfg, pkt.data, sizeof(cfg));
+
+        const uint32_t value =
+            (static_cast<uint32_t>(cfg.value[0]) << 0) |
+            (static_cast<uint32_t>(cfg.value[1]) << 8) |
+            (static_cast<uint32_t>(cfg.value[2]) << 16) |
+            (static_cast<uint32_t>(cfg.value[3]) << 24);
+
+        switch (static_cast<FaceCfgId>(cfg.param_id)) {
+        case FaceCfgId::AUDIO_TEST_TONE_MS:
+            audio_play_test_tone(value > 0 ? value : 1000);
+            break;
+        case FaceCfgId::AUDIO_MIC_PROBE_MS:
+            audio_run_mic_probe(value > 0 ? value : 2000);
+            break;
+        case FaceCfgId::AUDIO_REG_DUMP:
+            audio_dump_codec_regs();
+            break;
+        default:
+            ESP_LOGW(TAG, "unknown face config param_id=0x%02X", cfg.param_id);
+            break;
+        }
         break;
     }
 

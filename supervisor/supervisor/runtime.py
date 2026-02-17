@@ -168,6 +168,8 @@ class Runtime:
             s.face_gesture = ft.active_gesture
             s.face_system_mode = ft.system_mode
             s.face_touch_active = ft.touch_active
+            s.face_audio_playing = ft.audio_playing
+            s.face_mic_activity = ft.mic_activity
 
         # 1.5. Read latest vision snapshot (non-blocking)
         if self._vision:

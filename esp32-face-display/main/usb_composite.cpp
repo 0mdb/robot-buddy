@@ -16,7 +16,7 @@ void usb_composite_init(void)
         .external_phy = false,
         .configuration_descriptor = nullptr,  // use default
         .self_powered = false,
-        .vbus_monitor_io = 0,
+        .vbus_monitor_io = -1,  // no VBUS monitoring GPIO (0 = boot button conflict)
     };
     ESP_ERROR_CHECK(tinyusb_driver_install(&tusb_cfg));
 

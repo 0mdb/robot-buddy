@@ -55,7 +55,14 @@ Applies to both face backends (`esp32-face` LED matrix and `esp32-face-display` 
 | SET_STATE | 0x20 | mood_id(u8) intensity(u8) gaze_x(i8) gaze_y(i8) brightness(u8) — 5 bytes |
 | GESTURE | 0x21 | gesture_id(u8) duration_ms(u16) — 3 bytes |
 | SET_SYSTEM | 0x22 | mode(u8) phase(u8) param(u8) — 3 bytes |
-| SET_CONFIG | 0x25 | (reserved) |
+| SET_CONFIG | 0x25 | param_id(u8) value(4 bytes) — 5 bytes |
+
+SET_CONFIG param IDs (current `esp32-face-display` diagnostics):
+
+| Param | ID | Value |
+|---|---|---|
+| AUDIO_TEST_TONE_MS | 0xA0 | duration_ms (u32 LE), plays 1kHz test tone |
+| AUDIO_MIC_PROBE_MS | 0xA1 | duration_ms (u32 LE), logs mic RMS/peak |
 
 ### Telemetry (MCU → supervisor)
 
@@ -113,6 +120,7 @@ Applies to both face backends (`esp32-face` LED matrix and `esp32-face-display` 
 |---|---|
 | 0 | touch_active |
 | 1 | audio_playing |
+| 2 | mic_activity (latest probe above threshold) |
 
 ## Audio
 
