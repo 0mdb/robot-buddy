@@ -15,6 +15,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 static const char* TAG = "face_ui";
@@ -22,12 +23,16 @@ static constexpr uint32_t TALKING_CMD_TIMEOUT_MS = 450;
 static constexpr int BTN_BAR_H = 54;
 static constexpr int BTN_W = 138;
 static constexpr int BTN_H = 42;
+static constexpr uint8_t BG_R = 0;
+static constexpr uint8_t BG_G = 0;
+static constexpr uint8_t BG_B = 0;
 
 static float now_s();
 
 // ---- LVGL objects ----
 static lv_obj_t* canvas_obj = nullptr;
 static lv_color_t* canvas_buf = nullptr;
+static lv_color_t* afterglow_buf = nullptr;
 static lv_obj_t* ptt_btn = nullptr;
 static lv_obj_t* ptt_label = nullptr;
 static lv_obj_t* action_btn = nullptr;
@@ -55,6 +60,19 @@ static void update_calibration_labels(uint32_t now_ms, uint32_t next_switch_ms);
 static lv_color_t rgb_to_color(uint8_t r, uint8_t g, uint8_t b)
 {
     return lv_color_make(r, g, b);
+}
+
+static bool color_eq(const lv_color_t& a, const lv_color_t& b)
+{
+    return a.red == b.red && a.green == b.green && a.blue == b.blue;
+}
+
+static lv_color_t scale_color(const lv_color_t& c, uint8_t num, uint8_t den)
+{
+    return rgb_to_color(
+        static_cast<uint8_t>((static_cast<uint16_t>(c.red) * num) / den),
+        static_cast<uint8_t>((static_cast<uint16_t>(c.green) * num) / den),
+        static_cast<uint8_t>((static_cast<uint16_t>(c.blue) * num) / den));
 }
 
 static void draw_filled_rect(lv_color_t* buf, int x, int y, int w, int h,
@@ -151,79 +169,115 @@ static void draw_filled_circle(lv_color_t* buf, int cx, int cy, int radius,
 
 // ---- Face rendering ----
 
+static void draw_heart_shape(lv_color_t* buf, int cx, int cy, int size, lv_color_t color)
+{
+    if (size < 1) {
+        return;
+    }
+    for (int y = cy - size; y <= cy + size; y++) {
+        if (y < 0 || y >= SCREEN_H) continue;
+        for (int x = cx - size; x <= cx + size; x++) {
+            if (x < 0 || x >= SCREEN_W) continue;
+            const float xf = static_cast<float>(x - cx) / static_cast<float>(size);
+            const float yf = static_cast<float>(y - cy) / static_cast<float>(size);
+            const float a = xf * xf + yf * yf - 1.0f;
+            const float f = a * a * a - xf * xf * yf * yf * yf;
+            if (f <= 0.0f) {
+                buf[y * SCREEN_W + x] = color;
+            }
+        }
+    }
+}
+
+static void draw_x_shape(lv_color_t* buf, int cx, int cy, int size, int thick, lv_color_t color)
+{
+    for (int y = cy - size; y <= cy + size; y++) {
+        if (y < 0 || y >= SCREEN_H) continue;
+        for (int x = cx - size; x <= cx + size; x++) {
+            if (x < 0 || x >= SCREEN_W) continue;
+            const int dx = x - cx;
+            const int dy = y - cy;
+            if (abs(dx + dy) <= thick || abs(dx - dy) <= thick) {
+                buf[y * SCREEN_W + x] = color;
+            }
+        }
+    }
+}
+
 static void render_eye(lv_color_t* buf, const EyeState& eye, const FaceState& fs,
-                       float center_x, float center_y)
+                       bool is_left, float center_x, float center_y)
 {
     uint8_t r, g, b;
     face_get_emotion_color(fs, r, g, b);
     lv_color_t eye_color = rgb_to_color(r, g, b);
     lv_color_t black = rgb_to_color(0, 0, 0);
 
-    float breath = face_get_breath_scale(fs);
+    const float breath = face_get_breath_scale(fs);
+    const float ew = EYE_WIDTH * eye.width_scale * breath;
+    const float eh = EYE_HEIGHT * eye.height_scale * fmaxf(0.25f, eye.openness) * breath;
+    if (eh < 2.0f) {
+        return;
+    }
 
-    // Eye dimensions with scale and breathing
-    float ew = EYE_WIDTH * eye.width_scale * breath;
-    float eh = EYE_HEIGHT * eye.height_scale * eye.openness * breath;
+    const float ex = center_x + eye.gaze_x * GAZE_EYE_SHIFT - ew / 2.0f;
+    const float ey = center_y + eye.gaze_y * GAZE_EYE_SHIFT - eh / 2.0f;
+    const int corner = static_cast<int>(EYE_CORNER_R * fminf(eye.width_scale, eye.height_scale));
 
-    if (eh < 2.0f) return;  // eye closed
+    if (fs.solid_eye && fs.anim.heart) {
+        draw_heart_shape(buf, static_cast<int>(center_x), static_cast<int>(center_y),
+                         static_cast<int>(fminf(ew, eh) * 0.33f), eye_color);
+    } else if (fs.solid_eye && fs.anim.x_eyes) {
+        draw_x_shape(buf, static_cast<int>(center_x), static_cast<int>(center_y),
+                     static_cast<int>(fminf(ew, eh) * 0.33f), 3, eye_color);
+    } else {
+        if (fs.fx.edge_glow) {
+            const lv_color_t glow = scale_color(eye_color, 2, 5);
+            draw_filled_rounded_rect(buf, static_cast<int>(ex) - 2, static_cast<int>(ey) - 2,
+                                     static_cast<int>(ew) + 4, static_cast<int>(eh) + 4,
+                                     corner + 2, glow);
+        }
+        draw_filled_rounded_rect(buf, static_cast<int>(ex), static_cast<int>(ey),
+                                 static_cast<int>(ew), static_cast<int>(eh), corner, eye_color);
+    }
 
-    // Eye position offset by gaze
-    float ex = center_x + eye.gaze_x * GAZE_EYE_SHIFT - ew / 2.0f;
-    float ey = center_y + eye.gaze_y * GAZE_EYE_SHIFT - eh / 2.0f;
-
-    int corner = static_cast<int>(EYE_CORNER_R * fminf(eye.width_scale, eye.height_scale));
-
-    // Draw eye body
-    draw_filled_rounded_rect(buf, (int)ex, (int)ey, (int)ew, (int)eh, corner, eye_color);
-
-    // Draw pupil (darker circle) if not solid_eye mode
     if (!fs.solid_eye) {
-        float px = center_x + eye.gaze_x * GAZE_PUPIL_SHIFT;
-        float py = center_y + eye.gaze_y * GAZE_PUPIL_SHIFT;
-        int pr = static_cast<int>(PUPIL_R * eye.openness);
-        if (pr > 1) {
-            draw_filled_circle(buf, (int)px, (int)py, pr, rgb_to_color(10, 20, 50));
+        const float px = center_x + eye.gaze_x * GAZE_PUPIL_SHIFT;
+        const float py = center_y + eye.gaze_y * GAZE_PUPIL_SHIFT;
+        const int pr = static_cast<int>(PUPIL_R * fmaxf(0.4f, eye.openness));
+        if (fs.anim.heart) {
+            draw_heart_shape(buf, static_cast<int>(px), static_cast<int>(py), pr, rgb_to_color(10, 15, 30));
+        } else if (fs.anim.x_eyes) {
+            draw_x_shape(buf, static_cast<int>(px), static_cast<int>(py), pr, 2, rgb_to_color(10, 15, 30));
+        } else if (pr > 1) {
+            draw_filled_circle(buf, static_cast<int>(px), static_cast<int>(py), pr, rgb_to_color(10, 15, 30));
         }
     }
 
-    // ---- Eyelid overlays (draw black rects to mask parts of the eye) ----
+    // V2 eyelid model: top/bottom coverage + diagonal slope.
+    const float lid_top = is_left ? fs.eyelids.top_l : fs.eyelids.top_r;
+    const float lid_bot = is_left ? fs.eyelids.bottom_l : fs.eyelids.bottom_r;
+    const float slope = fs.eyelids.slope;
+    const int x0 = static_cast<int>(ex);
+    const int x1 = static_cast<int>(ex + ew);
+    const int y0 = static_cast<int>(ey);
+    const int y1 = static_cast<int>(ey + eh);
 
-    // Tired: droop from top
-    if (fs.eyelids.tired > 0.01f) {
-        int lid_h = static_cast<int>(eh * 0.5f * fs.eyelids.tired);
-        draw_filled_rect(buf, (int)ex, (int)ey, (int)ew, lid_h, black);
-    }
-
-    // Angry: diagonal slant from inner corner
-    if (fs.eyelids.angry > 0.01f) {
-        int lid_h = static_cast<int>(eh * 0.4f * fs.eyelids.angry);
-        // Simplified: draw a triangle-ish shape using stacked rects
-        bool is_left = (center_x < SCREEN_W / 2);
-        for (int row = 0; row < lid_h; row++) {
-            float frac = static_cast<float>(row) / fmaxf(1.0f, static_cast<float>(lid_h));
-            int w;
-            int lx;
-            if (is_left) {
-                // Left eye: wider on right (inner) side
-                w = static_cast<int>(ew * (1.0f - frac));
-                lx = static_cast<int>(ex + ew - w);
-            } else {
-                // Right eye: wider on left (inner) side
-                w = static_cast<int>(ew * (1.0f - frac));
-                lx = static_cast<int>(ex);
-            }
-            int py = static_cast<int>(ey) + row;
-            if (py >= 0 && py < SCREEN_H && w > 0) {
-                draw_filled_rect(buf, lx, py, w, 1, black);
-            }
+    for (int x = x0; x < x1; x++) {
+        if (x < 0 || x >= SCREEN_W) continue;
+        float nx = (static_cast<float>(x) - (ex + ew * 0.5f)) / fmaxf(1.0f, ew * 0.5f);
+        if (!is_left) {
+            nx = -nx;
         }
-    }
+        const float slope_off = slope * 20.0f * nx;
+        const int top_limit = static_cast<int>((ey - 0.5f) + eh * 2.0f * lid_top + slope_off);
+        const int bot_limit = static_cast<int>((ey + eh) - eh * 2.0f * lid_bot);
 
-    // Happy: mask bottom portion (uplifted)
-    if (fs.eyelids.happy > 0.01f) {
-        int lid_h = static_cast<int>(eh * 0.4f * fs.eyelids.happy);
-        int ly = static_cast<int>(ey + eh - lid_h);
-        draw_filled_rect(buf, (int)ex, ly, (int)ew, lid_h, black);
+        if (top_limit > y0) {
+            draw_vline(buf, x, y0, top_limit, black);
+        }
+        if (bot_limit < y1) {
+            draw_vline(buf, x, bot_limit, y1, black);
+        }
     }
 }
 
@@ -235,23 +289,20 @@ static void render_mouth(lv_color_t* buf, const FaceState& fs)
     face_get_emotion_color(fs, r, g, b);
     lv_color_t color = rgb_to_color(r, g, b);
 
-    float cx = MOUTH_CX + fs.mouth_offset_x * 8.0f;
+    float cx = MOUTH_CX + fs.mouth_offset_x * 10.0f;
     float cy = MOUTH_CY;
     float hw = MOUTH_HALF_W * fs.mouth_width;
-    float curve = fs.mouth_curve;
+    float curve = fs.mouth_curve * 40.0f;
     float thick = MOUTH_THICKNESS;
+    float openness = fs.mouth_open * 40.0f;
 
-    // Draw mouth as a series of horizontal lines forming a curve
     int num_points = static_cast<int>(hw * 2);
     for (int i = 0; i < num_points; i++) {
         float t = static_cast<float>(i) / static_cast<float>(num_points - 1);  // 0..1
         float x_off = -hw + 2.0f * hw * t;
-
-        // Quadratic curve: center dips/rises by curve amount
         float parabola = 1.0f - 4.0f * (t - 0.5f) * (t - 0.5f);
-        float y_off = -curve * 30.0f * parabola;
+        float y_off = curve * parabola;
 
-        // Wave distortion (rage)
         if (fs.mouth_wave > 0.01f) {
             y_off += fs.mouth_wave * 5.0f * sinf(t * 12.0f + now_s() * 8.0f);
         }
@@ -259,18 +310,152 @@ static void render_mouth(lv_color_t* buf, const FaceState& fs)
         int px = static_cast<int>(cx + x_off);
         int py = static_cast<int>(cy + y_off);
 
-        // Draw a thick dot at each point
-        int th = static_cast<int>(thick);
+        int th = static_cast<int>(thick < 1.0f ? 1.0f : thick);
         draw_filled_rect(buf, px - th / 2, py - th / 2, th, th, color);
 
-        // Open mouth fill
-        if (fs.mouth_open > 0.05f) {
-            int open_h = static_cast<int>(fs.mouth_open * 20.0f * parabola);
+        if (fs.mouth_open > 0.05f && openness > 0.0f) {
+            int open_h = static_cast<int>(openness * parabola);
             if (open_h > 0) {
                 draw_filled_rect(buf, px - th / 2, py, th, open_h, color);
             }
         }
     }
+}
+
+static void render_system_overlay(lv_color_t* buf, const FaceState& fs)
+{
+    const float elapsed = now_s() - fs.system.timer;
+    if (fs.system.mode == SystemMode::BOOTING) {
+        draw_filled_rect(buf, 0, 0, SCREEN_W, SCREEN_H, rgb_to_color(0, 8, 20));
+        const int cx = SCREEN_W / 2;
+        const int cy = SCREEN_H / 2 - 10;
+        const int ring = 70;
+        const float ang = fmodf(elapsed * 3.0f, 2.0f * static_cast<float>(M_PI));
+        for (int i = 0; i < 360; i += 3) {
+            float a = static_cast<float>(i) * static_cast<float>(M_PI) / 180.0f;
+            int x = cx + static_cast<int>(cosf(a) * ring);
+            int y = cy + static_cast<int>(sinf(a) * ring);
+            if (x < 0 || x >= SCREEN_W || y < 0 || y >= SCREEN_H) continue;
+            float d = fabsf(a - ang);
+            while (d > static_cast<float>(M_PI)) d -= static_cast<float>(M_PI);
+            const lv_color_t c = (d < 0.5f) ? rgb_to_color(0, 220, 255) : rgb_to_color(0, 80, 150);
+            buf[y * SCREEN_W + x] = c;
+        }
+        const int bar_w = 180;
+        const int bar_h = 10;
+        const int bx = (SCREEN_W - bar_w) / 2;
+        const int by = SCREEN_H - 44;
+        draw_filled_rect(buf, bx, by, bar_w, bar_h, rgb_to_color(20, 40, 70));
+        const float p = fminf(1.0f, elapsed / 3.0f);
+        draw_filled_rect(buf, bx, by, static_cast<int>(bar_w * p), bar_h, rgb_to_color(0, 220, 255));
+        return;
+    }
+
+    if (fs.system.mode == SystemMode::ERROR_DISPLAY) {
+        const bool flash = (static_cast<int>(elapsed * 4.0f) % 2) == 0;
+        draw_filled_rect(buf, 0, 0, SCREEN_W, SCREEN_H, flash ? rgb_to_color(40, 0, 0) : rgb_to_color(18, 0, 0));
+        const int cx = SCREEN_W / 2;
+        const int cy = SCREEN_H / 2;
+        for (int y = -50; y <= 40; y++) {
+            int py = cy + y;
+            if (py < 0 || py >= SCREEN_H) continue;
+            const int half = (y + 50);
+            int w = static_cast<int>(half * 1.2f);
+            int x0 = cx - w;
+            int x1 = cx + w;
+            if (y < -44) continue;
+            draw_hline(buf, x0, x1, py, rgb_to_color(220, 190, 20));
+        }
+        draw_filled_rect(buf, cx - 4, cy - 20, 8, 30, rgb_to_color(20, 0, 0));
+        draw_filled_circle(buf, cx, cy + 20, 5, rgb_to_color(20, 0, 0));
+        return;
+    }
+
+    if (fs.system.mode == SystemMode::LOW_BATTERY) {
+        draw_filled_rect(buf, 0, 0, SCREEN_W, SCREEN_H, rgb_to_color(8, 10, 16));
+        const int cx = SCREEN_W / 2;
+        const int cy = SCREEN_H / 2;
+        const int bw = 120;
+        const int bh = 56;
+        draw_filled_rounded_rect(buf, cx - bw / 2, cy - bh / 2, bw, bh, 6, rgb_to_color(180, 180, 190));
+        draw_filled_rect(buf, cx + bw / 2, cy - 14, 10, 28, rgb_to_color(180, 180, 190));
+        draw_filled_rounded_rect(buf, cx - bw / 2 + 4, cy - bh / 2 + 4, bw - 8, bh - 8, 4, rgb_to_color(0, 0, 0));
+        const float lvl = fmaxf(0.0f, fminf(1.0f, fs.system.param));
+        lv_color_t fill = (lvl > 0.5f) ? rgb_to_color(0, 220, 100) :
+                          (lvl > 0.2f) ? rgb_to_color(220, 170, 0) :
+                                         rgb_to_color(220, 40, 40);
+        draw_filled_rect(buf, cx - bw / 2 + 6, cy - bh / 2 + 6,
+                         static_cast<int>((bw - 12) * lvl), bh - 12, fill);
+        return;
+    }
+
+    if (fs.system.mode == SystemMode::UPDATING) {
+        draw_filled_rect(buf, 0, 0, SCREEN_W, SCREEN_H, rgb_to_color(5, 10, 14));
+        const int cx = SCREEN_W / 2;
+        const int cy = SCREEN_H / 2;
+        const float base_ang = elapsed * 4.0f;
+        for (int i = 0; i < 72; i++) {
+            const float a = base_ang + static_cast<float>(i) * 0.12f;
+            const int r = 32 + (i % 6) * 3;
+            const int x = cx + static_cast<int>(cosf(a) * r);
+            const int y = cy + static_cast<int>(sinf(a) * r);
+            if (x < 0 || x >= SCREEN_W || y < 0 || y >= SCREEN_H) continue;
+            const uint8_t br = static_cast<uint8_t>(80 + (i % 12) * 14);
+            buf[y * SCREEN_W + x] = rgb_to_color(0, br, static_cast<uint8_t>(120 + br / 3));
+        }
+        return;
+    }
+
+    if (fs.system.mode == SystemMode::SHUTTING_DOWN) {
+        draw_filled_rect(buf, 0, 0, SCREEN_W, SCREEN_H, rgb_to_color(0, 0, 0));
+        const float t = fmaxf(0.0f, 1.0f - elapsed / 0.8f);
+        int w = static_cast<int>(SCREEN_W * t);
+        int h = static_cast<int>(SCREEN_H * (0.1f + 0.9f * t));
+        if (w < 2) w = 2;
+        if (h < 2) h = 2;
+        draw_filled_rect(buf, (SCREEN_W - w) / 2, (SCREEN_H - h) / 2, w, h, rgb_to_color(210, 220, 255));
+        return;
+    }
+}
+
+static void render_fire_effect(lv_color_t* buf, const FaceState& fs)
+{
+    for (const auto& px : fs.fx.fire_pixels) {
+        if (!px.active || px.life <= 0.0f) continue;
+        int x = static_cast<int>(px.x);
+        int y = static_cast<int>(px.y);
+        if (x < 0 || x >= SCREEN_W || y < 0 || y >= SCREEN_H) continue;
+        lv_color_t c;
+        if (px.heat > 0.85f) c = rgb_to_color(255, 220, 120);
+        else if (px.heat > 0.65f) c = rgb_to_color(255, 140, 20);
+        else if (px.heat > 0.40f) c = rgb_to_color(220, 50, 0);
+        else c = rgb_to_color(130, 20, 0);
+        draw_filled_rect(buf, x - 1, y - 1, 3, 3, c);
+    }
+}
+
+static void render_sparkles(lv_color_t* buf, const FaceState& fs)
+{
+    for (const auto& sp : fs.fx.sparkle_pixels) {
+        if (!sp.active || sp.life == 0) continue;
+        if (sp.x < 0 || sp.x >= SCREEN_W || sp.y < 0 || sp.y >= SCREEN_H) continue;
+        buf[sp.y * SCREEN_W + sp.x] = rgb_to_color(255, 255, 255);
+    }
+}
+
+static void apply_afterglow(lv_color_t* buf, const FaceState& fs)
+{
+    if (!fs.fx.afterglow || !afterglow_buf) {
+        return;
+    }
+    const lv_color_t bg = rgb_to_color(BG_R, BG_G, BG_B);
+    for (int i = 0; i < SCREEN_W * SCREEN_H; i++) {
+        if (color_eq(buf[i], bg) && !color_eq(afterglow_buf[i], bg)) {
+            const lv_color_t faded = scale_color(afterglow_buf[i], 2, 5);
+            buf[i] = faded;
+        }
+    }
+    memcpy(afterglow_buf, buf, SCREEN_W * SCREEN_H * sizeof(lv_color_t));
 }
 
 static void render_calibration(lv_color_t* buf)
@@ -510,6 +695,13 @@ void face_ui_create(lv_obj_t* parent)
         ESP_LOGE(TAG, "failed to allocate canvas buffer in PSRAM!");
         return;
     }
+    afterglow_buf = static_cast<lv_color_t*>(
+        heap_caps_malloc(SCREEN_W * SCREEN_H * sizeof(lv_color_t), MALLOC_CAP_SPIRAM));
+    if (!afterglow_buf) {
+        ESP_LOGW(TAG, "failed to allocate afterglow buffer; disabling afterglow effect");
+    } else {
+        memset(afterglow_buf, 0, SCREEN_W * SCREEN_H * sizeof(lv_color_t));
+    }
 
     canvas_obj = lv_canvas_create(parent);
     lv_canvas_set_buffer(canvas_obj, canvas_buf, SCREEN_W, SCREEN_H, LV_COLOR_FORMAT_NATIVE);
@@ -584,18 +776,27 @@ void face_ui_update(const FaceState& fs)
 {
     if (!canvas_buf) return;
 
-    // Clear to black
-    memset(canvas_buf, 0, SCREEN_W * SCREEN_H * sizeof(lv_color_t));
+    draw_filled_rect(canvas_buf, 0, 0, SCREEN_W, SCREEN_H, rgb_to_color(BG_R, BG_G, BG_B));
 
     if (FACE_CALIBRATION_MODE) {
         render_calibration(canvas_buf);
     } else {
-        // Render eyes
-        render_eye(canvas_buf, fs.eye_l, fs, LEFT_EYE_CX, LEFT_EYE_CY);
-        render_eye(canvas_buf, fs.eye_r, fs, RIGHT_EYE_CX, RIGHT_EYE_CY);
+        if (fs.system.mode != SystemMode::NONE) {
+            render_system_overlay(canvas_buf, fs);
+        } else {
+            render_eye(canvas_buf, fs.eye_l, fs, true, LEFT_EYE_CX, LEFT_EYE_CY);
+            render_eye(canvas_buf, fs.eye_r, fs, false, RIGHT_EYE_CX, RIGHT_EYE_CY);
+            render_mouth(canvas_buf, fs);
+            if (fs.anim.rage) {
+                render_fire_effect(canvas_buf, fs);
+            }
+            render_sparkles(canvas_buf, fs);
+            apply_afterglow(canvas_buf, fs);
+        }
 
-        // Render mouth
-        render_mouth(canvas_buf, fs);
+        if ((fs.system.mode != SystemMode::NONE || !fs.fx.afterglow) && afterglow_buf) {
+            memcpy(afterglow_buf, canvas_buf, SCREEN_W * SCREEN_H * sizeof(lv_color_t));
+        }
     }
 
     // Invalidate canvas to trigger LVGL refresh
@@ -605,8 +806,24 @@ void face_ui_update(const FaceState& fs)
 // ---- FreeRTOS task ----
 
 // Global state instances
-FaceCommandBuffer g_face_cmd;
-TouchBuffer       g_touch;
+std::atomic<uint8_t> g_cmd_state_mood{0};
+std::atomic<uint8_t> g_cmd_state_intensity{255};
+std::atomic<int8_t>  g_cmd_state_gaze_x{0};
+std::atomic<int8_t>  g_cmd_state_gaze_y{0};
+std::atomic<uint8_t> g_cmd_state_brightness{DEFAULT_BRIGHTNESS};
+std::atomic<uint32_t> g_cmd_state_us{0};
+
+std::atomic<uint8_t> g_cmd_system_mode{static_cast<uint8_t>(SystemMode::NONE)};
+std::atomic<uint8_t> g_cmd_system_param{0};
+std::atomic<uint32_t> g_cmd_system_us{0};
+
+std::atomic<uint8_t> g_cmd_talking{0};
+std::atomic<uint8_t> g_cmd_talking_energy{0};
+std::atomic<uint32_t> g_cmd_talking_us{0};
+
+GestureQueue g_gesture_queue;
+
+TouchBuffer g_touch;
 ButtonEventBuffer g_button;
 std::atomic<bool> g_touch_active{false};
 std::atomic<bool> g_talking_active{false};
@@ -620,11 +837,18 @@ void face_ui_task(void* arg)
     ESP_LOGI(TAG, "face_ui_task started (%d FPS)", ANIM_FPS);
 
     FaceState fs;
-    uint32_t last_cmd_us = 0;
+    uint32_t last_state_cmd_us = 0;
+    uint32_t last_system_cmd_us = 0;
     uint32_t last_talking_cmd_us = 0;
     bool last_led_talking = false;
     bool last_led_listening = false;
     uint32_t next_touch_cycle_ms = 0;
+
+    if (!afterglow_buf) {
+        fs.fx.afterglow = false;
+    }
+
+    display_set_backlight(DEFAULT_BRIGHTNESS);
 
     if (FACE_CALIBRATION_MODE) {
         touch_transform_apply(CALIB_TOUCH_DEFAULT_INDEX);
@@ -649,47 +873,57 @@ void face_ui_task(void* arg)
     while (true) {
         const uint32_t now_us = static_cast<uint32_t>(esp_timer_get_time());
         const uint32_t now_ms = now_us / 1000U;
-        // 1. Read latest command (atomic)
-        const FaceCommand* cmd = g_face_cmd.read();
-        uint32_t cmd_us = g_face_cmd.last_cmd_us.load(std::memory_order_acquire);
+        // 1. Apply latest latched state command.
+        const uint32_t state_cmd_us = g_cmd_state_us.load(std::memory_order_acquire);
+        if (state_cmd_us != 0 && state_cmd_us != last_state_cmd_us) {
+            last_state_cmd_us = state_cmd_us;
+            const uint8_t mood_id = g_cmd_state_mood.load(std::memory_order_relaxed);
+            const uint8_t intensity_u8 = g_cmd_state_intensity.load(std::memory_order_relaxed);
+            const int8_t gaze_x_i8 = g_cmd_state_gaze_x.load(std::memory_order_relaxed);
+            const int8_t gaze_y_i8 = g_cmd_state_gaze_y.load(std::memory_order_relaxed);
+            const uint8_t brightness_u8 = g_cmd_state_brightness.load(std::memory_order_relaxed);
 
-        // 2. Apply new commands if updated
-        if (cmd_us != last_cmd_us) {
-            last_cmd_us = cmd_us;
-
-            if (cmd->has_state) {
-                // Apply mood
-                if (cmd->mood_id <= static_cast<uint8_t>(Mood::THINKING)) {
-                    face_set_mood(fs, static_cast<Mood>(cmd->mood_id));
-                }
-
-                // Apply gaze (scale i8 to float: -128..127 → -MAX_GAZE..+MAX_GAZE)
-                float gx = static_cast<float>(cmd->gaze_x) / 128.0f * MAX_GAZE;
-                float gy = static_cast<float>(cmd->gaze_y) / 128.0f * MAX_GAZE;
-                face_set_gaze(fs, gx, gy);
-
-                // Apply brightness
-                display_set_backlight(cmd->brightness);
+            if (mood_id <= static_cast<uint8_t>(Mood::THINKING)) {
+                face_set_mood(fs, static_cast<Mood>(mood_id));
             }
+            face_set_expression_intensity(fs, static_cast<float>(intensity_u8) / 255.0f);
 
-            // Apply gesture (one-shot)
-            if (cmd->has_gesture && cmd->gesture_id <= static_cast<uint8_t>(GestureId::WIGGLE)) {
-                face_trigger_gesture(fs, static_cast<GestureId>(cmd->gesture_id), cmd->gesture_dur);
+            const float gx = static_cast<float>(gaze_x_i8) / 127.0f * MAX_GAZE;
+            const float gy = static_cast<float>(gaze_y_i8) / 127.0f * MAX_GAZE;
+            face_set_gaze(fs, gx, gy);
+
+            display_set_backlight(brightness_u8);
+        }
+
+        // 2. Apply queued one-shot gestures in FIFO order.
+        GestureEvent ev = {};
+        while (g_gesture_queue.pop(&ev)) {
+            if (ev.gesture_id <= static_cast<uint8_t>(GestureId::WIGGLE)) {
+                face_trigger_gesture(fs, static_cast<GestureId>(ev.gesture_id), ev.duration_ms);
             }
+        }
 
-            // Apply system mode
-            if (cmd->has_system) {
-                float param = static_cast<float>(cmd->system_param) / 255.0f;
-                face_set_system_mode(fs, static_cast<SystemMode>(cmd->system_mode), param);
+        // 3. Apply latest latched system command.
+        const uint32_t system_cmd_us = g_cmd_system_us.load(std::memory_order_acquire);
+        if (system_cmd_us != 0 && system_cmd_us != last_system_cmd_us) {
+            last_system_cmd_us = system_cmd_us;
+            const uint8_t mode_u8 = g_cmd_system_mode.load(std::memory_order_relaxed);
+            const uint8_t param_u8 = g_cmd_system_param.load(std::memory_order_relaxed);
+            if (mode_u8 <= static_cast<uint8_t>(SystemMode::SHUTTING_DOWN)) {
+                const float param = static_cast<float>(param_u8) / 255.0f;
+                face_set_system_mode(fs, static_cast<SystemMode>(mode_u8), param);
             }
+        }
 
-            if (cmd->has_talking) {
-                fs.talking = cmd->talking;
-                fs.talking_energy = static_cast<float>(cmd->talking_energy) / 255.0f;
-                if (!fs.talking) {
-                    fs.talking_energy = 0.0f;
-                }
-                last_talking_cmd_us = cmd_us;
+        // 4. Apply latest latched talking command.
+        const uint32_t talking_cmd_us = g_cmd_talking_us.load(std::memory_order_acquire);
+        if (talking_cmd_us != 0 && talking_cmd_us != last_talking_cmd_us) {
+            last_talking_cmd_us = talking_cmd_us;
+            fs.talking = g_cmd_talking.load(std::memory_order_relaxed) != 0;
+            fs.talking_energy =
+                static_cast<float>(g_cmd_talking_energy.load(std::memory_order_relaxed)) / 255.0f;
+            if (!fs.talking) {
+                fs.talking_energy = 0.0f;
             }
         }
 
@@ -717,18 +951,9 @@ void face_ui_task(void* arg)
         // 3. Advance animations
         face_state_update(fs);
 
-        // 4. Update telemetry atomics
+        // 5. Update telemetry atomics
         g_current_mood.store(static_cast<uint8_t>(fs.mood), std::memory_order_relaxed);
-        g_active_gesture.store(
-            fs.anim.heart ? static_cast<uint8_t>(GestureId::HEART) :
-            fs.anim.rage ? static_cast<uint8_t>(GestureId::RAGE) :
-            fs.anim.surprise ? static_cast<uint8_t>(GestureId::SURPRISE) :
-            fs.anim.confused ? static_cast<uint8_t>(GestureId::CONFUSED) :
-            fs.anim.laugh ? static_cast<uint8_t>(GestureId::LAUGH) :
-            fs.anim.sleepy ? static_cast<uint8_t>(GestureId::SLEEPY) :
-            fs.anim.x_eyes ? static_cast<uint8_t>(GestureId::X_EYES) :
-            0xFF,
-            std::memory_order_relaxed);
+        g_active_gesture.store(fs.active_gesture, std::memory_order_relaxed);
         g_system_mode.store(static_cast<uint8_t>(fs.system.mode), std::memory_order_relaxed);
         g_talking_active.store(fs.talking, std::memory_order_relaxed);
 
@@ -745,7 +970,7 @@ void face_ui_task(void* arg)
             last_led_listening = listening;
         }
 
-        // 5. Render under LVGL lock
+        // 6. Render under LVGL lock
         if (lvgl_port_lock(100)) {
             face_ui_update(fs);
             if (FACE_CALIBRATION_MODE) {
@@ -754,7 +979,7 @@ void face_ui_task(void* arg)
             lvgl_port_unlock();
         }
 
-        // 6. Sleep for frame period
+        // 7. Sleep for frame period
         vTaskDelay(pdMS_TO_TICKS(1000 / ANIM_FPS));
     }
 }

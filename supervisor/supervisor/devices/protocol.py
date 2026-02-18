@@ -124,6 +124,10 @@ class FaceSystemMode(IntEnum):
     SHUTTING_DOWN = 5
 
 
+VALID_FACE_MOOD_IDS = frozenset(m.value for m in FaceMood)
+VALID_FACE_GESTURE_IDS = frozenset(g.value for g in FaceGesture)
+
+
 class TouchEventType(IntEnum):
     PRESS = 0
     RELEASE = 1

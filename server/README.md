@@ -15,16 +15,14 @@ Supervisor (Pi 5) ──POST /plan──► FastAPI server ──/api/chat──
 
 ## Current Conversational Audio Status (2026-02-18)
 
-- End-to-end conversation transport is working:
-  - face mic uplink (`MIC_AUDIO`) reaches supervisor and server
-  - server `/converse` emits emotion + TTS audio chunks
-  - supervisor forwards TTS chunks to face speaker over `AUDIO_DATA`
-- Face speaker playback is confirmed by on-device heartbeat counters:
-  - `speaker_rx_chunks` and `speaker_play_chunks` both increase during turns
-  - `speaker_play_errors` remains `0` in recent probes
-- Current quality blocker:
-  - audio on the face speaker is often unintelligible despite correct transport
-  - this is now a quality-tuning problem (not a pipeline/connectivity problem)
+- Active architecture is supervisor-owned USB audio on the Pi:
+  - USB mic capture on supervisor -> server `/converse`
+  - server emits emotion + TTS audio stream
+  - supervisor plays TTS on USB speaker
+- Face MCU (`esp32-face-v2`) is visual/interaction only:
+  - receives `SET_STATE` / `GESTURE` / `SET_SYSTEM` / `SET_TALKING`
+  - sends touch/button/status telemetry
+  - does not carry PCM speaker/mic audio over its CDC protocol
 
 ## Setup
 

@@ -5,6 +5,7 @@ ESP32-S3 firmware for Robot Buddy face rendering + supervisor link.
 ## Scope
 
 - Face animation renderer (landscape 320x240)
+- Python-v2 animation parity target (moods, gestures, system overlays, talking modulation)
 - USB CDC command/telemetry protocol
 - Touch telemetry
 - Bottom touch buttons:
@@ -16,6 +17,12 @@ ESP32-S3 firmware for Robot Buddy face rendering + supervisor link.
   - idle: green
 
 Audio codec/microphone handling was removed from this firmware. Audio is owned by supervisor-side USB devices.
+
+## Command Path Reliability
+
+- `SET_STATE`, `SET_SYSTEM`, `SET_TALKING` use latched channels (latest value wins).
+- `GESTURE` uses a FIFO queue for one-shot animations.
+- This prevents high-rate talking energy updates from dropping mood/system/gesture commands.
 
 ## Protocol (v3)
 

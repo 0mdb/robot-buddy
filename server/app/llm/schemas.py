@@ -4,7 +4,15 @@ from __future__ import annotations
 
 from typing import Annotated, Literal, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from app.llm.expressions import (
+    CANONICAL_EMOTIONS,
+    FACE_GESTURES,
+    BODY_GESTURES,
+    normalize_emotion_name,
+    normalize_gesture_name,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -39,10 +47,8 @@ class SayAction(BaseModel):
     text: str = Field(max_length=200)
 
 
-VALID_EMOTIONS = frozenset({
-    "neutral", "happy", "excited", "curious", "sad", "scared",
-    "angry", "surprised", "sleepy", "love", "silly", "thinking",
-})
+VALID_EMOTIONS = frozenset(CANONICAL_EMOTIONS)
+VALID_GESTURES = frozenset(FACE_GESTURES + BODY_GESTURES)
 
 
 class EmoteAction(BaseModel):
@@ -50,11 +56,29 @@ class EmoteAction(BaseModel):
     name: str
     intensity: float = Field(ge=0.0, le=1.0, default=0.5)
 
+    @field_validator("name")
+    @classmethod
+    def _validate_emotion_name(cls, value: str) -> str:
+        normalized = normalize_emotion_name(value)
+        if normalized is None:
+            allowed = ", ".join(CANONICAL_EMOTIONS)
+            raise ValueError(f"unsupported emotion '{value}'. allowed: {allowed}")
+        return normalized
+
 
 class GestureAction(BaseModel):
     action: Literal["gesture"] = "gesture"
     name: str
     params: dict = Field(default_factory=dict)
+
+    @field_validator("name")
+    @classmethod
+    def _validate_gesture_name(cls, value: str) -> str:
+        normalized = normalize_gesture_name(value, allow_body=True)
+        if normalized is None:
+            allowed = ", ".join(FACE_GESTURES + BODY_GESTURES)
+            raise ValueError(f"unsupported gesture '{value}'. allowed: {allowed}")
+        return normalized
 
 
 class MoveAction(BaseModel):

@@ -6,13 +6,19 @@ import asyncio
 import logging
 import time
 
+from supervisor.devices.expressions import (
+    GESTURE_TO_FACE_ID,
+    EMOTION_TO_FACE_MOOD,
+    normalize_emotion_name,
+    normalize_face_gesture_name,
+)
 from supervisor.devices.face_client import FaceClient
 from supervisor.devices.personality_client import (
     PersonalityClient,
     PersonalityError,
     PersonalityPlan,
 )
-from supervisor.devices.protocol import FaceGesture, FaceMood, FaceSystemMode, Fault
+from supervisor.devices.protocol import FaceSystemMode, Fault
 from supervisor.devices.reflex_client import ReflexClient
 from supervisor.inputs.camera_vision import VisionProcess
 from supervisor.state.datatypes import DesiredTwist, Mode, RobotState
@@ -29,40 +35,6 @@ _TELEM_EVERY_N = TICK_HZ // TELEMETRY_HZ  # broadcast every N ticks
 _JITTER_WARN_MS = 5.0
 _PLAN_PERIOD_S = 1.0
 _PLAN_RETRY_S = 3.0
-
-_EMOTE_TO_MOOD = {
-    "neutral": int(FaceMood.NEUTRAL),
-    "happy": int(FaceMood.HAPPY),
-    "excited": int(FaceMood.EXCITED),
-    "curious": int(FaceMood.CURIOUS),
-    "sad": int(FaceMood.SAD),
-    "scared": int(FaceMood.SCARED),
-    "angry": int(FaceMood.ANGRY),
-    "surprised": int(FaceMood.SURPRISED),
-    "sleepy": int(FaceMood.SLEEPY),
-    "love": int(FaceMood.LOVE),
-    "silly": int(FaceMood.SILLY),
-    "thinking": int(FaceMood.THINKING),
-    # Legacy aliases
-    "tired": int(FaceMood.SLEEPY),
-}
-
-_GESTURE_TO_ID = {
-    "blink": int(FaceGesture.BLINK),
-    "wink_l": int(FaceGesture.WINK_L),
-    "wink_r": int(FaceGesture.WINK_R),
-    "confused": int(FaceGesture.CONFUSED),
-    "laugh": int(FaceGesture.LAUGH),
-    "surprise": int(FaceGesture.SURPRISE),
-    "heart": int(FaceGesture.HEART),
-    "x_eyes": int(FaceGesture.X_EYES),
-    "sleepy": int(FaceGesture.SLEEPY),
-    "rage": int(FaceGesture.RAGE),
-    "nod": int(FaceGesture.NOD),
-    "headshake": int(FaceGesture.HEADSHAKE),
-    "wiggle": int(FaceGesture.WIGGLE),
-}
-
 
 class Runtime:
     """Orchestrates the 50 Hz control loop."""
@@ -326,12 +298,19 @@ class Runtime:
         if not self._face or not self._face.connected:
             return
 
+        face_locked = bool(s.face_listening or s.face_talking)
+
         for action in plan.actions:
             action_type = action.get("action")
 
             if action_type == "emote":
-                name = str(action.get("name", "")).lower()
-                mood = _EMOTE_TO_MOOD.get(name)
+                if face_locked:
+                    continue
+                raw_name = str(action.get("name", ""))
+                name = normalize_emotion_name(raw_name)
+                if name is None:
+                    continue
+                mood = EMOTION_TO_FACE_MOOD.get(name)
                 if mood is None:
                     continue
                 intensity = action.get("intensity", 0.7)
@@ -343,8 +322,13 @@ class Runtime:
                 )
 
             elif action_type == "gesture":
-                name = str(action.get("name", "")).lower()
-                gesture_id = _GESTURE_TO_ID.get(name)
+                if face_locked:
+                    continue
+                raw_name = str(action.get("name", ""))
+                name = normalize_face_gesture_name(raw_name)
+                if name is None:
+                    continue
+                gesture_id = GESTURE_TO_FACE_ID.get(name)
                 if gesture_id is not None:
                     self._face.send_gesture(gesture_id)
 

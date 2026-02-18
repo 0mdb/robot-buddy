@@ -1,10 +1,10 @@
 # Robot Buddy
 
-A kid-safe, expressive robot platform combining real-time motor control, an animated LED face, and optional networked AI personality.
+A kid-safe, expressive robot platform combining real-time motor control, an animated TFT face, and optional networked AI personality.
 
 ## How It Works
 
-Two ESP32-S3 microcontrollers handle the deterministic, safety-critical work: one drives motors with PID control and enforces safety limits, the other renders animated eyes on a WS2812B LED matrix. A Raspberry Pi 5 orchestrates everything at 50 Hz — reading sensors, running the state machine, applying layered safety policies, and streaming telemetry to a browser UI. An optional AI personality server on a separate machine (3090 Ti) generates expressive behavior plans via a local LLM.
+Two ESP32-S3 microcontrollers handle the deterministic, safety-critical work: one drives motors with PID control and enforces safety limits, the other renders an animated face on a 320x240 TFT touch display (`esp32-face-v2`). A Raspberry Pi 5 orchestrates everything at 50 Hz — reading sensors, running the state machine, applying layered safety policies, and streaming telemetry to a browser UI. An optional AI personality server on a separate machine (3090 Ti) generates expressive behavior plans via a local LLM.
 
 Reflexes are local and deterministic. Personality is remote and optional.
 
@@ -13,7 +13,7 @@ Reflexes are local and deterministic. Personality is remote and optional.
 | Component | Hardware | Role |
 |---|---|---|
 | Supervisor | Raspberry Pi 5 | 50 Hz orchestration, safety policy, HTTP/WS API |
-| Face MCU | ESP32-S3 WROOM | 16x16 WS2812B LED matrix eyes + animations |
+| Face MCU | ESP32-S3 (ES3C28P) | 320x240 TFT face renderer + touch/buttons telemetry |
 | Reflex MCU | ESP32-S3 WROOM | Differential drive, PID, encoders, IMU, ultrasonic, safety |
 | AI Server | PC with 3090 Ti (off-robot) | Local LLM (Qwen 3 14B) + future TTS, on LAN |
 | Motor Driver | TB6612FNG | Dual H-bridge for differential drive |
@@ -42,8 +42,9 @@ robot-buddy/
 │   ├── tests/           # pytest test suite
 │   ├── Modelfile        # Ollama model config
 │   └── pyproject.toml   # Package metadata, deps
-├── esp32-face/          # Face MCU firmware (ESP32-S3, C/C++, ESP-IDF)
-│   └── main/            # WS2812B 16×16 LED matrix rendering
+├── esp32-face-v2/       # Face MCU firmware (ESP32-S3, C/C++, ESP-IDF)
+│   └── main/            # TFT face rendering + touch/buttons + USB protocol
+├── esp32-face/          # Legacy LED-matrix face firmware
 ├── esp32-reflex/        # Reflex MCU firmware (ESP32-S3, C/C++, ESP-IDF)
 │   └── main/            # Differential drive, PID, safety, encoders
 ├── tools/               # Dev utilities (face simulation via pygame)
@@ -71,9 +72,9 @@ robot-buddy/
 │  │ Reflex MCU  │        │  Face MCU   │             │
 │  │ ESP32-S3    │        │  ESP32-S3   │             │
 │  │             │        │             │             │
-│  │ Motors, PID │        │ 16×16 LED   │             │
-│  │ Encoders    │        │ Eyes +      │             │
-│  │ IMU, Range  │        │ Animations  │             │
+│  │ Motors, PID │        │ 320x240 TFT │             │
+│  │ Encoders    │        │ Face +      │             │
+│  │ IMU, Range  │        │ Touch UI    │             │
 │  │ Safety      │        │             │             │
 │  └─────────────┘        └─────────────┘             │
 └──────────────────────────────────────────────────────┘
@@ -117,6 +118,8 @@ Binary packets over USB serial with COBS framing:
 ```
 [type:u8][seq:u8][payload:N][crc16:u16-LE]
 ```
+
+For `esp32-face-v2`, this protocol carries face state/gesture/system/talking commands and touch/button/status telemetry only. Audio transport is supervisor-side USB audio.
 
 Auto-reconnect with exponential backoff (0.5s–5s). See `docs/protocols.md` for packet definitions.
 
@@ -171,7 +174,7 @@ The server starts on port 8100. See `server/README.md` for full API docs and con
 Requires ESP-IDF toolchain.
 
 ```bash
-cd esp32-face   # or esp32-reflex
+cd esp32-face-v2   # or esp32-reflex
 idf.py build
 idf.py flash
 idf.py monitor
@@ -261,7 +264,7 @@ Plan actions: `say(text)`, `emote(name, intensity)`, `gesture(name, params)`, `m
 - [x] Supervisor: telemetry recording (JSONL)
 - [x] AI Server: FastAPI + Ollama integration with structured output
 - [x] AI Server: bounded performance plans (emote, say, gesture, move)
-- [x] ESP32 Face: LED matrix rendering, eye animations
+- [x] ESP32 Face v2: TFT face rendering, touch/button telemetry, supervisor-driven emotions/gestures
 - [x] ESP32 Reflex: motor control, PID, encoders, safety enforcement
 
 ### In Progress

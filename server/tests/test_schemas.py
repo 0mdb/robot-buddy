@@ -51,6 +51,16 @@ def test_emote_default_intensity():
     assert a.intensity == 0.5
 
 
+def test_emote_invalid_name_rejected():
+    with pytest.raises(ValidationError):
+        EmoteAction(name="ecstatic", intensity=0.6)
+
+
+def test_emote_alias_normalized():
+    a = EmoteAction(name="tired", intensity=0.4)
+    assert a.name == "sleepy"
+
+
 # -- GestureAction ------------------------------------------------------------
 
 
@@ -63,6 +73,16 @@ def test_gesture_valid():
 def test_gesture_empty_params():
     a = GestureAction(name="nod")
     assert a.params == {}
+
+
+def test_gesture_invalid_name_rejected():
+    with pytest.raises(ValidationError):
+        GestureAction(name="moonwalk")
+
+
+def test_gesture_alias_normalized():
+    a = GestureAction(name="x-eyes")
+    assert a.name == "x_eyes"
 
 
 # -- MoveAction ---------------------------------------------------------------

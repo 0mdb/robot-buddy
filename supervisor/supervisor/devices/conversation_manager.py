@@ -11,26 +11,15 @@ import math
 import shutil
 import struct
 
+from supervisor.devices.expressions import (
+    EMOTION_TO_FACE_MOOD,
+    GESTURE_TO_FACE_ID,
+    normalize_emotion_name,
+    normalize_face_gesture_name,
+)
 from supervisor.devices.face_client import FaceClient
-from supervisor.devices.protocol import FaceMood
 
 log = logging.getLogger(__name__)
-
-# Map emotion names from server to FaceMood IDs
-_EMOTION_TO_MOOD: dict[str, int] = {
-    "neutral": int(FaceMood.NEUTRAL),
-    "happy": int(FaceMood.HAPPY),
-    "excited": int(FaceMood.EXCITED),
-    "curious": int(FaceMood.CURIOUS),
-    "sad": int(FaceMood.SAD),
-    "scared": int(FaceMood.SCARED),
-    "angry": int(FaceMood.ANGRY),
-    "surprised": int(FaceMood.SURPRISED),
-    "sleepy": int(FaceMood.SLEEPY),
-    "love": int(FaceMood.LOVE),
-    "silly": int(FaceMood.SILLY),
-    "thinking": int(FaceMood.THINKING),
-}
 
 # Audio format constants (personality server stream + local USB audio)
 SAMPLE_RATE = 16000
@@ -281,9 +270,10 @@ class ConversationManager:
 
     def _handle_emotion(self, msg: dict) -> None:
         """Send emotion to face display."""
-        emotion = msg.get("emotion", "neutral")
+        raw_emotion = str(msg.get("emotion", "neutral"))
         intensity = msg.get("intensity", 0.5)
-        mood_id = _EMOTION_TO_MOOD.get(emotion, int(FaceMood.NEUTRAL))
+        emotion = normalize_emotion_name(raw_emotion) or "neutral"
+        mood_id = EMOTION_TO_FACE_MOOD[emotion]
 
         if self._face:
             self._face.send_state(
@@ -294,26 +284,16 @@ class ConversationManager:
 
     def _handle_gestures(self, msg: dict) -> None:
         """Trigger gesture animations on the face."""
-        from supervisor.devices.protocol import FaceGesture
-
-        gesture_map = {
-            "blink": int(FaceGesture.BLINK),
-            "wink_l": int(FaceGesture.WINK_L),
-            "wink_r": int(FaceGesture.WINK_R),
-            "confused": int(FaceGesture.CONFUSED),
-            "laugh": int(FaceGesture.LAUGH),
-            "surprise": int(FaceGesture.SURPRISE),
-            "heart": int(FaceGesture.HEART),
-            "x_eyes": int(FaceGesture.X_EYES),
-            "sleepy": int(FaceGesture.SLEEPY),
-            "rage": int(FaceGesture.RAGE),
-            "nod": int(FaceGesture.NOD),
-            "headshake": int(FaceGesture.HEADSHAKE),
-            "wiggle": int(FaceGesture.WIGGLE),
-        }
-
-        for name in msg.get("names", []):
-            gesture_id = gesture_map.get(name)
+        names = msg.get("names", [])
+        if not isinstance(names, list):
+            return
+        for raw_name in names:
+            if not isinstance(raw_name, str):
+                continue
+            name = normalize_face_gesture_name(raw_name)
+            if name is None:
+                continue
+            gesture_id = GESTURE_TO_FACE_ID.get(name)
             if gesture_id is not None and self._face:
                 self._face.send_gesture(gesture_id)
 

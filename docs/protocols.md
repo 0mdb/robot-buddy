@@ -62,6 +62,11 @@ SET_TALKING controls the "speaking" animation state. The supervisor sends
 `talking=1` during local speaker playback with periodic energy updates and sends
 `talking=0` when playback ends.
 
+Command channel semantics in `esp32-face-v2`:
+- `SET_STATE`, `SET_SYSTEM`, `SET_TALKING` are latched last-value channels.
+- `GESTURE` is a FIFO one-shot queue.
+- High-rate `SET_TALKING` updates must not overwrite queued gestures or latched mood/system.
+
 ### Telemetry (MCU → supervisor)
 
 | Telemetry    | ID   | Payload                                                            |
@@ -115,6 +120,9 @@ SET_TALKING controls the "speaking" animation state. The supervisor sends
 | 10  | NOD       | Agreement/acknowledgment |
 | 11  | HEADSHAKE | Disagreement/no          |
 | 12  | WIGGLE    | Playful shimmy           |
+
+Canonical gesture names used by server/supervisor validation:
+`blink, wink_l, wink_r, confused, laugh, surprise, heart, x_eyes, sleepy, rage, nod, headshake, wiggle`
 
 ### System Modes
 

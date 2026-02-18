@@ -76,18 +76,13 @@ static void handle_packet(const ParsedPacket& pkt)
         }
         FaceSetStatePayload sp;
         memcpy(&sp, pkt.data, sizeof(sp));
-
-        FaceCommand* slot = g_face_cmd.write_slot();
-        slot->has_state  = true;
-        slot->mood_id    = sp.mood_id;
-        slot->intensity  = sp.intensity;
-        slot->gaze_x     = sp.gaze_x;
-        slot->gaze_y     = sp.gaze_y;
-        slot->brightness = sp.brightness;
-        slot->has_gesture = false;
-        slot->has_system  = false;
-        slot->has_talking = false;
-        g_face_cmd.publish(static_cast<uint32_t>(esp_timer_get_time()));
+        const uint32_t now_us = static_cast<uint32_t>(esp_timer_get_time());
+        g_cmd_state_mood.store(sp.mood_id, std::memory_order_relaxed);
+        g_cmd_state_intensity.store(sp.intensity, std::memory_order_relaxed);
+        g_cmd_state_gaze_x.store(sp.gaze_x, std::memory_order_relaxed);
+        g_cmd_state_gaze_y.store(sp.gaze_y, std::memory_order_relaxed);
+        g_cmd_state_brightness.store(sp.brightness, std::memory_order_relaxed);
+        g_cmd_state_us.store(now_us, std::memory_order_release);
         break;
     }
 
@@ -97,15 +92,17 @@ static void handle_packet(const ParsedPacket& pkt)
         }
         FaceGesturePayload gp;
         memcpy(&gp, pkt.data, sizeof(gp));
-
-        FaceCommand* slot = g_face_cmd.write_slot();
-        slot->has_state    = false;
-        slot->has_gesture  = true;
-        slot->gesture_id   = gp.gesture_id;
-        slot->gesture_dur  = gp.duration_ms;
-        slot->has_system   = false;
-        slot->has_talking  = false;
-        g_face_cmd.publish(static_cast<uint32_t>(esp_timer_get_time()));
+        GestureEvent ev = {};
+        ev.gesture_id = gp.gesture_id;
+        ev.duration_ms = gp.duration_ms;
+        ev.timestamp_us = static_cast<uint32_t>(esp_timer_get_time());
+        if (!g_gesture_queue.push(ev)) {
+            // Drop oldest so latest gesture still lands.
+            g_gesture_queue.pop(nullptr);
+            if (!g_gesture_queue.push(ev)) {
+                ESP_LOGW(TAG, "gesture queue saturated; dropped gesture id=%u", gp.gesture_id);
+            }
+        }
         break;
     }
 
@@ -115,15 +112,10 @@ static void handle_packet(const ParsedPacket& pkt)
         }
         FaceSetSystemPayload sysp;
         memcpy(&sysp, pkt.data, sizeof(sysp));
-
-        FaceCommand* slot = g_face_cmd.write_slot();
-        slot->has_state    = false;
-        slot->has_gesture  = false;
-        slot->has_system   = true;
-        slot->system_mode  = sysp.mode;
-        slot->system_param = sysp.param;
-        slot->has_talking  = false;
-        g_face_cmd.publish(static_cast<uint32_t>(esp_timer_get_time()));
+        const uint32_t now_us = static_cast<uint32_t>(esp_timer_get_time());
+        g_cmd_system_mode.store(sysp.mode, std::memory_order_relaxed);
+        g_cmd_system_param.store(sysp.param, std::memory_order_relaxed);
+        g_cmd_system_us.store(now_us, std::memory_order_release);
         break;
     }
 
@@ -134,15 +126,10 @@ static void handle_packet(const ParsedPacket& pkt)
         }
         FaceSetTalkingPayload tp;
         memcpy(&tp, pkt.data, sizeof(tp));
-
-        FaceCommand* slot = g_face_cmd.write_slot();
-        slot->has_state = false;
-        slot->has_gesture = false;
-        slot->has_system = false;
-        slot->has_talking = true;
-        slot->talking = (tp.talking != 0);
-        slot->talking_energy = tp.energy;
-        g_face_cmd.publish(static_cast<uint32_t>(esp_timer_get_time()));
+        const uint32_t now_us = static_cast<uint32_t>(esp_timer_get_time());
+        g_cmd_talking.store(tp.talking ? 1 : 0, std::memory_order_relaxed);
+        g_cmd_talking_energy.store(tp.energy, std::memory_order_relaxed);
+        g_cmd_talking_us.store(now_us, std::memory_order_release);
         break;
     }
 

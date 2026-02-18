@@ -1,6 +1,6 @@
 #pragma once
-// Face animation state machine — ported from esp32-face.
-// Coordinates are abstract (not pixel-grid-specific); rendering adapts to display.
+// Face animation state machine for TFT renderer.
+// Behavior is aligned with tools/face_state_v2.py.
 
 #include "config.h"
 #include <cstdint>
@@ -58,6 +58,8 @@ struct EyeState {
     float gaze_x_target   = 0.0f;
     float gaze_y          = 0.0f;
     float gaze_y_target   = 0.0f;
+    float vx              = 0.0f;
+    float vy              = 0.0f;
 
     float width_scale         = 1.0f;
     float width_scale_target  = 1.0f;
@@ -65,15 +67,15 @@ struct EyeState {
     float height_scale_target = 1.0f;
 };
 
-// ---- Eyelid overlay state ----
+// ---- Eyelid overlay state (v2 model) ----
 
 struct EyelidState {
-    float tired        = 0.0f;
-    float tired_target = 0.0f;
-    float angry        = 0.0f;
-    float angry_target = 0.0f;
-    float happy        = 0.0f;
-    float happy_target = 0.0f;
+    float top_l        = 0.0f;
+    float top_r        = 0.0f;
+    float bottom_l     = 0.0f;
+    float bottom_r     = 0.0f;
+    float slope        = 0.0f;
+    float slope_target = 0.0f;
 };
 
 // ---- Animation timers ----
@@ -86,6 +88,7 @@ struct AnimTimers {
     // Idle gaze wander
     bool  idle         = true;
     float next_idle    = 0.0f;
+    float next_saccade = 0.0f;
 
     // One-shot gestures (active + timer)
     bool  confused       = false;
@@ -129,15 +132,45 @@ struct AnimTimers {
 
 // ---- Effects state (display-agnostic) ----
 
+constexpr int MAX_SPARKLE_PIXELS = 48;
+constexpr int MAX_FIRE_PIXELS = 64;
+
+struct SparklePixel {
+    int16_t x = 0;
+    int16_t y = 0;
+    uint8_t life = 0;
+    bool active = false;
+};
+
+struct FirePixel {
+    float x = 0.0f;
+    float y = 0.0f;
+    float life = 0.0f;
+    float heat = 0.0f;
+    bool active = false;
+};
+
 struct EffectsState {
     // Breathing
     bool  breathing    = true;
     float breath_phase = 0.0f;
+    float breath_speed = BREATH_SPEED;
+    float breath_amount = BREATH_AMOUNT;
 
     // Boot sequence
     bool  boot_active = true;
     float boot_timer  = 0.0f;
     int   boot_phase  = 0;
+
+    bool  sparkle = true;
+    float sparkle_chance = 0.05f;
+    SparklePixel sparkle_pixels[MAX_SPARKLE_PIXELS]{};
+
+    bool  afterglow = true;
+    bool  edge_glow = true;
+    float edge_glow_falloff = 0.4f;
+
+    FirePixel fire_pixels[MAX_FIRE_PIXELS]{};
 };
 
 // ---- System display state ----
@@ -161,12 +194,14 @@ struct FaceState {
 
     Mood  mood       = Mood::NEUTRAL;
     float brightness = 1.0f;
+    float expression_intensity = 1.0f;
     bool  solid_eye  = true;
     bool  show_mouth = true;
 
     // Talking animation (driven by supervisor during TTS playback)
     bool  talking        = false;
     float talking_energy = 0.0f;  // 0.0–1.0, current audio energy level
+    float talking_phase  = 0.0f;
 
     // Mouth state
     float mouth_curve          = 0.2f;
@@ -179,6 +214,9 @@ struct FaceState {
     float mouth_offset_x_target = 0.0f;
     float mouth_width          = 1.0f;
     float mouth_width_target   = 1.0f;
+
+    uint8_t active_gesture = 0xFF;    // GestureId or 0xFF when idle.
+    float active_gesture_until = 0.0f;
 };
 
 // ---- API ----
@@ -192,5 +230,6 @@ void face_wink_left(FaceState& fs);
 void face_wink_right(FaceState& fs);
 void face_set_gaze(FaceState& fs, float x, float y);
 void face_set_mood(FaceState& fs, Mood mood);
+void face_set_expression_intensity(FaceState& fs, float intensity);
 void face_trigger_gesture(FaceState& fs, GestureId gesture, uint16_t duration_ms = 0);
 void face_set_system_mode(FaceState& fs, SystemMode mode, float param = 0.0f);

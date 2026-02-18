@@ -10,5 +10,6 @@ void face_ui_create(lv_obj_t* parent);
 // Update LVGL objects from FaceState. Call under LVGL lock.
 void face_ui_update(const FaceState& fs);
 
-// FreeRTOS task: reads g_face_cmd, updates FaceState, renders via LVGL.
+// FreeRTOS task: consumes latched state/system/talking commands + gesture queue,
+// updates FaceState, and renders via LVGL.
 void face_ui_task(void* arg);

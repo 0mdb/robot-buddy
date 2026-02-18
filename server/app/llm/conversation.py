@@ -10,11 +10,20 @@ import httpx
 
 from app.config import settings
 from app.llm.client import OllamaError
+from app.llm.expressions import (
+    CANONICAL_EMOTIONS,
+    FACE_GESTURES,
+    normalize_emotion_name,
+    normalize_gesture_name,
+)
 from app.llm.schemas import VALID_EMOTIONS
 
 log = logging.getLogger(__name__)
 
-CONVERSATION_SYSTEM_PROMPT = """\
+_EMOTIONS_PROMPT = ", ".join(CANONICAL_EMOTIONS)
+_FACE_GESTURES_PROMPT = ", ".join(FACE_GESTURES)
+
+CONVERSATION_SYSTEM_PROMPT = f"""\
 You are Buddy, a friendly robot companion for kids aged 5-12. You are curious,
 encouraging, and love learning together. You explain complex topics in
 age-appropriate ways using analogies and enthusiasm. You never talk down to kids —
@@ -34,12 +43,12 @@ Safety guidelines:
 - If unsure about safety, err toward "let's ask a grown-up about that"
 
 You MUST respond in this exact JSON format:
-{
-  "emotion": "<one of: neutral, happy, excited, curious, sad, scared, angry, surprised, sleepy, love, silly, thinking>",
+{{
+  "emotion": "<one of: {_EMOTIONS_PROMPT}>",
   "intensity": <0.0 to 1.0>,
   "text": "<your spoken response>",
-  "gestures": ["<optional gesture names: blink, wink_l, wink_r, confused, laugh, surprise, heart, x_eyes, sleepy, rage, nod, headshake, wiggle>"]
-}
+  "gestures": ["<optional gesture names: {_FACE_GESTURES_PROMPT}>"]
+}}
 
 Keep responses concise (1-3 sentences for simple questions, up to 5 for complex
 explanations). Use natural speech patterns — contractions, filler words like
@@ -64,7 +73,7 @@ CONVERSATION_RESPONSE_SCHEMA = {
         },
         "gestures": {
             "type": "array",
-            "items": {"type": "string"},
+            "items": {"type": "string", "enum": sorted(FACE_GESTURES)},
         },
     },
     "required": ["emotion", "intensity", "text"],
@@ -166,17 +175,37 @@ async def generate_conversation_response(
     except json.JSONDecodeError as exc:
         raise OllamaError(f"Invalid JSON from LLM: {exc}") from exc
 
+    raw_emotion = str(parsed.get("emotion", "neutral"))
+    raw_gestures = parsed.get("gestures", [])
+    if not isinstance(raw_gestures, list):
+        raw_gestures = []
+
     response = ConversationResponse(
-        emotion=parsed.get("emotion", "neutral"),
+        emotion=raw_emotion,
         intensity=max(0.0, min(1.0, float(parsed.get("intensity", 0.5)))),
         text=parsed.get("text", ""),
-        gestures=parsed.get("gestures", []),
+        gestures=raw_gestures,
     )
 
     # Validate emotion name
-    if response.emotion not in VALID_EMOTIONS:
-        log.warning("LLM returned unknown emotion %r, defaulting to neutral", response.emotion)
+    normalized_emotion = normalize_emotion_name(response.emotion)
+    if normalized_emotion is None or normalized_emotion not in VALID_EMOTIONS:
+        log.warning("LLM returned unknown emotion %r, defaulting to neutral", raw_emotion)
         response.emotion = "neutral"
+    else:
+        response.emotion = normalized_emotion
+
+    # Keep only strict face gestures and normalize aliases.
+    normalized_gestures: list[str] = []
+    for gesture in response.gestures:
+        if not isinstance(gesture, str):
+            continue
+        normalized = normalize_gesture_name(gesture, allow_body=False)
+        if normalized is None:
+            log.warning("LLM returned unknown gesture %r, dropping", gesture)
+            continue
+        normalized_gestures.append(normalized)
+    response.gestures = normalized_gestures
 
     # Add assistant text to history for context continuity
     history.add_assistant(response.text)
