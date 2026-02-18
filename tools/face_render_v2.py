@@ -104,24 +104,20 @@ def _sd_equilateral_triangle(
 
 
 def _sd_heart(px: float, py: float, cx: float, cy: float, size: float) -> float:
-    # Heart SDF approximation
-    px = abs(px - cx) / size
-    py = (cy - py) / size  # Flip Y for heart orientation
-
-    # Dot product based heart
-    if py + px > 1.0:
-        return math.sqrt((px - 0.25) ** 2 + (py - 0.75) ** 2) - 0.224
-    return math.sqrt(px**2 + (py - 1.0) ** 2) - 1.0 if (px + py <= 1.0) else 100.0
-    # Note: Precise SDF is expensive, using a cheaper implicit function for masking:
-    # (x^2 + y^2 - 1)^3 - x^2*y^3
-    # We will use this in the render loop logic directly.
-
-
-def _in_heart_shape(px: float, py: float, cx: float, cy: float, size: float) -> float:
+    """Heart SDF: two circle lobes + V-taper to point. Negative = inside."""
     x = (px - cx) / size
-    y = (cy - py) / size + 0.3
-    val = (x**2 + y**2 - 1.0) ** 3 - (x**2) * (y**3)
-    return val
+    y = (cy - py) / size
+    ax = abs(x)
+    # Circle lobes
+    d_circ = math.sqrt((ax - 0.42) ** 2 + (y - 0.32) ** 2) - 0.55
+    # V-taper: perpendicular distance to line from (0.97, 0.32) to (0, -0.85)
+    if y < 0.32:
+        d_taper = 0.769 * ax - 0.638 * (y + 0.85)  # pre-normalized normal
+        if y < -0.85:
+            d_taper = max(d_taper, -0.85 - y)
+    else:
+        d_taper = 100.0
+    return min(d_circ, d_taper)
 
 
 def _sd_cross(
@@ -390,8 +386,8 @@ def _render_eye(buf: list, fs: FaceState, is_left: bool) -> None:
             row_idx = y * SCREEN_W
             for x in range(x0, x1):
                 px, py = x + 0.5, y + 0.5
-                val = _in_heart_shape(px, py, cx_base, cy_base, heart_size)
-                alpha = 1.0 - _smoothstep(-0.05, 0.05, val)
+                val = _sd_heart(px, py, cx_base, cy_base, heart_size)
+                alpha = 1.0 - _smoothstep(-0.5, 0.5, val)
                 if alpha > 0.01:
                     br = fs.brightness
                     _set_px_blend(
@@ -477,8 +473,8 @@ def _render_eye(buf: list, fs: FaceState, is_left: bool) -> None:
                 # Select SDF Shape based on Anim
                 if fs.anim.heart:
                     # Heart SDF (implicit)
-                    val = _in_heart_shape(px, py, pupil_cx, pupil_cy, PUPIL_R * 1.5)
-                    alpha_pupil = 1.0 - _smoothstep(0.0, 0.2, val)
+                    val = _sd_heart(px, py, pupil_cx, pupil_cy, PUPIL_R * 1.5)
+                    alpha_pupil = 1.0 - _smoothstep(-0.5, 0.5, val)
                 elif fs.anim.x_eyes:
                     # Cross SDF
                     dist_x = _sd_cross(px, py, pupil_cx, pupil_cy, PUPIL_R, 6.0)
