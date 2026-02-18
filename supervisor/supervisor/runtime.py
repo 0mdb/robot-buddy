@@ -147,6 +147,13 @@ class Runtime:
                 "enabled": self._face is not None,
                 "connected": False,
             },
+            "vision": {
+                "enabled": self._vision is not None,
+                "alive": self._vision.alive if self._vision else False,
+                "fps": round(self._state.vision_fps, 1),
+                "age_ms": round(self._state.vision_age_ms, 1),
+                "clear_confidence": round(self._state.clear_confidence, 2),
+            },
             "tick_hz": TICK_HZ,
             "telemetry_hz": TELEMETRY_HZ,
         }
