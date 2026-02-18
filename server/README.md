@@ -13,6 +13,19 @@ Supervisor (Pi 5) ──POST /plan──► FastAPI server ──/api/chat──
 - **Server:** FastAPI + uvicorn on port 8100
 - **LLM client:** async httpx calling Ollama's `/api/chat` with structured output (JSON schema)
 
+## Current Conversational Audio Status (2026-02-18)
+
+- End-to-end conversation transport is working:
+  - face mic uplink (`MIC_AUDIO`) reaches supervisor and server
+  - server `/converse` emits emotion + TTS audio chunks
+  - supervisor forwards TTS chunks to face speaker over `AUDIO_DATA`
+- Face speaker playback is confirmed by on-device heartbeat counters:
+  - `speaker_rx_chunks` and `speaker_play_chunks` both increase during turns
+  - `speaker_play_errors` remains `0` in recent probes
+- Current quality blocker:
+  - audio on the face speaker is often unintelligible despite correct transport
+  - this is now a quality-tuning problem (not a pipeline/connectivity problem)
+
 ## Setup
 
 ### 1. Install Ollama
@@ -58,6 +71,7 @@ Note: `uv run` does not include optional extras unless passed explicitly.
 ```bash
 cd server/
 WARMUP_LLM=0 \
+PLAN_TIMEOUT_S=25 \
 CONVERSE_KEEP_ALIVE=0s \
 ORPHEUS_GPU_MEMORY_UTILIZATION=0.35 \
 ORPHEUS_MAX_MODEL_LEN=4096 \
@@ -86,6 +100,8 @@ All settings are overridable via environment variables:
 | `ORPHEUS_MAX_MODEL_LEN` | `8192` | vLLM max sequence length for Orpheus |
 | `ORPHEUS_MAX_NUM_SEQS` | `8` | vLLM max concurrent sequences for Orpheus |
 | `ORPHEUS_MAX_NUM_BATCHED_TOKENS` | `512` | vLLM max batched tokens for Orpheus |
+| `ORPHEUS_IDLE_TIMEOUT_S` | `8.0` | Max idle wait for next Orpheus chunk before reset/retry |
+| `ORPHEUS_TOTAL_TIMEOUT_S` | `60.0` | Max total synthesis wait for one Orpheus request |
 | `SERVER_HOST` | `0.0.0.0` | Bind address |
 | `SERVER_PORT` | `8100` | Bind port |
 
@@ -105,10 +121,14 @@ Returns 503 if Ollama is unreachable.
 
 - Orpheus model repos are gated on Hugging Face. Account access + auth are required.
 - First TTS request can be significantly slower than warm-path requests because model load/compile happens lazily.
+- Current behavior: conversational TTS can work end-to-end but has high first-audio latency and occasional `EngineDeadError`/timeout events on some warm turns.
 - If logs show `CUDA out of memory ... warming up sampler with 128 dummy requests`, lower:
   - `ORPHEUS_GPU_MEMORY_UTILIZATION`
   - `ORPHEUS_MAX_NUM_SEQS`
   - `ORPHEUS_MAX_NUM_BATCHED_TOKENS`
+- If logs show `orpheus stream idle ...` or `EngineDeadError`, raise:
+  - `ORPHEUS_IDLE_TIMEOUT_S`
+  - `ORPHEUS_TOTAL_TIMEOUT_S`
 
 ### `POST /plan`
 

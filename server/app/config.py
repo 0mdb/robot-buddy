@@ -30,6 +30,12 @@ class Settings:
     orpheus_max_num_batched_tokens: int = int(
         os.environ.get("ORPHEUS_MAX_NUM_BATCHED_TOKENS", "512")
     )
+    orpheus_idle_timeout_s: float = float(
+        os.environ.get("ORPHEUS_IDLE_TIMEOUT_S", "8.0")
+    )
+    orpheus_total_timeout_s: float = float(
+        os.environ.get("ORPHEUS_TOTAL_TIMEOUT_S", "60.0")
+    )
     host: str = os.environ.get("SERVER_HOST", "0.0.0.0")
     port: int = int(os.environ.get("SERVER_PORT", "8100"))
 

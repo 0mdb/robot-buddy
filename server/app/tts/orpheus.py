@@ -44,8 +44,8 @@ OUTPUT_SAMPLE_RATE = 16000
 OUTPUT_SAMPLE_WIDTH = 2  # 16-bit signed
 OUTPUT_CHANNELS = 1
 CHUNK_SAMPLES = 160  # 10ms chunks at 16 kHz
-ORPHEUS_IDLE_TIMEOUT_S = 8.0
-ORPHEUS_TOTAL_TIMEOUT_S = 60.0
+ORPHEUS_IDLE_TIMEOUT_S = settings.orpheus_idle_timeout_s
+ORPHEUS_TOTAL_TIMEOUT_S = settings.orpheus_total_timeout_s
 
 
 def apply_prosody_tag(emotion: str, text: str) -> str:

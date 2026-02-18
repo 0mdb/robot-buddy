@@ -33,7 +33,7 @@ Normal mode for supervisor integration is:
 #define DIAG_DISABLE_TINYUSB 0
 ```
 
-## Current Runtime Status (2026-02-17)
+## Current Runtime Status (2026-02-18)
 
 ### CDC full-duplex audio path is implemented
 
@@ -57,6 +57,14 @@ Normal mode for supervisor integration is:
 
 - Face telemetry and RX command flow are stable in normal runtime operation.
 - A few bad CRC frames can appear during initial USB attach; stream recovers quickly.
+- Conversational TTS audio reaches the face speaker path (validated by increasing
+  `speaker_rx_chunks` and `speaker_play_chunks` with `speaker_play_errors=0`).
+- Current main gap is speaker intelligibility/quality; transport is functioning but
+  synthesized speech is often hard to understand.
+- True mic-turn conversation is still blocked in latest probe: continuous `MIC_AUDIO`
+  packets are present, but sampled PCM energy was `0` across the window
+  (`energy_p95=0`, `energy_max=0`), so supervisor VAD does not trigger
+  `end_utterance`.
 
 ## Verified Pi5 Integration Workflow (Face-Only)
 

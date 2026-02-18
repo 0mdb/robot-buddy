@@ -14,10 +14,10 @@ to young kids with guardrails to make it safe but exciting.
 | ESP32 face display (TX/telemetry) | **Working** | FACE_STATUS, TOUCH_EVENT, HEARTBEAT, MIC_AUDIO telemetry active |
 | ESP32 face USB RX (commands in) | **Working** | SET_STATE, GESTURE, SET_SYSTEM, SET_TALKING, AUDIO_DATA, SET_CONFIG parsed and applied |
 | ESP32 mic (ES8311) | **Working (CDC uplink)** | 10 ms PCM uplink (`MIC_AUDIO`) gated by `AUDIO_MIC_STREAM_ENABLE` |
-| ESP32 speaker (ES8311) | **Working (stream path)** | 10 ms PCM downlink queue + playback worker, drop-oldest on overflow |
+| ESP32 speaker (ES8311) | **Working (stream path, quality issue)** | 10 ms PCM downlink queue + playback worker is active; current output is often unintelligible and needs tuning |
 | ESP32 face rendering (LVGL) | **Working** | Eyes + mouth render + talking-energy linkage active |
 
-**Current focus**: close remaining server-side TTS latency/stability issues on warm/cold `/converse` paths while preserving stable CDC audio transport on the face MCU.
+**Current focus**: improve conversational speech quality/intelligibility and reduce server-side TTS latency/stability issues on warm/cold `/converse` paths while preserving stable CDC audio transport.
 
 ---
 
@@ -185,3 +185,7 @@ Current measured `/converse` behavior (latest):
 - `emotion` is delivered before audio as designed.
 - Warm path can produce audio, but first audio has been in the ~23–31s range.
 - Cold path can still hit `LLM timeout` in some runs.
+- Supervisor-to-face forwarding is validated (`send_audio_data` calls observed and
+  heartbeat speaker counters increase), but audible speech quality remains poor.
+- True face-mic turn is currently blocked by zero-level uplink audio in latest probe
+  (MIC packet cadence present, but PCM energy stats were all `0`).

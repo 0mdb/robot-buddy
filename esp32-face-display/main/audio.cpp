@@ -41,7 +41,7 @@ constexpr int16_t BOOT_TONE_AMP = 12000;
 constexpr uint32_t TONE_EDGE_FADE_MS = 15;
 constexpr uint32_t I2C_TIMEOUT_MS = 100;
 constexpr uint32_t I2S_TIMEOUT_MS = 1000;
-constexpr bool KEEP_AMP_ENABLED_BETWEEN_PLAYS = false;  // Normal behavior: gate amp outside playback.
+constexpr bool KEEP_AMP_ENABLED_BETWEEN_PLAYS = true;  // Keep analog rail enabled; required for mic capture on this board.
 constexpr uint32_t AMP_WAKE_DELAY_MS = 40;
 constexpr bool FORCE_SYNC_DIAGNOSTICS = false;  // Keep false for normal async behavior.
 constexpr uint32_t AUDIO_WORKER_STACK_BYTES = 8192;  // 4k was unstable in async diagnostics.
@@ -52,6 +52,7 @@ constexpr UBaseType_t AUDIO_STREAM_TASK_PRIORITY = 5;
 constexpr uint32_t AUDIO_STREAM_IDLE_STOP_MS = 120;
 constexpr size_t AUDIO_STREAM_QUEUE_DEPTH = 24;  // ~240 ms of buffered speaker audio.
 constexpr size_t MIC_STREAM_QUEUE_DEPTH = 32;    // ~320 ms of buffered mic audio.
+constexpr size_t MIC_STREAM_I2S_READ_BYTES = AUDIO_STREAM_PCM_BYTES * 2;  // Read stereo 10ms, downmix to mono.
 constexpr uint32_t MIC_STREAM_READ_TIMEOUT_MS = 20;
 constexpr uint8_t MIC_STREAM_FLAG_VAD_ACTIVE = 0x01;
 
@@ -426,7 +427,7 @@ esp_err_t i2s_init(void)
     chan_cfg.auto_clear = true;
     ESP_RETURN_ON_ERROR(i2s_new_channel(&chan_cfg, &s_tx, &s_rx), TAG, "i2s_new_channel failed");
 
-    i2s_std_config_t std_cfg = {
+    i2s_std_config_t tx_cfg = {
         .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(AUDIO_SAMPLE_RATE_HZ),
         .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_MONO),
         .gpio_cfg = {
@@ -442,12 +443,20 @@ esp_err_t i2s_init(void)
             },
         },
     };
-    // Match Freenove's working echo setup: mono stream on LEFT slot.
-    std_cfg.slot_cfg.slot_mask = I2S_STD_SLOT_LEFT;
-    std_cfg.clk_cfg.mclk_multiple = I2S_MCLK_MULTIPLE_256;
+    // Keep TX as mono-left for speaker path.
+    tx_cfg.slot_cfg.slot_mask = I2S_STD_SLOT_LEFT;
+    tx_cfg.clk_cfg.mclk_multiple = I2S_MCLK_MULTIPLE_256;
 
-    ESP_RETURN_ON_ERROR(i2s_channel_init_std_mode(s_tx, &std_cfg), TAG, "i2s tx init failed");
-    ESP_RETURN_ON_ERROR(i2s_channel_init_std_mode(s_rx, &std_cfg), TAG, "i2s rx init failed");
+    // Use stereo RX framing and downmix in software. This matches the board's
+    // known-good Arduino setup and avoids silent captures when ADC data is not
+    // exposed on mono-left framing.
+    i2s_std_config_t rx_cfg = tx_cfg;
+    rx_cfg.slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(
+        I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO);
+    rx_cfg.slot_cfg.slot_mask = I2S_STD_SLOT_BOTH;
+
+    ESP_RETURN_ON_ERROR(i2s_channel_init_std_mode(s_tx, &tx_cfg), TAG, "i2s tx init failed");
+    ESP_RETURN_ON_ERROR(i2s_channel_init_std_mode(s_rx, &rx_cfg), TAG, "i2s rx init failed");
     ESP_RETURN_ON_ERROR(i2s_channel_enable(s_tx), TAG, "i2s tx enable failed");
     ESP_RETURN_ON_ERROR(i2s_channel_enable(s_rx), TAG, "i2s rx enable failed");
     return ESP_OK;
@@ -742,7 +751,8 @@ void mic_stream_task(void* arg)
     ESP_LOGI(TAG, "mic stream task started, stack HWM=%u words",
              static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)));
 
-    int16_t in[AUDIO_STREAM_PCM_BYTES / sizeof(int16_t)] = {};
+    int16_t in[MIC_STREAM_I2S_READ_BYTES / sizeof(int16_t)] = {};
+    int16_t mono[AUDIO_STREAM_PCM_BYTES / sizeof(int16_t)] = {};
     AudioMicChunk chunk = {};
     AudioMicChunk dropped = {};
 
@@ -763,34 +773,53 @@ void mic_stream_task(void* arg)
         if (bytes_read == 0) {
             continue;
         }
-        if (bytes_read > AUDIO_STREAM_PCM_BYTES) {
-            bytes_read = AUDIO_STREAM_PCM_BYTES;
+        const size_t sample_count = bytes_read / sizeof(int16_t);
+        const bool looks_stereo = ((bytes_read & 0x3u) == 0) && (sample_count >= 2);
+        size_t mono_samples = 0;
+
+        if (looks_stereo) {
+            const size_t stereo_frames = sample_count / 2;
+            mono_samples = std::min<size_t>(stereo_frames, sizeof(mono) / sizeof(mono[0]));
+
+            uint64_t energy_left = 0;
+            uint64_t energy_right = 0;
+            for (size_t i = 0; i < mono_samples; i++) {
+                const int32_t l = static_cast<int32_t>(in[i * 2]);
+                const int32_t r = static_cast<int32_t>(in[i * 2 + 1]);
+                energy_left += static_cast<uint64_t>(l * l);
+                energy_right += static_cast<uint64_t>(r * r);
+            }
+
+            const bool use_right = energy_right > energy_left;
+            for (size_t i = 0; i < mono_samples; i++) {
+                mono[i] = in[i * 2 + (use_right ? 1 : 0)];
+            }
+        } else {
+            mono_samples = std::min<size_t>(sample_count, sizeof(mono) / sizeof(mono[0]));
+            memcpy(mono, in, mono_samples * sizeof(int16_t));
         }
-        if ((bytes_read & 0x1u) != 0) {
-            bytes_read -= 1;
-        }
-        if (bytes_read == 0) {
+
+        if (mono_samples == 0) {
             continue;
         }
 
         chunk = {};
         chunk.seq = s_mic_seq.fetch_add(1, std::memory_order_relaxed) + 1;
-        chunk.len = static_cast<uint16_t>(bytes_read);
+        chunk.len = static_cast<uint16_t>(mono_samples * sizeof(int16_t));
 
         double sum_sq = 0.0;
-        const size_t sample_count = bytes_read / sizeof(int16_t);
-        for (size_t i = 0; i < sample_count; i++) {
-            const int32_t s = in[i];
+        for (size_t i = 0; i < mono_samples; i++) {
+            const int32_t s = mono[i];
             sum_sq += static_cast<double>(s) * static_cast<double>(s);
         }
-        const double rms = (sample_count > 0) ? std::sqrt(sum_sq / static_cast<double>(sample_count)) : 0.0;
+        const double rms = std::sqrt(sum_sq / static_cast<double>(mono_samples));
         const bool vad_active = rms >= MIC_ACTIVITY_RMS_THRESHOLD;
         if (vad_active) {
             chunk.flags |= MIC_STREAM_FLAG_VAD_ACTIVE;
         }
         s_mic_activity.store(vad_active, std::memory_order_release);
 
-        memcpy(chunk.pcm, in, bytes_read);
+        memcpy(chunk.pcm, mono, chunk.len);
 
         if (xQueueSend(s_mic_queue, &chunk, 0) != pdTRUE) {
             if (xQueueReceive(s_mic_queue, &dropped, 0) == pdTRUE) {
