@@ -4,8 +4,8 @@
 - 2× ESP32-S3 WROOM:
   - Face MCU: WS2812 eyes + animations (ESP-IDF `led_strip` / RMT)
   - Reflex MCU: motors/encoders/safety (ESP-IDF, PCNT + LEDC)
-- Jetson Nano runs Python "robot runtime" and orchestrates timing.
-- Personality services can run off-robot on a 3090 Ti server via local network.
+- Raspberry Pi 5 runs the Python supervisor and orchestrates timing at 50 Hz.
+- AI personality services run off-robot on a 3090 Ti server (Ollama + Qwen 3 14B) via local network.
 - Battery is 2S; separate "dirty" motor rail vs "clean" regulated 5V rail.
 
 ## Key principle
