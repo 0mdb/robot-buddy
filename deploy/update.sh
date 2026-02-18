@@ -29,7 +29,7 @@ ok "pulled branch '$BRANCH'"
 info "Syncing dependencies..."
 export PATH="$HOME/.local/bin:$PATH"
 cd "$SUPERVISOR_DIR"
-uv sync --extra rpi
+uv pip install --python "$SUPERVISOR_DIR/.venv/bin/python" -e .  # base deps only; no extras
 ok "dependencies up to date"
 
 # ── 3. Restart the supervisor service ─────────────────────────────────────────

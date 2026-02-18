@@ -86,19 +86,35 @@ def create_app(
 
     # -- MJPEG video stream --------------------------------------------------
 
+    _video_clients: int = 0
+
     @app.get("/video")
     async def video_feed():
+        nonlocal _video_clients
         if not vision:
             return JSONResponse({"error": "vision not available"}, status_code=503)
 
         async def generate():
-            while True:
-                frame = vision.latest_frame()
-                if frame:
-                    yield (
-                        b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + frame + b"\r\n"
-                    )
-                await asyncio.sleep(0.1)  # 10 FPS max
+            nonlocal _video_clients
+            _video_clients += 1
+            vision.set_mjpeg_enabled(True)
+            log.info("video: client connected (%d active)", _video_clients)
+            try:
+                while True:
+                    frame = vision.latest_frame()
+                    if frame:
+                        yield (
+                            b"--frame\r\nContent-Type: image/jpeg\r\n\r\n"
+                            + frame
+                            + b"\r\n"
+                        )
+                    await asyncio.sleep(0.1)  # 10 FPS max
+            finally:
+                _video_clients -= 1
+                if _video_clients <= 0:
+                    _video_clients = 0
+                    vision.set_mjpeg_enabled(False)
+                log.info("video: client disconnected (%d active)", _video_clients)
 
         return StreamingResponse(
             generate(),

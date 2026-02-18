@@ -13,6 +13,21 @@ from supervisor.state.datatypes import (
     SpeedCap,
 )
 
+# Vision safety thresholds — updated at runtime via configure_vision_policy().
+_vision_stale_ms: float = 500.0
+_vision_clear_low: float = 0.3
+_vision_clear_high: float = 0.6
+
+
+def configure_vision_policy(
+    stale_ms: float, clear_low: float, clear_high: float
+) -> None:
+    """Update vision speed-cap thresholds (called when params change)."""
+    global _vision_stale_ms, _vision_clear_low, _vision_clear_high
+    _vision_stale_ms = stale_ms
+    _vision_clear_low = clear_low
+    _vision_clear_high = clear_high
+
 
 def apply_safety(desired: DesiredTwist, state: RobotState) -> DesiredTwist:
     """Apply safety policy to desired twist, returning capped twist.
@@ -59,24 +74,23 @@ def apply_safety(desired: DesiredTwist, state: RobotState) -> DesiredTwist:
         w = int(w * scale)
 
     # 6. Vision clear-path confidence scaling
-    _VISION_STALE_MS = 500.0
     if state.clear_confidence >= 0:
-        if state.vision_age_ms > _VISION_STALE_MS or state.vision_age_ms < 0:
+        if state.vision_age_ms > _vision_stale_ms or state.vision_age_ms < 0:
             scale = 0.50
             state.speed_caps.append(SpeedCap(scale, "vision_stale"))
             v = int(v * scale)
             w = int(w * scale)
-        elif state.clear_confidence < 0.3:
+        elif state.clear_confidence < _vision_clear_low:
             scale = 0.25
             state.speed_caps.append(
-                SpeedCap(scale, f"clear_conf={state.clear_confidence:.2f}<0.3")
+                SpeedCap(scale, f"clear_conf={state.clear_confidence:.2f}<{_vision_clear_low}")
             )
             v = int(v * scale)
             w = int(w * scale)
-        elif state.clear_confidence < 0.6:
+        elif state.clear_confidence < _vision_clear_high:
             scale = 0.50
             state.speed_caps.append(
-                SpeedCap(scale, f"clear_conf={state.clear_confidence:.2f}<0.6")
+                SpeedCap(scale, f"clear_conf={state.clear_confidence:.2f}<{_vision_clear_high}")
             )
             v = int(v * scale)
             w = int(w * scale)

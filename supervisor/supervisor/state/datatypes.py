@@ -138,6 +138,7 @@ class RobotState:
             "face_touch_active": self.face_touch_active,
             "face_listening": self.face_listening,
             "face_talking": self.face_talking,
+            "face_talking_energy": self.face_talking_energy,
             "face_last_button_id": self.face_last_button_id,
             "face_last_button_event": self.face_last_button_event,
             "face_last_button_state": self.face_last_button_state,
