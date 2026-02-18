@@ -377,7 +377,6 @@ def _render_eye(buf: list, fs: FaceState, is_left: bool) -> None:
 
     base_color = get_emotion_color(fs)
     pupil_color = (10, 15, 30)
-    highlight_color = (255, 255, 255)
 
     x0 = max(0, int(cx - w - 10))
     x1 = min(SCREEN_W, int(cx + w + 10))
@@ -494,22 +493,6 @@ def _render_eye(buf: list, fs: FaceState, is_left: bool) -> None:
                     r = int(r * (1.0 - alpha_pupil) + pupil_color[0] * alpha_pupil)
                     g = int(g * (1.0 - alpha_pupil) + pupil_color[1] * alpha_pupil)
                     b = int(b * (1.0 - alpha_pupil) + pupil_color[2] * alpha_pupil)
-
-            gloss_cx, gloss_cy = cx + w * 0.4, cy - h * 0.4
-            alpha_gloss = (
-                (
-                    1.0
-                    - _smoothstep(
-                        -1.5, 0.5, _sd_circle(px, py, gloss_cx, gloss_cy, 6.0)
-                    )
-                )
-                * final_alpha
-                * lid_vis
-            )
-            if alpha_gloss > 0:
-                r = int(r * (1.0 - alpha_gloss) + highlight_color[0] * alpha_gloss)
-                g = int(g * (1.0 - alpha_gloss) + highlight_color[1] * alpha_gloss)
-                b = int(b * (1.0 - alpha_gloss) + highlight_color[2] * alpha_gloss)
 
             br = fs.brightness
             _set_px_blend(
