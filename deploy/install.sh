@@ -65,8 +65,10 @@ ok "venv at $VENV"
 # ── 4. Install Python dependencies ────────────────────────────────────────────
 info "Installing supervisor dependencies..."
 cd "$SUPERVISOR_DIR"
-# The rpi extra adds picamera2 as a declared dep; uv won't reinstall if system copy works
-uv sync --extra rpi
+# Do NOT pass --extra rpi: picamera2 is a system package (python3-picamera2 via apt)
+# and the venv already sees it via --system-site-packages.  Asking uv to install it
+# would try to build python-prctl from source, which requires libcap-dev headers.
+uv sync
 ok "dependencies installed"
 
 # ── 5. Patch service file with the actual user/home and install it ────────────
