@@ -58,20 +58,23 @@ sudo apt-get install -y --no-install-recommends \
 
 # ── 3. Create venv with system-site-packages (for picamera2) ─────────────────
 info "Creating/updating Python virtual environment..."
-# --system-site-packages lets the venv see system-installed picamera2/libcamera
-uv venv --python python3 --system-site-packages "$VENV"
+# --system-site-packages lets the venv see system-installed picamera2/libcamera.
+# --seed adds pip/setuptools so uv pip install works inside the venv.
+# --allow-existing skips the interactive "replace?" prompt on re-runs.
+uv venv --python python3 --system-site-packages --seed --allow-existing "$VENV"
 ok "venv at $VENV"
 
 # ── 4. Install Python dependencies ────────────────────────────────────────────
 info "Installing supervisor dependencies..."
 cd "$SUPERVISOR_DIR"
-# Delete any stale uv.lock (e.g. from a previous failed run with --extra rpi).
-# If the lock was written with the rpi extra, uv sync would try to install
-# picamera2 via pip even without --extra rpi, which fails because python-prctl
-# requires libcap-dev headers.  picamera2 is a system package anyway; the venv
-# sees it via --system-site-packages.
-rm -f uv.lock
-uv sync
+# Use `uv pip install -e .` rather than `uv sync`.
+# `uv sync` resolves ALL extras (including [rpi]) when building the lockfile and
+# ends up trying to pip-install picamera2, which pulls in python-prctl which
+# needs libcap-dev headers that aren't present on RPi OS.
+# picamera2 is already installed as a system package (python3-picamera2 via apt)
+# and is visible in the venv via --system-site-packages; we must not pip-install it.
+# `uv pip install -e .` installs only the base [project.dependencies], no extras.
+uv pip install --python "$VENV/bin/python" -e .
 ok "dependencies installed"
 
 # ── 5. Patch service file with the actual user/home and install it ────────────
