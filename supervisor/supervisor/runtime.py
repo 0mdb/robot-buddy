@@ -140,32 +140,6 @@ class Runtime:
         self._reflex.send_clear_faults()
         return self._sm.clear_error(self._reflex.connected, self._state.fault_flags)
 
-    def request_face_audio_tone(self, duration_ms: int) -> tuple[bool, str]:
-        if not self._face:
-            return False, "face disabled"
-        if not self._face.connected:
-            return False, "face not connected"
-        ms = max(1, int(duration_ms))
-        ok = self._face.run_audio_tone(ms)
-        return (True, f"face tone requested ({ms} ms)") if ok else (False, "send failed")
-
-    def request_face_mic_probe(self, duration_ms: int) -> tuple[bool, str]:
-        if not self._face:
-            return False, "face disabled"
-        if not self._face.connected:
-            return False, "face not connected"
-        ms = max(1, int(duration_ms))
-        ok = self._face.run_mic_probe(ms)
-        return (True, f"face mic probe requested ({ms} ms)") if ok else (False, "send failed")
-
-    def request_face_audio_reg_dump(self) -> tuple[bool, str]:
-        if not self._face:
-            return False, "face disabled"
-        if not self._face.connected:
-            return False, "face not connected"
-        ok = self._face.dump_audio_regs()
-        return (True, "face audio register dump requested") if ok else (False, "send failed")
-
     def debug_devices(self) -> dict:
         debug = {
             "reflex": self._reflex.debug_snapshot(),
@@ -215,10 +189,15 @@ class Runtime:
             s.face_gesture = ft.active_gesture
             s.face_system_mode = ft.system_mode
             s.face_touch_active = ft.touch_active
-            s.face_audio_playing = ft.audio_playing
-            s.face_mic_activity = ft.mic_activity
+            s.face_talking = ft.talking
+            s.face_listening = ft.ptt_listening
             s.face_seq = ft.seq
             s.face_rx_mono_ms = ft.rx_mono_ms
+            last_button = self._face.last_button
+            if last_button is not None:
+                s.face_last_button_id = last_button.button_id
+                s.face_last_button_event = last_button.event_type
+                s.face_last_button_state = last_button.state
 
         # 1.5. Read latest vision snapshot (non-blocking)
         if self._vision:

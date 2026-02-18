@@ -22,6 +22,7 @@ from supervisor.api.ws_hub import WsHub
 from supervisor.devices.conversation_manager import ConversationManager
 from supervisor.devices.face_client import FaceClient
 from supervisor.devices.personality_client import PersonalityClient
+from supervisor.devices.protocol import FaceButtonEventType, FaceButtonId
 from supervisor.devices.reflex_client import REFLEX_PARAM_IDS, ReflexClient
 from supervisor.inputs.camera_vision import VisionProcess
 from supervisor.io.serial_transport import SerialTransport
@@ -53,6 +54,16 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=6.0,
         help="Personality server HTTP timeout in seconds",
+    )
+    p.add_argument(
+        "--usb-speaker-device",
+        default="default",
+        help="ALSA playback device passed to aplay -D",
+    )
+    p.add_argument(
+        "--usb-mic-device",
+        default="default",
+        help="ALSA capture device passed to arecord -D",
     )
     p.add_argument("--log-level", default="INFO", help="Log level")
     return p.parse_args()
@@ -93,8 +104,24 @@ async def async_main(args: argparse.Namespace) -> None:
             log.warning("personality server not reachable at startup: %s", args.server_api)
 
     if args.server_api and face is not None:
-        conversation = ConversationManager(args.server_api, face=face)
-        face.on_mic_audio(lambda evt: conversation.submit_mic_audio_chunk(evt.pcm))
+        conversation = ConversationManager(
+            args.server_api,
+            face=face,
+            speaker_device=args.usb_speaker_device,
+            mic_device=args.usb_mic_device,
+        )
+
+        def _on_face_button(evt) -> None:
+            if evt.button_id == int(FaceButtonId.ACTION) and evt.event_type == int(
+                FaceButtonEventType.CLICK
+            ):
+                asyncio.create_task(conversation.cancel())
+            elif evt.button_id == int(FaceButtonId.PTT) and evt.event_type == int(
+                FaceButtonEventType.TOGGLE
+            ):
+                asyncio.create_task(conversation.set_ptt_enabled(bool(evt.state)))
+
+        face.on_button(_on_face_button)
 
     # Vision process
     vision: VisionProcess | None = None
@@ -129,13 +156,9 @@ async def async_main(args: argparse.Namespace) -> None:
     # Start serial transports
     await transport.start()
     if face_transport:
-        if conversation is not None and face is not None:
-            face_transport.on_connect(lambda: face.set_mic_stream_enabled(True))
         await face_transport.start()
         if conversation is not None:
             await conversation.start()
-            if face.connected:
-                face.set_mic_stream_enabled(True)
 
     # Start uvicorn + tick loop concurrently
     config = uvicorn.Config(
@@ -156,8 +179,6 @@ async def async_main(args: argparse.Namespace) -> None:
         if vision:
             vision.stop()
         if face_transport:
-            if face:
-                face.set_mic_stream_enabled(False)
             if conversation:
                 await conversation.stop()
             await face_transport.stop()

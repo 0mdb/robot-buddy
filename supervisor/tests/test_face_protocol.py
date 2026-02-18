@@ -5,22 +5,21 @@ import struct
 import pytest
 
 from supervisor.devices.protocol import (
+    FaceButtonEventPayload,
+    FaceButtonEventType,
     FaceCmdType,
-    FaceCfgId,
-    FaceHeartbeatPayload,
-    FaceMicAudioPayload,
-    FaceMicProbePayload,
     FaceGesture,
+    FaceHeartbeatPayload,
     FaceMood,
     FaceStatusPayload,
     FaceSystemMode,
     FaceTelType,
     TouchEventPayload,
     TouchEventType,
-    build_face_set_config,
     build_face_gesture,
     build_face_set_state,
     build_face_set_system,
+    build_face_set_talking,
     build_packet,
     parse_frame,
 )
@@ -83,33 +82,20 @@ class TestFaceSetSystem:
         assert param == 42
 
 
-class TestFaceSetConfig:
-    def test_round_trip_tone_ms(self):
-        pkt = build_face_set_config(seq=4, param_id=FaceCfgId.AUDIO_TEST_TONE_MS, value_u32=1500)
+class TestFaceSetTalking:
+    def test_round_trip(self):
+        pkt = build_face_set_talking(seq=9, talking=True, energy=170)
         parsed = parse_frame(pkt[:-1])
-        assert parsed.pkt_type == FaceCmdType.SET_CONFIG
-        assert parsed.seq == 4
-        param_id, value = struct.unpack("<B4s", parsed.payload)
-        assert param_id == FaceCfgId.AUDIO_TEST_TONE_MS
-        assert struct.unpack("<I", value)[0] == 1500
+        assert parsed.pkt_type == FaceCmdType.SET_TALKING
+        talking, energy = struct.unpack("<BB", parsed.payload)
+        assert talking == 1
+        assert energy == 170
 
-    def test_round_trip_reg_dump(self):
-        pkt = build_face_set_config(seq=9, param_id=FaceCfgId.AUDIO_REG_DUMP, value_u32=0)
+    def test_energy_clamped(self):
+        pkt = build_face_set_talking(seq=9, talking=True, energy=999)
         parsed = parse_frame(pkt[:-1])
-        assert parsed.pkt_type == FaceCmdType.SET_CONFIG
-        param_id, value = struct.unpack("<B4s", parsed.payload)
-        assert param_id == FaceCfgId.AUDIO_REG_DUMP
-        assert struct.unpack("<I", value)[0] == 0
-
-    def test_round_trip_mic_stream_enable(self):
-        pkt = build_face_set_config(
-            seq=10, param_id=FaceCfgId.AUDIO_MIC_STREAM_ENABLE, value_u32=1
-        )
-        parsed = parse_frame(pkt[:-1])
-        assert parsed.pkt_type == FaceCmdType.SET_CONFIG
-        param_id, value = struct.unpack("<B4s", parsed.payload)
-        assert param_id == FaceCfgId.AUDIO_MIC_STREAM_ENABLE
-        assert struct.unpack("<I", value)[0] == 1
+        _, energy = struct.unpack("<BB", parsed.payload)
+        assert energy == 255
 
 
 class TestFaceStatusPayload:
@@ -126,14 +112,12 @@ class TestFaceStatusPayload:
             FaceStatusPayload.unpack(b"\x00\x00")
 
     def test_as_telemetry_packet(self):
-        payload = struct.pack("<BBBB", FaceMood.HAPPY, FaceGesture.LAUGH, 0, 0x01)
+        payload = struct.pack("<BBBB", FaceMood.HAPPY, FaceGesture.LAUGH, 0, 0x07)
         pkt = build_packet(FaceTelType.FACE_STATUS, 10, payload)
         parsed = parse_frame(pkt[:-1])
         assert parsed.pkt_type == FaceTelType.FACE_STATUS
         status = FaceStatusPayload.unpack(parsed.payload)
-        assert status.mood_id == FaceMood.HAPPY
-        assert status.active_gesture == FaceGesture.LAUGH
-        assert status.flags == 0x01
+        assert status.flags == 0x07
 
 
 class TestTouchEventPayload:
@@ -159,217 +143,78 @@ class TestTouchEventPayload:
         assert te.y == 200
 
 
-class TestMicProbePayload:
+class TestButtonEventPayload:
     def test_unpack(self):
-        data = struct.pack(
-            "<IIIHHHHhBB",
-            7,      # probe_seq
-            3000,   # duration_ms
-            1234,   # sample_count
-            5,      # read_timeouts
-            1,      # read_errors
-            3210,   # selected_rms_x10
-            1450,   # selected_peak
-            -123,   # selected_dbfs_x10
-            2,      # selected_channel
-            1,      # active
-        )
-        mp = FaceMicProbePayload.unpack(data)
-        assert mp.probe_seq == 7
-        assert mp.duration_ms == 3000
-        assert mp.sample_count == 1234
-        assert mp.read_timeouts == 5
-        assert mp.read_errors == 1
-        assert mp.selected_rms_x10 == 3210
-        assert mp.selected_peak == 1450
-        assert mp.selected_dbfs_x10 == -123
-        assert mp.selected_channel == 2
-        assert mp.active == 1
+        data = struct.pack("<BBBB", 0, FaceButtonEventType.TOGGLE, 1, 0)
+        be = FaceButtonEventPayload.unpack(data)
+        assert be.button_id == 0
+        assert be.event_type == FaceButtonEventType.TOGGLE
+        assert be.state == 1
 
     def test_unpack_too_short(self):
         with pytest.raises(ValueError, match="too short"):
-            FaceMicProbePayload.unpack(b"\x00\x01")
+            FaceButtonEventPayload.unpack(b"\x00")
 
     def test_as_telemetry_packet(self):
-        payload = struct.pack("<IIIHHHHhBB", 1, 2000, 800, 2, 0, 900, 500, -180, 1, 0)
-        pkt = build_packet(FaceTelType.MIC_PROBE, 12, payload)
+        payload = struct.pack("<BBBB", 1, FaceButtonEventType.CLICK, 0, 0)
+        pkt = build_packet(FaceTelType.BUTTON_EVENT, 12, payload)
         parsed = parse_frame(pkt[:-1])
-        assert parsed.pkt_type == FaceTelType.MIC_PROBE
-        mp = FaceMicProbePayload.unpack(parsed.payload)
-        assert mp.probe_seq == 1
-        assert mp.selected_channel == 1
-        assert mp.active == 0
-
-
-class TestMicAudioPayload:
-    def test_unpack(self):
-        pcm = bytes(range(32))
-        data = struct.pack("<IHBB", 42, len(pcm), 0x01, 0) + pcm
-        ma = FaceMicAudioPayload.unpack(data)
-        assert ma.chunk_seq == 42
-        assert ma.chunk_len == len(pcm)
-        assert ma.flags == 0x01
-        assert ma.pcm == pcm
-
-    def test_unpack_too_short(self):
-        with pytest.raises(ValueError, match="too short"):
-            FaceMicAudioPayload.unpack(b"\x00\x01")
-
-    def test_unpack_truncated(self):
-        pcm = bytes(range(8))
-        data = struct.pack("<IHBB", 9, len(pcm) + 4, 0x00, 0) + pcm
-        with pytest.raises(ValueError, match="truncated"):
-            FaceMicAudioPayload.unpack(data)
-
-    def test_as_telemetry_packet(self):
-        pcm = bytes(range(16))
-        payload = struct.pack("<IHBB", 3, len(pcm), 0, 0) + pcm
-        pkt = build_packet(FaceTelType.MIC_AUDIO, 19, payload)
-        parsed = parse_frame(pkt[:-1])
-        assert parsed.pkt_type == FaceTelType.MIC_AUDIO
-        ma = FaceMicAudioPayload.unpack(parsed.payload)
-        assert ma.chunk_seq == 3
-        assert ma.pcm == pcm
+        assert parsed.pkt_type == FaceTelType.BUTTON_EVENT
+        be = FaceButtonEventPayload.unpack(parsed.payload)
+        assert be.button_id == 1
+        assert be.event_type == FaceButtonEventType.CLICK
 
 
 class TestHeartbeatPayload:
-    def test_unpack(self):
-        data = struct.pack(
-            "<IIIIB",
-            12345,  # uptime_ms
-            77,     # status_tx_count
-            3,      # touch_tx_count
-            5,      # mic_probe_seq
-            1,      # mic_activity
-        )
+    def test_unpack_base_only(self):
+        data = struct.pack("<IIII", 12345, 77, 3, 2)
         hb = FaceHeartbeatPayload.unpack(data)
         assert hb.uptime_ms == 12345
         assert hb.status_tx_count == 77
         assert hb.touch_tx_count == 3
-        assert hb.mic_probe_seq == 5
-        assert hb.mic_activity == 1
+        assert hb.button_tx_count == 2
         assert hb.usb_tx_calls == 0
-        assert hb.usb_tx_bytes_requested == 0
         assert hb.usb_dtr == 0
-        assert hb.usb_rts == 0
+        assert hb.ptt_listening == 0
 
-    def test_unpack_with_usb_diag_extension(self):
-        base = struct.pack("<IIIIB", 12345, 77, 3, 5, 1)
-        usb = struct.pack(
-            "<IIIIIIIIIIIIBB",
-            10,    # usb_tx_calls
-            1100,  # usb_tx_bytes_requested
-            1000,  # usb_tx_bytes_queued
-            2,     # usb_tx_short_writes
-            9,     # usb_tx_flush_ok
-            1,     # usb_tx_flush_not_finished
+    def test_unpack_full(self):
+        payload = struct.pack(
+            "<IIIIIIIIIIIIIIIIBBBB",
+            2000,  # uptime_ms
+            80,    # status_tx_count
+            2,     # touch_tx_count
+            5,     # button_tx_count
+            50,    # usb_tx_calls
+            5000,  # usb_tx_bytes_requested
+            4900,  # usb_tx_bytes_queued
+            3,     # usb_tx_short_writes
+            47,    # usb_tx_flush_ok
+            2,     # usb_tx_flush_not_finished
             0,     # usb_tx_flush_timeout
             0,     # usb_tx_flush_error
-            55,    # usb_rx_calls
-            321,   # usb_rx_bytes
-            4,     # usb_rx_errors
-            3,     # usb_line_state_events
+            61,    # usb_rx_calls
+            777,   # usb_rx_bytes
+            1,     # usb_rx_errors
+            4,     # usb_line_state_events
             1,     # usb_dtr
             1,     # usb_rts
+            1,     # ptt_listening
+            0,     # reserved
         )
-        hb = FaceHeartbeatPayload.unpack(base + usb)
-        assert hb.usb_tx_calls == 10
-        assert hb.usb_tx_bytes_requested == 1100
-        assert hb.usb_tx_bytes_queued == 1000
-        assert hb.usb_tx_short_writes == 2
-        assert hb.usb_tx_flush_ok == 9
-        assert hb.usb_tx_flush_not_finished == 1
-        assert hb.usb_rx_bytes == 321
-        assert hb.usb_line_state_events == 3
+        hb = FaceHeartbeatPayload.unpack(payload)
+        assert hb.button_tx_count == 5
+        assert hb.usb_tx_calls == 50
+        assert hb.usb_rx_bytes == 777
         assert hb.usb_dtr == 1
         assert hb.usb_rts == 1
-
-    def test_unpack_with_audio_diag_extension(self):
-        base = struct.pack("<IIIIB", 12345, 77, 3, 5, 1)
-        usb = struct.pack(
-            "<IIIIIIIIIIIIBB",
-            10,
-            1100,
-            1000,
-            2,
-            9,
-            1,
-            0,
-            0,
-            55,
-            321,
-            4,
-            3,
-            1,
-            1,
-        )
-        audio = struct.pack(
-            "<IIIIIIIIIIBB",
-            100,  # speaker_rx_chunks
-            7,    # speaker_rx_drops
-            32000,  # speaker_rx_bytes
-            98,   # speaker_play_chunks
-            1,    # speaker_play_errors
-            88,   # mic_capture_chunks
-            80,   # mic_tx_chunks
-            2,    # mic_tx_drops
-            5,    # mic_overruns
-            3,    # mic_queue_depth
-            1,    # mic_stream_enabled
-            0,    # reserved
-        )
-        hb = FaceHeartbeatPayload.unpack(base + usb + audio)
-        assert hb.speaker_rx_chunks == 100
-        assert hb.speaker_rx_drops == 7
-        assert hb.speaker_play_chunks == 98
-        assert hb.mic_capture_chunks == 88
-        assert hb.mic_tx_chunks == 80
-        assert hb.mic_tx_drops == 2
-        assert hb.mic_overruns == 5
-        assert hb.mic_queue_depth == 3
-        assert hb.mic_stream_enabled == 1
+        assert hb.ptt_listening == 1
 
     def test_unpack_too_short(self):
         with pytest.raises(ValueError, match="too short"):
             FaceHeartbeatPayload.unpack(b"\x00\x01")
 
-    def test_as_telemetry_packet(self):
-        payload = struct.pack("<IIIIB", 5000, 100, 2, 9, 0)
-        pkt = build_packet(FaceTelType.HEARTBEAT, 18, payload)
-        parsed = parse_frame(pkt[:-1])
-        assert parsed.pkt_type == FaceTelType.HEARTBEAT
-        hb = FaceHeartbeatPayload.unpack(parsed.payload)
-        assert hb.uptime_ms == 5000
-        assert hb.status_tx_count == 100
-        assert hb.mic_activity == 0
-
 
 class TestFaceEnums:
-    def test_mood_values(self):
-        assert FaceMood.NEUTRAL == 0
-        assert FaceMood.HAPPY == 1
-        assert FaceMood.EXCITED == 2
-        assert FaceMood.CURIOUS == 3
-        assert FaceMood.SAD == 4
-        assert FaceMood.SCARED == 5
-        assert FaceMood.ANGRY == 6
-        assert FaceMood.SURPRISED == 7
-        assert FaceMood.SLEEPY == 8
-        assert FaceMood.LOVE == 9
-        assert FaceMood.SILLY == 10
-        assert FaceMood.THINKING == 11
-
-    def test_gesture_values(self):
-        assert FaceGesture.BLINK == 0
-        assert FaceGesture.RAGE == 9
-        assert FaceGesture.NOD == 10
-        assert FaceGesture.HEADSHAKE == 11
-        assert FaceGesture.WIGGLE == 12
-
-    def test_system_mode_values(self):
-        assert FaceSystemMode.NONE == 0
-        assert FaceSystemMode.SHUTTING_DOWN == 5
-
     def test_command_ids_in_face_range(self):
         for cmd in FaceCmdType:
             assert 0x20 <= cmd <= 0x2F

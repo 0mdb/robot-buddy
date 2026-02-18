@@ -1,19 +1,14 @@
-"""Conversation manager — bridges ESP32 mic/speaker with the personality server.
-
-Connects to the server's WS /converse endpoint and coordinates:
-- Forwarding mic audio from ESP32 to the server
-- Receiving emotion metadata and sending face commands
-- Receiving TTS audio and streaming to ESP32 speaker
-- Managing talking animation state
-"""
+"""Conversation manager — bridges personality server with local USB audio + face."""
 
 from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
 import json
 import logging
 import math
+import shutil
 import struct
 
 from supervisor.devices.face_client import FaceClient
@@ -37,16 +32,13 @@ _EMOTION_TO_MOOD: dict[str, int] = {
     "thinking": int(FaceMood.THINKING),
 }
 
-# Audio format constants
+# Audio format constants (personality server stream + local USB audio)
 SAMPLE_RATE = 16000
 SAMPLE_WIDTH = 2  # 16-bit signed
+CHANNELS = 1
 CHUNK_MS = 10
 CHUNK_BYTES = SAMPLE_RATE * SAMPLE_WIDTH * CHUNK_MS // 1000  # 320 bytes per 10ms
-MIC_QUEUE_MAX_CHUNKS = 256
-VAD_START_ENERGY = 12
-VAD_END_ENERGY = 8
-VAD_END_SILENCE_MS = 500
-VAD_GAP_END_MS = 300
+PLAYBACK_QUEUE_MAX_CHUNKS = 512
 RECONNECT_BACKOFF_S = 1.5
 
 
@@ -57,36 +49,39 @@ def _compute_rms_energy(pcm_chunk: bytes) -> int:
     n_samples = len(pcm_chunk) // 2
     samples = struct.unpack(f"<{n_samples}h", pcm_chunk[: n_samples * 2])
     rms = math.sqrt(sum(s * s for s in samples) / n_samples)
-    # Scale: 32768 max → 255 output, with some headroom
     return min(255, int(rms / 128))
 
 
 class ConversationManager:
-    """Manages bidirectional audio + emotion flow between ESP32 and server.
-
-    Lifecycle:
-        1. start() — connect to server WebSocket
-        2. send_text() or send_audio() — forward user input
-        3. Server responses trigger face commands and audio streaming
-        4. stop() — disconnect
-    """
+    """Manages emotion + speech flow between server and local robot clients."""
 
     def __init__(
         self,
         server_url: str,
         face: FaceClient | None = None,
+        speaker_device: str = "default",
+        mic_device: str = "default",
     ) -> None:
         self._server_url = server_url.rstrip("/")
         self._face = face
+        self._speaker_device = speaker_device
+        self._mic_device = mic_device
         self._ws = None
         self._reconnect_task: asyncio.Task | None = None
         self._receive_task: asyncio.Task | None = None
-        self._mic_task: asyncio.Task | None = None
-        self._mic_queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=MIC_QUEUE_MAX_CHUNKS)
+        self._playback_task: asyncio.Task | None = None
+        self._mic_forward_task: asyncio.Task | None = None
+        self._playback_queue: asyncio.Queue[bytes] = asyncio.Queue(
+            maxsize=PLAYBACK_QUEUE_MAX_CHUNKS
+        )
+        self._speaker_proc: asyncio.subprocess.Process | None = None
+        self._mic_proc: asyncio.subprocess.Process | None = None
         self._connected = False
         self._speaking = False
-        self._mic_drop_count = 0
         self._run = False
+        self._ptt_enabled = False
+        self._logged_missing_aplay = False
+        self._logged_missing_arecord = False
 
     @property
     def connected(self) -> bool:
@@ -96,54 +91,65 @@ class ConversationManager:
     def speaking(self) -> bool:
         return self._speaking
 
+    @property
+    def ptt_enabled(self) -> bool:
+        return self._ptt_enabled
+
     async def start(self) -> None:
         """Start background connection management for /converse WebSocket."""
         if self._run:
             return
         self._run = True
-        if self._mic_task is None or self._mic_task.done():
-            self._mic_task = asyncio.create_task(self._mic_forward_loop())
+        if self._playback_task is None or self._playback_task.done():
+            self._playback_task = asyncio.create_task(self._playback_loop())
         if self._reconnect_task is None or self._reconnect_task.done():
             self._reconnect_task = asyncio.create_task(self._connection_loop())
 
     async def stop(self) -> None:
-        """Disconnect from the server."""
+        """Disconnect from server and stop local audio I/O."""
         self._run = False
         self._connected = False
+        await self.set_ptt_enabled(False)
+
         if self._reconnect_task and not self._reconnect_task.done():
             self._reconnect_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._reconnect_task
-            except asyncio.CancelledError:
-                pass
             self._reconnect_task = None
+
         if self._receive_task and not self._receive_task.done():
             self._receive_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._receive_task
-            except asyncio.CancelledError:
-                pass
             self._receive_task = None
-        if self._mic_task and not self._mic_task.done():
-            self._mic_task.cancel()
-            try:
-                await self._mic_task
-            except asyncio.CancelledError:
-                pass
-            self._mic_task = None
+
+        await self._stop_talking()
+
+        if self._playback_task and not self._playback_task.done():
+            self._playback_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._playback_task
+            self._playback_task = None
+
+        await self._stop_speaker_playback()
+
         if self._ws:
-            try:
+            with contextlib.suppress(Exception):
                 await self._ws.close()
-            except Exception:
-                pass
             self._ws = None
-        while not self._mic_queue.empty():
-            try:
-                self._mic_queue.get_nowait()
-            except asyncio.QueueEmpty:
-                break
-        self._stop_talking()
+
         log.info("Conversation disconnected")
+
+    async def set_ptt_enabled(self, enabled: bool) -> None:
+        """Enable/disable local USB mic streaming to /converse."""
+        enabled = bool(enabled)
+        if enabled == self._ptt_enabled:
+            return
+        self._ptt_enabled = enabled
+        if enabled:
+            await self._start_mic_capture()
+        else:
+            await self._stop_mic_capture(send_end_utterance=True)
 
     async def send_text(self, text: str) -> None:
         """Send text input directly (bypass STT)."""
@@ -157,7 +163,7 @@ class ConversationManager:
             log.exception("Conversation send_text failed")
 
     async def send_audio_chunk(self, pcm_chunk: bytes) -> None:
-        """Forward a mic audio chunk (16-bit, 16 kHz, mono) to the server."""
+        """Forward one PCM chunk to server."""
         if not self._ws or not self._connected:
             return
         try:
@@ -168,7 +174,7 @@ class ConversationManager:
             log.exception("Conversation send_audio_chunk failed")
 
     async def end_utterance(self) -> None:
-        """Signal end of speech (VAD silence detected)."""
+        """Signal end of speech."""
         if not self._ws or not self._connected:
             return
         try:
@@ -186,28 +192,9 @@ class ConversationManager:
         except Exception:
             self._mark_disconnected("cancel")
             log.exception("Conversation cancel failed")
-        self._stop_talking()
+        await self._stop_talking()
 
-    def submit_mic_audio_chunk(self, pcm_chunk: bytes) -> None:
-        """Queue one 10 ms mic chunk from face telemetry for forwarding to server."""
-        if not pcm_chunk:
-            return
-        if len(pcm_chunk) % 2:
-            pcm_chunk = pcm_chunk[:-1]
-        if not pcm_chunk:
-            return
-        if self._mic_queue.full():
-            try:
-                self._mic_queue.get_nowait()
-                self._mic_drop_count += 1
-            except asyncio.QueueEmpty:
-                pass
-        try:
-            self._mic_queue.put_nowait(pcm_chunk)
-        except asyncio.QueueFull:
-            self._mic_drop_count += 1
-
-    # -- Private: receive loop ---------------------------------------------------
+    # -- server receive ------------------------------------------------------
 
     async def _receive_loop(self) -> None:
         """Process messages from the server."""
@@ -219,7 +206,6 @@ class ConversationManager:
                     continue
 
                 msg_type = msg.get("type", "")
-
                 if msg_type == "emotion":
                     self._handle_emotion(msg)
                 elif msg_type == "gestures":
@@ -229,12 +215,12 @@ class ConversationManager:
                 elif msg_type == "transcription":
                     log.info("User said: %s", msg.get("text", "")[:120])
                 elif msg_type == "done":
-                    self._stop_talking()
+                    await self._stop_talking()
                 elif msg_type == "listening":
                     pass
                 elif msg_type == "error":
                     log.warning("Server error: %s", msg.get("message", ""))
-                    self._stop_talking()
+                    await self._stop_talking()
 
         except asyncio.CancelledError:
             raise
@@ -262,10 +248,8 @@ class ConversationManager:
             import websockets
 
             if self._ws is not None:
-                try:
+                with contextlib.suppress(Exception):
                     await self._ws.close()
-                except Exception:
-                    pass
                 self._ws = None
 
             self._ws = await websockets.connect(
@@ -276,6 +260,8 @@ class ConversationManager:
             self._connected = True
             if self._receive_task is None or self._receive_task.done():
                 self._receive_task = asyncio.create_task(self._receive_loop())
+            if self._ptt_enabled:
+                await self._start_mic_capture()
             log.info("Conversation connected to %s/converse", ws_url)
         except Exception as exc:
             self._connected = False
@@ -286,54 +272,12 @@ class ConversationManager:
         if self._connected:
             log.warning("Conversation disconnected (%s)", reason)
         self._connected = False
+        if self._speaking:
+            asyncio.create_task(self._stop_talking())
+        if self._mic_forward_task and not self._mic_forward_task.done():
+            asyncio.create_task(self._stop_mic_capture(send_end_utterance=False))
 
-    async def _mic_forward_loop(self) -> None:
-        """Forward face mic chunks to server and emit end_utterance via simple VAD."""
-        utterance_active = False
-        silence_ms = 0
-
-        try:
-            while True:
-                try:
-                    pcm_chunk = await asyncio.wait_for(
-                        self._mic_queue.get(),
-                        timeout=VAD_GAP_END_MS / 1000.0,
-                    )
-                except TimeoutError:
-                    if utterance_active and self._connected:
-                        await self.end_utterance()
-                        utterance_active = False
-                        silence_ms = 0
-                    continue
-
-                if not self._connected:
-                    utterance_active = False
-                    silence_ms = 0
-                    continue
-
-                energy = _compute_rms_energy(pcm_chunk)
-                is_voice = energy >= (VAD_START_ENERGY if not utterance_active else VAD_END_ENERGY)
-
-                if not utterance_active:
-                    if not is_voice:
-                        continue
-                    utterance_active = True
-                    silence_ms = 0
-
-                await self.send_audio_chunk(pcm_chunk)
-
-                if is_voice:
-                    silence_ms = 0
-                else:
-                    silence_ms += CHUNK_MS
-                    if silence_ms >= VAD_END_SILENCE_MS:
-                        await self.end_utterance()
-                        utterance_active = False
-                        silence_ms = 0
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            log.exception("Conversation mic forward loop error")
+    # -- face + audio handlers ----------------------------------------------
 
     def _handle_emotion(self, msg: dict) -> None:
         """Send emotion to face display."""
@@ -346,7 +290,7 @@ class ConversationManager:
                 emotion_id=mood_id,
                 intensity=float(intensity),
             )
-        log.debug("Emotion: %s (%.1f) → mood_id=%d", emotion, intensity, mood_id)
+        log.debug("Emotion: %s (%.1f) -> mood_id=%d", emotion, intensity, mood_id)
 
     def _handle_gestures(self, msg: dict) -> None:
         """Trigger gesture animations on the face."""
@@ -374,12 +318,15 @@ class ConversationManager:
                 self._face.send_gesture(gesture_id)
 
     def _handle_audio(self, msg: dict) -> None:
-        """Stream TTS audio to ESP32 speaker with talking animation."""
+        """Route streamed TTS audio to local USB speaker and face talking animation."""
         data = msg.get("data", "")
         if not data:
             return
 
-        pcm_chunk = base64.b64decode(data)
+        try:
+            pcm_chunk = base64.b64decode(data)
+        except Exception:
+            return
         if not pcm_chunk:
             return
 
@@ -388,22 +335,204 @@ class ConversationManager:
             if self._face:
                 self._face.send_talking(True, 128)
 
-        if not self._face:
-            return
-
         for off in range(0, len(pcm_chunk), CHUNK_BYTES):
             sub = pcm_chunk[off : off + CHUNK_BYTES]
             if len(sub) % 2:
                 sub = sub[:-1]
             if not sub:
                 continue
-            energy = _compute_rms_energy(sub)
-            self._face.send_talking(True, energy)
-            self._face.send_audio_data(sub)
-
-    def _stop_talking(self) -> None:
-        """End talking animation."""
-        if self._speaking:
-            self._speaking = False
+            self._queue_playback_chunk(sub)
             if self._face:
-                self._face.send_talking(False, 0)
+                energy = _compute_rms_energy(sub)
+                self._face.send_talking(True, energy)
+
+    async def _stop_talking(self) -> None:
+        """End talking animation and flush/stop local playback."""
+        if not self._speaking:
+            return
+        self._speaking = False
+        self._clear_playback_queue()
+        await self._stop_speaker_playback()
+        if self._face:
+            self._face.send_talking(False, 0)
+
+    # -- local speaker playback ---------------------------------------------
+
+    def _queue_playback_chunk(self, pcm_chunk: bytes) -> None:
+        if self._playback_queue.full():
+            with contextlib.suppress(asyncio.QueueEmpty):
+                self._playback_queue.get_nowait()
+        with contextlib.suppress(asyncio.QueueFull):
+            self._playback_queue.put_nowait(pcm_chunk)
+
+    def _clear_playback_queue(self) -> None:
+        while True:
+            with contextlib.suppress(asyncio.QueueEmpty):
+                self._playback_queue.get_nowait()
+                continue
+            break
+
+    async def _playback_loop(self) -> None:
+        while True:
+            chunk = await self._playback_queue.get()
+            await self._play_audio_chunk(chunk)
+
+    async def _play_audio_chunk(self, pcm_chunk: bytes) -> None:
+        if not await self._ensure_speaker_proc():
+            return
+        proc = self._speaker_proc
+        if proc is None or proc.stdin is None:
+            return
+        try:
+            proc.stdin.write(pcm_chunk)
+            await proc.stdin.drain()
+        except Exception as e:
+            log.warning("speaker write failed: %s", e)
+            await self._stop_speaker_playback()
+
+    async def _ensure_speaker_proc(self) -> bool:
+        if self._speaker_proc and self._speaker_proc.returncode is None:
+            return True
+        if shutil.which("aplay") is None:
+            if not self._logged_missing_aplay:
+                self._logged_missing_aplay = True
+                log.warning("aplay not found; local speaker playback disabled")
+            return False
+
+        cmd = [
+            "aplay",
+            "-q",
+            "-D",
+            self._speaker_device,
+            "-c",
+            str(CHANNELS),
+            "-r",
+            str(SAMPLE_RATE),
+            "-f",
+            "S16_LE",
+            "-t",
+            "raw",
+        ]
+        try:
+            self._speaker_proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            log.info("speaker playback started via aplay device=%s", self._speaker_device)
+            return True
+        except Exception as e:
+            log.warning("failed to start aplay (%s): %s", self._speaker_device, e)
+            self._speaker_proc = None
+            return False
+
+    async def _stop_speaker_playback(self) -> None:
+        proc = self._speaker_proc
+        if proc is None:
+            return
+        self._speaker_proc = None
+
+        if proc.stdin:
+            with contextlib.suppress(Exception):
+                proc.stdin.close()
+            with contextlib.suppress(Exception):
+                await proc.stdin.wait_closed()
+        with contextlib.suppress(Exception):
+            proc.terminate()
+        with contextlib.suppress(asyncio.TimeoutError):
+            await asyncio.wait_for(proc.wait(), timeout=0.6)
+        if proc.returncode is None:
+            with contextlib.suppress(Exception):
+                proc.kill()
+            with contextlib.suppress(Exception):
+                await proc.wait()
+
+    # -- local mic capture ---------------------------------------------------
+
+    async def _start_mic_capture(self) -> None:
+        if not self._run:
+            return
+        if not self._connected:
+            log.info("PTT enabled but /converse is not connected yet")
+            return
+        if self._mic_forward_task and not self._mic_forward_task.done():
+            return
+        if shutil.which("arecord") is None:
+            if not self._logged_missing_arecord:
+                self._logged_missing_arecord = True
+                log.warning("arecord not found; local USB mic capture disabled")
+            return
+
+        cmd = [
+            "arecord",
+            "-q",
+            "-D",
+            self._mic_device,
+            "-c",
+            str(CHANNELS),
+            "-r",
+            str(SAMPLE_RATE),
+            "-f",
+            "S16_LE",
+            "-t",
+            "raw",
+        ]
+        try:
+            self._mic_proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdin=asyncio.subprocess.DEVNULL,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            self._mic_forward_task = asyncio.create_task(self._mic_forward_loop())
+            log.info("PTT mic capture started via arecord device=%s", self._mic_device)
+        except Exception as e:
+            self._mic_proc = None
+            log.warning("failed to start arecord (%s): %s", self._mic_device, e)
+
+    async def _stop_mic_capture(self, send_end_utterance: bool) -> None:
+        task = self._mic_forward_task
+        self._mic_forward_task = None
+        if task and not task.done():
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+
+        proc = self._mic_proc
+        self._mic_proc = None
+        if proc is not None:
+            with contextlib.suppress(Exception):
+                proc.terminate()
+            with contextlib.suppress(asyncio.TimeoutError):
+                await asyncio.wait_for(proc.wait(), timeout=0.5)
+            if proc.returncode is None:
+                with contextlib.suppress(Exception):
+                    proc.kill()
+                with contextlib.suppress(Exception):
+                    await proc.wait()
+
+        if send_end_utterance:
+            await self.end_utterance()
+
+    async def _mic_forward_loop(self) -> None:
+        proc = self._mic_proc
+        if proc is None or proc.stdout is None:
+            return
+
+        try:
+            while self._run and self._ptt_enabled and self._connected:
+                chunk = await proc.stdout.read(CHUNK_BYTES)
+                if not chunk:
+                    break
+                if len(chunk) % 2:
+                    chunk = chunk[:-1]
+                if chunk:
+                    await self.send_audio_chunk(chunk)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.exception("PTT mic forward loop failed")
+        finally:
+            if self._ptt_enabled and self._run and self._connected:
+                log.warning("PTT mic capture ended unexpectedly")

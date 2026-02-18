@@ -204,8 +204,8 @@ Returns low-level device debug snapshot for troubleshooting:
 * Per-device serial transport counters (rx/tx bytes, frame parse errors, reconnects)
 * Packet-level counters (e.g., face status packets, bad payloads)
 * Last telemetry age/sequence
-* Latest face mic probe diagnostics (samples, RMS/peak, timeouts/errors, selected channel)
-* Face heartbeat diagnostics (`rx_heartbeat_packets`, last heartbeat payload with uptime/counters)
+* Latest face button event snapshot (PTT/ACTION)
+* Face heartbeat diagnostics (`rx_heartbeat_packets`, uptime/tx/USB counters)
 
 ## 6.2 GET /params
 
@@ -233,9 +233,6 @@ Supported actions:
 * e_stop
 * clear_e_stop
 * trigger_gesture
-* face_audio_tone (`duration_ms`)
-* face_mic_probe (`duration_ms`)
-* face_audio_reg_dump
 
 RPC style intentionally preferred over strict REST fragmentation.
 

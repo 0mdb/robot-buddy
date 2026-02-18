@@ -76,10 +76,12 @@ class RobotState:
     face_gesture: int = 0xFF  # 0xFF = none
     face_system_mode: int = 0
     face_touch_active: bool = False
-    face_audio_playing: bool = False
-    face_mic_activity: bool = False
+    face_listening: bool = False
     face_talking: bool = False
     face_talking_energy: int = 0
+    face_last_button_id: int = -1
+    face_last_button_event: int = -1
+    face_last_button_state: int = 0
     face_seq: int = 0
     face_rx_mono_ms: float = 0.0
 
@@ -134,9 +136,11 @@ class RobotState:
             "face_gesture": self.face_gesture,
             "face_system_mode": self.face_system_mode,
             "face_touch_active": self.face_touch_active,
-            "face_audio_playing": self.face_audio_playing,
-            "face_mic_activity": self.face_mic_activity,
+            "face_listening": self.face_listening,
             "face_talking": self.face_talking,
+            "face_last_button_id": self.face_last_button_id,
+            "face_last_button_event": self.face_last_button_event,
+            "face_last_button_state": self.face_last_button_state,
             "face_seq": self.face_seq,
             "face_rx_mono_ms": round(self.face_rx_mono_ms, 1),
             "personality_last_plan_mono_ms": round(self.personality_last_plan_mono_ms, 1),

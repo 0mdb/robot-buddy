@@ -63,23 +63,25 @@ class FaceCmdType(IntEnum):
     GESTURE = 0x21
     SET_SYSTEM = 0x22
     SET_TALKING = 0x23
-    AUDIO_DATA = 0x24
-    SET_CONFIG = 0x25
 
 
 class FaceTelType(IntEnum):
     FACE_STATUS = 0x90
     TOUCH_EVENT = 0x91
-    MIC_PROBE = 0x92
+    BUTTON_EVENT = 0x92
     HEARTBEAT = 0x93
-    MIC_AUDIO = 0x94
 
 
-class FaceCfgId(IntEnum):
-    AUDIO_TEST_TONE_MS = 0xA0
-    AUDIO_MIC_PROBE_MS = 0xA1
-    AUDIO_REG_DUMP = 0xA2
-    AUDIO_MIC_STREAM_ENABLE = 0xA3
+class FaceButtonId(IntEnum):
+    PTT = 0
+    ACTION = 1
+
+
+class FaceButtonEventType(IntEnum):
+    PRESS = 0
+    RELEASE = 1
+    TOGGLE = 2
+    CLICK = 3
 
 
 class FaceMood(IntEnum):
@@ -183,48 +185,19 @@ class TouchEventPayload:
 
 
 @dataclass(slots=True)
-class FaceMicProbePayload:
-    probe_seq: int
-    duration_ms: int
-    sample_count: int
-    read_timeouts: int
-    read_errors: int
-    selected_rms_x10: int
-    selected_peak: int
-    selected_dbfs_x10: int
-    selected_channel: int
-    active: int
+class FaceButtonEventPayload:
+    button_id: int
+    event_type: int
+    state: int
+    reserved: int
 
-    _FMT = struct.Struct("<IIIHHHHhBB")  # 24 bytes
+    _FMT = struct.Struct("<BBBB")
 
     @classmethod
-    def unpack(cls, data: bytes) -> FaceMicProbePayload:
+    def unpack(cls, data: bytes) -> FaceButtonEventPayload:
         if len(data) < cls._FMT.size:
-            raise ValueError(f"MIC_PROBE payload too short: {len(data)}")
+            raise ValueError(f"BUTTON_EVENT payload too short: {len(data)}")
         return cls(*cls._FMT.unpack_from(data))
-
-
-@dataclass(slots=True)
-class FaceMicAudioPayload:
-    chunk_seq: int
-    chunk_len: int
-    flags: int
-    pcm: bytes
-
-    _HDR_FMT = struct.Struct("<IHBB")  # chunk_seq, chunk_len, flags, reserved
-
-    @classmethod
-    def unpack(cls, data: bytes) -> FaceMicAudioPayload:
-        if len(data) < cls._HDR_FMT.size:
-            raise ValueError(f"MIC_AUDIO payload too short: {len(data)}")
-        chunk_seq, chunk_len, flags, _ = cls._HDR_FMT.unpack_from(data)
-        end = cls._HDR_FMT.size + chunk_len
-        if len(data) < end:
-            raise ValueError(
-                f"MIC_AUDIO payload truncated: have={len(data)} need={end}"
-            )
-        pcm = data[cls._HDR_FMT.size:end]
-        return cls(chunk_seq=chunk_seq, chunk_len=chunk_len, flags=flags, pcm=pcm)
 
 
 @dataclass(slots=True)
@@ -232,8 +205,7 @@ class FaceHeartbeatPayload:
     uptime_ms: int
     status_tx_count: int
     touch_tx_count: int
-    mic_probe_seq: int
-    mic_activity: int
+    button_tx_count: int
     usb_tx_calls: int
     usb_tx_bytes_requested: int
     usb_tx_bytes_queued: int
@@ -248,22 +220,12 @@ class FaceHeartbeatPayload:
     usb_line_state_events: int
     usb_dtr: int
     usb_rts: int
-    speaker_rx_chunks: int
-    speaker_rx_drops: int
-    speaker_rx_bytes: int
-    speaker_play_chunks: int
-    speaker_play_errors: int
-    mic_capture_chunks: int
-    mic_tx_chunks: int
-    mic_tx_drops: int
-    mic_overruns: int
-    mic_queue_depth: int
-    mic_stream_enabled: int
-    audio_reserved: int
+    ptt_listening: int
+    reserved: int
 
-    _BASE_FMT = struct.Struct("<IIIIB")  # 17 bytes
-    _USB_FMT = struct.Struct("<IIIIIIIIIIIIBB")  # 50 bytes
-    _AUDIO_FMT = struct.Struct("<IIIIIIIIIIBB")  # 42 bytes
+    _BASE_FMT = struct.Struct("<IIII")  # 16 bytes
+    _USB_FMT = struct.Struct("<IIIIIIIIIIII")  # 48 bytes
+    _TAIL_FMT = struct.Struct("<BBBB")  # dtr, rts, ptt_listening, reserved
 
     @classmethod
     def unpack(cls, data: bytes) -> FaceHeartbeatPayload:
@@ -284,31 +246,21 @@ class FaceHeartbeatPayload:
             0,  # usb_rx_bytes
             0,  # usb_rx_errors
             0,  # usb_line_state_events
-            0,  # usb_dtr
-            0,  # usb_rts
         )
         if len(data) >= (cls._BASE_FMT.size + cls._USB_FMT.size):
             usb = cls._USB_FMT.unpack_from(data, cls._BASE_FMT.size)
 
-        audio = (
-            0,  # speaker_rx_chunks
-            0,  # speaker_rx_drops
-            0,  # speaker_rx_bytes
-            0,  # speaker_play_chunks
-            0,  # speaker_play_errors
-            0,  # mic_capture_chunks
-            0,  # mic_tx_chunks
-            0,  # mic_tx_drops
-            0,  # mic_overruns
-            0,  # mic_queue_depth
-            0,  # mic_stream_enabled
-            0,  # audio_reserved
+        tail = (
+            0,  # usb_dtr
+            0,  # usb_rts
+            0,  # ptt_listening
+            0,  # reserved
         )
-        audio_off = cls._BASE_FMT.size + cls._USB_FMT.size
-        if len(data) >= (audio_off + cls._AUDIO_FMT.size):
-            audio = cls._AUDIO_FMT.unpack_from(data, audio_off)
+        tail_off = cls._BASE_FMT.size + cls._USB_FMT.size
+        if len(data) >= (tail_off + cls._TAIL_FMT.size):
+            tail = cls._TAIL_FMT.unpack_from(data, tail_off)
 
-        return cls(*base, *usb, *audio)
+        return cls(*base, *usb, *tail)
 
 
 # -- Packet building --------------------------------------------------------
@@ -358,7 +310,6 @@ _FACE_SET_STATE_FMT = struct.Struct("<BBbbB")  # mood, intensity, gaze_x, gaze_y
 _FACE_GESTURE_FMT = struct.Struct("<BH")  # gesture_id, duration_ms
 _FACE_SET_SYSTEM_FMT = struct.Struct("<BBB")  # mode, phase, param
 _FACE_SET_TALKING_FMT = struct.Struct("<BB")  # talking, energy
-_FACE_AUDIO_DATA_HDR_FMT = struct.Struct("<H")  # chunk_len
 
 
 def build_face_set_state(
@@ -384,24 +335,10 @@ def build_face_set_system(
     payload = _FACE_SET_SYSTEM_FMT.pack(mode, phase, param)
     return build_packet(FaceCmdType.SET_SYSTEM, seq, payload)
 
-
-def build_face_set_config(seq: int, param_id: int, value_u32: int) -> bytes:
-    """Build a face SET_CONFIG packet using a 32-bit little-endian value."""
-    value_bytes = struct.pack("<I", value_u32 & 0xFFFFFFFF)
-    payload = _CONFIG_FMT.pack(param_id & 0xFF, value_bytes)
-    return build_packet(FaceCmdType.SET_CONFIG, seq, payload)
-
-
 def build_face_set_talking(seq: int, talking: bool, energy: int = 0) -> bytes:
     """Build a SET_TALKING packet (speaking animation state + energy)."""
     payload = _FACE_SET_TALKING_FMT.pack(1 if talking else 0, max(0, min(255, energy)))
     return build_packet(FaceCmdType.SET_TALKING, seq, payload)
-
-
-def build_face_audio_data(seq: int, pcm_chunk: bytes) -> bytes:
-    """Build an AUDIO_DATA packet with PCM audio chunk (16-bit, 16 kHz, mono)."""
-    payload = _FACE_AUDIO_DATA_HDR_FMT.pack(len(pcm_chunk)) + pcm_chunk
-    return build_packet(FaceCmdType.AUDIO_DATA, seq, payload)
 
 
 # -- Packet parsing ----------------------------------------------------------

@@ -1,4 +1,4 @@
-"""Face MCU client — sends face commands, receives touch/status telemetry."""
+"""Face MCU client — sends face commands, receives touch/button/status telemetry."""
 
 from __future__ import annotations
 
@@ -8,16 +8,12 @@ from dataclasses import dataclass
 from typing import Callable
 
 from supervisor.devices.protocol import (
-    FaceCfgId,
+    FaceButtonEventPayload,
     FaceHeartbeatPayload,
-    FaceMicAudioPayload,
-    FaceMicProbePayload,
     FaceStatusPayload,
     FaceTelType,
     ParsedPacket,
     TouchEventPayload,
-    build_face_audio_data,
-    build_face_set_config,
     build_face_gesture,
     build_face_set_state,
     build_face_set_system,
@@ -44,11 +40,11 @@ class FaceTelemetry:
         return bool(self.flags & 0x01)
 
     @property
-    def audio_playing(self) -> bool:
+    def talking(self) -> bool:
         return bool(self.flags & 0x02)
 
     @property
-    def mic_activity(self) -> bool:
+    def ptt_listening(self) -> bool:
         return bool(self.flags & 0x04)
 
 
@@ -61,27 +57,11 @@ class TouchEvent:
 
 
 @dataclass(slots=True)
-class MicProbeTelemetry:
-    probe_seq: int = 0
-    duration_ms: int = 0
-    sample_count: int = 0
-    read_timeouts: int = 0
-    read_errors: int = 0
-    selected_rms_x10: int = 0
-    selected_peak: int = 0
-    selected_dbfs_x10: int = 0
-    selected_channel: int = 0
-    active: bool = False
-    rx_mono_ms: float = 0.0
-
-
-@dataclass(slots=True)
-class MicAudioTelemetry:
-    chunk_seq: int = 0
-    chunk_len: int = 0
-    flags: int = 0
-    pcm: bytes = b""
-    rx_mono_ms: float = 0.0
+class ButtonEvent:
+    button_id: int = 0
+    event_type: int = 0
+    state: int = 0
+    timestamp_mono_ms: float = 0.0
 
 
 @dataclass(slots=True)
@@ -89,8 +69,7 @@ class HeartbeatTelemetry:
     uptime_ms: int = 0
     status_tx_count: int = 0
     touch_tx_count: int = 0
-    mic_probe_seq: int = 0
-    mic_activity: bool = False
+    button_tx_count: int = 0
     usb_tx_calls: int = 0
     usb_tx_bytes_requested: int = 0
     usb_tx_bytes_queued: int = 0
@@ -105,17 +84,7 @@ class HeartbeatTelemetry:
     usb_line_state_events: int = 0
     usb_dtr: bool = False
     usb_rts: bool = False
-    speaker_rx_chunks: int = 0
-    speaker_rx_drops: int = 0
-    speaker_rx_bytes: int = 0
-    speaker_play_chunks: int = 0
-    speaker_play_errors: int = 0
-    mic_capture_chunks: int = 0
-    mic_tx_chunks: int = 0
-    mic_tx_drops: int = 0
-    mic_overruns: int = 0
-    mic_queue_depth: int = 0
-    mic_stream_enabled: bool = False
+    ptt_listening: bool = False
     seq: int = 0
     rx_mono_ms: float = 0.0
 
@@ -128,16 +97,14 @@ class FaceClient:
         self._seq = 0
         self.telemetry = FaceTelemetry()
         self.last_touch: TouchEvent | None = None
-        self.last_mic_probe: MicProbeTelemetry | None = None
-        self.last_mic_audio: MicAudioTelemetry | None = None
+        self.last_button: ButtonEvent | None = None
         self.last_heartbeat: HeartbeatTelemetry | None = None
         self._on_touch: Callable[[TouchEvent], None] | None = None
-        self._on_mic_audio: Callable[[MicAudioTelemetry], None] | None = None
+        self._on_button: Callable[[ButtonEvent], None] | None = None
         self._tx_packets = 0
         self._rx_face_status_packets = 0
         self._rx_touch_packets = 0
-        self._rx_mic_probe_packets = 0
-        self._rx_mic_audio_packets = 0
+        self._rx_button_packets = 0
         self._rx_heartbeat_packets = 0
         self._rx_bad_payload_packets = 0
         self._rx_unknown_packets = 0
@@ -151,8 +118,8 @@ class FaceClient:
     def on_touch(self, cb: Callable[[TouchEvent], None]) -> None:
         self._on_touch = cb
 
-    def on_mic_audio(self, cb: Callable[[MicAudioTelemetry], None]) -> None:
-        self._on_mic_audio = cb
+    def on_button(self, cb: Callable[[ButtonEvent], None]) -> None:
+        self._on_button = cb
 
     def send_state(
         self,
@@ -194,49 +161,12 @@ class FaceClient:
         self._tx_packets += 1
 
     def send_talking(self, talking: bool, energy: int = 0) -> None:
-        """Send SET_TALKING command (speaking animation state + audio energy)."""
+        """Send SET_TALKING command (speaking animation state + energy)."""
         if not self.connected:
             return
         pkt = build_face_set_talking(self._next_seq(), talking, energy)
         self._transport.write(pkt)
         self._tx_packets += 1
-
-    def send_audio_data(self, pcm_chunk: bytes) -> None:
-        """Send AUDIO_DATA with PCM chunk (16-bit, 16 kHz, mono)."""
-        if not self.connected:
-            return
-        pkt = build_face_audio_data(self._next_seq(), pcm_chunk)
-        self._transport.write(pkt)
-        self._tx_packets += 1
-
-    def send_set_config_u32(self, param_id: int, value_u32: int) -> bool:
-        if not self.connected:
-            return False
-        pkt = build_face_set_config(self._next_seq(), param_id, value_u32)
-        sent = self._transport.write(pkt)
-        self._tx_packets += 1
-        if not sent:
-            log.warning("face: failed to send SET_CONFIG 0x%02X", param_id)
-        return sent
-
-    def run_audio_tone(self, duration_ms: int = 1000) -> bool:
-        return self.send_set_config_u32(
-            FaceCfgId.AUDIO_TEST_TONE_MS, max(1, int(duration_ms))
-        )
-
-    def run_mic_probe(self, duration_ms: int = 2000) -> bool:
-        return self.send_set_config_u32(
-            FaceCfgId.AUDIO_MIC_PROBE_MS, max(1, int(duration_ms))
-        )
-
-    def dump_audio_regs(self) -> bool:
-        return self.send_set_config_u32(FaceCfgId.AUDIO_REG_DUMP, 0)
-
-    def set_mic_stream_enabled(self, enabled: bool) -> bool:
-        return self.send_set_config_u32(
-            FaceCfgId.AUDIO_MIC_STREAM_ENABLE,
-            1 if enabled else 0,
-        )
 
     def debug_snapshot(self) -> dict:
         now_ms = time.monotonic() * 1000.0
@@ -249,16 +179,14 @@ class FaceClient:
             "tx_packets": self._tx_packets,
             "rx_face_status_packets": self._rx_face_status_packets,
             "rx_touch_packets": self._rx_touch_packets,
-            "rx_mic_probe_packets": self._rx_mic_probe_packets,
-            "rx_mic_audio_packets": self._rx_mic_audio_packets,
+            "rx_button_packets": self._rx_button_packets,
             "rx_heartbeat_packets": self._rx_heartbeat_packets,
             "rx_bad_payload_packets": self._rx_bad_payload_packets,
             "rx_unknown_packets": self._rx_unknown_packets,
             "last_status_seq": self.telemetry.seq,
             "last_status_age_ms": round(age_ms, 1),
             "last_status_flags": self.telemetry.flags,
-            "last_mic_probe": self._mic_probe_snapshot(),
-            "last_mic_audio": self._mic_audio_snapshot(),
+            "last_button": self._button_snapshot(),
             "last_heartbeat": self._heartbeat_snapshot(),
             "transport": self._transport.debug_snapshot(),
         }
@@ -299,45 +227,25 @@ class FaceClient:
             self.last_touch = evt
             if self._on_touch:
                 self._on_touch(evt)
-        elif pkt.pkt_type == FaceTelType.MIC_PROBE:
+
+        elif pkt.pkt_type == FaceTelType.BUTTON_EVENT:
             try:
-                mp = FaceMicProbePayload.unpack(pkt.payload)
+                bp = FaceButtonEventPayload.unpack(pkt.payload)
             except ValueError as e:
                 self._rx_bad_payload_packets += 1
-                log.warning("face: bad MIC_PROBE: %s", e)
+                log.warning("face: bad BUTTON_EVENT: %s", e)
                 return
-            self._rx_mic_probe_packets += 1
-            self.last_mic_probe = MicProbeTelemetry(
-                probe_seq=mp.probe_seq,
-                duration_ms=mp.duration_ms,
-                sample_count=mp.sample_count,
-                read_timeouts=mp.read_timeouts,
-                read_errors=mp.read_errors,
-                selected_rms_x10=mp.selected_rms_x10,
-                selected_peak=mp.selected_peak,
-                selected_dbfs_x10=mp.selected_dbfs_x10,
-                selected_channel=mp.selected_channel,
-                active=bool(mp.active),
-                rx_mono_ms=time.monotonic() * 1000.0,
+            self._rx_button_packets += 1
+            evt = ButtonEvent(
+                button_id=bp.button_id,
+                event_type=bp.event_type,
+                state=bp.state,
+                timestamp_mono_ms=time.monotonic() * 1000.0,
             )
-        elif pkt.pkt_type == FaceTelType.MIC_AUDIO:
-            try:
-                ma = FaceMicAudioPayload.unpack(pkt.payload)
-            except ValueError as e:
-                self._rx_bad_payload_packets += 1
-                log.warning("face: bad MIC_AUDIO: %s", e)
-                return
-            self._rx_mic_audio_packets += 1
-            evt = MicAudioTelemetry(
-                chunk_seq=ma.chunk_seq,
-                chunk_len=ma.chunk_len,
-                flags=ma.flags,
-                pcm=ma.pcm,
-                rx_mono_ms=time.monotonic() * 1000.0,
-            )
-            self.last_mic_audio = evt
-            if self._on_mic_audio:
-                self._on_mic_audio(evt)
+            self.last_button = evt
+            if self._on_button:
+                self._on_button(evt)
+
         elif pkt.pkt_type == FaceTelType.HEARTBEAT:
             try:
                 hb = FaceHeartbeatPayload.unpack(pkt.payload)
@@ -350,8 +258,7 @@ class FaceClient:
                 uptime_ms=hb.uptime_ms,
                 status_tx_count=hb.status_tx_count,
                 touch_tx_count=hb.touch_tx_count,
-                mic_probe_seq=hb.mic_probe_seq,
-                mic_activity=bool(hb.mic_activity),
+                button_tx_count=hb.button_tx_count,
                 usb_tx_calls=hb.usb_tx_calls,
                 usb_tx_bytes_requested=hb.usb_tx_bytes_requested,
                 usb_tx_bytes_queued=hb.usb_tx_bytes_queued,
@@ -366,51 +273,24 @@ class FaceClient:
                 usb_line_state_events=hb.usb_line_state_events,
                 usb_dtr=bool(hb.usb_dtr),
                 usb_rts=bool(hb.usb_rts),
-                speaker_rx_chunks=hb.speaker_rx_chunks,
-                speaker_rx_drops=hb.speaker_rx_drops,
-                speaker_rx_bytes=hb.speaker_rx_bytes,
-                speaker_play_chunks=hb.speaker_play_chunks,
-                speaker_play_errors=hb.speaker_play_errors,
-                mic_capture_chunks=hb.mic_capture_chunks,
-                mic_tx_chunks=hb.mic_tx_chunks,
-                mic_tx_drops=hb.mic_tx_drops,
-                mic_overruns=hb.mic_overruns,
-                mic_queue_depth=hb.mic_queue_depth,
-                mic_stream_enabled=bool(hb.mic_stream_enabled),
+                ptt_listening=bool(hb.ptt_listening),
                 seq=pkt.seq,
                 rx_mono_ms=time.monotonic() * 1000.0,
             )
+
         else:
             self._rx_unknown_packets += 1
             log.debug("face: unknown packet type 0x%02X", pkt.pkt_type)
 
-    def _mic_probe_snapshot(self) -> dict | None:
-        mp = self.last_mic_probe
-        if mp is None:
+    def _button_snapshot(self) -> dict | None:
+        btn = self.last_button
+        if btn is None:
             return None
         return {
-            "probe_seq": mp.probe_seq,
-            "duration_ms": mp.duration_ms,
-            "sample_count": mp.sample_count,
-            "read_timeouts": mp.read_timeouts,
-            "read_errors": mp.read_errors,
-            "selected_rms_x10": mp.selected_rms_x10,
-            "selected_peak": mp.selected_peak,
-            "selected_dbfs_x10": mp.selected_dbfs_x10,
-            "selected_channel": mp.selected_channel,
-            "active": mp.active,
-            "rx_mono_ms": round(mp.rx_mono_ms, 1),
-        }
-
-    def _mic_audio_snapshot(self) -> dict | None:
-        ma = self.last_mic_audio
-        if ma is None:
-            return None
-        return {
-            "chunk_seq": ma.chunk_seq,
-            "chunk_len": ma.chunk_len,
-            "flags": ma.flags,
-            "rx_mono_ms": round(ma.rx_mono_ms, 1),
+            "button_id": btn.button_id,
+            "event_type": btn.event_type,
+            "state": btn.state,
+            "timestamp_mono_ms": round(btn.timestamp_mono_ms, 1),
         }
 
     def _heartbeat_snapshot(self) -> dict | None:
@@ -421,8 +301,7 @@ class FaceClient:
             "uptime_ms": hb.uptime_ms,
             "status_tx_count": hb.status_tx_count,
             "touch_tx_count": hb.touch_tx_count,
-            "mic_probe_seq": hb.mic_probe_seq,
-            "mic_activity": hb.mic_activity,
+            "button_tx_count": hb.button_tx_count,
             "usb": {
                 "tx_calls": hb.usb_tx_calls,
                 "tx_bytes_requested": hb.usb_tx_bytes_requested,
@@ -439,19 +318,7 @@ class FaceClient:
                 "dtr": hb.usb_dtr,
                 "rts": hb.usb_rts,
             },
-            "audio": {
-                "speaker_rx_chunks": hb.speaker_rx_chunks,
-                "speaker_rx_drops": hb.speaker_rx_drops,
-                "speaker_rx_bytes": hb.speaker_rx_bytes,
-                "speaker_play_chunks": hb.speaker_play_chunks,
-                "speaker_play_errors": hb.speaker_play_errors,
-                "mic_capture_chunks": hb.mic_capture_chunks,
-                "mic_tx_chunks": hb.mic_tx_chunks,
-                "mic_tx_drops": hb.mic_tx_drops,
-                "mic_overruns": hb.mic_overruns,
-                "mic_queue_depth": hb.mic_queue_depth,
-                "mic_stream_enabled": hb.mic_stream_enabled,
-            },
+            "ptt_listening": hb.ptt_listening,
             "seq": hb.seq,
             "rx_mono_ms": round(hb.rx_mono_ms, 1),
         }

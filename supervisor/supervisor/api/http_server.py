@@ -79,29 +79,6 @@ def create_app(
         elif action == "clear_e_stop":
             ok, reason = runtime.request_clear()
             return JSONResponse({"ok": ok, "reason": reason})
-        elif action == "face_audio_tone":
-            try:
-                ms = int(body.get("duration_ms", 1000))
-            except (TypeError, ValueError):
-                return JSONResponse(
-                    {"ok": False, "reason": "duration_ms must be an integer"},
-                    status_code=400,
-                )
-            ok, reason = runtime.request_face_audio_tone(ms)
-            return JSONResponse({"ok": ok, "reason": reason, "duration_ms": ms})
-        elif action == "face_mic_probe":
-            try:
-                ms = int(body.get("duration_ms", 2000))
-            except (TypeError, ValueError):
-                return JSONResponse(
-                    {"ok": False, "reason": "duration_ms must be an integer"},
-                    status_code=400,
-                )
-            ok, reason = runtime.request_face_mic_probe(ms)
-            return JSONResponse({"ok": ok, "reason": reason, "duration_ms": ms})
-        elif action == "face_audio_reg_dump":
-            ok, reason = runtime.request_face_audio_reg_dump()
-            return JSONResponse({"ok": ok, "reason": reason})
         else:
             return JSONResponse(
                 {"ok": False, "reason": f"unknown action: {action}"}, status_code=400

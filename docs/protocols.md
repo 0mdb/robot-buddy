@@ -42,11 +42,11 @@ Command IDs: `0x10–0x1F` | Telemetry IDs: `0x80`
 | 5 | BROWNOUT |
 | 6 | OBSTACLE |
 
-## Face MCU Protocol (v2)
+## Face MCU Protocol (v3)
 
 Command IDs: `0x20–0x2F` | Telemetry IDs: `0x90–0x9F`
 
-Applies to both face backends (`esp32-face` LED matrix and `esp32-face-display` TFT).
+Applies to current face display backend (`esp32-face-v2`).
 
 ### Commands (supervisor → MCU)
 
@@ -56,24 +56,10 @@ Applies to both face backends (`esp32-face` LED matrix and `esp32-face-display` 
 | GESTURE | 0x21 | gesture_id(u8) duration_ms(u16) — 3 bytes |
 | SET_SYSTEM | 0x22 | mode(u8) phase(u8) param(u8) — 3 bytes |
 | SET_TALKING | 0x23 | talking(u8) energy(u8) — 2 bytes |
-| AUDIO_DATA | 0x24 | chunk_len(u16) pcm_data(N) — 2+N bytes |
-| SET_CONFIG | 0x25 | param_id(u8) value(4 bytes) — 5 bytes |
 
-SET_TALKING controls the "speaking" eye animation. The supervisor sends `talking=1` when
-TTS audio starts, periodic `energy` updates (0-255, RMS of current audio chunk), and
-`talking=0` when audio ends.
-
-AUDIO_DATA streams PCM audio chunks to the ESP32 speaker: 16-bit signed, 16 kHz, mono.
-Recommended chunk size: 320 bytes (10 ms of audio).
-
-SET_CONFIG param IDs (current `esp32-face-display` diagnostics):
-
-| Param | ID | Value |
-|---|---|---|
-| AUDIO_TEST_TONE_MS | 0xA0 | duration_ms (u32 LE), plays 1kHz test tone |
-| AUDIO_MIC_PROBE_MS | 0xA1 | duration_ms (u32 LE), logs mic RMS/peak |
-| AUDIO_REG_DUMP | 0xA2 | ignored; dumps ES8311 registers to log |
-| AUDIO_MIC_STREAM_ENABLE | 0xA3 | 0=off, non-zero=on (continuous mic stream) |
+SET_TALKING controls the "speaking" animation state. The supervisor sends
+`talking=1` during local speaker playback with periodic energy updates and sends
+`talking=0` when playback ends.
 
 ### Telemetry (MCU → supervisor)
 
@@ -81,16 +67,18 @@ SET_CONFIG param IDs (current `esp32-face-display` diagnostics):
 |---|---|---|
 | FACE_STATUS | 0x90 | mood_id(u8) active_gesture(u8) system_mode(u8) flags(u8) — 4 bytes |
 | TOUCH_EVENT | 0x91 | event_type(u8) x(u16) y(u16) — 5 bytes |
-| MIC_PROBE | 0x92 | probe diagnostic result (24 bytes) |
-| HEARTBEAT | 0x93 | uptime_ms(u32) counters(12 bytes) mic_activity(u8) + optional diag extensions |
-| MIC_AUDIO | 0x94 | chunk_seq(u32) chunk_len(u16) flags(u8) reserved(u8) pcm(chunk_len) |
+| BUTTON_EVENT | 0x92 | button_id(u8) event_type(u8) state(u8) reserved(u8) — 4 bytes |
+| HEARTBEAT | 0x93 | uptime + tx counters + USB diagnostics + ptt_listening |
 
-`MIC_AUDIO` chunks use 16-bit signed 16 kHz mono PCM. Target chunk size is 320 bytes (10 ms).
+`BUTTON_EVENT` IDs:
+- button `0`: PTT (tap-toggle)
+- button `1`: ACTION (click)
 
-`HEARTBEAT` is append-only:
-- base payload (17 bytes): uptime/status/touch/mic activity
-- optional USB transport diagnostics extension
-- optional audio-stream diagnostics extension
+`BUTTON_EVENT` types:
+- `0`: PRESS
+- `1`: RELEASE
+- `2`: TOGGLE
+- `3`: CLICK
 
 ### Mood IDs (canonical — C++ `face_state.h` is source of truth)
 
@@ -151,33 +139,26 @@ SET_CONFIG param IDs (current `esp32-face-display` diagnostics):
 | Bit | Name |
 |---|---|
 | 0 | touch_active |
-| 1 | audio_playing |
-| 2 | mic_activity (latest probe above threshold) |
+| 1 | talking |
+| 2 | ptt_listening |
 
 ## Audio
 
-Current production audio path for `esp32-face-display` is **CDC packet transport** over USB serial:
-- **Downlink (speaker)**: supervisor sends `AUDIO_DATA` (0x24) packets with PCM chunks
-- **Uplink (mic)**: face MCU sends `MIC_AUDIO` (0x94) telemetry packets with PCM chunks
-- **Talking animation**: supervisor sends `SET_TALKING` (0x23) with per-chunk energy
+Audio is owned by supervisor-side USB devices in face-v2.
 
-Audio flow:
-1. Personality server emits emotional response and PCM chunks
-2. Supervisor forwards chunked PCM to face MCU via `AUDIO_DATA`
-3. ESP32 I2S TX → ES8311 DAC/amp → speaker
-4. ESP32 I2S RX mic chunks are sent back via `MIC_AUDIO`
-5. Supervisor forwards mic chunks to server `/converse` STT pipeline
-
-`esp32-face-display` still initializes TinyUSB through the composite stack, but USB Audio Class (UAC/ALSA device mode) is not the active conversational transport in this milestone.
+- Face MCU no longer carries speaker/mic PCM over CDC protocol.
+- Face MCU only receives `SET_TALKING` energy updates to animate speech.
+- Touch/button telemetry from face is used by supervisor to drive local audio control
+  (PTT toggle and action events).
 
 ## Conversation Pipeline
 
 For real-time conversation (kid speaks → robot responds with emotional speech):
 
 ```
-Kid speaks → ESP32 mic → Pi supervisor → 3090 Ti server
+Kid speaks → Pi USB mic → Pi supervisor → 3090 Ti server
   → Whisper STT → Qwen3 14B LLM → Orpheus TTS
-  → emotion + audio stream back to Pi → ESP32 face + speaker
+  → emotion + audio stream back to Pi → Pi USB speaker + ESP32 face animation
 ```
 
 The server exposes `WS /converse` for bidirectional streaming. Emotion metadata
