@@ -46,6 +46,6 @@ constexpr uint8_t DEFAULT_BRIGHTNESS = 200;  // TFT backlight (0-255 via LEDC)
 constexpr int TELEMETRY_HZ = 20;
 
 // ---- Calibration mode (temporary for ES3C28P mapping) ----
-constexpr bool FACE_CALIBRATION_MODE = true;
+constexpr bool FACE_CALIBRATION_MODE = false;
 constexpr uint32_t CALIB_TOUCH_AUTOCYCLE_MS = 0;
 constexpr std::size_t CALIB_TOUCH_DEFAULT_INDEX = 3;
