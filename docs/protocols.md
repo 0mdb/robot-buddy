@@ -73,6 +73,7 @@ SET_CONFIG param IDs (current `esp32-face-display` diagnostics):
 | AUDIO_TEST_TONE_MS | 0xA0 | duration_ms (u32 LE), plays 1kHz test tone |
 | AUDIO_MIC_PROBE_MS | 0xA1 | duration_ms (u32 LE), logs mic RMS/peak |
 | AUDIO_REG_DUMP | 0xA2 | ignored; dumps ES8311 registers to log |
+| AUDIO_MIC_STREAM_ENABLE | 0xA3 | 0=off, non-zero=on (continuous mic stream) |
 
 ### Telemetry (MCU → supervisor)
 
@@ -81,7 +82,15 @@ SET_CONFIG param IDs (current `esp32-face-display` diagnostics):
 | FACE_STATUS | 0x90 | mood_id(u8) active_gesture(u8) system_mode(u8) flags(u8) — 4 bytes |
 | TOUCH_EVENT | 0x91 | event_type(u8) x(u16) y(u16) — 5 bytes |
 | MIC_PROBE | 0x92 | probe diagnostic result (24 bytes) |
-| HEARTBEAT | 0x93 | uptime_ms(u32) counters(12 bytes) mic_activity(u8) — 17 bytes |
+| HEARTBEAT | 0x93 | uptime_ms(u32) counters(12 bytes) mic_activity(u8) + optional diag extensions |
+| MIC_AUDIO | 0x94 | chunk_seq(u32) chunk_len(u16) flags(u8) reserved(u8) pcm(chunk_len) |
+
+`MIC_AUDIO` chunks use 16-bit signed 16 kHz mono PCM. Target chunk size is 320 bytes (10 ms).
+
+`HEARTBEAT` is append-only:
+- base payload (17 bytes): uptime/status/touch/mic activity
+- optional USB transport diagnostics extension
+- optional audio-stream diagnostics extension
 
 ### Mood IDs (canonical — C++ `face_state.h` is source of truth)
 
@@ -147,17 +156,19 @@ SET_CONFIG param IDs (current `esp32-face-display` diagnostics):
 
 ## Audio
 
-The `esp32-face-display` board (Freenove FNK0104) uses a TinyUSB composite device over a single USB-C connection:
-- **CDC**: serial face commands (protocol above)
-- **UAC**: USB Audio Class device (16kHz, 16-bit, mono)
-
-From the host's perspective, the face MCU appears as a standard USB sound card. No custom audio protocol is needed — the supervisor plays TTS audio via standard ALSA routing and captures mic input the same way.
+Current production audio path for `esp32-face-display` is **CDC packet transport** over USB serial:
+- **Downlink (speaker)**: supervisor sends `AUDIO_DATA` (0x24) packets with PCM chunks
+- **Uplink (mic)**: face MCU sends `MIC_AUDIO` (0x94) telemetry packets with PCM chunks
+- **Talking animation**: supervisor sends `SET_TALKING` (0x23) with per-chunk energy
 
 Audio flow:
-1. Personality server (3090 Ti) renders TTS as WAV/Opus blobs
-2. Supervisor receives blobs, plays to face MCU's ALSA device
-3. ESP32 TinyUSB UAC → I2S → ES8311 codec → amplifier → speaker
-4. Mic flows in reverse: ES8311 ADC → I2S → TinyUSB UAC → ALSA capture
+1. Personality server emits emotional response and PCM chunks
+2. Supervisor forwards chunked PCM to face MCU via `AUDIO_DATA`
+3. ESP32 I2S TX → ES8311 DAC/amp → speaker
+4. ESP32 I2S RX mic chunks are sent back via `MIC_AUDIO`
+5. Supervisor forwards mic chunks to server `/converse` STT pipeline
+
+`esp32-face-display` still initializes TinyUSB through the composite stack, but USB Audio Class (UAC/ALSA device mode) is not the active conversational transport in this milestone.
 
 ## Conversation Pipeline
 

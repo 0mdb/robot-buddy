@@ -35,38 +35,28 @@ Normal mode for supervisor integration is:
 
 ## Current Runtime Status (2026-02-17)
 
-### Resolved blocker
+### CDC full-duplex audio path is implemented
 
-- Face MCU -> supervisor serial telemetry is now working in runtime.
-- Verified in supervisor `/debug/devices` on runtime USB alias:
-  - `face.connected=true`
-  - `rx_face_status_packets` increments continuously
-  - `rx_heartbeat_packets` increments continuously
-  - `face_mic_probe` action increments `rx_mic_probe_packets` and populates
-    `last_mic_probe`
-  - `transport.rx_bytes` and `transport.frames_ok` increment as expected
+- USB RX command handling is active for:
+  - `SET_STATE (0x20)`
+  - `GESTURE (0x21)`
+  - `SET_SYSTEM (0x22)`
+  - `SET_TALKING (0x23)`
+  - `AUDIO_DATA (0x24)`
+  - `SET_CONFIG (0x25)` including `AUDIO_MIC_STREAM_ENABLE (0xA3)`
+- RX frame buffer supports conversational chunk sizes (`MAX_FRAME=768`).
+- Speaker path uses non-blocking queue + dedicated playback worker (drop-oldest on overflow).
+- Mic path uses dedicated capture worker and emits `MIC_AUDIO (0x94)` telemetry chunks at 10 ms cadence.
+- Talking animation is now wired to command energy with timeout auto-clear.
+- Heartbeat (`0x93`) includes append-only audio diagnostics tail:
+  - speaker rx/play counters
+  - mic capture/tx/drop/overrun counters
+  - mic queue depth + mic stream enabled flag
 
-### Root cause and firmware fix
+### Runtime observations
 
-- Root cause: `usb_rx_task` used `vTaskDelay(pdMS_TO_TICKS(1))` in its idle
-  path. With `CONFIG_FREERTOS_HZ=100`, this converts to `0` ticks and can
-  starve lower-priority tasks.
-- Fix: clamp the idle delay to at least one tick in `main/usb_rx.cpp`:
-  `idle_delay_ticks = max(pdMS_TO_TICKS(1), 1)`.
-
-### Production cleanup completed
-
-- Removed temporary debug ACK telemetry packet from firmware:
-  - removed `FaceTelId::CMD_ACK` (`0x94`)
-  - removed `FaceCmdAckPayload`
-  - removed `send_cmd_ack(...)` path in RX command handler
-  - removed telemetry loop debug counter API used only by CMD_ACK
-- Result: `rx_unknown_packets` stays at `0` in normal operation.
-
-### Remaining observation
-
-- A small number of bad CRC frames can occur during initial USB attach, but
-  telemetry recovers and packet flow remains stable.
+- Face telemetry and RX command flow are stable in normal runtime operation.
+- A few bad CRC frames can appear during initial USB attach; stream recovers quickly.
 
 ## Verified Pi5 Integration Workflow (Face-Only)
 
@@ -138,11 +128,12 @@ Target status fields:
 - `"personality_connected": true`
 - `"personality_last_error": ""`
 
-## Supervisor Diagnostics (Added for Face Audio Bring-up)
+## Supervisor Diagnostics (Face Audio Bring-up)
 
 Use these endpoints while diagnosing face RX/mic issues:
 
 ```bash
+curl -s http://127.0.0.1:8080/status
 curl -s http://127.0.0.1:8080/debug/devices
 curl -s -X POST http://127.0.0.1:8080/actions \
   -H 'content-type: application/json' \
@@ -153,10 +144,11 @@ Most important fields under `face`:
 
 - `transport.rx_bytes`, `transport.tx_bytes`
 - `transport.frames_ok`, `transport.frames_bad`
-- `rx_face_status_packets`, `rx_mic_probe_packets`, `rx_heartbeat_packets`
-- `last_mic_probe`, `last_heartbeat`
+- `rx_face_status_packets`, `rx_mic_probe_packets`, `rx_mic_audio_packets`, `rx_heartbeat_packets`
+- `last_mic_probe`, `last_mic_audio`, `last_heartbeat`
+- `last_heartbeat.audio.*` counters (speaker/mic stream health)
 
-## Audio Driver Diagnostics (Current Firmware)
+## Audio Validation Workflow (Current Firmware)
 
 Audio bring-up is now wired for:
 
@@ -165,6 +157,8 @@ Audio bring-up is now wired for:
 - Amp gate control (`GPIO1`, active LOW)
 - 1kHz tone test
 - Mic RMS/peak probe logging
+- 10 ms speaker stream ingest (`AUDIO_DATA`) into playback queue
+- 10 ms mic stream telemetry (`MIC_AUDIO`) when enabled
 - Current debug toggles in `main/audio.cpp`:
   - `FORCE_SYNC_DIAGNOSTICS=false`
   - `KEEP_AMP_ENABLED_BETWEEN_PLAYS=false`
@@ -179,6 +173,7 @@ Audio params:
 
 - `0xA0` (`AUDIO_TEST_TONE_MS`): play 1kHz tone for `value` ms
 - `0xA1` (`AUDIO_MIC_PROBE_MS`): capture mic for `value` ms and log RMS/peak
+- `0xA3` (`AUDIO_MIC_STREAM_ENABLE`): `0=off`, `1=on` for continuous `MIC_AUDIO` uplink
 
 Use helper script:
 
@@ -188,15 +183,39 @@ python tools/face_audio_diag.py --port /dev/serial/by-id/usb-Espressif_Systems_E
 python tools/face_audio_diag.py --port /dev/serial/by-id/usb-Espressif_Systems_Espressif_Device_123456-if00 --mic-ms 3000
 ```
 
-Target behavior:
+Quick pass criteria:
 
 - Tone command: audible 1kHz tone from speaker for requested duration
 - Mic command: firmware log line with `rms`, `peak`, `dbfs`
 - During tone playback, `/status` shows `"face_audio_playing": true`
 - After mic probe, `/status` shows `"face_mic_activity": true` when speech/clap is detected
 
-Current known deviation (latest on 2026-02-17):
+### Continuous stream soak (downlink + uplink)
 
-- No blocking face telemetry deviations are currently known.
-- On some attaches, `frames_bad` may briefly increment from a CRC mismatch
-  before the stream stabilizes.
+Use the soak tool for sustained CDC streaming:
+
+```bash
+cd ~/robot-buddy
+python tools/face_audio_soak.py \
+  --port /dev/serial/by-id/usb-Espressif_Systems_Espressif_Device_123456-if00 \
+  --seconds 120
+```
+
+Expected:
+
+- `tx_audio_chunks` increases at ~100 chunks/s.
+- `rx_mic_audio_packets` increases continuously while mic stream is enabled.
+- `heartbeat.audio.speaker_play_errors` remains at `0`.
+- `heartbeat.audio.speaker_rx_drops` remains at `0`.
+
+Observed under heavy full-duplex stress (10-minute run):
+
+- Speaker path remained stable (`speaker_play_errors=0`, `speaker_rx_drops=0`).
+- Mic uplink remained active, but queue pressure can produce `mic_tx_drops`,
+  `mic_overruns`, and non-zero `mic_seq_gaps` when host/USB is saturated.
+
+### Reconnect validation
+
+- USB unplug/replug recovery has been verified.
+- After re-enumeration, supervisor reconnects and `rx_mic_audio_packets` and
+  heartbeat audio counters resume incrementing.

@@ -111,6 +111,14 @@ class TestFaceClientCommands:
         assert param_id == FaceCfgId.AUDIO_REG_DUMP
         assert struct.unpack("<I", raw)[0] == 0
 
+    def test_send_mic_stream_enable(self):
+        assert self.client.set_mic_stream_enabled(True) is True
+        parsed = parse_frame(self.transport.written[0][:-1])
+        assert parsed.pkt_type == FaceCmdType.SET_CONFIG
+        param_id, raw = struct.unpack("<B4s", parsed.payload)
+        assert param_id == FaceCfgId.AUDIO_MIC_STREAM_ENABLE
+        assert struct.unpack("<I", raw)[0] == 1
+
     def test_no_send_when_disconnected(self):
         self.transport.connected = False
         self.client.send_state(emotion_id=1)
@@ -252,6 +260,70 @@ class TestFaceClientTelemetry:
         assert self.client.last_heartbeat.usb_dtr is True
         assert self.client.last_heartbeat.usb_rts is True
 
+    def test_mic_audio_updates_last_mic_audio(self):
+        pcm = bytes(range(20))
+        payload = struct.pack("<IHBB", 11, len(pcm), 0x01, 0) + pcm
+        pkt = ParsedPacket(pkt_type=FaceTelType.MIC_AUDIO, seq=22, payload=payload)
+        self.transport.inject_packet(pkt)
+        assert self.client.last_mic_audio is not None
+        assert self.client.last_mic_audio.chunk_seq == 11
+        assert self.client.last_mic_audio.chunk_len == len(pcm)
+        assert self.client.last_mic_audio.flags == 0x01
+        assert self.client.last_mic_audio.pcm == pcm
+
+    def test_mic_audio_callback_fires(self):
+        chunks = []
+        self.client.on_mic_audio(lambda evt: chunks.append(evt))
+        pcm = bytes(range(12))
+        payload = struct.pack("<IHBB", 7, len(pcm), 0x00, 0) + pcm
+        pkt = ParsedPacket(pkt_type=FaceTelType.MIC_AUDIO, seq=23, payload=payload)
+        self.transport.inject_packet(pkt)
+        assert len(chunks) == 1
+        assert chunks[0].chunk_seq == 7
+
+    def test_heartbeat_with_audio_diag_extension(self):
+        payload = struct.pack(
+            "<IIIIBIIIIIIIIIIIIBBIIIIIIIIIIBB",
+            2000,  # uptime_ms
+            80,    # status_tx_count
+            2,     # touch_tx_count
+            11,    # mic_probe_seq
+            0,     # mic_activity
+            50,    # usb_tx_calls
+            5000,  # usb_tx_bytes_requested
+            4900,  # usb_tx_bytes_queued
+            3,     # usb_tx_short_writes
+            47,    # usb_tx_flush_ok
+            2,     # usb_tx_flush_not_finished
+            0,     # usb_tx_flush_timeout
+            0,     # usb_tx_flush_error
+            61,    # usb_rx_calls
+            777,   # usb_rx_bytes
+            1,     # usb_rx_errors
+            4,     # usb_line_state_events
+            1,     # usb_dtr
+            1,     # usb_rts
+            100,   # speaker_rx_chunks
+            7,     # speaker_rx_drops
+            32000, # speaker_rx_bytes
+            98,    # speaker_play_chunks
+            1,     # speaker_play_errors
+            88,    # mic_capture_chunks
+            80,    # mic_tx_chunks
+            2,     # mic_tx_drops
+            5,     # mic_overruns
+            3,     # mic_queue_depth
+            1,     # mic_stream_enabled
+            0,     # reserved
+        )
+        pkt = ParsedPacket(pkt_type=FaceTelType.HEARTBEAT, seq=24, payload=payload)
+        self.transport.inject_packet(pkt)
+        assert self.client.last_heartbeat is not None
+        assert self.client.last_heartbeat.speaker_rx_chunks == 100
+        assert self.client.last_heartbeat.mic_capture_chunks == 88
+        assert self.client.last_heartbeat.mic_tx_chunks == 80
+        assert self.client.last_heartbeat.mic_stream_enabled is True
+
     def test_bad_mic_probe_payload_ignored(self):
         pkt = ParsedPacket(pkt_type=FaceTelType.MIC_PROBE, seq=0, payload=b"\x00\x01")
         self.transport.inject_packet(pkt)
@@ -261,6 +333,11 @@ class TestFaceClientTelemetry:
         pkt = ParsedPacket(pkt_type=FaceTelType.HEARTBEAT, seq=0, payload=b"\x00\x01")
         self.transport.inject_packet(pkt)
         assert self.client.last_heartbeat is None
+
+    def test_bad_mic_audio_payload_ignored(self):
+        pkt = ParsedPacket(pkt_type=FaceTelType.MIC_AUDIO, seq=0, payload=b"\x00\x01")
+        self.transport.inject_packet(pkt)
+        assert self.client.last_mic_audio is None
 
     def test_bad_status_payload_ignored(self):
         pkt = ParsedPacket(pkt_type=FaceTelType.FACE_STATUS, seq=0, payload=b"\x00")
@@ -277,6 +354,7 @@ class TestFaceClientTelemetry:
         assert "transport" in snap
         assert snap["connected"] is True
         assert "last_mic_probe" in snap
+        assert "last_mic_audio" in snap
         assert "last_heartbeat" in snap
         assert "rx_heartbeat_packets" in snap
 

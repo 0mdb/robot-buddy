@@ -11,14 +11,13 @@ to young kids with guardrails to make it safe but exciting.
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| ESP32 face display (TX/telemetry) | **Working** | FACE_STATUS, TOUCH_EVENT streaming OK |
-| ESP32 face USB RX (commands in) | **Not working** | Commands not reliably received; needs debug |
-| ESP32 mic (ES8311) | **Untested** | Hardware roughed in, needs bring-up & test |
-| ESP32 speaker (ES8311) | **Intermittent** | Boot tone works, runtime playback unreliable |
-| ESP32 face rendering (LVGL) | **Working** | Eyes + mouth render, animation runs |
+| ESP32 face display (TX/telemetry) | **Working** | FACE_STATUS, TOUCH_EVENT, HEARTBEAT, MIC_AUDIO telemetry active |
+| ESP32 face USB RX (commands in) | **Working** | SET_STATE, GESTURE, SET_SYSTEM, SET_TALKING, AUDIO_DATA, SET_CONFIG parsed and applied |
+| ESP32 mic (ES8311) | **Working (CDC uplink)** | 10 ms PCM uplink (`MIC_AUDIO`) gated by `AUDIO_MIC_STREAM_ENABLE` |
+| ESP32 speaker (ES8311) | **Working (stream path)** | 10 ms PCM downlink queue + playback worker, drop-oldest on overflow |
+| ESP32 face rendering (LVGL) | **Working** | Eyes + mouth render + talking-energy linkage active |
 
-**Strategy**: Define the protocol and build the server/supervisor layers now. ESP32
-hardware bring-up runs in parallel.
+**Current focus**: close remaining server-side TTS latency/stability issues on warm/cold `/converse` paths while preserving stable CDC audio transport on the face MCU.
 
 ---
 
@@ -153,14 +152,36 @@ Server → Client: `emotion` (immediate), `audio` (streaming), `transcription`, 
       emotion→face, audio→speaker with RMS energy, talking animation, gesture dispatch
 - [x] Tests pass, linter clean
 
-### Phase 4: ESP32 Hardware Bring-Up (parallel with 2 & 3)
-- [ ] **Debug USB RX** — gate for all ESP32 command reception
-- [ ] **Test mic** — ES8311 I2S input, RMS/noise floor
-- [ ] **Fix speaker** — intermittent runtime playback
-- [ ] Mic streaming, speaker streaming, SET_TALKING/AUDIO_DATA handlers
+### Phase 4: ESP32 Hardware Bring-Up (CDC conversation path) — DONE
+- [x] USB RX command path stable in app mode
+- [x] `SET_TALKING (0x23)` and `AUDIO_DATA (0x24)` handlers
+- [x] RX frame capacity raised (`MAX_FRAME=768`)
+- [x] Speaker stream queue + dedicated playback worker
+- [x] Talking animation linkage with timeout clear
+- [x] Mic stream worker + telemetry (`MIC_AUDIO=0x94`)
+- [x] `AUDIO_MIC_STREAM_ENABLE (0xA3)` config control
+- [x] Heartbeat audio diagnostics tail appended (optional/append-only)
 
-### Phase 5: Face Expression Design
-- [ ] New Python face simulator (320×240 landscape, eyes only)
-- [ ] Design eye expressions for all 12 emotions
-- [ ] Talking animation (eye pulse synced to energy)
-- [ ] Port to ESP32
+### Phase 5: Supervisor + Server Full-Duplex Wiring — DONE
+- [x] `ConversationManager` wired into supervisor runtime lifecycle
+- [x] Face mic stream (`MIC_AUDIO`) forwarded to `/converse` as `audio` events
+- [x] Supervisor VAD-style utterance segmentation + `end_utterance` on silence/gap
+- [x] Orpheus stream chunking aligned to 10 ms (`320` bytes at 16 kHz s16 mono)
+- [x] `send_talking(True, energy)` per outbound subchunk + clear on end/cancel
+- [x] Mic stream enable on face connect, disable on shutdown
+
+### Phase 6: Validation + Soak (in progress)
+- [x] Protocol parser/unit coverage added for MIC_AUDIO + heartbeat extension
+- [x] Firmware builds clean
+- [x] USB unplug/replug recovery during active streaming
+- [x] 10-minute full-duplex CDC soak completed (speaker stable; mic uplink active)
+- [ ] 15-minute speaker downlink soak
+- [ ] 15-minute mic uplink soak
+- [ ] End-to-end latency validation (`emotion` before first audio chunk, `<2s` target)
+- [ ] Cold `/converse` reliability (occasional LLM timeout observed)
+- [ ] Warm `/converse` stability and first-audio latency reduction (Orpheus init path still high)
+
+Current measured `/converse` behavior (latest):
+- `emotion` is delivered before audio as designed.
+- Warm path can produce audio, but first audio has been in the ~23–31s range.
+- Cold path can still hit `LLM timeout` in some runs.

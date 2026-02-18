@@ -8,6 +8,7 @@ from supervisor.devices.protocol import (
     FaceCmdType,
     FaceCfgId,
     FaceHeartbeatPayload,
+    FaceMicAudioPayload,
     FaceMicProbePayload,
     FaceGesture,
     FaceMood,
@@ -100,6 +101,16 @@ class TestFaceSetConfig:
         assert param_id == FaceCfgId.AUDIO_REG_DUMP
         assert struct.unpack("<I", value)[0] == 0
 
+    def test_round_trip_mic_stream_enable(self):
+        pkt = build_face_set_config(
+            seq=10, param_id=FaceCfgId.AUDIO_MIC_STREAM_ENABLE, value_u32=1
+        )
+        parsed = parse_frame(pkt[:-1])
+        assert parsed.pkt_type == FaceCmdType.SET_CONFIG
+        param_id, value = struct.unpack("<B4s", parsed.payload)
+        assert param_id == FaceCfgId.AUDIO_MIC_STREAM_ENABLE
+        assert struct.unpack("<I", value)[0] == 1
+
 
 class TestFaceStatusPayload:
     def test_unpack(self):
@@ -190,6 +201,37 @@ class TestMicProbePayload:
         assert mp.active == 0
 
 
+class TestMicAudioPayload:
+    def test_unpack(self):
+        pcm = bytes(range(32))
+        data = struct.pack("<IHBB", 42, len(pcm), 0x01, 0) + pcm
+        ma = FaceMicAudioPayload.unpack(data)
+        assert ma.chunk_seq == 42
+        assert ma.chunk_len == len(pcm)
+        assert ma.flags == 0x01
+        assert ma.pcm == pcm
+
+    def test_unpack_too_short(self):
+        with pytest.raises(ValueError, match="too short"):
+            FaceMicAudioPayload.unpack(b"\x00\x01")
+
+    def test_unpack_truncated(self):
+        pcm = bytes(range(8))
+        data = struct.pack("<IHBB", 9, len(pcm) + 4, 0x00, 0) + pcm
+        with pytest.raises(ValueError, match="truncated"):
+            FaceMicAudioPayload.unpack(data)
+
+    def test_as_telemetry_packet(self):
+        pcm = bytes(range(16))
+        payload = struct.pack("<IHBB", 3, len(pcm), 0, 0) + pcm
+        pkt = build_packet(FaceTelType.MIC_AUDIO, 19, payload)
+        parsed = parse_frame(pkt[:-1])
+        assert parsed.pkt_type == FaceTelType.MIC_AUDIO
+        ma = FaceMicAudioPayload.unpack(parsed.payload)
+        assert ma.chunk_seq == 3
+        assert ma.pcm == pcm
+
+
 class TestHeartbeatPayload:
     def test_unpack(self):
         data = struct.pack(
@@ -241,6 +283,51 @@ class TestHeartbeatPayload:
         assert hb.usb_line_state_events == 3
         assert hb.usb_dtr == 1
         assert hb.usb_rts == 1
+
+    def test_unpack_with_audio_diag_extension(self):
+        base = struct.pack("<IIIIB", 12345, 77, 3, 5, 1)
+        usb = struct.pack(
+            "<IIIIIIIIIIIIBB",
+            10,
+            1100,
+            1000,
+            2,
+            9,
+            1,
+            0,
+            0,
+            55,
+            321,
+            4,
+            3,
+            1,
+            1,
+        )
+        audio = struct.pack(
+            "<IIIIIIIIIIBB",
+            100,  # speaker_rx_chunks
+            7,    # speaker_rx_drops
+            32000,  # speaker_rx_bytes
+            98,   # speaker_play_chunks
+            1,    # speaker_play_errors
+            88,   # mic_capture_chunks
+            80,   # mic_tx_chunks
+            2,    # mic_tx_drops
+            5,    # mic_overruns
+            3,    # mic_queue_depth
+            1,    # mic_stream_enabled
+            0,    # reserved
+        )
+        hb = FaceHeartbeatPayload.unpack(base + usb + audio)
+        assert hb.speaker_rx_chunks == 100
+        assert hb.speaker_rx_drops == 7
+        assert hb.speaker_play_chunks == 98
+        assert hb.mic_capture_chunks == 88
+        assert hb.mic_tx_chunks == 80
+        assert hb.mic_tx_drops == 2
+        assert hb.mic_overruns == 5
+        assert hb.mic_queue_depth == 3
+        assert hb.mic_stream_enabled == 1
 
     def test_unpack_too_short(self):
         with pytest.raises(ValueError, match="too short"):

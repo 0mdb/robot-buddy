@@ -322,6 +322,17 @@ void face_state_update(FaceState& fs)
         fs.mouth_open_target = 0.0f;
     }
 
+    if (fs.talking) {
+        const float e = fmaxf(0.0f, fminf(1.0f, fs.talking_energy));
+        const float chatter = 0.18f + (0.72f * e) * (0.35f + 0.65f * (0.5f + 0.5f * sinf(now * 28.0f)));
+        fs.mouth_open_target = fmaxf(fs.mouth_open_target, chatter);
+        fs.mouth_width_target = fmaxf(fs.mouth_width_target, 1.0f + 0.08f * e);
+        const float pulse = 0.015f + 0.035f * e;
+        const float y_pulse = pulse * sinf(now * 8.0f);
+        fs.eye_l.height_scale_target = fmaxf(0.8f, fs.eye_l.height_scale_target + y_pulse);
+        fs.eye_r.height_scale_target = fmaxf(0.8f, fs.eye_r.height_scale_target + y_pulse);
+    }
+
     // ---- Squash & stretch on blink ----
     for (auto* eye : {&fs.eye_l, &fs.eye_r}) {
         if (eye->openness_target < 0.1f && eye->openness > 0.3f) {

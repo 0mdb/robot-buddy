@@ -15,7 +15,7 @@ static const char* TAG = "usb_rx";
 
 static void handle_packet(const ParsedPacket& pkt);
 
-static constexpr size_t MAX_FRAME = 64;
+static constexpr size_t MAX_FRAME = 768;
 
 void usb_rx_task(void* arg)
 {
@@ -87,6 +87,7 @@ static void handle_packet(const ParsedPacket& pkt)
         slot->brightness = sp.brightness;
         slot->has_gesture = false;
         slot->has_system  = false;
+        slot->has_talking = false;
         g_face_cmd.publish(static_cast<uint32_t>(esp_timer_get_time()));
         break;
     }
@@ -104,6 +105,7 @@ static void handle_packet(const ParsedPacket& pkt)
         slot->gesture_id   = gp.gesture_id;
         slot->gesture_dur  = gp.duration_ms;
         slot->has_system   = false;
+        slot->has_talking  = false;
         g_face_cmd.publish(static_cast<uint32_t>(esp_timer_get_time()));
         break;
     }
@@ -121,7 +123,53 @@ static void handle_packet(const ParsedPacket& pkt)
         slot->has_system   = true;
         slot->system_mode  = sysp.mode;
         slot->system_param = sysp.param;
+        slot->has_talking  = false;
         g_face_cmd.publish(static_cast<uint32_t>(esp_timer_get_time()));
+        break;
+    }
+
+    case FaceCmdId::SET_TALKING: {
+        if (pkt.data_len < sizeof(FaceSetTalkingPayload)) {
+            ESP_LOGW(TAG, "SET_TALKING payload too short: %u", static_cast<unsigned>(pkt.data_len));
+            break;
+        }
+        FaceSetTalkingPayload tp;
+        memcpy(&tp, pkt.data, sizeof(tp));
+
+        FaceCommand* slot = g_face_cmd.write_slot();
+        slot->has_state = false;
+        slot->has_gesture = false;
+        slot->has_system = false;
+        slot->has_talking = true;
+        slot->talking = (tp.talking != 0);
+        slot->talking_energy = tp.energy;
+        g_face_cmd.publish(static_cast<uint32_t>(esp_timer_get_time()));
+        break;
+    }
+
+    case FaceCmdId::AUDIO_DATA: {
+        if (pkt.data_len < sizeof(FaceAudioDataPayload)) {
+            ESP_LOGW(TAG, "AUDIO_DATA payload too short: %u", static_cast<unsigned>(pkt.data_len));
+            break;
+        }
+        FaceAudioDataPayload ap = {};
+        memcpy(&ap, pkt.data, sizeof(ap));
+        if (ap.chunk_len == 0 || ap.chunk_len > AUDIO_STREAM_PCM_BYTES) {
+            ESP_LOGW(TAG, "AUDIO_DATA invalid chunk_len=%u", static_cast<unsigned>(ap.chunk_len));
+            break;
+        }
+        const size_t payload_len = sizeof(FaceAudioDataPayload) + static_cast<size_t>(ap.chunk_len);
+        if (pkt.data_len != payload_len) {
+            ESP_LOGW(TAG,
+                     "AUDIO_DATA size mismatch: pkt=%u expected=%u",
+                     static_cast<unsigned>(pkt.data_len),
+                     static_cast<unsigned>(payload_len));
+            break;
+        }
+        const uint8_t* pcm = pkt.data + sizeof(FaceAudioDataPayload);
+        if (!audio_stream_enqueue_pcm(pcm, ap.chunk_len)) {
+            ESP_LOGW(TAG, "AUDIO_DATA enqueue failed (chunk_len=%u)", static_cast<unsigned>(ap.chunk_len));
+        }
         break;
     }
 
@@ -147,6 +195,9 @@ static void handle_packet(const ParsedPacket& pkt)
             break;
         case FaceCfgId::AUDIO_REG_DUMP:
             audio_dump_codec_regs();
+            break;
+        case FaceCfgId::AUDIO_MIC_STREAM_ENABLE:
+            audio_set_mic_stream_enabled(value != 0);
             break;
         default:
             ESP_LOGW(TAG, "unknown face config param_id=0x%02X", cfg.param_id);

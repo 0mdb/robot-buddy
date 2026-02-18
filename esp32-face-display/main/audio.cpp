@@ -47,6 +47,13 @@ constexpr bool FORCE_SYNC_DIAGNOSTICS = false;  // Keep false for normal async b
 constexpr uint32_t AUDIO_WORKER_STACK_BYTES = 8192;  // 4k was unstable in async diagnostics.
 constexpr BaseType_t AUDIO_WORKER_CORE = 0;  // Keep heavy audio work off USB/TinyUSB core.
 constexpr UBaseType_t AUDIO_WORKER_PRIORITY = 5;  // Below face_ui(6), above default LVGL task(4).
+constexpr uint32_t AUDIO_STREAM_TASK_STACK_BYTES = 6144;
+constexpr UBaseType_t AUDIO_STREAM_TASK_PRIORITY = 5;
+constexpr uint32_t AUDIO_STREAM_IDLE_STOP_MS = 120;
+constexpr size_t AUDIO_STREAM_QUEUE_DEPTH = 24;  // ~240 ms of buffered speaker audio.
+constexpr size_t MIC_STREAM_QUEUE_DEPTH = 32;    // ~320 ms of buffered mic audio.
+constexpr uint32_t MIC_STREAM_READ_TIMEOUT_MS = 20;
+constexpr uint8_t MIC_STREAM_FLAG_VAD_ACTIVE = 0x01;
 
 constexpr uint8_t REG00 = 0x00;
 constexpr uint8_t REG01 = 0x01;
@@ -83,15 +90,25 @@ struct AudioCmd {
     uint32_t duration_ms;
 };
 
+struct SpeakerChunk {
+    uint16_t len = 0;
+    uint8_t pcm[AUDIO_STREAM_PCM_BYTES]{};
+};
+
 i2c_master_dev_handle_t s_codec_dev = nullptr;
 i2s_chan_handle_t s_tx = nullptr;
 i2s_chan_handle_t s_rx = nullptr;
 QueueHandle_t s_cmd_queue = nullptr;
 TaskHandle_t s_worker_task = nullptr;
+QueueHandle_t s_speaker_queue = nullptr;
+TaskHandle_t s_speaker_task = nullptr;
+QueueHandle_t s_mic_queue = nullptr;
+TaskHandle_t s_mic_task = nullptr;
 std::atomic<bool> s_ready{false};
 std::atomic<bool> s_playing{false};
 std::atomic<bool> s_abort{false};
 std::atomic<bool> s_mic_activity{false};
+std::atomic<bool> s_mic_stream_enabled{false};
 std::atomic<uint32_t> s_probe_seq{0};
 std::atomic<uint32_t> s_probe_duration_ms{0};
 std::atomic<uint32_t> s_probe_sample_count{0};
@@ -101,6 +118,15 @@ std::atomic<uint32_t> s_probe_selected_rms_x10{0};
 std::atomic<uint32_t> s_probe_selected_peak{0};
 std::atomic<int32_t> s_probe_selected_dbfs_x10{-1200};
 std::atomic<uint8_t> s_probe_selected_channel{0};  // 0=mono, 1=left, 2=right
+std::atomic<uint32_t> s_speaker_rx_chunks{0};
+std::atomic<uint32_t> s_speaker_rx_drops{0};
+std::atomic<uint32_t> s_speaker_rx_bytes{0};
+std::atomic<uint32_t> s_speaker_play_chunks{0};
+std::atomic<uint32_t> s_speaker_play_errors{0};
+std::atomic<uint32_t> s_mic_capture_chunks{0};
+std::atomic<uint32_t> s_mic_tx_drops{0};
+std::atomic<uint32_t> s_mic_overruns{0};
+std::atomic<uint32_t> s_mic_seq{0};
 
 struct ProbeStats {
     uint64_t sum_sq = 0;
@@ -642,6 +668,143 @@ void run_mic_probe(uint32_t duration_ms)
     }
 }
 
+void speaker_stream_task(void* arg)
+{
+    ESP_LOGI(TAG, "speaker stream task started, stack HWM=%u words",
+             static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)));
+
+    SpeakerChunk chunk = {};
+    bool amp_enabled = false;
+    int64_t last_play_us = 0;
+
+    while (true) {
+        if (s_abort.load(std::memory_order_acquire)) {
+            if (s_speaker_queue != nullptr) {
+                while (xQueueReceive(s_speaker_queue, &chunk, 0) == pdTRUE) {
+                }
+            }
+            s_playing.store(false, std::memory_order_release);
+            if (!KEEP_AMP_ENABLED_BETWEEN_PLAYS && amp_enabled) {
+                set_amp_enabled(false);
+                amp_enabled = false;
+            }
+            vTaskDelay(pdMS_TO_TICKS(10));
+            continue;
+        }
+
+        if (xQueueReceive(s_speaker_queue, &chunk, pdMS_TO_TICKS(20)) == pdTRUE) {
+            if (chunk.len == 0) {
+                continue;
+            }
+            if (!amp_enabled) {
+                set_amp_enabled(true);
+                vTaskDelay(pdMS_TO_TICKS(AMP_WAKE_DELAY_MS));
+                amp_enabled = true;
+            }
+
+            size_t bytes_written = 0;
+            s_playing.store(true, std::memory_order_release);
+            const esp_err_t err =
+                i2s_channel_write(s_tx, chunk.pcm, chunk.len, &bytes_written, I2S_TIMEOUT_MS);
+            if (err != ESP_OK) {
+                s_speaker_play_errors.fetch_add(1, std::memory_order_relaxed);
+                ESP_LOGW(TAG, "speaker stream write failed: %s", esp_err_to_name(err));
+                continue;
+            }
+
+            if (bytes_written < chunk.len) {
+                ESP_LOGW(TAG, "speaker stream short write: committed=%u requested=%u",
+                         static_cast<unsigned>(bytes_written),
+                         static_cast<unsigned>(chunk.len));
+            }
+            s_speaker_play_chunks.fetch_add(1, std::memory_order_relaxed);
+            last_play_us = esp_timer_get_time();
+            continue;
+        }
+
+        if (last_play_us != 0) {
+            const int64_t now_us = esp_timer_get_time();
+            const int64_t idle_us = now_us - last_play_us;
+            if (idle_us >= static_cast<int64_t>(AUDIO_STREAM_IDLE_STOP_MS) * 1000) {
+                s_playing.store(false, std::memory_order_release);
+                if (!KEEP_AMP_ENABLED_BETWEEN_PLAYS && amp_enabled) {
+                    set_amp_enabled(false);
+                    amp_enabled = false;
+                }
+                last_play_us = 0;
+            }
+        }
+    }
+}
+
+void mic_stream_task(void* arg)
+{
+    ESP_LOGI(TAG, "mic stream task started, stack HWM=%u words",
+             static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)));
+
+    int16_t in[AUDIO_STREAM_PCM_BYTES / sizeof(int16_t)] = {};
+    AudioMicChunk chunk = {};
+    AudioMicChunk dropped = {};
+
+    while (true) {
+        if (!s_ready.load(std::memory_order_acquire) ||
+            !s_mic_stream_enabled.load(std::memory_order_acquire)) {
+            vTaskDelay(pdMS_TO_TICKS(10));
+            continue;
+        }
+
+        size_t bytes_read = 0;
+        const esp_err_t err =
+            i2s_channel_read(s_rx, in, sizeof(in), &bytes_read, MIC_STREAM_READ_TIMEOUT_MS);
+        if (err != ESP_OK) {
+            s_mic_overruns.fetch_add(1, std::memory_order_relaxed);
+            continue;
+        }
+        if (bytes_read == 0) {
+            continue;
+        }
+        if (bytes_read > AUDIO_STREAM_PCM_BYTES) {
+            bytes_read = AUDIO_STREAM_PCM_BYTES;
+        }
+        if ((bytes_read & 0x1u) != 0) {
+            bytes_read -= 1;
+        }
+        if (bytes_read == 0) {
+            continue;
+        }
+
+        chunk = {};
+        chunk.seq = s_mic_seq.fetch_add(1, std::memory_order_relaxed) + 1;
+        chunk.len = static_cast<uint16_t>(bytes_read);
+
+        double sum_sq = 0.0;
+        const size_t sample_count = bytes_read / sizeof(int16_t);
+        for (size_t i = 0; i < sample_count; i++) {
+            const int32_t s = in[i];
+            sum_sq += static_cast<double>(s) * static_cast<double>(s);
+        }
+        const double rms = (sample_count > 0) ? std::sqrt(sum_sq / static_cast<double>(sample_count)) : 0.0;
+        const bool vad_active = rms >= MIC_ACTIVITY_RMS_THRESHOLD;
+        if (vad_active) {
+            chunk.flags |= MIC_STREAM_FLAG_VAD_ACTIVE;
+        }
+        s_mic_activity.store(vad_active, std::memory_order_release);
+
+        memcpy(chunk.pcm, in, bytes_read);
+
+        if (xQueueSend(s_mic_queue, &chunk, 0) != pdTRUE) {
+            if (xQueueReceive(s_mic_queue, &dropped, 0) == pdTRUE) {
+                s_mic_tx_drops.fetch_add(1, std::memory_order_relaxed);
+            }
+            s_mic_overruns.fetch_add(1, std::memory_order_relaxed);
+            if (xQueueSend(s_mic_queue, &chunk, 0) != pdTRUE) {
+                continue;
+            }
+        }
+        s_mic_capture_chunks.fetch_add(1, std::memory_order_relaxed);
+    }
+}
+
 void audio_worker_task(void* arg)
 {
     ESP_LOGI(TAG, "audio worker started, stack HWM=%u words",
@@ -771,10 +934,48 @@ void audio_init(void)
         }
     }
 
+    s_speaker_queue = xQueueCreate(AUDIO_STREAM_QUEUE_DEPTH, sizeof(SpeakerChunk));
+    if (s_speaker_queue == nullptr) {
+        ESP_LOGE(TAG, "speaker stream queue allocation failed");
+        return;
+    }
+    if (xTaskCreatePinnedToCore(speaker_stream_task,
+                                "audio_spk",
+                                AUDIO_STREAM_TASK_STACK_BYTES,
+                                nullptr,
+                                AUDIO_STREAM_TASK_PRIORITY,
+                                &s_speaker_task,
+                                AUDIO_WORKER_CORE) != pdPASS) {
+        ESP_LOGE(TAG, "speaker stream task create failed");
+        vQueueDelete(s_speaker_queue);
+        s_speaker_queue = nullptr;
+        return;
+    }
+
+    s_mic_queue = xQueueCreate(MIC_STREAM_QUEUE_DEPTH, sizeof(AudioMicChunk));
+    if (s_mic_queue == nullptr) {
+        ESP_LOGE(TAG, "mic stream queue allocation failed");
+        return;
+    }
+    if (xTaskCreatePinnedToCore(mic_stream_task,
+                                "audio_mic",
+                                AUDIO_STREAM_TASK_STACK_BYTES,
+                                nullptr,
+                                AUDIO_STREAM_TASK_PRIORITY,
+                                &s_mic_task,
+                                AUDIO_WORKER_CORE) != pdPASS) {
+        ESP_LOGE(TAG, "mic stream task create failed");
+        vQueueDelete(s_mic_queue);
+        s_mic_queue = nullptr;
+        return;
+    }
+
     s_ready.store(true, std::memory_order_release);
-    ESP_LOGI(TAG, "audio initialized: ES8311 + I2S @%dHz (%s)",
+    ESP_LOGI(TAG, "audio initialized: ES8311 + I2S @%dHz (%s, spk_stream=%d, mic_stream=%d)",
              AUDIO_SAMPLE_RATE_HZ,
-             (s_worker_task != nullptr) ? "async worker" : "sync fallback");
+             (s_worker_task != nullptr) ? "async worker" : "sync fallback",
+             (s_speaker_task != nullptr) ? 1 : 0,
+             (s_mic_task != nullptr) ? 1 : 0);
 }
 
 void audio_play_pcm(const int16_t* samples, size_t num_samples)
@@ -818,6 +1019,36 @@ void audio_play_pcm(const int16_t* samples, size_t num_samples)
     }
 }
 
+bool audio_stream_enqueue_pcm(const uint8_t* pcm, size_t len)
+{
+    if (!audio_is_ready() || pcm == nullptr || len == 0 || s_speaker_queue == nullptr) {
+        return false;
+    }
+    if (len > AUDIO_STREAM_PCM_BYTES || (len & 0x1u) != 0) {
+        return false;
+    }
+
+    SpeakerChunk chunk = {};
+    chunk.len = static_cast<uint16_t>(len);
+    memcpy(chunk.pcm, pcm, len);
+    s_abort.store(false, std::memory_order_release);
+
+    if (xQueueSend(s_speaker_queue, &chunk, 0) != pdTRUE) {
+        SpeakerChunk dropped = {};
+        if (xQueueReceive(s_speaker_queue, &dropped, 0) == pdTRUE) {
+            s_speaker_rx_drops.fetch_add(1, std::memory_order_relaxed);
+        }
+        if (xQueueSend(s_speaker_queue, &chunk, 0) != pdTRUE) {
+            s_speaker_rx_drops.fetch_add(1, std::memory_order_relaxed);
+            return false;
+        }
+    }
+
+    s_speaker_rx_chunks.fetch_add(1, std::memory_order_relaxed);
+    s_speaker_rx_bytes.fetch_add(static_cast<uint32_t>(len), std::memory_order_relaxed);
+    return true;
+}
+
 void audio_stop(void)
 {
     if (enqueue_cmd(AudioCmdType::STOP, 0)) {
@@ -832,12 +1063,37 @@ void audio_stop(void)
 
 void audio_mic_start(void)
 {
-    audio_run_mic_probe(5000);
+    audio_set_mic_stream_enabled(true);
 }
 
 void audio_mic_stop(void)
 {
-    audio_stop();
+    audio_set_mic_stream_enabled(false);
+}
+
+void audio_set_mic_stream_enabled(bool enabled)
+{
+    s_mic_stream_enabled.store(enabled, std::memory_order_release);
+    if (!enabled && s_mic_queue != nullptr) {
+        AudioMicChunk chunk = {};
+        while (xQueueReceive(s_mic_queue, &chunk, 0) == pdTRUE) {
+        }
+        s_mic_activity.store(false, std::memory_order_release);
+    }
+}
+
+bool audio_mic_stream_enabled(void)
+{
+    return s_mic_stream_enabled.load(std::memory_order_acquire);
+}
+
+bool audio_mic_stream_take_chunk(AudioMicChunk* out, uint32_t timeout_ms)
+{
+    if (out == nullptr || s_mic_queue == nullptr) {
+        return false;
+    }
+    const TickType_t to = (timeout_ms == 0) ? 0 : pdMS_TO_TICKS(timeout_ms);
+    return xQueueReceive(s_mic_queue, out, to) == pdTRUE;
 }
 
 void audio_play_test_tone(uint32_t duration_ms)
@@ -909,6 +1165,24 @@ MicProbeStats audio_get_mic_probe_stats(void)
     stats.selected_channel = s_probe_selected_channel.load(std::memory_order_acquire);
     stats.active = s_mic_activity.load(std::memory_order_acquire);
     return stats;
+}
+
+AudioStreamDiagSnapshot audio_stream_diag_snapshot(void)
+{
+    AudioStreamDiagSnapshot out = {};
+    out.speaker_rx_chunks = s_speaker_rx_chunks.load(std::memory_order_relaxed);
+    out.speaker_rx_drops = s_speaker_rx_drops.load(std::memory_order_relaxed);
+    out.speaker_rx_bytes = s_speaker_rx_bytes.load(std::memory_order_relaxed);
+    out.speaker_play_chunks = s_speaker_play_chunks.load(std::memory_order_relaxed);
+    out.speaker_play_errors = s_speaker_play_errors.load(std::memory_order_relaxed);
+    out.mic_capture_chunks = s_mic_capture_chunks.load(std::memory_order_relaxed);
+    out.mic_tx_drops = s_mic_tx_drops.load(std::memory_order_relaxed);
+    out.mic_overruns = s_mic_overruns.load(std::memory_order_relaxed);
+    out.mic_stream_enabled = s_mic_stream_enabled.load(std::memory_order_relaxed) ? 1 : 0;
+    out.mic_queue_depth = (s_mic_queue != nullptr)
+        ? static_cast<uint32_t>(uxQueueMessagesWaiting(s_mic_queue))
+        : 0;
+    return out;
 }
 
 void audio_dump_codec_regs(void)

@@ -14,6 +14,7 @@
 #include <cstring>
 
 static const char* TAG = "face_ui";
+static constexpr uint32_t TALKING_CMD_TIMEOUT_MS = 450;
 
 static float now_s();
 
@@ -286,8 +287,10 @@ void face_ui_task(void* arg)
 
     FaceState fs;
     uint32_t last_cmd_us = 0;
+    uint32_t last_talking_cmd_us = 0;
 
     while (true) {
+        const uint32_t now_us = static_cast<uint32_t>(esp_timer_get_time());
         // 1. Read latest command (atomic)
         const FaceCommand* cmd = g_face_cmd.read();
         uint32_t cmd_us = g_face_cmd.last_cmd_us.load(std::memory_order_acquire);
@@ -298,7 +301,7 @@ void face_ui_task(void* arg)
 
             if (cmd->has_state) {
                 // Apply mood
-                if (cmd->mood_id <= static_cast<uint8_t>(Mood::HAPPY)) {
+                if (cmd->mood_id <= static_cast<uint8_t>(Mood::THINKING)) {
                     face_set_mood(fs, static_cast<Mood>(cmd->mood_id));
                 }
 
@@ -312,7 +315,7 @@ void face_ui_task(void* arg)
             }
 
             // Apply gesture (one-shot)
-            if (cmd->has_gesture && cmd->gesture_id <= static_cast<uint8_t>(GestureId::RAGE)) {
+            if (cmd->has_gesture && cmd->gesture_id <= static_cast<uint8_t>(GestureId::WIGGLE)) {
                 face_trigger_gesture(fs, static_cast<GestureId>(cmd->gesture_id));
             }
 
@@ -320,6 +323,23 @@ void face_ui_task(void* arg)
             if (cmd->has_system) {
                 float param = static_cast<float>(cmd->system_param) / 255.0f;
                 face_set_system_mode(fs, static_cast<SystemMode>(cmd->system_mode), param);
+            }
+
+            if (cmd->has_talking) {
+                fs.talking = cmd->talking;
+                fs.talking_energy = static_cast<float>(cmd->talking_energy) / 255.0f;
+                if (!fs.talking) {
+                    fs.talking_energy = 0.0f;
+                }
+                last_talking_cmd_us = cmd_us;
+            }
+        }
+
+        if (fs.talking && last_talking_cmd_us != 0) {
+            const uint32_t age_us = now_us - last_talking_cmd_us;
+            if (age_us > TALKING_CMD_TIMEOUT_MS * 1000U) {
+                fs.talking = false;
+                fs.talking_energy = 0.0f;
             }
         }
 

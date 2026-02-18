@@ -28,6 +28,7 @@ enum class FaceCfgId : uint8_t {
     AUDIO_TEST_TONE_MS = 0xA0,  // value: u32 duration in ms (1kHz sine)
     AUDIO_MIC_PROBE_MS = 0xA1,  // value: u32 probe window in ms
     AUDIO_REG_DUMP     = 0xA2,  // value: ignored; dumps ES8311 registers to log
+    AUDIO_MIC_STREAM_ENABLE = 0xA3,  // value: u32 0=off, non-zero=on
 };
 
 enum class FaceTelId : uint8_t {
@@ -35,6 +36,7 @@ enum class FaceTelId : uint8_t {
     TOUCH_EVENT  = 0x91,  // touch press/release/drag
     MIC_PROBE    = 0x92,  // microphone probe diagnostic result
     HEARTBEAT    = 0x93,  // periodic liveness + telemetry counters
+    MIC_AUDIO    = 0x94,  // streaming mic PCM chunk
 };
 
 // ---- Payload structs (packed, little-endian) ----
@@ -99,6 +101,14 @@ struct __attribute__((packed)) FaceMicProbePayload {
     uint8_t  active;
 };
 
+struct __attribute__((packed)) FaceMicAudioPayload {
+    uint32_t chunk_seq;
+    uint16_t chunk_len;    // bytes of PCM that follow
+    uint8_t  flags;        // bit0: vad_active (reserved for now)
+    uint8_t  reserved;
+    // Followed by chunk_len bytes of 16-bit signed 16 kHz mono PCM.
+};
+
 struct __attribute__((packed)) FaceHeartbeatPayload {
     uint32_t uptime_ms;
     uint32_t status_tx_count;
@@ -120,6 +130,19 @@ struct __attribute__((packed)) FaceHeartbeatPayload {
     uint32_t usb_line_state_events;
     uint8_t  usb_dtr;
     uint8_t  usb_rts;
+    // Optional audio-stream diagnostics (append-only).
+    uint32_t speaker_rx_chunks;
+    uint32_t speaker_rx_drops;
+    uint32_t speaker_rx_bytes;
+    uint32_t speaker_play_chunks;
+    uint32_t speaker_play_errors;
+    uint32_t mic_capture_chunks;
+    uint32_t mic_tx_chunks;
+    uint32_t mic_tx_drops;
+    uint32_t mic_overruns;
+    uint32_t mic_queue_depth;
+    uint8_t  mic_stream_enabled;
+    uint8_t  audio_reserved;
 };
 
 // ---- COBS encode/decode ----

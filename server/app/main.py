@@ -26,8 +26,11 @@ async def lifespan(app: FastAPI):
 
     healthy = await client.health_check()
     if healthy:
-        log.info("Ollama is reachable — warming model")
-        await client.warm()
+        if settings.warmup_llm:
+            log.info("Ollama is reachable — warming model")
+            await client.warm()
+        else:
+            log.info("Ollama is reachable — warm-up disabled")
     else:
         log.warning("Ollama is not reachable at %s", settings.ollama_url)
 

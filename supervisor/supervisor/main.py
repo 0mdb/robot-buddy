@@ -19,6 +19,7 @@ import uvicorn
 from supervisor.api.http_server import create_app
 from supervisor.api.param_registry import create_default_registry
 from supervisor.api.ws_hub import WsHub
+from supervisor.devices.conversation_manager import ConversationManager
 from supervisor.devices.face_client import FaceClient
 from supervisor.devices.personality_client import PersonalityClient
 from supervisor.devices.reflex_client import REFLEX_PARAM_IDS, ReflexClient
@@ -75,6 +76,7 @@ async def async_main(args: argparse.Namespace) -> None:
     # Face transport + client
     face_transport: SerialTransport | None = None
     face: FaceClient | None = None
+    conversation: ConversationManager | None = None
     if not args.no_face:
         face_transport = SerialTransport(args.face_port, label="face")
         face = FaceClient(face_transport)
@@ -89,6 +91,10 @@ async def async_main(args: argparse.Namespace) -> None:
             log.info("personality server reachable at %s", args.server_api)
         else:
             log.warning("personality server not reachable at startup: %s", args.server_api)
+
+    if args.server_api and face is not None:
+        conversation = ConversationManager(args.server_api, face=face)
+        face.on_mic_audio(lambda evt: conversation.submit_mic_audio_chunk(evt.pcm))
 
     # Vision process
     vision: VisionProcess | None = None
@@ -123,7 +129,13 @@ async def async_main(args: argparse.Namespace) -> None:
     # Start serial transports
     await transport.start()
     if face_transport:
+        if conversation is not None and face is not None:
+            face_transport.on_connect(lambda: face.set_mic_stream_enabled(True))
         await face_transport.start()
+        if conversation is not None:
+            await conversation.start()
+            if face.connected:
+                face.set_mic_stream_enabled(True)
 
     # Start uvicorn + tick loop concurrently
     config = uvicorn.Config(
@@ -144,6 +156,10 @@ async def async_main(args: argparse.Namespace) -> None:
         if vision:
             vision.stop()
         if face_transport:
+            if face:
+                face.set_mic_stream_enabled(False)
+            if conversation:
+                await conversation.stop()
             await face_transport.stop()
         await transport.stop()
         if personality:

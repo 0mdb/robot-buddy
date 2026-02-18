@@ -80,10 +80,12 @@ size_t packet_build(uint8_t type, uint8_t seq,
                     const uint8_t* payload, size_t payload_len,
                     uint8_t* out, size_t out_cap)
 {
+    // Must fit conversational telemetry packets (e.g., MIC_AUDIO 10 ms chunk).
+    constexpr size_t MAX_RAW_PACKET_LEN = 768;
     const size_t raw_len = 2 + payload_len + 2;
-    if (raw_len > 256) return 0;
+    if (raw_len > MAX_RAW_PACKET_LEN) return 0;
 
-    uint8_t raw[256];
+    uint8_t raw[MAX_RAW_PACKET_LEN];
     raw[0] = type;
     raw[1] = seq;
     if (payload_len > 0) {

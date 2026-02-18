@@ -72,12 +72,14 @@ class FaceTelType(IntEnum):
     TOUCH_EVENT = 0x91
     MIC_PROBE = 0x92
     HEARTBEAT = 0x93
+    MIC_AUDIO = 0x94
 
 
 class FaceCfgId(IntEnum):
     AUDIO_TEST_TONE_MS = 0xA0
     AUDIO_MIC_PROBE_MS = 0xA1
     AUDIO_REG_DUMP = 0xA2
+    AUDIO_MIC_STREAM_ENABLE = 0xA3
 
 
 class FaceMood(IntEnum):
@@ -203,6 +205,29 @@ class FaceMicProbePayload:
 
 
 @dataclass(slots=True)
+class FaceMicAudioPayload:
+    chunk_seq: int
+    chunk_len: int
+    flags: int
+    pcm: bytes
+
+    _HDR_FMT = struct.Struct("<IHBB")  # chunk_seq, chunk_len, flags, reserved
+
+    @classmethod
+    def unpack(cls, data: bytes) -> FaceMicAudioPayload:
+        if len(data) < cls._HDR_FMT.size:
+            raise ValueError(f"MIC_AUDIO payload too short: {len(data)}")
+        chunk_seq, chunk_len, flags, _ = cls._HDR_FMT.unpack_from(data)
+        end = cls._HDR_FMT.size + chunk_len
+        if len(data) < end:
+            raise ValueError(
+                f"MIC_AUDIO payload truncated: have={len(data)} need={end}"
+            )
+        pcm = data[cls._HDR_FMT.size:end]
+        return cls(chunk_seq=chunk_seq, chunk_len=chunk_len, flags=flags, pcm=pcm)
+
+
+@dataclass(slots=True)
 class FaceHeartbeatPayload:
     uptime_ms: int
     status_tx_count: int
@@ -223,9 +248,22 @@ class FaceHeartbeatPayload:
     usb_line_state_events: int
     usb_dtr: int
     usb_rts: int
+    speaker_rx_chunks: int
+    speaker_rx_drops: int
+    speaker_rx_bytes: int
+    speaker_play_chunks: int
+    speaker_play_errors: int
+    mic_capture_chunks: int
+    mic_tx_chunks: int
+    mic_tx_drops: int
+    mic_overruns: int
+    mic_queue_depth: int
+    mic_stream_enabled: int
+    audio_reserved: int
 
     _BASE_FMT = struct.Struct("<IIIIB")  # 17 bytes
     _USB_FMT = struct.Struct("<IIIIIIIIIIIIBB")  # 50 bytes
+    _AUDIO_FMT = struct.Struct("<IIIIIIIIIIBB")  # 42 bytes
 
     @classmethod
     def unpack(cls, data: bytes) -> FaceHeartbeatPayload:
@@ -252,7 +290,25 @@ class FaceHeartbeatPayload:
         if len(data) >= (cls._BASE_FMT.size + cls._USB_FMT.size):
             usb = cls._USB_FMT.unpack_from(data, cls._BASE_FMT.size)
 
-        return cls(*base, *usb)
+        audio = (
+            0,  # speaker_rx_chunks
+            0,  # speaker_rx_drops
+            0,  # speaker_rx_bytes
+            0,  # speaker_play_chunks
+            0,  # speaker_play_errors
+            0,  # mic_capture_chunks
+            0,  # mic_tx_chunks
+            0,  # mic_tx_drops
+            0,  # mic_overruns
+            0,  # mic_queue_depth
+            0,  # mic_stream_enabled
+            0,  # audio_reserved
+        )
+        audio_off = cls._BASE_FMT.size + cls._USB_FMT.size
+        if len(data) >= (audio_off + cls._AUDIO_FMT.size):
+            audio = cls._AUDIO_FMT.unpack_from(data, audio_off)
+
+        return cls(*base, *usb, *audio)
 
 
 # -- Packet building --------------------------------------------------------

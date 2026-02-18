@@ -11,8 +11,15 @@ the robot's speaker.
 from __future__ import annotations
 
 import logging
+import queue
 import struct
+import threading
+import time
+import uuid
 from collections.abc import AsyncIterator
+from typing import Any, Callable, Iterator
+
+from app.config import settings
 
 log = logging.getLogger(__name__)
 
@@ -36,7 +43,9 @@ EMOTION_TO_PROSODY_TAG: dict[str, str] = {
 OUTPUT_SAMPLE_RATE = 16000
 OUTPUT_SAMPLE_WIDTH = 2  # 16-bit signed
 OUTPUT_CHANNELS = 1
-CHUNK_SAMPLES = 1600  # 100ms chunks at 16 kHz
+CHUNK_SAMPLES = 160  # 10ms chunks at 16 kHz
+ORPHEUS_IDLE_TIMEOUT_S = 8.0
+ORPHEUS_TOTAL_TIMEOUT_S = 60.0
 
 
 def apply_prosody_tag(emotion: str, text: str) -> str:
@@ -82,6 +91,30 @@ def pcm_float32_to_int16(float_audio: bytes, *, src_rate: int = 24000) -> bytes:
     return struct.pack(f"<{len(int16_samples)}h", *int16_samples)
 
 
+def pcm_int16_resample_to_int16(pcm_audio: bytes, *, src_rate: int = 24000) -> bytes:
+    """Resample int16 PCM bytes from src_rate to OUTPUT_SAMPLE_RATE."""
+    if src_rate == OUTPUT_SAMPLE_RATE:
+        return pcm_audio
+    if len(pcm_audio) < 2:
+        return b""
+
+    n_samples = len(pcm_audio) // 2
+    samples = struct.unpack(f"<{n_samples}h", pcm_audio[: n_samples * 2])
+    ratio = OUTPUT_SAMPLE_RATE / src_rate
+    out_len = int(n_samples * ratio)
+    out: list[int] = []
+    for i in range(out_len):
+        src_idx = i / ratio
+        idx = int(src_idx)
+        if idx >= n_samples - 1:
+            out.append(samples[-1])
+        else:
+            frac = src_idx - idx
+            v = samples[idx] * (1.0 - frac) + samples[idx + 1] * frac
+            out.append(int(v))
+    return struct.pack(f"<{len(out)}h", *out)
+
+
 class OrpheusTTS:
     """Text-to-speech using Orpheus TTS with emotion prosody.
 
@@ -96,6 +129,10 @@ class OrpheusTTS:
         self._model_name = model_name
         self._device = device
         self._loaded = False
+        self._backend: str | None = None
+        self._legacy_generate_speech: Callable[[str], bytes] | None = None
+        self._model: Any = None
+        self._init_error: str | None = None
 
     def _ensure_model(self) -> None:
         if self._loaded:
@@ -103,19 +140,139 @@ class OrpheusTTS:
 
         log.info("Loading Orpheus TTS model %s on %s...", self._model_name, self._device)
 
-        # Orpheus TTS loading depends on the specific package version.
-        # The orpheus-speech package provides the generation pipeline.
+        # Backend A: legacy runtime exposing `orpheus_speech.generate_speech`.
         try:
-            import orpheus_speech  # noqa: F401
+            from orpheus_speech import generate_speech  # type: ignore[import-not-found]
 
+            self._legacy_generate_speech = generate_speech
+            self._backend = "orpheus_speech"
             self._loaded = True
-            log.info("Orpheus TTS model loaded.")
+            log.info("Orpheus TTS backend loaded via orpheus_speech.")
+            return
+        except ImportError:
+            pass
+
+        # Backend B: current PyPI package exposing `orpheus_tts.OrpheusModel`.
+        try:
+            from orpheus_tts import OrpheusModel  # type: ignore[import-not-found]
+            from vllm import AsyncEngineArgs, AsyncLLMEngine  # type: ignore[import-not-found]
+
+            class _TunedOrpheusModel(OrpheusModel):
+                def _setup_engine(self):
+                    engine_args = AsyncEngineArgs(
+                        model=self.model_name,
+                        dtype=self.dtype,
+                        gpu_memory_utilization=settings.orpheus_gpu_memory_utilization,
+                        max_model_len=settings.orpheus_max_model_len,
+                        max_num_seqs=settings.orpheus_max_num_seqs,
+                        max_num_batched_tokens=settings.orpheus_max_num_batched_tokens,
+                    )
+                    return AsyncLLMEngine.from_engine_args(engine_args)
+
+            model_candidates = [
+                self._model_name,
+                "canopylabs/orpheus-tts-0.1-finetune-prod",
+            ]
+            last_err: Exception | None = None
+            tried: set[str] = set()
+            for name in model_candidates:
+                if name in tried:
+                    continue
+                tried.add(name)
+                try:
+                    self._model = _TunedOrpheusModel(name)
+                    self._backend = "orpheus_tts"
+                    self._loaded = True
+                    log.info(
+                        (
+                            "Orpheus TTS backend loaded via orpheus_tts "
+                            "(%s, gpu_mem=%.2f, max_len=%d, max_num_seqs=%d, max_batched_tokens=%d)."
+                        ),
+                        name,
+                        settings.orpheus_gpu_memory_utilization,
+                        settings.orpheus_max_model_len,
+                        settings.orpheus_max_num_seqs,
+                        settings.orpheus_max_num_batched_tokens,
+                    )
+                    return
+                except Exception as exc:  # pragma: no cover - hardware/runtime dependent
+                    last_err = exc
+                    log.warning("Orpheus model init failed for %s: %s", name, exc)
+            if last_err is not None:
+                raise last_err
         except ImportError:
             log.warning(
-                "orpheus-speech not installed. TTS will return empty audio. "
-                "Install with: pip install orpheus-speech"
+                "Orpheus TTS runtime not available. "
+                "Install/launch with: `uv sync --extra tts` and "
+                "`uv run --extra tts python -m app.main`."
             )
-            self._loaded = True  # Don't retry
+        except Exception:
+            log.exception("Failed to initialize Orpheus TTS runtime")
+            self._init_error = "failed_to_initialize_orpheus_runtime"
+
+        # Don't retry on every request if runtime is unavailable.
+        self._loaded = True
+
+    def _reset_orpheus_backend(self) -> None:
+        """Drop backend state so a dead engine can be recreated."""
+        self._loaded = False
+        self._backend = None
+        self._legacy_generate_speech = None
+        self._model = None
+        self._init_error = None
+
+    def _collect_chunks_with_timeout(self, gen: Iterator[bytes]) -> bytes:
+        """Drain an Orpheus generator safely with idle/total timeouts."""
+        q: queue.Queue[tuple[str, bytes | Exception | None]] = queue.Queue()
+
+        def _run() -> None:
+            try:
+                for chunk in gen:
+                    q.put(("chunk", bytes(chunk)))
+            except Exception as exc:  # pragma: no cover - runtime dependent
+                q.put(("error", exc))
+            finally:
+                q.put(("done", None))
+
+        th = threading.Thread(target=_run, daemon=True)
+        th.start()
+
+        out: list[bytes] = []
+        start = time.monotonic()
+        last_item = start
+
+        while True:
+            now = time.monotonic()
+            if (now - start) > ORPHEUS_TOTAL_TIMEOUT_S:
+                raise TimeoutError(
+                    f"orpheus stream exceeded total timeout ({ORPHEUS_TOTAL_TIMEOUT_S}s)"
+                )
+
+            wait_s = min(
+                ORPHEUS_IDLE_TIMEOUT_S,
+                max(0.1, ORPHEUS_TOTAL_TIMEOUT_S - (now - start)),
+            )
+            try:
+                kind, payload = q.get(timeout=wait_s)
+            except queue.Empty:
+                idle = time.monotonic() - last_item
+                raise TimeoutError(
+                    f"orpheus stream idle for {idle:.1f}s "
+                    f"(limit {ORPHEUS_IDLE_TIMEOUT_S}s)"
+                ) from None
+
+            last_item = time.monotonic()
+            if kind == "chunk":
+                assert isinstance(payload, (bytes, bytearray))
+                if payload:
+                    out.append(bytes(payload))
+            elif kind == "error":
+                assert isinstance(payload, Exception)
+                raise payload
+            elif kind == "done":
+                break
+
+        return b"".join(out)
 
     async def synthesize(self, text: str, emotion: str = "neutral") -> bytes:
         """Synthesize speech from text with emotional prosody.
@@ -131,22 +288,44 @@ class OrpheusTTS:
         self._ensure_model()
         tagged_text = apply_prosody_tag(emotion, text)
 
-        try:
-            from orpheus_speech import generate_speech
+        for attempt in (1, 2):
+            try:
+                if self._backend == "orpheus_speech" and self._legacy_generate_speech is not None:
+                    audio_float32 = self._legacy_generate_speech(tagged_text)
+                    return pcm_float32_to_int16(audio_float32, src_rate=24000)
 
-            audio_float32 = generate_speech(tagged_text)
-            return pcm_float32_to_int16(audio_float32, src_rate=24000)
-        except ImportError:
-            log.debug("TTS unavailable, returning empty audio")
-            return b""
-        except Exception:
-            log.exception("TTS synthesis failed for: %s", tagged_text[:80])
-            return b""
+                if self._backend == "orpheus_tts" and self._model is not None:
+                    # orpheus_tts currently yields int16 PCM chunks at 24 kHz.
+                    req_id = f"req-{int(time.time()*1000)}-{uuid.uuid4().hex[:8]}"
+                    gen = self._model.generate_speech(prompt=tagged_text, request_id=req_id)
+                    audio_int16_24k = self._collect_chunks_with_timeout(gen)
+                    if not audio_int16_24k:
+                        return b""
+                    return pcm_int16_resample_to_int16(audio_int16_24k, src_rate=24000)
+
+                if self._init_error is None:
+                    self._init_error = "orpheus_backend_unavailable"
+                log.warning(
+                    "TTS unavailable (%s). If using gated HF models, ensure "
+                    "Hugging Face login + accepted model access.",
+                    self._init_error,
+                )
+                return b""
+            except Exception as exc:
+                if self._backend == "orpheus_tts" and attempt == 1:
+                    log.warning("Orpheus synthesis failed; resetting engine and retrying once: %s", exc)
+                    self._reset_orpheus_backend()
+                    self._ensure_model()
+                    continue
+                log.exception("TTS synthesis failed for: %s", tagged_text[:80])
+                return b""
+
+        return b""
 
     async def stream(self, text: str, emotion: str = "neutral") -> AsyncIterator[bytes]:
         """Stream PCM audio chunks as they're generated.
 
-        Yields 100ms chunks of 16-bit 16 kHz mono PCM.
+        Yields 10ms chunks of 16-bit 16 kHz mono PCM.
         Falls back to synthesize-then-chunk if streaming isn't supported.
         """
         # For now, synthesize full audio then yield in chunks.

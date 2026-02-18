@@ -10,6 +10,7 @@ from typing import Callable
 from supervisor.devices.protocol import (
     FaceCfgId,
     FaceHeartbeatPayload,
+    FaceMicAudioPayload,
     FaceMicProbePayload,
     FaceStatusPayload,
     FaceTelType,
@@ -75,6 +76,15 @@ class MicProbeTelemetry:
 
 
 @dataclass(slots=True)
+class MicAudioTelemetry:
+    chunk_seq: int = 0
+    chunk_len: int = 0
+    flags: int = 0
+    pcm: bytes = b""
+    rx_mono_ms: float = 0.0
+
+
+@dataclass(slots=True)
 class HeartbeatTelemetry:
     uptime_ms: int = 0
     status_tx_count: int = 0
@@ -95,6 +105,17 @@ class HeartbeatTelemetry:
     usb_line_state_events: int = 0
     usb_dtr: bool = False
     usb_rts: bool = False
+    speaker_rx_chunks: int = 0
+    speaker_rx_drops: int = 0
+    speaker_rx_bytes: int = 0
+    speaker_play_chunks: int = 0
+    speaker_play_errors: int = 0
+    mic_capture_chunks: int = 0
+    mic_tx_chunks: int = 0
+    mic_tx_drops: int = 0
+    mic_overruns: int = 0
+    mic_queue_depth: int = 0
+    mic_stream_enabled: bool = False
     seq: int = 0
     rx_mono_ms: float = 0.0
 
@@ -108,12 +129,15 @@ class FaceClient:
         self.telemetry = FaceTelemetry()
         self.last_touch: TouchEvent | None = None
         self.last_mic_probe: MicProbeTelemetry | None = None
+        self.last_mic_audio: MicAudioTelemetry | None = None
         self.last_heartbeat: HeartbeatTelemetry | None = None
         self._on_touch: Callable[[TouchEvent], None] | None = None
+        self._on_mic_audio: Callable[[MicAudioTelemetry], None] | None = None
         self._tx_packets = 0
         self._rx_face_status_packets = 0
         self._rx_touch_packets = 0
         self._rx_mic_probe_packets = 0
+        self._rx_mic_audio_packets = 0
         self._rx_heartbeat_packets = 0
         self._rx_bad_payload_packets = 0
         self._rx_unknown_packets = 0
@@ -126,6 +150,9 @@ class FaceClient:
 
     def on_touch(self, cb: Callable[[TouchEvent], None]) -> None:
         self._on_touch = cb
+
+    def on_mic_audio(self, cb: Callable[[MicAudioTelemetry], None]) -> None:
+        self._on_mic_audio = cb
 
     def send_state(
         self,
@@ -205,6 +232,12 @@ class FaceClient:
     def dump_audio_regs(self) -> bool:
         return self.send_set_config_u32(FaceCfgId.AUDIO_REG_DUMP, 0)
 
+    def set_mic_stream_enabled(self, enabled: bool) -> bool:
+        return self.send_set_config_u32(
+            FaceCfgId.AUDIO_MIC_STREAM_ENABLE,
+            1 if enabled else 0,
+        )
+
     def debug_snapshot(self) -> dict:
         now_ms = time.monotonic() * 1000.0
         age_ms = 0.0
@@ -217,6 +250,7 @@ class FaceClient:
             "rx_face_status_packets": self._rx_face_status_packets,
             "rx_touch_packets": self._rx_touch_packets,
             "rx_mic_probe_packets": self._rx_mic_probe_packets,
+            "rx_mic_audio_packets": self._rx_mic_audio_packets,
             "rx_heartbeat_packets": self._rx_heartbeat_packets,
             "rx_bad_payload_packets": self._rx_bad_payload_packets,
             "rx_unknown_packets": self._rx_unknown_packets,
@@ -224,6 +258,7 @@ class FaceClient:
             "last_status_age_ms": round(age_ms, 1),
             "last_status_flags": self.telemetry.flags,
             "last_mic_probe": self._mic_probe_snapshot(),
+            "last_mic_audio": self._mic_audio_snapshot(),
             "last_heartbeat": self._heartbeat_snapshot(),
             "transport": self._transport.debug_snapshot(),
         }
@@ -285,6 +320,24 @@ class FaceClient:
                 active=bool(mp.active),
                 rx_mono_ms=time.monotonic() * 1000.0,
             )
+        elif pkt.pkt_type == FaceTelType.MIC_AUDIO:
+            try:
+                ma = FaceMicAudioPayload.unpack(pkt.payload)
+            except ValueError as e:
+                self._rx_bad_payload_packets += 1
+                log.warning("face: bad MIC_AUDIO: %s", e)
+                return
+            self._rx_mic_audio_packets += 1
+            evt = MicAudioTelemetry(
+                chunk_seq=ma.chunk_seq,
+                chunk_len=ma.chunk_len,
+                flags=ma.flags,
+                pcm=ma.pcm,
+                rx_mono_ms=time.monotonic() * 1000.0,
+            )
+            self.last_mic_audio = evt
+            if self._on_mic_audio:
+                self._on_mic_audio(evt)
         elif pkt.pkt_type == FaceTelType.HEARTBEAT:
             try:
                 hb = FaceHeartbeatPayload.unpack(pkt.payload)
@@ -313,6 +366,17 @@ class FaceClient:
                 usb_line_state_events=hb.usb_line_state_events,
                 usb_dtr=bool(hb.usb_dtr),
                 usb_rts=bool(hb.usb_rts),
+                speaker_rx_chunks=hb.speaker_rx_chunks,
+                speaker_rx_drops=hb.speaker_rx_drops,
+                speaker_rx_bytes=hb.speaker_rx_bytes,
+                speaker_play_chunks=hb.speaker_play_chunks,
+                speaker_play_errors=hb.speaker_play_errors,
+                mic_capture_chunks=hb.mic_capture_chunks,
+                mic_tx_chunks=hb.mic_tx_chunks,
+                mic_tx_drops=hb.mic_tx_drops,
+                mic_overruns=hb.mic_overruns,
+                mic_queue_depth=hb.mic_queue_depth,
+                mic_stream_enabled=bool(hb.mic_stream_enabled),
                 seq=pkt.seq,
                 rx_mono_ms=time.monotonic() * 1000.0,
             )
@@ -336,6 +400,17 @@ class FaceClient:
             "selected_channel": mp.selected_channel,
             "active": mp.active,
             "rx_mono_ms": round(mp.rx_mono_ms, 1),
+        }
+
+    def _mic_audio_snapshot(self) -> dict | None:
+        ma = self.last_mic_audio
+        if ma is None:
+            return None
+        return {
+            "chunk_seq": ma.chunk_seq,
+            "chunk_len": ma.chunk_len,
+            "flags": ma.flags,
+            "rx_mono_ms": round(ma.rx_mono_ms, 1),
         }
 
     def _heartbeat_snapshot(self) -> dict | None:
@@ -363,6 +438,19 @@ class FaceClient:
                 "line_state_events": hb.usb_line_state_events,
                 "dtr": hb.usb_dtr,
                 "rts": hb.usb_rts,
+            },
+            "audio": {
+                "speaker_rx_chunks": hb.speaker_rx_chunks,
+                "speaker_rx_drops": hb.speaker_rx_drops,
+                "speaker_rx_bytes": hb.speaker_rx_bytes,
+                "speaker_play_chunks": hb.speaker_play_chunks,
+                "speaker_play_errors": hb.speaker_play_errors,
+                "mic_capture_chunks": hb.mic_capture_chunks,
+                "mic_tx_chunks": hb.mic_tx_chunks,
+                "mic_tx_drops": hb.mic_tx_drops,
+                "mic_overruns": hb.mic_overruns,
+                "mic_queue_depth": hb.mic_queue_depth,
+                "mic_stream_enabled": hb.mic_stream_enabled,
             },
             "seq": hb.seq,
             "rx_mono_ms": round(hb.rx_mono_ms, 1),

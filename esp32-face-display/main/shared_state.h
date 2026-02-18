@@ -21,6 +21,9 @@ struct FaceCommand {
     bool     has_system    = false;
     uint8_t  system_mode  = 0;
     uint8_t  system_param = 0;
+    bool     has_talking  = false;
+    bool     talking      = false;
+    uint8_t  talking_energy = 0;
 };
 
 struct FaceCommandBuffer {

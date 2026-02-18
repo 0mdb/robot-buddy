@@ -140,6 +140,8 @@ async def generate_conversation_response(
         "messages": messages,
         "stream": False,
         "format": CONVERSATION_RESPONSE_SCHEMA,
+        # Unload LLM quickly so Orpheus can claim GPU memory on single-GPU hosts.
+        "keep_alive": settings.converse_keep_alive,
         "options": {
             "temperature": settings.temperature,
             "num_ctx": settings.num_ctx,
