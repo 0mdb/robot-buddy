@@ -1,0 +1,121 @@
+#!/usr/bin/env bash
+# deploy/install.sh — One-time setup for robot-buddy-supervisor on Raspberry Pi OS
+#
+# Run as your normal user (pi).  Will prompt for sudo where needed.
+#
+# Usage:
+#   cd ~/robot-buddy
+#   bash deploy/install.sh
+#
+# Idempotent: safe to re-run after pulling changes.
+
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SUPERVISOR_DIR="$REPO_ROOT/supervisor"
+DEPLOY_DIR="$REPO_ROOT/deploy"
+SERVICE_NAME="robot-buddy-supervisor"
+SERVICE_FILE="$DEPLOY_DIR/$SERVICE_NAME.service"
+ENV_DEST="/etc/robot-buddy/supervisor.env"
+SYSTEMD_DEST="/etc/systemd/system/$SERVICE_NAME.service"
+VENV="$SUPERVISOR_DIR/.venv"
+
+# ── Helpers ────────────────────────────────────────────────────────────────────
+info()  { echo "[install] $*"; }
+ok()    { echo "[install] ✓ $*"; }
+warn()  { echo "[install] WARNING: $*" >&2; }
+die()   { echo "[install] ERROR: $*" >&2; exit 1; }
+
+# ── 0. Sanity checks ──────────────────────────────────────────────────────────
+[[ -f "$SERVICE_FILE" ]]   || die "Service file not found: $SERVICE_FILE"
+[[ -d "$SUPERVISOR_DIR" ]] || die "Supervisor directory not found: $SUPERVISOR_DIR"
+
+# Detect the user who will own the service (must not be root)
+SERVICE_USER="${SUDO_USER:-${USER}}"
+[[ "$SERVICE_USER" == "root" ]] && die "Run this script as a normal user, not root."
+
+info "Installing robot-buddy-supervisor as user '$SERVICE_USER'"
+info "Repo root: $REPO_ROOT"
+
+# ── 1. Install uv ─────────────────────────────────────────────────────────────
+if command -v uv &>/dev/null; then
+    ok "uv already installed ($(uv --version))"
+else
+    info "Installing uv..."
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    # Put uv on PATH for this session
+    export PATH="$HOME/.local/bin:$PATH"
+    ok "uv installed"
+fi
+
+# ── 2. System packages needed for picamera2 ───────────────────────────────────
+info "Ensuring system libcamera packages are present..."
+sudo apt-get install -y --no-install-recommends \
+    python3-picamera2 \
+    python3-libcamera \
+    libcamera-dev \
+    2>/dev/null || warn "apt install skipped (non-RPi OS or no network). picamera2 may be unavailable."
+
+# ── 3. Create venv with system-site-packages (for picamera2) ─────────────────
+info "Creating/updating Python virtual environment..."
+# --system-site-packages lets the venv see system-installed picamera2/libcamera
+uv venv --python python3 --system-site-packages "$VENV"
+ok "venv at $VENV"
+
+# ── 4. Install Python dependencies ────────────────────────────────────────────
+info "Installing supervisor dependencies..."
+cd "$SUPERVISOR_DIR"
+# The rpi extra adds picamera2 as a declared dep; uv won't reinstall if system copy works
+uv sync --extra rpi
+ok "dependencies installed"
+
+# ── 5. Patch service file with the actual user/home and install it ────────────
+info "Installing systemd service..."
+# Substitute placeholder paths if the service file uses /home/pi and the real
+# user is different (e.g. ubuntu on RPi).
+REAL_HOME=$(eval echo "~$SERVICE_USER")
+PATCHED_SERVICE=$(sed \
+    -e "s|/home/pi|$REAL_HOME|g" \
+    -e "s|^User=pi|User=$SERVICE_USER|g" \
+    -e "s|^Group=pi|Group=$SERVICE_USER|g" \
+    "$SERVICE_FILE")
+echo "$PATCHED_SERVICE" | sudo tee "$SYSTEMD_DEST" > /dev/null
+sudo chmod 644 "$SYSTEMD_DEST"
+ok "service file at $SYSTEMD_DEST"
+
+# ── 6. Install environment file ───────────────────────────────────────────────
+sudo mkdir -p /etc/robot-buddy
+if [[ -f "$ENV_DEST" ]]; then
+    info "Environment file already exists at $ENV_DEST — not overwriting."
+    info "Edit it manually to change startup flags."
+else
+    sudo cp "$DEPLOY_DIR/supervisor.env" "$ENV_DEST"
+    sudo chmod 644 "$ENV_DEST"
+    ok "environment file at $ENV_DEST"
+fi
+
+# ── 7. Make sure user is in dialout + video groups ────────────────────────────
+for grp in dialout video; do
+    if ! groups "$SERVICE_USER" | grep -qw "$grp"; then
+        sudo usermod -aG "$grp" "$SERVICE_USER"
+        warn "Added $SERVICE_USER to $grp group. A re-login (or reboot) is needed for this to take effect."
+    fi
+done
+
+# ── 8. Enable and (re)start the service ───────────────────────────────────────
+sudo systemctl daemon-reload
+sudo systemctl enable "$SERVICE_NAME"
+sudo systemctl restart "$SERVICE_NAME"
+
+# ── 9. Status ─────────────────────────────────────────────────────────────────
+echo ""
+echo "═══════════════════════════════════════════════════════"
+sudo systemctl status "$SERVICE_NAME" --no-pager -l || true
+echo "═══════════════════════════════════════════════════════"
+echo ""
+ok "Done! Useful commands:"
+echo "  View live logs:   journalctl -fu $SERVICE_NAME"
+echo "  Stop service:     sudo systemctl stop $SERVICE_NAME"
+echo "  Disable autorun:  sudo systemctl disable $SERVICE_NAME"
+echo "  Edit runtime flags: sudo nano $ENV_DEST"
+echo "  Update code:      bash deploy/update.sh"
