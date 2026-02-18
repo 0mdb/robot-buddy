@@ -65,9 +65,12 @@ ok "venv at $VENV"
 # ── 4. Install Python dependencies ────────────────────────────────────────────
 info "Installing supervisor dependencies..."
 cd "$SUPERVISOR_DIR"
-# Do NOT pass --extra rpi: picamera2 is a system package (python3-picamera2 via apt)
-# and the venv already sees it via --system-site-packages.  Asking uv to install it
-# would try to build python-prctl from source, which requires libcap-dev headers.
+# Delete any stale uv.lock (e.g. from a previous failed run with --extra rpi).
+# If the lock was written with the rpi extra, uv sync would try to install
+# picamera2 via pip even without --extra rpi, which fails because python-prctl
+# requires libcap-dev headers.  picamera2 is a system package anyway; the venv
+# sees it via --system-site-packages.
+rm -f uv.lock
 uv sync
 ok "dependencies installed"
 
