@@ -129,12 +129,41 @@ async def async_main(args: argparse.Namespace) -> None:
         vision = VisionProcess()
         vision.start()
 
-    # Parameter registry + wire reflex param changes to SET_CONFIG
+    # Parameter registry + wire param changes to hardware / vision / policies
     registry = create_default_registry()
+
+    _VISION_HSV_PARAMS = {
+        "vision.floor_hsv_h_low", "vision.floor_hsv_h_high",
+        "vision.floor_hsv_s_low", "vision.floor_hsv_s_high",
+        "vision.floor_hsv_v_low", "vision.floor_hsv_v_high",
+        "vision.ball_hsv_h_low",  "vision.ball_hsv_h_high",
+        "vision.ball_hsv_s_low",  "vision.ball_hsv_s_high",
+        "vision.ball_hsv_v_low",  "vision.ball_hsv_v_high",
+        "vision.min_ball_radius_px",
+    }
+    _VISION_POLICY_PARAMS = {"vision.stale_ms", "vision.clear_low", "vision.clear_high"}
 
     def _on_param_change(name: str, value: object) -> None:
         if name in REFLEX_PARAM_IDS:
             reflex.send_set_config(name, value)  # type: ignore[arg-type]
+
+        if name in _VISION_HSV_PARAMS and vision:
+            r = registry.get_value
+            vision.update_config({
+                "floor_hsv_low":  (r("vision.floor_hsv_h_low"), r("vision.floor_hsv_s_low"),  r("vision.floor_hsv_v_low")),
+                "floor_hsv_high": (r("vision.floor_hsv_h_high"), r("vision.floor_hsv_s_high"), r("vision.floor_hsv_v_high")),
+                "ball_hsv_low":   (r("vision.ball_hsv_h_low"), r("vision.ball_hsv_s_low"),  r("vision.ball_hsv_v_low")),
+                "ball_hsv_high":  (r("vision.ball_hsv_h_high"), r("vision.ball_hsv_s_high"), r("vision.ball_hsv_v_high")),
+                "min_ball_radius": r("vision.min_ball_radius_px"),
+            })
+
+        if name in _VISION_POLICY_PARAMS:
+            from supervisor.state.policies import configure_vision_policy
+            configure_vision_policy(
+                stale_ms=registry.get_value("vision.stale_ms", 500.0),
+                clear_low=registry.get_value("vision.clear_low", 0.3),
+                clear_high=registry.get_value("vision.clear_high", 0.6),
+            )
 
     registry.on_change(_on_param_change)
 
