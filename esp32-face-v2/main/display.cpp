@@ -81,7 +81,7 @@ lv_display_t* display_init(void)
 
     ESP_ERROR_CHECK(esp_lcd_panel_reset(panel_handle));
     ESP_ERROR_CHECK(esp_lcd_panel_init(panel_handle));
-    ESP_ERROR_CHECK(esp_lcd_panel_invert_color(panel_handle, false));
+    ESP_ERROR_CHECK(esp_lcd_panel_invert_color(panel_handle, true));
     ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(panel_handle, true));
 
     // 5. LVGL port
@@ -93,15 +93,27 @@ lv_display_t* display_init(void)
     const lvgl_port_display_cfg_t disp_cfg = {
         .io_handle = io_handle,
         .panel_handle = panel_handle,
-        .buffer_size = SCREEN_W * 30 * sizeof(lv_color_t),
+        .control_handle = nullptr,
+        .buffer_size = SCREEN_W * 30,
         .double_buffer = true,
+        .trans_size = 0,
         .hres = SCREEN_W,
         .vres = SCREEN_H,
         .monochrome = false,
         .rotation = {
             .swap_xy = true,
-            .mirror_x = true,
+            .mirror_x = false,
             .mirror_y = false,
+        },
+        .rounder_cb = nullptr,
+        .color_format = LV_COLOR_FORMAT_RGB565,
+        .flags = {
+            .buff_dma = true,
+            .buff_spiram = false,
+            .sw_rotate = false,
+            .swap_bytes = true,
+            .full_refresh = false,
+            .direct_mode = false,
         },
     };
     lv_display_t* disp = lvgl_port_add_disp(&disp_cfg);

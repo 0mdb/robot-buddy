@@ -4,6 +4,7 @@
 #include "display.h"
 #include "led.h"
 #include "protocol.h"
+#include "touch.h"
 
 #include "esp_lvgl_port.h"
 #include "esp_log.h"
@@ -13,6 +14,7 @@
 #include "freertos/task.h"
 
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 
 static const char* TAG = "face_ui";
@@ -29,6 +31,15 @@ static lv_color_t* canvas_buf = nullptr;
 static lv_obj_t* ptt_btn = nullptr;
 static lv_obj_t* ptt_label = nullptr;
 static lv_obj_t* action_btn = nullptr;
+static lv_obj_t* calib_header_bg = nullptr;
+static lv_obj_t* calib_label_touch = nullptr;
+static lv_obj_t* calib_label_tf = nullptr;
+static lv_obj_t* calib_label_flags = nullptr;
+
+static int s_last_touch_x = SCREEN_W / 2;
+static int s_last_touch_y = SCREEN_H / 2;
+static uint8_t s_last_touch_evt = 0xFF;
+static bool s_last_touch_active = false;
 
 static void publish_touch_sample(uint8_t event_type, int x, int y);
 static void publish_button_event(FaceButtonId button_id, FaceButtonEventType event_type, uint8_t state);
@@ -36,6 +47,8 @@ static void update_ptt_button_visual(bool listening);
 static void root_touch_event_cb(lv_event_t* e);
 static void ptt_button_event_cb(lv_event_t* e);
 static void action_button_event_cb(lv_event_t* e);
+static void render_calibration(lv_color_t* buf);
+static void update_calibration_labels(uint32_t now_ms, uint32_t next_switch_ms);
 
 // ---- Drawing helpers ----
 
@@ -56,6 +69,25 @@ static void draw_filled_rect(lv_color_t* buf, int x, int y, int w, int h,
             buf[py * SCREEN_W + px] = color;
         }
     }
+}
+
+static void draw_hline(lv_color_t* buf, int x0, int x1, int y, lv_color_t color)
+{
+    const int x_lo = (x0 < x1) ? x0 : x1;
+    const int x_hi = (x0 < x1) ? x1 : x0;
+    draw_filled_rect(buf, x_lo, y, x_hi - x_lo + 1, 1, color);
+}
+
+static void draw_vline(lv_color_t* buf, int x, int y0, int y1, lv_color_t color)
+{
+    const int y_lo = (y0 < y1) ? y0 : y1;
+    const int y_hi = (y0 < y1) ? y1 : y0;
+    draw_filled_rect(buf, x, y_lo, 1, y_hi - y_lo + 1, color);
+}
+
+static bool point_in_rect(int x, int y, int rx, int ry, int rw, int rh)
+{
+    return (x >= rx && x < (rx + rw) && y >= ry && y < (ry + rh));
 }
 
 static void draw_filled_rounded_rect(lv_color_t* buf, int x, int y, int w, int h,
@@ -241,6 +273,120 @@ static void render_mouth(lv_color_t* buf, const FaceState& fs)
     }
 }
 
+static void render_calibration(lv_color_t* buf)
+{
+    const lv_color_t bg = rgb_to_color(8, 8, 10);
+    const lv_color_t grid = rgb_to_color(34, 34, 38);
+    const lv_color_t axis = rgb_to_color(74, 74, 84);
+    const lv_color_t bar = rgb_to_color(18, 18, 20);
+    const lv_color_t ptt_outline = rgb_to_color(34, 180, 102);
+    const lv_color_t action_outline = rgb_to_color(190, 98, 54);
+    const lv_color_t touch = rgb_to_color(255, 228, 128);
+    const lv_color_t cross = rgb_to_color(240, 250, 255);
+
+    draw_filled_rect(buf, 0, 0, SCREEN_W, SCREEN_H, bg);
+
+    for (int x = 0; x < SCREEN_W; x += 20) {
+        draw_vline(buf, x, 0, SCREEN_H - 1, (x % 40 == 0) ? axis : grid);
+    }
+    for (int y = 0; y < SCREEN_H; y += 20) {
+        draw_hline(buf, 0, SCREEN_W - 1, y, (y % 40 == 0) ? axis : grid);
+    }
+    draw_vline(buf, SCREEN_W / 2, 0, SCREEN_H - 1, rgb_to_color(120, 120, 130));
+    draw_hline(buf, 0, SCREEN_W - 1, SCREEN_H / 2, rgb_to_color(120, 120, 130));
+
+    const int bar_y = SCREEN_H - BTN_BAR_H;
+    draw_filled_rect(buf, 0, bar_y, SCREEN_W, BTN_BAR_H, bar);
+    draw_hline(buf, 0, SCREEN_W - 1, bar_y, rgb_to_color(70, 42, 42));
+
+    const int ptt_x = 10;
+    const int ptt_y = SCREEN_H - 6 - BTN_H;
+    const int action_x = SCREEN_W - 10 - BTN_W;
+    const int action_y = SCREEN_H - 6 - BTN_H;
+
+    draw_hline(buf, ptt_x, ptt_x + BTN_W - 1, ptt_y, ptt_outline);
+    draw_hline(buf, ptt_x, ptt_x + BTN_W - 1, ptt_y + BTN_H - 1, ptt_outline);
+    draw_vline(buf, ptt_x, ptt_y, ptt_y + BTN_H - 1, ptt_outline);
+    draw_vline(buf, ptt_x + BTN_W - 1, ptt_y, ptt_y + BTN_H - 1, ptt_outline);
+
+    draw_hline(buf, action_x, action_x + BTN_W - 1, action_y, action_outline);
+    draw_hline(buf, action_x, action_x + BTN_W - 1, action_y + BTN_H - 1, action_outline);
+    draw_vline(buf, action_x, action_y, action_y + BTN_H - 1, action_outline);
+    draw_vline(buf, action_x + BTN_W - 1, action_y, action_y + BTN_H - 1, action_outline);
+
+    if (s_last_touch_active && point_in_rect(s_last_touch_x, s_last_touch_y, ptt_x, ptt_y, BTN_W, BTN_H)) {
+        draw_filled_rect(buf, ptt_x + 2, ptt_y + 2, BTN_W - 4, BTN_H - 4, rgb_to_color(14, 52, 30));
+    }
+    if (s_last_touch_active && point_in_rect(s_last_touch_x, s_last_touch_y, action_x, action_y, BTN_W, BTN_H)) {
+        draw_filled_rect(buf, action_x + 2, action_y + 2, BTN_W - 4, BTN_H - 4, rgb_to_color(64, 30, 16));
+    }
+
+    const int tx = (s_last_touch_x < 0) ? 0 : ((s_last_touch_x >= SCREEN_W) ? (SCREEN_W - 1) : s_last_touch_x);
+    const int ty = (s_last_touch_y < 0) ? 0 : ((s_last_touch_y >= SCREEN_H) ? (SCREEN_H - 1) : s_last_touch_y);
+    draw_hline(buf, tx - 10, tx + 10, ty, cross);
+    draw_vline(buf, tx, ty - 10, ty + 10, cross);
+    draw_filled_circle(buf, tx, ty, 4, touch);
+}
+
+static void update_calibration_labels(uint32_t now_ms, uint32_t next_switch_ms)
+{
+    if (!FACE_CALIBRATION_MODE || !calib_label_touch || !calib_label_tf || !calib_label_flags) {
+        return;
+    }
+
+    const std::size_t idx = touch_transform_preset_index();
+    const std::size_t total = touch_transform_preset_count();
+    const TouchTransformPreset* tf = touch_transform_preset_get(idx);
+
+    char line_touch[128];
+    char line_tf[128];
+    char line_flags[128];
+    char line_cycle[32];
+    uint32_t secs_left = 0;
+    if (next_switch_ms > now_ms) {
+        secs_left = (next_switch_ms - now_ms + 999U) / 1000U;
+    }
+
+    snprintf(
+        line_touch,
+        sizeof(line_touch),
+        "touch x=%3d y=%3d evt=%u active=%u",
+        s_last_touch_x,
+        s_last_touch_y,
+        static_cast<unsigned>(s_last_touch_evt),
+        s_last_touch_active ? 1U : 0U
+    );
+    if (CALIB_TOUCH_AUTOCYCLE_MS > 0) {
+        snprintf(line_cycle, sizeof(line_cycle), "next %us", static_cast<unsigned>(secs_left));
+    } else {
+        snprintf(line_cycle, sizeof(line_cycle), "locked");
+    }
+
+    snprintf(
+        line_tf,
+        sizeof(line_tf),
+        "tf[%u/%u] %s (%s)",
+        static_cast<unsigned>(idx),
+        static_cast<unsigned>(total ? (total - 1) : 0),
+        (tf && tf->name) ? tf->name : "none",
+        line_cycle
+    );
+    snprintf(
+        line_flags,
+        sizeof(line_flags),
+        "xmax=%u ymax=%u swap=%u mx=%u my=%u",
+        tf ? static_cast<unsigned>(tf->x_max) : 0U,
+        tf ? static_cast<unsigned>(tf->y_max) : 0U,
+        tf ? (tf->swap_xy ? 1U : 0U) : 0U,
+        tf ? (tf->mirror_x ? 1U : 0U) : 0U,
+        tf ? (tf->mirror_y ? 1U : 0U) : 0U
+    );
+
+    lv_label_set_text(calib_label_touch, line_touch);
+    lv_label_set_text(calib_label_tf, line_tf);
+    lv_label_set_text(calib_label_flags, line_flags);
+}
+
 static float now_s()
 {
     return static_cast<float>(esp_timer_get_time()) / 1'000'000.0f;
@@ -295,12 +441,24 @@ static void root_touch_event_cb(lv_event_t* e)
 
     const lv_event_code_t code = lv_event_get_code(e);
     if (code == LV_EVENT_PRESSED) {
+        s_last_touch_x = p.x;
+        s_last_touch_y = p.y;
+        s_last_touch_evt = 0;
+        s_last_touch_active = true;
         g_touch_active.store(true, std::memory_order_relaxed);
         publish_touch_sample(0, p.x, p.y);
     } else if (code == LV_EVENT_PRESSING) {
+        s_last_touch_x = p.x;
+        s_last_touch_y = p.y;
+        s_last_touch_evt = 2;
+        s_last_touch_active = true;
         g_touch_active.store(true, std::memory_order_relaxed);
         publish_touch_sample(2, p.x, p.y);
     } else if (code == LV_EVENT_RELEASED) {
+        s_last_touch_x = p.x;
+        s_last_touch_y = p.y;
+        s_last_touch_evt = 1;
+        s_last_touch_active = false;
         g_touch_active.store(false, std::memory_order_relaxed);
         publish_touch_sample(1, p.x, p.y);
     }
@@ -391,6 +549,34 @@ void face_ui_create(lv_obj_t* parent)
 
     update_ptt_button_visual(false);
 
+    if (FACE_CALIBRATION_MODE) {
+        calib_header_bg = lv_obj_create(parent);
+        lv_obj_set_size(calib_header_bg, SCREEN_W, 50);
+        lv_obj_align(calib_header_bg, LV_ALIGN_TOP_LEFT, 0, 0);
+        lv_obj_set_style_radius(calib_header_bg, 0, LV_PART_MAIN);
+        lv_obj_set_style_border_width(calib_header_bg, 0, LV_PART_MAIN);
+        lv_obj_set_style_bg_color(calib_header_bg, lv_color_black(), LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(calib_header_bg, LV_OPA_70, LV_PART_MAIN);
+        lv_obj_set_style_pad_all(calib_header_bg, 0, LV_PART_MAIN);
+
+        calib_label_touch = lv_label_create(calib_header_bg);
+        lv_obj_align(calib_label_touch, LV_ALIGN_TOP_LEFT, 4, 2);
+        lv_obj_set_style_text_color(calib_label_touch, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+        lv_label_set_text(calib_label_touch, "touch x=0 y=0 evt=255 active=0");
+
+        calib_label_tf = lv_label_create(calib_header_bg);
+        lv_obj_align(calib_label_tf, LV_ALIGN_TOP_LEFT, 4, 18);
+        lv_obj_set_style_text_color(calib_label_tf, lv_color_hex(0xEAF3FF), LV_PART_MAIN);
+        lv_label_set_text(calib_label_tf, "tf[0/0] init");
+
+        calib_label_flags = lv_label_create(calib_header_bg);
+        lv_obj_align(calib_label_flags, LV_ALIGN_TOP_LEFT, 4, 34);
+        lv_obj_set_style_text_color(calib_label_flags, lv_color_hex(0xD4F0DA), LV_PART_MAIN);
+        lv_label_set_text(calib_label_flags, "xmax=0 ymax=0 swap=0 mx=0 my=0");
+
+        lv_obj_move_foreground(calib_header_bg);
+    }
+
     ESP_LOGI(TAG, "face UI created (%dx%d canvas in PSRAM)", SCREEN_W, SCREEN_H);
 }
 
@@ -401,12 +587,16 @@ void face_ui_update(const FaceState& fs)
     // Clear to black
     memset(canvas_buf, 0, SCREEN_W * SCREEN_H * sizeof(lv_color_t));
 
-    // Render eyes
-    render_eye(canvas_buf, fs.eye_l, fs, LEFT_EYE_CX, LEFT_EYE_CY);
-    render_eye(canvas_buf, fs.eye_r, fs, RIGHT_EYE_CX, RIGHT_EYE_CY);
+    if (FACE_CALIBRATION_MODE) {
+        render_calibration(canvas_buf);
+    } else {
+        // Render eyes
+        render_eye(canvas_buf, fs.eye_l, fs, LEFT_EYE_CX, LEFT_EYE_CY);
+        render_eye(canvas_buf, fs.eye_r, fs, RIGHT_EYE_CX, RIGHT_EYE_CY);
 
-    // Render mouth
-    render_mouth(canvas_buf, fs);
+        // Render mouth
+        render_mouth(canvas_buf, fs);
+    }
 
     // Invalidate canvas to trigger LVGL refresh
     lv_obj_invalidate(canvas_obj);
@@ -434,9 +624,31 @@ void face_ui_task(void* arg)
     uint32_t last_talking_cmd_us = 0;
     bool last_led_talking = false;
     bool last_led_listening = false;
+    uint32_t next_touch_cycle_ms = 0;
+
+    if (FACE_CALIBRATION_MODE) {
+        touch_transform_apply(CALIB_TOUCH_DEFAULT_INDEX);
+        if (CALIB_TOUCH_AUTOCYCLE_MS > 0) {
+            next_touch_cycle_ms =
+                static_cast<uint32_t>(esp_timer_get_time() / 1000ULL) + CALIB_TOUCH_AUTOCYCLE_MS;
+            ESP_LOGI(
+                TAG,
+                "calibration mode enabled; cycling touch transform every %u ms",
+                static_cast<unsigned>(CALIB_TOUCH_AUTOCYCLE_MS)
+            );
+        } else {
+            next_touch_cycle_ms = 0;
+            ESP_LOGI(
+                TAG,
+                "calibration mode enabled; touch transform locked at preset %u",
+                static_cast<unsigned>(CALIB_TOUCH_DEFAULT_INDEX)
+            );
+        }
+    }
 
     while (true) {
         const uint32_t now_us = static_cast<uint32_t>(esp_timer_get_time());
+        const uint32_t now_ms = now_us / 1000U;
         // 1. Read latest command (atomic)
         const FaceCommand* cmd = g_face_cmd.read();
         uint32_t cmd_us = g_face_cmd.last_cmd_us.load(std::memory_order_acquire);
@@ -489,6 +701,19 @@ void face_ui_task(void* arg)
             }
         }
 
+        if (FACE_CALIBRATION_MODE && CALIB_TOUCH_AUTOCYCLE_MS > 0) {
+            const int32_t delta_ms = static_cast<int32_t>(now_ms - next_touch_cycle_ms);
+            if (delta_ms >= 0) {
+                const std::size_t count = touch_transform_preset_count();
+                if (count > 0) {
+                    const std::size_t next =
+                        (touch_transform_preset_index() + 1) % count;
+                    touch_transform_apply(next);
+                }
+                next_touch_cycle_ms = now_ms + CALIB_TOUCH_AUTOCYCLE_MS;
+            }
+        }
+
         // 3. Advance animations
         face_state_update(fs);
 
@@ -523,6 +748,9 @@ void face_ui_task(void* arg)
         // 5. Render under LVGL lock
         if (lvgl_port_lock(100)) {
             face_ui_update(fs);
+            if (FACE_CALIBRATION_MODE) {
+                update_calibration_labels(now_ms, next_touch_cycle_ms);
+            }
             lvgl_port_unlock();
         }
 
