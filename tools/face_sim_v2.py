@@ -39,21 +39,31 @@ import sys
 import pygame
 
 from face_state_v2 import (
-    FaceState, Mood, Gesture, SystemMode,
-    SCREEN_W, SCREEN_H,
-    face_state_update, face_set_mood, face_set_gaze,
-    face_blink, face_wink_left, face_wink_right,
-    face_trigger_gesture, face_set_system_mode, MAX_GAZE,
+    FaceState,
+    Mood,
+    Gesture,
+    SystemMode,
+    SCREEN_W,
+    SCREEN_H,
+    face_state_update,
+    face_set_mood,
+    face_set_gaze,
+    face_blink,
+    face_wink_left,
+    face_wink_right,
+    face_trigger_gesture,
+    face_set_system_mode,
+    MAX_GAZE,
 )
-from face_render_v2 import render_face
+from face_render_v2 import render_face, BG_COLOR
 
 # ── Display constants ────────────────────────────────────────────────
 
 PIXEL_SCALE = 2
-CANVAS_W = SCREEN_W * PIXEL_SCALE   # 640
-CANVAS_H = SCREEN_H * PIXEL_SCALE   # 480
-WINDOW_W = CANVAS_W + 40            # padding
-WINDOW_H = CANVAS_H + 140           # room for HUD
+CANVAS_W = SCREEN_W * PIXEL_SCALE  # 640
+CANVAS_H = SCREEN_H * PIXEL_SCALE  # 480
+WINDOW_W = CANVAS_W + 40  # padding
+WINDOW_H = CANVAS_H + 140  # room for HUD
 
 FPS = 30
 BG = (20, 20, 25)
@@ -61,15 +71,16 @@ BG = (20, 20, 25)
 MOOD_NAMES = {m: m.name for m in Mood}
 
 
-def draw_canvas(surface: pygame.Surface, buf: list[tuple[int, int, int]],
-                ox: int, oy: int) -> None:
+def draw_canvas(
+    surface: pygame.Surface, buf: list[tuple[int, int, int]], ox: int, oy: int
+) -> None:
     """Draw the 320x240 pixel buffer scaled up onto the pygame surface."""
     for y in range(SCREEN_H):
         row_offset = y * SCREEN_W
         for x in range(SCREEN_W):
             r, g, b = buf[row_offset + x]
-            if r == 0 and g == 0 and b == 0:
-                continue  # skip black pixels (background)
+            if (r, g, b) == BG_COLOR:
+                continue  # skip background pixels
             rect = pygame.Rect(
                 ox + x * PIXEL_SCALE,
                 oy + y * PIXEL_SCALE,
