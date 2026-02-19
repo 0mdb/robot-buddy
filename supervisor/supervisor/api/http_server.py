@@ -187,3 +187,71 @@ def _handle_ws_cmd(msg: dict, runtime: Runtime) -> None:
         runtime.request_estop()
     elif msg_type == "clear":
         runtime.request_clear()
+    elif msg_type == "face_manual_lock":
+        runtime.set_face_manual_lock(bool(msg.get("enabled", False)))
+    elif msg_type == "face_set_flags":
+        from supervisor.devices.protocol import pack_face_flags
+
+        flags = pack_face_flags(
+            idle_wander=bool(msg.get("idle_wander", True)),
+            autoblink=bool(msg.get("autoblink", True)),
+            solid_eye=bool(msg.get("solid_eye", True)),
+            show_mouth=bool(msg.get("show_mouth", True)),
+            edge_glow=bool(msg.get("edge_glow", True)),
+            sparkle=bool(msg.get("sparkle", True)),
+            afterglow=bool(msg.get("afterglow", True)),
+        )
+        runtime.set_face_flags(flags)
+    elif msg_type == "face_set_state":
+        from supervisor.devices.expressions import EMOTION_TO_FACE_MOOD, normalize_emotion_name
+
+        mood_id = msg.get("mood_id")
+        if not isinstance(mood_id, int):
+            mood_id = EMOTION_TO_FACE_MOOD.get(
+                normalize_emotion_name(str(msg.get("emotion", "")) or "neutral") or "neutral"
+            )
+        if mood_id is None:
+            return
+        runtime.face_send_state(
+            mood_id=int(mood_id),
+            intensity=float(msg.get("intensity", 1.0)),
+            gaze_x=float(msg.get("gaze_x", 0.0)),
+            gaze_y=float(msg.get("gaze_y", 0.0)),
+            brightness=float(msg.get("brightness", 1.0)),
+        )
+    elif msg_type == "face_gesture":
+        from supervisor.devices.expressions import GESTURE_TO_FACE_ID, normalize_face_gesture_name
+
+        gesture_id = msg.get("gesture_id")
+        if not isinstance(gesture_id, int):
+            name = normalize_face_gesture_name(str(msg.get("name", "")))
+            if not name:
+                return
+            gesture_id = GESTURE_TO_FACE_ID.get(name)
+        if gesture_id is None:
+            return
+        runtime.face_send_gesture(
+            int(gesture_id),
+            duration_ms=int(msg.get("duration_ms", 0)),
+        )
+    elif msg_type == "face_set_system":
+        from supervisor.devices.protocol import FaceSystemMode
+
+        raw_mode = msg.get("mode", FaceSystemMode.NONE)
+        mode_u8: int | None = None
+        if isinstance(raw_mode, int):
+            mode_u8 = raw_mode
+        else:
+            key = str(raw_mode or "").strip().upper()
+            if key == "ERROR":
+                key = "ERROR_DISPLAY"
+            if key in FaceSystemMode.__members__:
+                mode_u8 = int(FaceSystemMode[key])
+        if mode_u8 is None:
+            return
+        runtime.face_send_system_mode(mode_u8, param=int(msg.get("param", 0)))
+    elif msg_type == "face_set_talking":
+        runtime.face_send_talking(
+            bool(msg.get("talking", False)),
+            energy=int(msg.get("energy", 0)),
+        )

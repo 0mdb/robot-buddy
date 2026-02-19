@@ -5,9 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-import math
 import shutil
-import struct
 import time
 from dataclasses import dataclass
 
@@ -15,6 +13,7 @@ import httpx
 
 from supervisor.devices.conversation_manager import ConversationManager
 from supervisor.devices.face_client import FaceClient
+from supervisor.devices.lip_sync import LipSyncTracker
 from supervisor.devices.protocol import FaceButtonEventType, FaceButtonId
 
 log = logging.getLogger(__name__)
@@ -23,15 +22,6 @@ SAMPLE_RATE = 16000
 CHANNELS = 1
 PLANNER_SPEECH_QUEUE_MAX = 5
 _STREAM_CHUNK_BYTES = 320  # 10 ms @ 16kHz, int16 mono
-
-
-def _compute_rms_energy(pcm_chunk: bytes) -> int:
-    if len(pcm_chunk) < 2:
-        return 0
-    n_samples = len(pcm_chunk) // 2
-    samples = struct.unpack(f"<{n_samples}h", pcm_chunk[: n_samples * 2])
-    rms = math.sqrt(sum(s * s for s in samples) / n_samples)
-    return min(255, int(rms / 128))
 
 
 @dataclass(slots=True)
@@ -75,6 +65,7 @@ class AudioOrchestrator:
         self._cancel_planner_speech = asyncio.Event()
         self._active_aplay_proc: asyncio.subprocess.Process | None = None
         self._planner_speech_seq = 0
+        self._lip_sync = LipSyncTracker()
 
     @property
     def connected(self) -> bool:
@@ -221,6 +212,7 @@ class AudioOrchestrator:
         )
         self._active_aplay_proc = proc
         self._planner_speaking = True
+        self._lip_sync.reset()
 
         try:
             if self._face:
@@ -255,7 +247,7 @@ class AudioOrchestrator:
                         proc.stdin.write(chunk)
                         await proc.stdin.drain()
                     if self._face:
-                        self._face.send_talking(True, _compute_rms_energy(chunk))
+                        self._face.send_talking(True, self._lip_sync.update_chunk(chunk))
         finally:
             if proc.stdin:
                 with contextlib.suppress(Exception):
@@ -272,5 +264,6 @@ class AudioOrchestrator:
             self._active_aplay_proc = None
             self._planner_speaking = False
             self._cancel_planner_speech.clear()
+            self._lip_sync.reset()
             if self._face:
                 self._face.send_talking(False, 0)

@@ -63,6 +63,7 @@ class FaceCmdType(IntEnum):
     GESTURE = 0x21
     SET_SYSTEM = 0x22
     SET_TALKING = 0x23
+    SET_FLAGS = 0x24
 
 
 class FaceTelType(IntEnum):
@@ -122,6 +123,52 @@ class FaceSystemMode(IntEnum):
     LOW_BATTERY = 3
     UPDATING = 4
     SHUTTING_DOWN = 5
+
+
+FACE_FLAG_IDLE_WANDER = 1 << 0
+FACE_FLAG_AUTOBLINK = 1 << 1
+FACE_FLAG_SOLID_EYE = 1 << 2
+FACE_FLAG_SHOW_MOUTH = 1 << 3
+FACE_FLAG_EDGE_GLOW = 1 << 4
+FACE_FLAG_SPARKLE = 1 << 5
+FACE_FLAG_AFTERGLOW = 1 << 6
+FACE_FLAGS_ALL = (
+    FACE_FLAG_IDLE_WANDER
+    | FACE_FLAG_AUTOBLINK
+    | FACE_FLAG_SOLID_EYE
+    | FACE_FLAG_SHOW_MOUTH
+    | FACE_FLAG_EDGE_GLOW
+    | FACE_FLAG_SPARKLE
+    | FACE_FLAG_AFTERGLOW
+)
+
+
+def pack_face_flags(
+    *,
+    idle_wander: bool = True,
+    autoblink: bool = True,
+    solid_eye: bool = True,
+    show_mouth: bool = True,
+    edge_glow: bool = True,
+    sparkle: bool = True,
+    afterglow: bool = True,
+) -> int:
+    flags = 0
+    if idle_wander:
+        flags |= FACE_FLAG_IDLE_WANDER
+    if autoblink:
+        flags |= FACE_FLAG_AUTOBLINK
+    if solid_eye:
+        flags |= FACE_FLAG_SOLID_EYE
+    if show_mouth:
+        flags |= FACE_FLAG_SHOW_MOUTH
+    if edge_glow:
+        flags |= FACE_FLAG_EDGE_GLOW
+    if sparkle:
+        flags |= FACE_FLAG_SPARKLE
+    if afterglow:
+        flags |= FACE_FLAG_AFTERGLOW
+    return flags
 
 
 VALID_FACE_MOOD_IDS = frozenset(m.value for m in FaceMood)
@@ -335,6 +382,7 @@ _FACE_SET_STATE_FMT = struct.Struct("<BBbbB")  # mood, intensity, gaze_x, gaze_y
 _FACE_GESTURE_FMT = struct.Struct("<BH")  # gesture_id, duration_ms
 _FACE_SET_SYSTEM_FMT = struct.Struct("<BBB")  # mode, phase, param
 _FACE_SET_TALKING_FMT = struct.Struct("<BB")  # talking, energy
+_FACE_SET_FLAGS_FMT = struct.Struct("<B")  # renderer/animation feature flags
 
 
 def build_face_set_state(
@@ -364,6 +412,12 @@ def build_face_set_talking(seq: int, talking: bool, energy: int = 0) -> bytes:
     """Build a SET_TALKING packet (speaking animation state + energy)."""
     payload = _FACE_SET_TALKING_FMT.pack(1 if talking else 0, max(0, min(255, energy)))
     return build_packet(FaceCmdType.SET_TALKING, seq, payload)
+
+
+def build_face_set_flags(seq: int, flags: int) -> bytes:
+    """Build a SET_FLAGS packet (renderer/animation feature toggles)."""
+    payload = _FACE_SET_FLAGS_FMT.pack(flags & FACE_FLAGS_ALL)
+    return build_packet(FaceCmdType.SET_FLAGS, seq, payload)
 
 
 # -- Packet parsing ----------------------------------------------------------

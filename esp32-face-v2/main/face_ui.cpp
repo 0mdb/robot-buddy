@@ -31,6 +31,7 @@ static constexpr std::size_t CANVAS_BYTES =
     SCREEN_W * SCREEN_H * LV_COLOR_FORMAT_GET_SIZE(CANVAS_COLOR_FORMAT);
 
 static float now_s();
+static float clampf(float v, float lo, float hi);
 
 // ---- LVGL objects ----
 static lv_obj_t* canvas_obj = nullptr;
@@ -57,6 +58,13 @@ static void ptt_button_event_cb(lv_event_t* e);
 static void action_button_event_cb(lv_event_t* e);
 static void render_calibration(lv_color_t* buf);
 static void update_calibration_labels(uint32_t now_ms, uint32_t next_switch_ms);
+
+static float clampf(float v, float lo, float hi)
+{
+    if (v < lo) return lo;
+    if (v > hi) return hi;
+    return v;
+}
 
 // ---- Drawing helpers ----
 
@@ -244,8 +252,10 @@ static void render_eye(lv_color_t* buf, const EyeState& eye, const FaceState& fs
     }
 
     if (!fs.solid_eye) {
-        const float px = center_x + eye.gaze_x * GAZE_PUPIL_SHIFT;
-        const float py = center_y + eye.gaze_y * GAZE_PUPIL_SHIFT;
+        const float max_offset_x = fmaxf(0.0f, ew * 0.5f - PUPIL_R - 5.0f);
+        const float max_offset_y = fmaxf(0.0f, eh * 0.5f - PUPIL_R - 5.0f);
+        const float px = center_x + clampf(eye.gaze_x * GAZE_PUPIL_SHIFT, -max_offset_x, max_offset_x);
+        const float py = center_y + clampf(eye.gaze_y * GAZE_PUPIL_SHIFT, -max_offset_y, max_offset_y);
         const int pr = static_cast<int>(PUPIL_R * fmaxf(0.4f, eye.openness));
         if (fs.anim.heart) {
             draw_heart_shape(buf, static_cast<int>(px), static_cast<int>(py), pr, rgb_to_color(10, 15, 30));
@@ -737,6 +747,18 @@ void face_ui_update(const FaceState& fs)
     lv_obj_invalidate(canvas_obj);
 }
 
+static void apply_face_flags(FaceState& fs, uint8_t flags)
+{
+    const uint8_t masked = static_cast<uint8_t>(flags & FACE_FLAGS_ALL);
+    fs.anim.idle = (masked & FACE_FLAG_IDLE_WANDER) != 0;
+    fs.anim.autoblink = (masked & FACE_FLAG_AUTOBLINK) != 0;
+    fs.solid_eye = (masked & FACE_FLAG_SOLID_EYE) != 0;
+    fs.show_mouth = (masked & FACE_FLAG_SHOW_MOUTH) != 0;
+    fs.fx.edge_glow = (masked & FACE_FLAG_EDGE_GLOW) != 0;
+    fs.fx.sparkle = (masked & FACE_FLAG_SPARKLE) != 0;
+    fs.fx.afterglow = (masked & FACE_FLAG_AFTERGLOW) != 0;
+}
+
 // ---- FreeRTOS task ----
 
 // Global state instances
@@ -754,6 +776,9 @@ std::atomic<uint32_t> g_cmd_system_us{0};
 std::atomic<uint8_t> g_cmd_talking{0};
 std::atomic<uint8_t> g_cmd_talking_energy{0};
 std::atomic<uint32_t> g_cmd_talking_us{0};
+
+std::atomic<uint8_t> g_cmd_flags{FACE_FLAGS_ALL};
+std::atomic<uint32_t> g_cmd_flags_us{0};
 
 GestureQueue g_gesture_queue;
 
@@ -774,6 +799,7 @@ void face_ui_task(void* arg)
     uint32_t last_state_cmd_us = 0;
     uint32_t last_system_cmd_us = 0;
     uint32_t last_talking_cmd_us = 0;
+    uint32_t last_flags_cmd_us = 0;
     bool last_led_talking = false;
     bool last_led_listening = false;
     uint32_t next_touch_cycle_ms = 0;
@@ -782,6 +808,7 @@ void face_ui_task(void* arg)
     uint64_t frame_accum_us = 0;
     uint32_t frame_max_us = 0;
 
+    apply_face_flags(fs, g_cmd_flags.load(std::memory_order_relaxed));
     if (!afterglow_buf) {
         fs.fx.afterglow = false;
     }
@@ -874,6 +901,17 @@ void face_ui_task(void* arg)
             }
         }
 
+        // 5. Apply latest latched flags command.
+        const uint32_t flags_cmd_us = g_cmd_flags_us.load(std::memory_order_acquire);
+        if (flags_cmd_us != 0 && flags_cmd_us != last_flags_cmd_us) {
+            last_flags_cmd_us = flags_cmd_us;
+            const uint8_t flags = g_cmd_flags.load(std::memory_order_relaxed);
+            apply_face_flags(fs, flags);
+            if (!afterglow_buf) {
+                fs.fx.afterglow = false;
+            }
+        }
+
         if (FACE_CALIBRATION_MODE && CALIB_TOUCH_AUTOCYCLE_MS > 0) {
             const int32_t delta_ms = static_cast<int32_t>(now_ms - next_touch_cycle_ms);
             if (delta_ms >= 0) {
@@ -887,10 +925,10 @@ void face_ui_task(void* arg)
             }
         }
 
-        // 3. Advance animations
+        // 6. Advance animations
         face_state_update(fs);
 
-        // 5. Update telemetry atomics
+        // 7. Update telemetry atomics
         g_current_mood.store(static_cast<uint8_t>(fs.mood), std::memory_order_relaxed);
         g_active_gesture.store(fs.active_gesture, std::memory_order_relaxed);
         g_system_mode.store(static_cast<uint8_t>(fs.system.mode), std::memory_order_relaxed);

@@ -4,6 +4,9 @@ import struct
 
 from supervisor.devices.face_client import FaceClient
 from supervisor.devices.protocol import (
+    FACE_FLAG_AUTOBLINK,
+    FACE_FLAG_IDLE_WANDER,
+    FACE_FLAG_SOLID_EYE,
     FaceButtonEventType,
     FaceCmdType,
     FaceGesture,
@@ -85,6 +88,16 @@ class TestFaceClientCommands:
         talking, energy = struct.unpack("<BB", parsed.payload)
         assert talking == 1
         assert energy == 150
+        assert self.client.last_talking_energy_cmd == 150
+
+    def test_send_flags(self):
+        flags = FACE_FLAG_IDLE_WANDER | FACE_FLAG_AUTOBLINK | FACE_FLAG_SOLID_EYE
+        self.client.send_flags(flags)
+        parsed = parse_frame(self.transport.written[0][:-1])
+        assert parsed.pkt_type == FaceCmdType.SET_FLAGS
+        (payload_flags,) = struct.unpack("<B", parsed.payload)
+        assert payload_flags == flags
+        assert self.client.last_flags_cmd == flags
 
     def test_no_send_when_disconnected(self):
         self.transport.connected = False
@@ -92,6 +105,7 @@ class TestFaceClientCommands:
         self.client.send_gesture(0)
         self.client.send_system_mode(1)
         self.client.send_talking(True, 10)
+        self.client.send_flags(FACE_FLAG_IDLE_WANDER)
         assert len(self.transport.written) == 0
 
     def test_seq_increments(self):

@@ -24,6 +24,9 @@ extern std::atomic<uint8_t> g_cmd_talking;
 extern std::atomic<uint8_t> g_cmd_talking_energy;
 extern std::atomic<uint32_t> g_cmd_talking_us;
 
+extern std::atomic<uint8_t> g_cmd_flags;
+extern std::atomic<uint32_t> g_cmd_flags_us;
+
 // ---- Gesture queue (SPSC: writer usb_rx_task, reader face_ui_task) ----
 
 struct GestureEvent {

@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Callable
 
 from supervisor.devices.protocol import (
+    FACE_FLAGS_ALL,
     FaceButtonEventPayload,
     FaceHeartbeatPayload,
     FaceStatusPayload,
@@ -15,6 +16,7 @@ from supervisor.devices.protocol import (
     ParsedPacket,
     TouchEventPayload,
     build_face_gesture,
+    build_face_set_flags,
     build_face_set_state,
     build_face_set_system,
     build_face_set_talking,
@@ -108,6 +110,8 @@ class FaceClient:
         self._rx_heartbeat_packets = 0
         self._rx_bad_payload_packets = 0
         self._rx_unknown_packets = 0
+        self.last_talking_energy_cmd = 0
+        self.last_flags_cmd = FACE_FLAGS_ALL
 
         transport.on_packet(self._handle_packet)
 
@@ -164,9 +168,21 @@ class FaceClient:
         """Send SET_TALKING command (speaking animation state + energy)."""
         if not self.connected:
             return
-        pkt = build_face_set_talking(self._next_seq(), talking, energy)
+        energy_u8 = max(0, min(255, int(energy)))
+        pkt = build_face_set_talking(self._next_seq(), talking, energy_u8)
         self._transport.write(pkt)
         self._tx_packets += 1
+        self.last_talking_energy_cmd = energy_u8 if talking else 0
+
+    def send_flags(self, flags: int) -> None:
+        """Send SET_FLAGS command (renderer/animation feature toggles)."""
+        if not self.connected:
+            return
+        flags_u8 = int(flags) & FACE_FLAGS_ALL
+        pkt = build_face_set_flags(self._next_seq(), flags_u8)
+        self._transport.write(pkt)
+        self._tx_packets += 1
+        self.last_flags_cmd = flags_u8
 
     def debug_snapshot(self) -> dict:
         now_ms = time.monotonic() * 1000.0
@@ -186,6 +202,8 @@ class FaceClient:
             "last_status_seq": self.telemetry.seq,
             "last_status_age_ms": round(age_ms, 1),
             "last_status_flags": self.telemetry.flags,
+            "last_talking_energy_cmd": self.last_talking_energy_cmd,
+            "last_render_flags_cmd": self.last_flags_cmd,
             "last_button": self._button_snapshot(),
             "last_heartbeat": self._heartbeat_snapshot(),
             "transport": self._transport.debug_snapshot(),

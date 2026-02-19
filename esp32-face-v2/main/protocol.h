@@ -20,6 +20,7 @@ enum class FaceCmdId : uint8_t {
     GESTURE     = 0x21,   // trigger one-shot gesture
     SET_SYSTEM  = 0x22,   // system mode overlay
     SET_TALKING = 0x23,   // speaking animation state + energy
+    SET_FLAGS   = 0x24,   // renderer/animation feature toggles
 };
 
 enum class FaceTelId : uint8_t {
@@ -65,6 +66,27 @@ struct __attribute__((packed)) FaceSetSystemPayload {
 struct __attribute__((packed)) FaceSetTalkingPayload {
     uint8_t talking;       // 0=stopped, 1=speaking
     uint8_t energy;        // 0-255, energy level for mouth/eye animation
+};
+
+// Face render/runtime feature flags used by SET_FLAGS.
+constexpr uint8_t FACE_FLAG_IDLE_WANDER = 1u << 0;
+constexpr uint8_t FACE_FLAG_AUTOBLINK = 1u << 1;
+constexpr uint8_t FACE_FLAG_SOLID_EYE = 1u << 2;
+constexpr uint8_t FACE_FLAG_SHOW_MOUTH = 1u << 3;
+constexpr uint8_t FACE_FLAG_EDGE_GLOW = 1u << 4;
+constexpr uint8_t FACE_FLAG_SPARKLE = 1u << 5;
+constexpr uint8_t FACE_FLAG_AFTERGLOW = 1u << 6;
+constexpr uint8_t FACE_FLAGS_ALL = static_cast<uint8_t>(
+    FACE_FLAG_IDLE_WANDER |
+    FACE_FLAG_AUTOBLINK |
+    FACE_FLAG_SOLID_EYE |
+    FACE_FLAG_SHOW_MOUTH |
+    FACE_FLAG_EDGE_GLOW |
+    FACE_FLAG_SPARKLE |
+    FACE_FLAG_AFTERGLOW);
+
+struct __attribute__((packed)) FaceSetFlagsPayload {
+    uint8_t flags;         // bitfield, see FACE_FLAG_* constants
 };
 
 struct __attribute__((packed)) FaceStatusPayload {

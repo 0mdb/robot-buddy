@@ -194,6 +194,12 @@ header h1 { font-size: 16px; font-weight: 600; }
   border-left: 1px solid var(--border);
   overflow-y: auto;
 }
+.panel-expr {
+  width: 320px;
+  padding: 12px;
+  border-left: 1px solid var(--border);
+  overflow-y: auto;
+}
 .param-group { margin-bottom: 12px; }
 .param-group h3 {
   font-size: 12px;
@@ -214,6 +220,72 @@ header h1 { font-size: 16px; font-weight: 600; }
 .param-row input[type=range] {
   width: 100%;
   accent-color: var(--accent);
+}
+
+.expr-block {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px;
+  margin-bottom: 10px;
+}
+.expr-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.expr-row label {
+  font-size: 11px;
+  color: var(--dim);
+  text-transform: uppercase;
+}
+.expr-row select,
+.expr-row input[type=number] {
+  width: 160px;
+  background: #0e1930;
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 4px;
+  padding: 4px 6px;
+  font-size: 12px;
+}
+.expr-slider {
+  width: 100%;
+  accent-color: var(--accent);
+}
+.expr-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.expr-btn {
+  padding: 6px 10px;
+  background: var(--panel);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.expr-btn:hover { background: #12304d; }
+.gesture-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+.flag-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.flag-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
 }
 
 /* Collapsible sections */
@@ -270,6 +342,13 @@ header h1 { font-size: 16px; font-weight: 600; }
     flex: 1;
     overflow-y: auto;
   }
+  .panel-expr {
+    display: none;
+    width: 100%;
+    border: none;
+    flex: 1;
+    overflow-y: auto;
+  }
   .panel-center {
     display: none;
     flex: 1;
@@ -278,7 +357,8 @@ header h1 { font-size: 16px; font-weight: 600; }
   /* Show active tab panel */
   .panel-left.tab-active,
   .panel-center.tab-active,
-  .panel-right.tab-active {
+  .panel-right.tab-active,
+  .panel-expr.tab-active {
     display: flex;
   }
 
@@ -351,7 +431,7 @@ header h1 { font-size: 16px; font-weight: 600; }
 /* Desktop: hide mobile-only elements */
 @media (min-width: 769px) {
   .mobile-estop { display: none; }
-  .panel-left, .panel-center, .panel-right {
+  .panel-left, .panel-center, .panel-right, .panel-expr {
     display: flex !important;
   }
 }
@@ -368,6 +448,7 @@ header h1 { font-size: 16px; font-weight: 600; }
   <button class="active" data-tab="center">Drive</button>
   <button data-tab="left">Modes</button>
   <button data-tab="right">Params</button>
+  <button data-tab="expr">Expressions</button>
 </div>
 
 <div class="main">
@@ -452,6 +533,136 @@ header h1 { font-size: 16px; font-weight: 600; }
     <h3 style="font-size:12px; margin-bottom:8px; color:var(--accent);">Parameters</h3>
     <div id="params-container"></div>
   </div>
+
+  <!-- Expressions -->
+  <div class="panel-expr">
+    <h3 style="font-size:12px; margin-bottom:8px; color:var(--accent);">Expressions</h3>
+
+    <div class="expr-block">
+      <div class="expr-row" style="margin-bottom:0;">
+        <label for="expr-manual-lock">Manual lock planner face actions</label>
+        <input id="expr-manual-lock" type="checkbox">
+      </div>
+    </div>
+
+    <div class="expr-block">
+      <div class="expr-row">
+        <label for="expr-mood">Mood</label>
+        <select id="expr-mood">
+          <option value="neutral">neutral</option>
+          <option value="happy">happy</option>
+          <option value="excited">excited</option>
+          <option value="curious">curious</option>
+          <option value="sad">sad</option>
+          <option value="scared">scared</option>
+          <option value="angry">angry</option>
+          <option value="surprised">surprised</option>
+          <option value="sleepy">sleepy</option>
+          <option value="love">love</option>
+          <option value="silly">silly</option>
+          <option value="thinking">thinking</option>
+        </select>
+      </div>
+      <div class="expr-row">
+        <label for="expr-intensity">Intensity <span id="expr-intensity-val">1.00</span></label>
+      </div>
+      <input id="expr-intensity" class="expr-slider" type="range" min="0" max="1" step="0.01" value="1">
+      <div class="expr-row" style="margin-top:8px;">
+        <label for="expr-brightness">Brightness <span id="expr-brightness-val">1.00</span></label>
+      </div>
+      <input id="expr-brightness" class="expr-slider" type="range" min="0" max="1" step="0.01" value="1">
+      <div class="expr-actions" style="margin-top:8px;">
+        <button class="expr-btn" id="expr-apply-state">Apply State</button>
+      </div>
+    </div>
+
+    <div class="expr-block">
+      <div class="expr-row">
+        <label for="expr-gaze-x">Gaze X <span id="expr-gaze-x-val">0.00</span></label>
+      </div>
+      <input id="expr-gaze-x" class="expr-slider" type="range" min="-1" max="1" step="0.01" value="0">
+      <div class="expr-row" style="margin-top:8px;">
+        <label for="expr-gaze-y">Gaze Y <span id="expr-gaze-y-val">0.00</span></label>
+      </div>
+      <input id="expr-gaze-y" class="expr-slider" type="range" min="-1" max="1" step="0.01" value="0">
+      <div class="expr-actions" style="margin-top:8px;">
+        <button class="expr-btn" id="expr-apply-gaze">Apply Gaze</button>
+        <button class="expr-btn" id="expr-center-gaze">Center</button>
+      </div>
+    </div>
+
+    <div class="expr-block">
+      <div class="expr-row">
+        <label for="expr-gesture-duration">Gesture duration ms</label>
+        <input id="expr-gesture-duration" type="number" min="0" max="5000" step="10" value="0">
+      </div>
+      <div class="gesture-grid">
+        <button class="expr-btn expr-gesture-btn" data-gesture="blink">blink</button>
+        <button class="expr-btn expr-gesture-btn" data-gesture="wink_l">wink_l</button>
+        <button class="expr-btn expr-gesture-btn" data-gesture="wink_r">wink_r</button>
+        <button class="expr-btn expr-gesture-btn" data-gesture="confused">confused</button>
+        <button class="expr-btn expr-gesture-btn" data-gesture="laugh">laugh</button>
+        <button class="expr-btn expr-gesture-btn" data-gesture="surprise">surprise</button>
+        <button class="expr-btn expr-gesture-btn" data-gesture="heart">heart</button>
+        <button class="expr-btn expr-gesture-btn" data-gesture="x_eyes">x_eyes</button>
+        <button class="expr-btn expr-gesture-btn" data-gesture="sleepy">sleepy</button>
+        <button class="expr-btn expr-gesture-btn" data-gesture="rage">rage</button>
+        <button class="expr-btn expr-gesture-btn" data-gesture="nod">nod</button>
+        <button class="expr-btn expr-gesture-btn" data-gesture="headshake">headshake</button>
+        <button class="expr-btn expr-gesture-btn" data-gesture="wiggle">wiggle</button>
+      </div>
+    </div>
+
+    <div class="expr-block">
+      <div class="expr-row">
+        <label for="expr-system-mode">System mode</label>
+        <select id="expr-system-mode">
+          <option value="NONE">NONE</option>
+          <option value="BOOTING">BOOTING</option>
+          <option value="ERROR_DISPLAY">ERROR_DISPLAY</option>
+          <option value="LOW_BATTERY">LOW_BATTERY</option>
+          <option value="UPDATING">UPDATING</option>
+          <option value="SHUTTING_DOWN">SHUTTING_DOWN</option>
+        </select>
+      </div>
+      <div class="expr-row">
+        <label for="expr-system-param">System param <span id="expr-system-param-val">0</span></label>
+      </div>
+      <input id="expr-system-param" class="expr-slider" type="range" min="0" max="255" step="1" value="0">
+      <div class="expr-actions" style="margin-top:8px;">
+        <button class="expr-btn" id="expr-apply-system">Apply System</button>
+      </div>
+    </div>
+
+    <div class="expr-block">
+      <div class="expr-row">
+        <label for="expr-talk-enable">Talking enabled</label>
+        <input id="expr-talk-enable" type="checkbox">
+      </div>
+      <div class="expr-row">
+        <label for="expr-talk-energy">Talking energy <span id="expr-talk-energy-val">128</span></label>
+      </div>
+      <input id="expr-talk-energy" class="expr-slider" type="range" min="0" max="255" step="1" value="128">
+      <div class="expr-actions" style="margin-top:8px;">
+        <button class="expr-btn" id="expr-send-talking">Send Talking</button>
+      </div>
+    </div>
+
+    <div class="expr-block">
+      <div class="flag-grid">
+        <label class="flag-item"><input type="checkbox" id="expr-flag-idle" checked>idle</label>
+        <label class="flag-item"><input type="checkbox" id="expr-flag-blink" checked>autoblink</label>
+        <label class="flag-item"><input type="checkbox" id="expr-flag-solid" checked>solid eyes</label>
+        <label class="flag-item"><input type="checkbox" id="expr-flag-mouth" checked>show mouth</label>
+        <label class="flag-item"><input type="checkbox" id="expr-flag-glow" checked>edge glow</label>
+        <label class="flag-item"><input type="checkbox" id="expr-flag-sparkle" checked>sparkle</label>
+        <label class="flag-item"><input type="checkbox" id="expr-flag-afterglow" checked>afterglow</label>
+      </div>
+      <div class="expr-actions">
+        <button class="expr-btn" id="expr-apply-flags">Apply Toggles</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <div class="mobile-estop">
@@ -461,6 +672,15 @@ header h1 { font-size: 16px; font-weight: 600; }
 <script>
 const FAULT_NAMES = ['CMD_TIMEOUT','ESTOP','TILT','STALL','IMU_FAIL','BROWNOUT','OBSTACLE'];
 const MAX_V = 500, MAX_W = 2000;
+const FACE_FLAGS = {
+  IDLE: 1 << 0,
+  AUTOBLINK: 1 << 1,
+  SOLID: 1 << 2,
+  MOUTH: 1 << 3,
+  GLOW: 1 << 4,
+  SPARKLE: 1 << 5,
+  AFTERGLOW: 1 << 6,
+};
 
 let ws = null;
 let joyActive = false;
@@ -541,6 +761,35 @@ function updateTelemetry(p) {
   } else {
     cl.textContent = p.speed_caps.map(c => `${c.reason} (${Math.round(c.scale*100)}%)`).join(', ');
   }
+
+  const moodSel = document.getElementById('expr-mood');
+  if (moodSel && typeof p.face_mood === 'string') {
+    const opt = Array.from(moodSel.options).find(o => o.value === p.face_mood);
+    if (opt) moodSel.value = p.face_mood;
+  }
+  const lock = document.getElementById('expr-manual-lock');
+  if (lock) lock.checked = !!p.face_manual_lock;
+  const talkEnable = document.getElementById('expr-talk-enable');
+  if (talkEnable) talkEnable.checked = !!p.face_talking;
+  const talkEnergySlider = document.getElementById('expr-talk-energy');
+  const talkEnergyVal = document.getElementById('expr-talk-energy-val');
+  if (talkEnergySlider && talkEnergyVal) {
+    const energy = Number.isFinite(p.face_talking_energy) ? p.face_talking_energy : 0;
+    talkEnergySlider.value = String(energy);
+    talkEnergyVal.textContent = String(energy);
+  }
+  const flags = Number.isFinite(p.face_manual_flags) ? p.face_manual_flags : 0;
+  const setFlag = (id, bit) => {
+    const el = document.getElementById(id);
+    if (el) el.checked = !!(flags & bit);
+  };
+  setFlag('expr-flag-idle', FACE_FLAGS.IDLE);
+  setFlag('expr-flag-blink', FACE_FLAGS.AUTOBLINK);
+  setFlag('expr-flag-solid', FACE_FLAGS.SOLID);
+  setFlag('expr-flag-mouth', FACE_FLAGS.MOUTH);
+  setFlag('expr-flag-glow', FACE_FLAGS.GLOW);
+  setFlag('expr-flag-sparkle', FACE_FLAGS.SPARKLE);
+  setFlag('expr-flag-afterglow', FACE_FLAGS.AFTERGLOW);
 }
 
 // -- Mode buttons -----------------------------------------------------------
@@ -564,6 +813,111 @@ function send(obj) {
     ws.send(JSON.stringify(obj));
   }
 }
+
+function clamp(v, lo, hi) {
+  return Math.max(lo, Math.min(hi, v));
+}
+
+function parseNum(id, fallback = 0) {
+  const el = document.getElementById(id);
+  if (!el) return fallback;
+  const n = Number(el.value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function setLabel(sliderId, labelId, digits = 2) {
+  const slider = document.getElementById(sliderId);
+  const label = document.getElementById(labelId);
+  if (!slider || !label) return;
+  const n = Number(slider.value);
+  label.textContent = Number.isFinite(n) ? n.toFixed(digits) : slider.value;
+}
+
+function sendFaceState() {
+  const mood = document.getElementById('expr-mood').value;
+  send({
+    type: 'face_set_state',
+    emotion: mood,
+    intensity: clamp(parseNum('expr-intensity', 1.0), 0, 1),
+    gaze_x: clamp(parseNum('expr-gaze-x', 0), -1, 1),
+    gaze_y: clamp(parseNum('expr-gaze-y', 0), -1, 1),
+    brightness: clamp(parseNum('expr-brightness', 1.0), 0, 1),
+  });
+}
+
+function sendFaceGazeOnly() {
+  send({
+    type: 'face_set_state',
+    emotion: document.getElementById('expr-mood').value,
+    intensity: clamp(parseNum('expr-intensity', 1.0), 0, 1),
+    gaze_x: clamp(parseNum('expr-gaze-x', 0), -1, 1),
+    gaze_y: clamp(parseNum('expr-gaze-y', 0), -1, 1),
+    brightness: clamp(parseNum('expr-brightness', 1.0), 0, 1),
+  });
+}
+
+function sendFaceFlags() {
+  send({
+    type: 'face_set_flags',
+    idle_wander: !!document.getElementById('expr-flag-idle').checked,
+    autoblink: !!document.getElementById('expr-flag-blink').checked,
+    solid_eye: !!document.getElementById('expr-flag-solid').checked,
+    show_mouth: !!document.getElementById('expr-flag-mouth').checked,
+    edge_glow: !!document.getElementById('expr-flag-glow').checked,
+    sparkle: !!document.getElementById('expr-flag-sparkle').checked,
+    afterglow: !!document.getElementById('expr-flag-afterglow').checked,
+  });
+}
+
+document.getElementById('expr-intensity').addEventListener('input', () => setLabel('expr-intensity', 'expr-intensity-val', 2));
+document.getElementById('expr-brightness').addEventListener('input', () => setLabel('expr-brightness', 'expr-brightness-val', 2));
+document.getElementById('expr-gaze-x').addEventListener('input', () => setLabel('expr-gaze-x', 'expr-gaze-x-val', 2));
+document.getElementById('expr-gaze-y').addEventListener('input', () => setLabel('expr-gaze-y', 'expr-gaze-y-val', 2));
+document.getElementById('expr-system-param').addEventListener('input', () => {
+  document.getElementById('expr-system-param-val').textContent = String(parseInt(document.getElementById('expr-system-param').value, 10));
+});
+document.getElementById('expr-talk-energy').addEventListener('input', () => {
+  document.getElementById('expr-talk-energy-val').textContent = String(parseInt(document.getElementById('expr-talk-energy').value, 10));
+});
+
+document.getElementById('expr-apply-state').addEventListener('click', sendFaceState);
+document.getElementById('expr-apply-gaze').addEventListener('click', sendFaceGazeOnly);
+document.getElementById('expr-center-gaze').addEventListener('click', () => {
+  document.getElementById('expr-gaze-x').value = '0';
+  document.getElementById('expr-gaze-y').value = '0';
+  setLabel('expr-gaze-x', 'expr-gaze-x-val', 2);
+  setLabel('expr-gaze-y', 'expr-gaze-y-val', 2);
+  sendFaceGazeOnly();
+});
+
+document.querySelectorAll('.expr-gesture-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    send({
+      type: 'face_gesture',
+      name: btn.dataset.gesture,
+      duration_ms: Math.max(0, parseInt(document.getElementById('expr-gesture-duration').value || '0', 10)),
+    });
+  });
+});
+
+document.getElementById('expr-apply-system').addEventListener('click', () => {
+  send({
+    type: 'face_set_system',
+    mode: document.getElementById('expr-system-mode').value,
+    param: clamp(parseInt(document.getElementById('expr-system-param').value || '0', 10), 0, 255),
+  });
+});
+
+document.getElementById('expr-send-talking').addEventListener('click', () => {
+  const enabled = !!document.getElementById('expr-talk-enable').checked;
+  const energy = clamp(parseInt(document.getElementById('expr-talk-energy').value || '0', 10), 0, 255);
+  send({ type: 'face_set_talking', talking: enabled, energy });
+});
+
+document.getElementById('expr-apply-flags').addEventListener('click', sendFaceFlags);
+document.getElementById('expr-manual-lock').addEventListener('change', (e) => {
+  send({ type: 'face_manual_lock', enabled: !!e.target.checked });
+});
 
 // -- Joystick ---------------------------------------------------------------
 
@@ -749,7 +1103,7 @@ document.getElementById('btn-video').addEventListener('click', async () => {
 
 // -- Mobile tabs ------------------------------------------------------------
 
-const tabMap = { left: '.panel-left', center: '.panel-center', right: '.panel-right' };
+const tabMap = { left: '.panel-left', center: '.panel-center', right: '.panel-right', expr: '.panel-expr' };
 const tabButtons = document.querySelectorAll('.tab-bar button');
 
 function switchTab(tabName) {
@@ -777,6 +1131,12 @@ document.getElementById('btn-estop-mobile').addEventListener('click', () => {
 });
 
 // -- Init -------------------------------------------------------------------
+setLabel('expr-intensity', 'expr-intensity-val', 2);
+setLabel('expr-brightness', 'expr-brightness-val', 2);
+setLabel('expr-gaze-x', 'expr-gaze-x-val', 2);
+setLabel('expr-gaze-y', 'expr-gaze-y-val', 2);
+document.getElementById('expr-system-param-val').textContent = document.getElementById('expr-system-param').value;
+document.getElementById('expr-talk-energy-val').textContent = document.getElementById('expr-talk-energy').value;
 connect();
 </script>
 </body>

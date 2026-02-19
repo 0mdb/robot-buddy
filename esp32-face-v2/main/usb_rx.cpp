@@ -133,6 +133,19 @@ static void handle_packet(const ParsedPacket& pkt)
         break;
     }
 
+    case FaceCmdId::SET_FLAGS: {
+        if (pkt.data_len < sizeof(FaceSetFlagsPayload)) {
+            ESP_LOGW(TAG, "SET_FLAGS payload too short: %u", static_cast<unsigned>(pkt.data_len));
+            break;
+        }
+        FaceSetFlagsPayload fp;
+        memcpy(&fp, pkt.data, sizeof(fp));
+        const uint32_t now_us = static_cast<uint32_t>(esp_timer_get_time());
+        g_cmd_flags.store(static_cast<uint8_t>(fp.flags & FACE_FLAGS_ALL), std::memory_order_relaxed);
+        g_cmd_flags_us.store(now_us, std::memory_order_release);
+        break;
+    }
+
     default:
         ESP_LOGD(TAG, "unknown cmd type 0x%02X", pkt.type);
         break;

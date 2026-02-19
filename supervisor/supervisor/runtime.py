@@ -18,6 +18,7 @@ from supervisor.devices.expressions import (
 from supervisor.devices.face_client import FaceClient
 from supervisor.devices.planner_client import PlannerClient, PlannerError, PlannerPlan
 from supervisor.devices.protocol import (
+    FACE_FLAGS_ALL,
     FaceButtonEventType,
     FaceButtonId,
     FaceSystemMode,
@@ -89,6 +90,9 @@ class Runtime:
         self._next_greet_allowed_mono_ms = 0.0
         self._greet_skill_until_mono_ms = 0.0
         self._planner_fail_face_cooldown_until_ms = 0.0
+        self._face_manual_lock = False
+        self._face_manual_flags = FACE_FLAGS_ALL
+        self._face_was_connected = False
 
         self._event_bus = PlannerEventBus()
         self._skill_executor = SkillExecutor()
@@ -103,6 +107,8 @@ class Runtime:
 
         if planner:
             self._state.planner_enabled = True
+        self._state.face_manual_lock = self._face_manual_lock
+        self._state.face_manual_flags = self._face_manual_flags
 
     @property
     def state(self) -> RobotState:
@@ -234,6 +240,7 @@ class Runtime:
                 s.face_touch_active = ft.touch_active
                 s.face_talking = ft.talking
                 s.face_listening = ft.ptt_listening
+                s.face_talking_energy = int(self._face.last_talking_energy_cmd)
                 s.face_seq = ft.seq
                 s.face_rx_mono_ms = ft.rx_mono_ms
                 last_button = self._face.last_button
@@ -245,6 +252,16 @@ class Runtime:
                 s.face_touch_active = False
                 s.face_talking = False
                 s.face_listening = False
+                s.face_talking_energy = 0
+
+            if self._face.connected and not self._face_was_connected:
+                self._face.send_flags(self._face_manual_flags)
+            self._face_was_connected = self._face.connected
+        else:
+            self._face_was_connected = False
+
+        s.face_manual_lock = self._face_manual_lock
+        s.face_manual_flags = self._face_manual_flags
 
         self._sync_audio_ptt_from_face()
 
@@ -509,6 +526,8 @@ class Runtime:
 
         for action in actions:
             action_type = action.get("action")
+            if self._face_manual_lock and action_type in {"emote", "gesture"}:
+                continue
 
             if action_type == "emote":
                 if not self._face or not self._face.connected:
@@ -620,6 +639,60 @@ class Runtime:
             self._record_say_drop(reason)
         for intent in intents:
             self._enqueue_say(intent.text, source="policy")
+
+    # -- direct face controls (UI/debug) ------------------------------------
+
+    def set_face_manual_lock(self, enabled: bool) -> None:
+        self._face_manual_lock = bool(enabled)
+        self._state.face_manual_lock = self._face_manual_lock
+
+    def set_face_flags(self, flags: int) -> bool:
+        self._face_manual_flags = int(flags) & FACE_FLAGS_ALL
+        self._state.face_manual_flags = self._face_manual_flags
+        if not self._face or not self._face.connected:
+            return False
+        self._face.send_flags(self._face_manual_flags)
+        return True
+
+    def face_send_state(
+        self,
+        *,
+        mood_id: int,
+        intensity: float = 1.0,
+        gaze_x: float = 0.0,
+        gaze_y: float = 0.0,
+        brightness: float = 1.0,
+    ) -> bool:
+        if not self._face or not self._face.connected:
+            return False
+        self._face.send_state(
+            emotion_id=int(mood_id),
+            intensity=max(0.0, min(1.0, float(intensity))),
+            gaze_x=max(-1.0, min(1.0, float(gaze_x))),
+            gaze_y=max(-1.0, min(1.0, float(gaze_y))),
+            brightness=max(0.0, min(1.0, float(brightness))),
+        )
+        return True
+
+    def face_send_gesture(self, gesture_id: int, duration_ms: int = 0) -> bool:
+        if not self._face or not self._face.connected:
+            return False
+        self._face.send_gesture(int(gesture_id), max(0, int(duration_ms)))
+        return True
+
+    def face_send_system_mode(self, mode: int, param: int = 0) -> bool:
+        if not self._face or not self._face.connected:
+            return False
+        self._face.send_system_mode(int(mode), max(0, min(255, int(param))))
+        return True
+
+    def face_send_talking(self, talking: bool, energy: int = 0) -> bool:
+        if not self._face or not self._face.connected:
+            return False
+        energy_u8 = max(0, min(255, int(energy)))
+        self._face.send_talking(bool(talking), energy_u8)
+        self._state.face_talking_energy = energy_u8 if talking else 0
+        return True
 
     def _enqueue_say(self, text: str, *, source: str) -> bool:
         s = self._state

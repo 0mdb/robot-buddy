@@ -22,6 +22,7 @@ class _FakeFace:
         self.connected = True
         self.state_calls: list[dict] = []
         self.gesture_calls: list[int] = []
+        self.flags_calls: list[int] = []
 
     def send_state(self, **kwargs) -> None:
         self.state_calls.append(kwargs)
@@ -29,6 +30,9 @@ class _FakeFace:
     def send_gesture(self, gesture_id: int, duration_ms: int = 0) -> None:
         del duration_ms
         self.gesture_calls.append(gesture_id)
+
+    def send_flags(self, flags: int) -> None:
+        self.flags_calls.append(flags)
 
     def subscribe_button(self, cb) -> None:
         del cb
@@ -81,6 +85,26 @@ def test_planner_plan_face_actions_are_suppressed_while_listening_or_talking():
     runtime = Runtime(reflex=_FakeReflex(), face=face)
     runtime.state.face_listening = True
     runtime.state.face_talking = True
+    plan = PlannerPlan(
+        actions=[
+            {"action": "emote", "name": "happy", "intensity": 0.9},
+            {"action": "gesture", "name": "wink_l"},
+        ],
+        ttl_ms=1000,
+    )
+
+    runtime._planner_task_started_mono_ms = time.monotonic() * 1000.0
+    runtime._apply_planner_plan(plan)
+    runtime._execute_due_planner_actions()
+
+    assert face.state_calls == []
+    assert face.gesture_calls == []
+
+
+def test_planner_plan_face_actions_are_suppressed_by_manual_lock():
+    face = _FakeFace()
+    runtime = Runtime(reflex=_FakeReflex(), face=face)
+    runtime.set_face_manual_lock(True)
     plan = PlannerPlan(
         actions=[
             {"action": "emote", "name": "happy", "intensity": 0.9},

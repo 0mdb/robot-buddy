@@ -33,8 +33,7 @@ def test_handle_audio_updates_talking_energy():
     cm._handle_audio(msg)
 
     assert face.talking_calls
-    assert face.talking_calls[0][0] is True
-    assert len(face.talking_calls) >= 2  # initial start + chunk energy updates
+    assert face.talking_calls == [(True, 128)]
 
 
 @pytest.mark.asyncio

@@ -7,9 +7,7 @@ import base64
 import contextlib
 import json
 import logging
-import math
 import shutil
-import struct
 import urllib.parse
 from typing import AsyncIterator, Protocol, cast
 
@@ -20,6 +18,7 @@ from supervisor.devices.expressions import (
     normalize_face_gesture_name,
 )
 from supervisor.devices.face_client import FaceClient
+from supervisor.devices.lip_sync import LipSyncTracker
 
 log = logging.getLogger(__name__)
 
@@ -37,16 +36,6 @@ class _WebSocketConn(Protocol):
     async def send(self, message: str) -> None: ...
     async def close(self) -> None: ...
     def __aiter__(self) -> AsyncIterator[str]: ...
-
-
-def _compute_rms_energy(pcm_chunk: bytes) -> int:
-    """Compute RMS energy of a PCM chunk, returned as 0-255."""
-    if len(pcm_chunk) < 2:
-        return 0
-    n_samples = len(pcm_chunk) // 2
-    samples = struct.unpack(f"<{n_samples}h", pcm_chunk[: n_samples * 2])
-    rms = math.sqrt(sum(s * s for s in samples) / n_samples)
-    return min(255, int(rms / 128))
 
 
 class ConversationManager:
@@ -84,6 +73,7 @@ class ConversationManager:
         self._session_seq = 0
         self._last_face_mood: int | None = None
         self._last_face_intensity: float = 0.7
+        self._lip_sync = LipSyncTracker()
 
     @property
     def connected(self) -> bool:
@@ -220,7 +210,7 @@ class ConversationManager:
                 elif msg_type == "transcription":
                     log.info("User said: %s", msg.get("text", "")[:120])
                 elif msg_type == "done":
-                    await self._stop_talking()
+                    await self._stop_talking(drain=True)
                 elif msg_type == "listening":
                     pass
                 elif msg_type == "error":
@@ -363,6 +353,7 @@ class ConversationManager:
 
         if not self._speaking:
             self._speaking = True
+            self._lip_sync.reset()
             if self._face:
                 self._face.send_talking(True, 128)
 
@@ -373,17 +364,18 @@ class ConversationManager:
             if not sub:
                 continue
             self._queue_playback_chunk(sub)
-            if self._face:
-                energy = _compute_rms_energy(sub)
-                self._face.send_talking(True, energy)
 
-    async def _stop_talking(self) -> None:
+    async def _stop_talking(self, *, drain: bool = False) -> None:
         """End talking animation and flush/stop local playback."""
         if not self._speaking:
             return
+        if drain:
+            await self._drain_playback_queue()
+        else:
+            self._clear_playback_queue()
+            await self._stop_speaker_playback()
         self._speaking = False
-        self._clear_playback_queue()
-        await self._stop_speaker_playback()
+        self._lip_sync.reset()
         if self._face:
             self._face.send_talking(False, 0)
 
@@ -417,9 +409,21 @@ class ConversationManager:
         try:
             proc.stdin.write(pcm_chunk)
             await proc.stdin.drain()
+            if self._speaking and self._face:
+                self._face.send_talking(True, self._lip_sync.update_chunk(pcm_chunk))
         except Exception as e:
             log.warning("speaker write failed: %s", e)
             await self._stop_speaker_playback()
+
+    async def _drain_playback_queue(self) -> None:
+        """Wait briefly for queued PCM to flush to the speaker pipeline."""
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + 2.0
+        while not self._playback_queue.empty():
+            if loop.time() >= deadline:
+                break
+            await asyncio.sleep(0.01)
+        await asyncio.sleep(0.04)
 
     async def _ensure_speaker_proc(self) -> bool:
         if self._speaker_proc and self._speaker_proc.returncode is None:

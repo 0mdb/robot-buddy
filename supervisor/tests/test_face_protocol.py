@@ -18,9 +18,17 @@ from supervisor.devices.protocol import (
     TouchEventType,
     build_face_gesture,
     build_face_set_state,
+    build_face_set_flags,
     build_face_set_system,
     build_face_set_talking,
     build_packet,
+    FACE_FLAG_IDLE_WANDER,
+    FACE_FLAG_AUTOBLINK,
+    FACE_FLAG_SOLID_EYE,
+    FACE_FLAG_SHOW_MOUTH,
+    FACE_FLAG_EDGE_GLOW,
+    FACE_FLAG_SPARKLE,
+    FACE_FLAG_AFTERGLOW,
     parse_frame,
 )
 
@@ -96,6 +104,24 @@ class TestFaceSetTalking:
         parsed = parse_frame(pkt[:-1])
         _, energy = struct.unpack("<BB", parsed.payload)
         assert energy == 255
+
+
+class TestFaceSetFlags:
+    def test_round_trip(self):
+        flags = (
+            FACE_FLAG_IDLE_WANDER
+            | FACE_FLAG_AUTOBLINK
+            | FACE_FLAG_SOLID_EYE
+            | FACE_FLAG_SHOW_MOUTH
+            | FACE_FLAG_EDGE_GLOW
+            | FACE_FLAG_SPARKLE
+            | FACE_FLAG_AFTERGLOW
+        )
+        pkt = build_face_set_flags(seq=3, flags=flags)
+        parsed = parse_frame(pkt[:-1])
+        assert parsed.pkt_type == FaceCmdType.SET_FLAGS
+        (payload_flags,) = struct.unpack("<B", parsed.payload)
+        assert payload_flags == flags
 
 
 class TestFaceStatusPayload:
