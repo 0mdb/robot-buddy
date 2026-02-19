@@ -228,6 +228,22 @@ def test_plan_response_from_malformed_gesture_wrappers():
     assert plan.actions[2].name == "investigate_ball"
 
 
+def test_plan_response_drops_malformed_wrapper_stubs():
+    """Drop malformed wrapper-style actions missing required fields."""
+    raw = """{
+        "actions": [
+            {"name": "emote", "intensity": 0.8},
+            {"name": "say", "intensity": 0.8},
+            {"action": "skill", "name": "patrol_drift"}
+        ],
+        "ttl_ms": 2000
+    }"""
+    plan = PlanResponse.model_validate_json(raw)
+    assert len(plan.actions) == 1
+    assert plan.actions[0].action == "skill"
+    assert plan.actions[0].name == "patrol_drift"
+
+
 def test_plan_json_schema_has_discriminator():
     """Ensure the JSON schema uses the action discriminator."""
     schema = PlanResponse.model_json_schema()

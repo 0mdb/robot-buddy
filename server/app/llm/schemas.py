@@ -125,6 +125,9 @@ class PlanResponse(BaseModel):
         for raw in actions:
             coerced = cls._coerce_action(raw)
             if coerced is None:
+                if cls._should_drop_malformed_wrapper(raw):
+                    changed = True
+                    continue
                 normalized.append(raw)
                 continue
             if coerced is not raw:
@@ -241,3 +244,17 @@ class PlanResponse(BaseModel):
             return {"action": "skill", "name": name}
 
         return None
+
+    @staticmethod
+    def _should_drop_malformed_wrapper(raw: object) -> bool:
+        # Drop malformed legacy wrapper stubs like:
+        # {"name":"say","intensity":0.8} or {"name":"emote","intensity":0.8}
+        # They are model formatting mistakes, not actionable content.
+        if not isinstance(raw, dict):
+            return False
+        if "action" in raw:
+            return False
+        name = raw.get("name")
+        if not isinstance(name, str):
+            return False
+        return name.strip().lower() in {"say", "emote", "gesture", "skill"}
