@@ -648,6 +648,10 @@
             <div class="gauge-label">talking</div>
             <div class="gauge-value" id="g-face-talking">false</div>
           </div>
+          <div class="gauge">
+            <div class="gauge-label">face lock</div>
+            <div class="gauge-value" id="g-face-lock">--</div>
+          </div>
         </div>
       </details>
 
@@ -882,6 +886,7 @@
       document.getElementById('g-vfps').textContent = p.vision_fps > 0 ? p.vision_fps : '--';
       document.getElementById('g-face-mood').textContent = p.face_mood;
       document.getElementById('g-face-talking').textContent = p.face_talking;
+      document.getElementById('g-face-lock').textContent = p.face_manual_lock ? 'LOCKED' : 'AUTO';
 
       // Last LLM plan
       const planEl = document.getElementById('llm-plan');
@@ -937,6 +942,7 @@
     function send(obj) {
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify(obj));
+        console.log('TX:', obj);
       }
     }
 
