@@ -180,6 +180,10 @@
       font-variant-numeric: tabular-nums;
     }
 
+    .gauge-value.active {
+      color: var(--green);
+    }
+
     .gauge-unit {
       font-size: 11px;
       color: var(--dim);
@@ -893,7 +897,11 @@
       document.getElementById('g-bearing').textContent = p.ball_conf > 0 ? p.ball_bearing : '--';
       document.getElementById('g-vfps').textContent = p.vision_fps > 0 ? p.vision_fps : '--';
       document.getElementById('g-face-mood').textContent = p.face_mood;
-      document.getElementById('g-face-talking').textContent = p.face_talking;
+
+      const talkEl = document.getElementById('g-face-talking');
+      talkEl.textContent = p.face_talking;
+      talkEl.classList.toggle('active', p.face_talking === true || p.face_talking === 'true');
+
       document.getElementById('g-face-lock').textContent = p.face_manual_lock ? 'LOCKED' : 'AUTO';
 
       const fConn = document.getElementById('g-face-conn');

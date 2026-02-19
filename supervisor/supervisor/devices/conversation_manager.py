@@ -418,7 +418,7 @@ class ConversationManager:
     async def _drain_playback_queue(self) -> None:
         """Wait briefly for queued PCM to flush to the speaker pipeline."""
         loop = asyncio.get_running_loop()
-        deadline = loop.time() + 2.0
+        deadline = loop.time() + 5.0
         while not self._playback_queue.empty():
             if loop.time() >= deadline:
                 break
