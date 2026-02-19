@@ -160,6 +160,30 @@ def test_plan_response_from_json():
     assert plan.actions[3].action == "skill"
 
 
+def test_plan_response_from_legacy_json():
+    """Accept legacy model output that uses name+params action objects."""
+    raw = """{
+        "actions": [
+            {"name": "emote", "params": {"name": "excited", "intensity": 0.9}},
+            {"name": "say", "params": {"text": "A ball!"}},
+            {"name": "gesture", "params": {"name": "look_at", "params": {"bearing": 15.0}}},
+            {"name": "skill", "params": {"name": "investigate_ball"}}
+        ],
+        "ttl_ms": 2000
+    }"""
+    plan = PlanResponse.model_validate_json(raw)
+    assert len(plan.actions) == 4
+    assert plan.actions[0].action == "emote"
+    assert plan.actions[0].name == "excited"
+    assert plan.actions[1].action == "say"
+    assert plan.actions[1].text == "A ball!"
+    assert plan.actions[2].action == "gesture"
+    assert plan.actions[2].name == "look_at"
+    assert plan.actions[2].params["bearing"] == 15.0
+    assert plan.actions[3].action == "skill"
+    assert plan.actions[3].name == "investigate_ball"
+
+
 def test_plan_json_schema_has_discriminator():
     """Ensure the JSON schema uses the action discriminator."""
     schema = PlanResponse.model_json_schema()

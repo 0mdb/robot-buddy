@@ -45,14 +45,18 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--no-face", action="store_true", help="Disable face MCU")
     p.add_argument(
         "--planner-api",
+        "--server-api",
+        dest="planner_api",
         default="",
-        help="Planner server base URL (e.g. http://10.0.0.20:8100)",
+        help="Planner server base URL (e.g. http://10.0.0.20:8100); --server-api is deprecated alias",
     )
     p.add_argument(
         "--planner-timeout",
+        "--server-timeout",
+        dest="planner_timeout",
         type=float,
         default=6.0,
-        help="Planner server HTTP timeout in seconds",
+        help="Planner server HTTP timeout in seconds; --server-timeout is deprecated alias",
     )
     p.add_argument(
         "--usb-speaker-device",

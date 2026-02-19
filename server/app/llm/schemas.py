@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated, Literal, Union
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.llm.expressions import (
     CANONICAL_EMOTIONS,
@@ -106,3 +106,45 @@ class PlanResponse(BaseModel):
 
     actions: list[PlanAction] = Field(default_factory=list, max_length=5)
     ttl_ms: int = Field(default=2000, ge=500, le=5000)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_legacy_actions(cls, data: object) -> object:
+        # Some models still emit legacy actions as {"name": "...", "params": {...}}.
+        # Convert them into the discriminated {"action": "..."} form before validation.
+        if not isinstance(data, dict):
+            return data
+
+        actions = data.get("actions")
+        if not isinstance(actions, list):
+            return data
+
+        normalized: list[object] = []
+        changed = False
+        for raw in actions:
+            if not isinstance(raw, dict) or "action" in raw:
+                normalized.append(raw)
+                continue
+
+            legacy_action = raw.get("name")
+            if not isinstance(legacy_action, str) or not legacy_action.strip():
+                normalized.append(raw)
+                continue
+
+            converted = dict(raw)
+            converted.pop("name", None)
+            params = converted.pop("params", None)
+            if isinstance(params, dict):
+                for key, value in params.items():
+                    converted.setdefault(key, value)
+
+            converted["action"] = legacy_action.strip().lower()
+            normalized.append(converted)
+            changed = True
+
+        if not changed:
+            return data
+
+        patched = dict(data)
+        patched["actions"] = normalized
+        return patched
