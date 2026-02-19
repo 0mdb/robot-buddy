@@ -378,6 +378,13 @@ class ConversationManager:
         else:
             self._clear_playback_queue()
 
+        if self._playback_thread is not None:
+            await asyncio.to_thread(self._playback_queue.put, None)
+            await asyncio.to_thread(self._playback_thread.join)
+            self._playback_thread = None
+
+        await self._stop_speaker_playback()
+
         self._speaking = False
         self._lip_sync.reset()
         if self._face:

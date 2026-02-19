@@ -294,8 +294,10 @@ class AudioOrchestrator:
                     await asyncio.to_thread(self._playback_chunk_queue.put, chunk)
 
         finally:
-            # Signal playback thread to exit
+            # Signal playback thread to exit and wait for it to finish.
             await asyncio.to_thread(self._playback_chunk_queue.put, None)
+            if self._playback_thread is not None:
+                await asyncio.to_thread(self._playback_thread.join)
 
             if proc.stdin:
                 with contextlib.suppress(Exception):
