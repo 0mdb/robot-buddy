@@ -7,6 +7,8 @@ import logging
 import wave
 from typing import TYPE_CHECKING
 
+from app.config import settings
+
 if TYPE_CHECKING:
     from faster_whisper import WhisperModel
 
@@ -27,9 +29,9 @@ class WhisperSTT:
 
     def __init__(
         self,
-        model_size: str = "large-v3",
-        device: str = "cuda",
-        compute_type: str = "float16",
+        model_size: str = settings.stt_model_size,
+        device: str = settings.stt_device,
+        compute_type: str = settings.stt_compute_type,
     ) -> None:
         self._model_size = model_size
         self._device = device
@@ -95,3 +97,11 @@ class WhisperSTT:
             info.language_probability,
         )
         return text
+
+    def debug_snapshot(self) -> dict:
+        return {
+            "model_size": self._model_size,
+            "device": self._device,
+            "compute_type": self._compute_type,
+            "loaded": self._model is not None,
+        }

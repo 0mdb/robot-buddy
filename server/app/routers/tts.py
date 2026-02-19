@@ -9,21 +9,11 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from app.tts.orpheus import OrpheusTTS
+from app.ai_runtime import get_tts
 
 log = logging.getLogger(__name__)
 
 router = APIRouter()
-
-# Shared lazy-loaded instance (pattern matches converse.py)
-_tts = None
-
-
-def _get_tts() -> OrpheusTTS:
-    global _tts
-    if _tts is None:
-        _tts = OrpheusTTS()
-    return _tts
 
 
 class TTSRequest(BaseModel):
@@ -42,7 +32,7 @@ async def generate_speech(req: TTSRequest) -> StreamingResponse:
     if not req.text.strip():
         raise HTTPException(status_code=400, detail="Text cannot be empty")
 
-    tts = _get_tts()
+    tts = get_tts()
 
     async def audio_generator() -> AsyncGenerator[bytes, None]:
         try:

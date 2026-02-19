@@ -9,6 +9,7 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
+from app.ai_runtime import debug_snapshot as ai_debug_snapshot
 from app.config import settings
 from app.llm.client import OllamaClient
 from app.routers.converse import router as converse_router
@@ -27,7 +28,13 @@ async def lifespan(app: FastAPI):
 
     healthy = await client.health_check()
     if healthy:
-        if settings.warmup_llm:
+        model_ready = await client.ensure_model_available(
+            auto_pull=settings.auto_pull_ollama_model,
+            pull_timeout_s=settings.ollama_pull_timeout_s,
+        )
+        if not model_ready:
+            log.warning("Ollama is reachable but model %s is unavailable", settings.model_name)
+        elif settings.warmup_llm:
             log.info("Ollama is reachable — warming model")
             await client.warm()
         else:
@@ -56,12 +63,16 @@ async def health():
     """Liveness / readiness check."""
     client: OllamaClient = app.state.ollama
     ollama_ok = await client.health_check()
+    model_available = await client.model_available() if ollama_ok else False
     status = "ok" if ollama_ok else "degraded"
     return JSONResponse(
         {
             "status": status,
             "model": settings.model_name,
             "ollama": ollama_ok,
+            "model_available": model_available,
+            "auto_pull_ollama_model": settings.auto_pull_ollama_model,
+            "ai": ai_debug_snapshot(),
         },
         status_code=200 if ollama_ok else 503,
     )

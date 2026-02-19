@@ -25,40 +25,16 @@ import logging
 import httpx
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+from app.ai_runtime import get_stt, get_tts
 from app.llm.client import OllamaError
 from app.llm.conversation import (
     ConversationHistory,
     generate_conversation_response,
 )
-from app.tts.orpheus import OrpheusTTS
 
 log = logging.getLogger(__name__)
 
 router = APIRouter()
-
-# Lazy-loaded STT and TTS instances (shared across connections)
-_stt = None
-_tts = None
-
-
-def _get_stt():
-    global _stt
-    if _stt is None:
-        try:
-            from app.stt.whisper import WhisperSTT
-
-            _stt = WhisperSTT()
-        except ImportError:
-            log.warning("faster-whisper not installed. STT unavailable.")
-    return _stt
-
-
-def _get_tts() -> OrpheusTTS:
-    global _tts
-    if _tts is None:
-        _tts = OrpheusTTS()
-    return _tts
-
 
 @router.websocket("/converse")
 async def converse(ws: WebSocket):
@@ -133,7 +109,7 @@ async def converse(ws: WebSocket):
 
 async def _transcribe_audio(pcm_audio: bytes) -> str:
     """Transcribe PCM audio using Whisper STT."""
-    stt = _get_stt()
+    stt = get_stt()
     if stt is None:
         log.warning("STT unavailable, returning empty transcription")
         return ""
@@ -179,7 +155,7 @@ async def _generate_and_stream(
 
     # 3. Stream TTS audio
     if response.text:
-        tts = _get_tts()
+        tts = get_tts()
         chunk_index = 0
         async for chunk in tts.stream(response.text, response.emotion):
             if chunk:

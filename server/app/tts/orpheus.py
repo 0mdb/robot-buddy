@@ -10,12 +10,18 @@ the robot's speaker.
 
 from __future__ import annotations
 
+import audioop
+import io
 import logging
+import os
 import queue
+import shutil
 import struct
+import subprocess
 import threading
 import time
 import uuid
+import wave
 from collections.abc import AsyncIterator
 from typing import Any, Callable, Iterator
 
@@ -123,20 +129,65 @@ class OrpheusTTS:
 
     def __init__(
         self,
-        model_name: str = "canopylabs/orpheus-3b-0.1-ft",
+        model_name: str = settings.tts_model_name,
         device: str = "cuda",
+        backend: str = settings.tts_backend,
+        voice: str = settings.tts_voice,
+        rate_wpm: int = settings.tts_rate_wpm,
     ) -> None:
         self._model_name = model_name
         self._device = device
+        self._backend_pref = str(backend or "auto").strip().lower()
+        self._voice = str(voice or "en-us")
+        self._rate_wpm = int(rate_wpm)
         self._loaded = False
         self._backend: str | None = None
         self._legacy_generate_speech: Callable[[str], bytes] | None = None
         self._model: Any = None
         self._init_error: str | None = None
+        self._espeak_bin: str | None = None
+
+    @staticmethod
+    def _hf_token_present() -> bool:
+        return bool(
+            os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_HUB_TOKEN")
+        )
+
+    def _enable_espeak_fallback(self, *, force: bool = False) -> bool:
+        if not force and self._backend_pref not in {"auto", "espeak"}:
+            return False
+        espeak = shutil.which("espeak-ng") or shutil.which("espeak")
+        if espeak is None:
+            return False
+        self._espeak_bin = espeak
+        self._backend = "espeak"
+        self._loaded = True
+        self._init_error = None
+        log.warning("Using espeak fallback TTS backend (%s)", espeak)
+        return True
 
     def _ensure_model(self) -> None:
         if self._loaded:
             return
+
+        if self._backend_pref == "off":
+            self._backend = "off"
+            self._init_error = "tts_disabled"
+            self._loaded = True
+            log.info("TTS backend disabled via TTS_BACKEND=off")
+            return
+
+        if self._backend_pref == "espeak":
+            if self._enable_espeak_fallback(force=True):
+                return
+            self._init_error = "espeak_not_available"
+            self._loaded = True
+            log.warning("TTS_BACKEND=espeak but espeak-ng/espeak is not installed")
+            return
+
+        if self._backend_pref not in {"auto", "orpheus"}:
+            log.warning("Unknown TTS_BACKEND=%r; defaulting to auto", self._backend_pref)
+            self._backend_pref = "auto"
 
         log.info("Loading Orpheus TTS model %s on %s...", self._model_name, self._device)
 
@@ -210,6 +261,9 @@ class OrpheusTTS:
             log.exception("Failed to initialize Orpheus TTS runtime")
             self._init_error = "failed_to_initialize_orpheus_runtime"
 
+        if self._backend_pref == "auto" and self._enable_espeak_fallback():
+            return
+
         # Don't retry on every request if runtime is unavailable.
         self._loaded = True
 
@@ -274,6 +328,60 @@ class OrpheusTTS:
 
         return b"".join(out)
 
+    @staticmethod
+    def _wav_to_pcm16_16k(wav_bytes: bytes) -> bytes:
+        if not wav_bytes:
+            return b""
+        with wave.open(io.BytesIO(wav_bytes), "rb") as wf:
+            n_channels = wf.getnchannels()
+            sample_width = wf.getsampwidth()
+            sample_rate = wf.getframerate()
+            frames = wf.readframes(wf.getnframes())
+
+        pcm = frames
+        if sample_width != 2:
+            pcm = audioop.lin2lin(pcm, sample_width, 2)
+        if n_channels != 1:
+            pcm = audioop.tomono(pcm, 2, 0.5, 0.5)
+        if sample_rate != OUTPUT_SAMPLE_RATE:
+            pcm, _ = audioop.ratecv(pcm, 2, 1, sample_rate, OUTPUT_SAMPLE_RATE, None)
+        return pcm
+
+    def _synthesize_with_espeak(self, text: str) -> bytes:
+        exe = self._espeak_bin or shutil.which("espeak-ng") or shutil.which("espeak")
+        if exe is None:
+            self._init_error = "espeak_not_available"
+            return b""
+        cmd = [
+            exe,
+            "-v",
+            self._voice,
+            "-s",
+            str(self._rate_wpm),
+            "--stdout",
+            text,
+        ]
+        try:
+            proc = subprocess.run(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=15,
+                check=False,
+            )
+        except Exception as exc:
+            log.warning("espeak synthesis failed: %s", exc)
+            self._init_error = "espeak_exec_failed"
+            return b""
+
+        if proc.returncode != 0:
+            err = proc.stderr.decode("utf-8", errors="ignore").strip()
+            log.warning("espeak exited with code %s: %s", proc.returncode, err[:200])
+            self._init_error = "espeak_nonzero_exit"
+            return b""
+
+        return self._wav_to_pcm16_16k(proc.stdout)
+
     async def synthesize(self, text: str, emotion: str = "neutral") -> bytes:
         """Synthesize speech from text with emotional prosody.
 
@@ -287,6 +395,11 @@ class OrpheusTTS:
         """Synchronous synthesis."""
         self._ensure_model()
         tagged_text = apply_prosody_tag(emotion, text)
+
+        if self._backend == "off":
+            return b""
+        if self._backend == "espeak":
+            return self._synthesize_with_espeak(text)
 
         for attempt in (1, 2):
             try:
@@ -306,9 +419,10 @@ class OrpheusTTS:
                 if self._init_error is None:
                     self._init_error = "orpheus_backend_unavailable"
                 log.warning(
-                    "TTS unavailable (%s). If using gated HF models, ensure "
+                    "TTS unavailable (%s). hf_token_present=%s. If using gated HF models, ensure "
                     "Hugging Face login + accepted model access.",
                     self._init_error,
+                    self._hf_token_present(),
                 )
                 return b""
             except Exception as exc:
@@ -317,6 +431,9 @@ class OrpheusTTS:
                     self._reset_orpheus_backend()
                     self._ensure_model()
                     continue
+                if self._backend_pref == "auto" and self._enable_espeak_fallback():
+                    log.warning("Falling back to espeak after Orpheus failure")
+                    return self._synthesize_with_espeak(text)
                 log.exception("TTS synthesis failed for: %s", tagged_text[:80])
                 return b""
 
@@ -337,3 +454,17 @@ class OrpheusTTS:
         while offset < len(audio):
             yield audio[offset : offset + chunk_bytes]
             offset += chunk_bytes
+
+    def debug_snapshot(self) -> dict:
+        return {
+            "backend_pref": self._backend_pref,
+            "backend_active": self._backend,
+            "model_name": self._model_name,
+            "device": self._device,
+            "loaded": self._loaded,
+            "init_error": self._init_error,
+            "hf_token_present": self._hf_token_present(),
+            "espeak_available": bool(
+                self._espeak_bin or shutil.which("espeak-ng") or shutil.which("espeak")
+            ),
+        }

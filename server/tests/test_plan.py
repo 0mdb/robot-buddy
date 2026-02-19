@@ -73,6 +73,9 @@ def test_health_ollama_down(client):
     data = resp.json()
     assert "status" in data
     assert "model" in data
+    assert "ai" in data
+    assert "tts" in data["ai"]
+    assert "model_available" in data
 
 
 def test_plan_returns_valid_plan(client, monkeypatch):
