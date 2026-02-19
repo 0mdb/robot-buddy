@@ -55,8 +55,6 @@ def vision_main(
         cam.configure(
             cam.create_video_configuration(
                 main={"size": capture_size, "format": "RGB888"},
-                # main={"size": capture_size, "format": "BGRA2BGR"},
-                # main={"size": capture_size, "format": "RGB2BGR"},
 
             )
         )
@@ -102,27 +100,10 @@ def vision_main(
             except Empty:
                 pass
 
-            # # Capture
-            # rgb = cam.capture_array()
-            # # bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
-            # bgr = rgb
-            # # bgr = cv2.cvtColor(rgb, cv2.COLOR_BGRA2BGR)
-            # bgr = cv2.rotate(bgr, cv2.ROTATE_180)
-            # small = cv2.resize(bgr, process_size)
-            img = cam.capture_array()
-
-            # Convert camera output to BGR (what your detectors expect)
-            if img.ndim == 3 and img.shape[2] == 4:
-                bgr = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
-            elif img.ndim == 3 and img.shape[2] == 3:
-                # You asked for RGB888, so this should be RGB
-                bgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-            else:
-                raise RuntimeError(f"Unexpected camera frame shape: {img.shape}")
-
-            # Orientation fix
+            # Capture
+            rgb = cam.capture_array()
+            bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
             bgr = cv2.rotate(bgr, cv2.ROTATE_180)
-
             small = cv2.resize(bgr, process_size)
 
             # Detect
