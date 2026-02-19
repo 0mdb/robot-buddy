@@ -14,7 +14,8 @@ def test_system_prompt_mentions_actions():
     assert "say(" in SYSTEM_PROMPT
     assert "emote(" in SYSTEM_PROMPT
     assert "gesture(" in SYSTEM_PROMPT
-    assert "move(" in SYSTEM_PROMPT
+    assert "skill(" in SYSTEM_PROMPT
+    assert "move(" not in SYSTEM_PROMPT
 
 
 def test_system_prompt_mentions_safety():

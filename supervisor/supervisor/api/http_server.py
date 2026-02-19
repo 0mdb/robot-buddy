@@ -57,6 +57,10 @@ def create_app(
     async def get_device_debug():
         return JSONResponse(runtime.debug_devices())
 
+    @app.get("/debug/planner")
+    async def get_planner_debug():
+        return JSONResponse(runtime.debug_planner())
+
     @app.get("/params")
     async def get_params():
         return JSONResponse(registry.get_all())

@@ -1,4 +1,4 @@
-"""Tests for PersonalityClient."""
+"""Tests for PlannerClient."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import asyncio
 
 import httpx
 
-from supervisor.devices.personality_client import PersonalityClient, PersonalityError
+from supervisor.devices.planner_client import PlannerClient, PlannerError
 
 
 def test_health_check_ok() -> None:
@@ -14,7 +14,7 @@ def test_health_check_ok() -> None:
         return httpx.Response(200, json={"status": "ok"})
 
     async def run() -> None:
-        client = PersonalityClient("http://personality.local", transport=httpx.MockTransport(handler))
+        client = PlannerClient("http://planner.local", transport=httpx.MockTransport(handler))
         await client.start()
         assert await client.health_check() is True
         await client.stop()
@@ -27,7 +27,7 @@ def test_health_check_handles_connect_error() -> None:
         raise httpx.ConnectError("offline", request=request)
 
     async def run() -> None:
-        client = PersonalityClient("http://personality.local", transport=httpx.MockTransport(handler))
+        client = PlannerClient("http://planner.local", transport=httpx.MockTransport(handler))
         await client.start()
         assert await client.health_check() is False
         await client.stop()
@@ -49,7 +49,7 @@ def test_request_plan_success() -> None:
         )
 
     async def run() -> None:
-        client = PersonalityClient("http://personality.local", transport=httpx.MockTransport(handler))
+        client = PlannerClient("http://planner.local", transport=httpx.MockTransport(handler))
         await client.start()
         plan = await client.request_plan({"mode": "IDLE"})
         await client.stop()
@@ -66,14 +66,14 @@ def test_request_plan_raises_on_http_error_status() -> None:
         return httpx.Response(502, json={"error": "llm_error"})
 
     async def run() -> None:
-        client = PersonalityClient("http://personality.local", transport=httpx.MockTransport(handler))
+        client = PlannerClient("http://planner.local", transport=httpx.MockTransport(handler))
         await client.start()
         try:
             await client.request_plan({"mode": "IDLE"})
-        except PersonalityError as e:
+        except PlannerError as e:
             assert "/plan returned 502" in str(e)
         else:
-            raise AssertionError("expected PersonalityError")
+            raise AssertionError("expected PlannerError")
         finally:
             await client.stop()
 
@@ -85,14 +85,14 @@ def test_request_plan_raises_on_bad_payload() -> None:
         return httpx.Response(200, json={"ttl_ms": 2000})
 
     async def run() -> None:
-        client = PersonalityClient("http://personality.local", transport=httpx.MockTransport(handler))
+        client = PlannerClient("http://planner.local", transport=httpx.MockTransport(handler))
         await client.start()
         try:
             await client.request_plan({"mode": "IDLE"})
-        except PersonalityError as e:
+        except PlannerError as e:
             assert "actions list" in str(e)
         else:
-            raise AssertionError("expected PersonalityError")
+            raise AssertionError("expected PlannerError")
         finally:
             await client.stop()
 

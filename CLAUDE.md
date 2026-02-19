@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Robot Buddy is a kid-safe, expressive robot platform combining real-time motor control, an animated LED face, and optional networked AI personality. The architecture separates deterministic reflexes (ESP32 MCUs) from high-level orchestration (Raspberry Pi 5 supervisor).
+Robot Buddy is a kid-safe, expressive robot platform combining real-time motor control, an animated LED face, and optional networked AI planner. The architecture separates deterministic reflexes (ESP32 MCUs) from high-level orchestration (Raspberry Pi 5 supervisor).
 
 ## Repository Structure
 
@@ -26,7 +26,7 @@ robot-buddy/
 │   └── main/            # WS2812B 16×16 LED matrix rendering
 ├── esp32-reflex/        # Motion MCU firmware (ESP32-S3, C/C++)
 │   └── main/            # Differential drive, PID, safety, encoders
-├── server/              # Optional personality server (LLM/TTS on 3090 Ti)
+├── server/              # Optional planner server (LLM/TTS on 3090 Ti)
 ├── tools/               # Dev utilities (face simulation via pygame)
 └── docs/                # Architecture, protocol specs, power topology
 ```
@@ -158,7 +158,7 @@ Layered defense-in-depth:
 
 ### General
 - Keep reflexes deterministic and local to MCUs
-- Personality / AI features are optional and network-remote
+- Planner / AI features are optional and network-remote
 - Safety-critical code lives in the MCU; supervisor applies additional caps
 - Prefer simple, direct code over abstractions
 

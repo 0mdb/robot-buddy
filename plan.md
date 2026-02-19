@@ -1,4 +1,4 @@
-# AI Personality Server — Implementation Plan
+# AI Planner Server — Implementation Plan
 
 ## Model Selection
 
@@ -17,7 +17,7 @@ Why not vLLM: vLLM is more powerful but heavier to set up and has had structured
 │ 3090 Ti Box                                          │
 │                                                      │
 │  ┌──────────┐     ┌──────────────────────────────┐  │
-│  │ Ollama   │     │ Personality Server (FastAPI)  │  │
+│  │ Ollama   │     │ Planner Server (FastAPI)  │  │
 │  │ qwen3:14b│◄────┤                              │  │
 │  │ :11434   │     │  POST /plan                  │  │
 │  └──────────┘     │  POST /tts  (future)         │  │
@@ -30,11 +30,11 @@ Why not vLLM: vLLM is more powerful but heavier to set up and has had structured
         │
 ┌───────┴─────────┐
 │ Supervisor (Pi5) │
-│ PersonalityClient│
+│ PlannerClient│
 └─────────────────┘
 ```
 
-The personality server is a thin FastAPI layer between the supervisor and Ollama. It owns the system prompt, formats the world state into the LLM prompt, validates the structured response, and returns a clean plan. The supervisor never talks to Ollama directly.
+The planner server is a thin FastAPI layer between the supervisor and Ollama. It owns the system prompt, formats the world state into the LLM prompt, validates the structured response, and returns a clean plan. The supervisor never talks to Ollama directly.
 
 ## File Structure
 
@@ -127,10 +127,10 @@ class WorldState(BaseModel):
 
 `app/llm/prompts.py`:
 
-**System prompt** — defines the robot's personality and output format:
+**System prompt** — defines the robot's planner and output format:
 
 ```
-You are the personality of Robot Buddy, a small wheeled robot for kids.
+You are the planner of Robot Buddy, a small wheeled robot for kids.
 You are curious, playful, and friendly. You express yourself through
 emotions, gestures, short spoken phrases, and movement.
 
@@ -255,11 +255,11 @@ To give the robot a sense of conversational context and prevent it from repeatin
 
 -   **Implementation Sketch:**
 
-    -   **Server-Side:** The `PersonalityServer` would manage a rolling window of the last N interactions (e.g., a `collections.deque` of user inputs and robot plans). This history would be passed to the LLM as part of the prompt.
+    -   **Server-Side:** The `PlannerServer` would manage a rolling window of the last N interactions (e.g., a `collections.deque` of user inputs and robot plans). This history would be passed to the LLM as part of the prompt.
 
     -   **Prompt Engineering:** The system prompt would be updated to instruct the LLM on how to use the conversation history. The user prompt would include a formatted summary of the recent turns.
 
-    -   **Supervisor-Side:** The `PersonalityClient` would need to be updated to manage a `session_id` and pass the conversation history back and forth.
+    -   **Supervisor-Side:** The `PlannerClient` would need to be updated to manage a `session_id` and pass the conversation history back and forth.
 
 
 
@@ -285,7 +285,7 @@ To reduce latency for common world states, a caching layer could be introduced i
 
 
 
-### Supervisor PersonalityClient
+### Supervisor PlannerClient
 
 
 
@@ -293,17 +293,17 @@ This is a note that the client-side implementation is a separate but coupled tas
 
 
 
--   **Location:** `supervisor/supervisor/devices/personality_client.py`
+-   **Location:** `supervisor/supervisor/devices/planner_client.py`
 
 -   **Responsibilities:**
 
     -   Constructing the `world_state` dictionary from the supervisor's `RobotState`.
 
-    -   Making async HTTP requests to the `PersonalityServer`.
+    -   Making async HTTP requests to the `PlannerServer`.
 
     -   Handling network errors, timeouts, and retry logic.
 
-    -   Parsing the server's JSON response into a validated `PersonalityPlan` dataclass.
+    -   Parsing the server's JSON response into a validated `PlannerPlan` dataclass.
 
 
 
@@ -321,7 +321,7 @@ The ability to switch between different models (e.g., a large, powerful model an
 
     -   **Configuration:** The current approach of using environment variables (`MODEL_NAME`) for the model is the first step.
 
-    -   **Dynamic Selection:** A "model router" could be implemented in the `PersonalityServer`. This router could select a model based on the `trigger` in the `WorldState`. For example, simple `heartbeat` triggers could use a small, fast model, while more complex conversational triggers use a larger model.
+    -   **Dynamic Selection:** A "model router" could be implemented in the `PlannerServer`. This router could select a model based on the `trigger` in the `WorldState`. For example, simple `heartbeat` triggers could use a small, fast model, while more complex conversational triggers use a larger model.
 
     -   **API:** The `/plan` endpoint could be updated to accept an optional `model` parameter to allow the supervisor to request a specific model.
 
@@ -337,7 +337,7 @@ The ability to switch between different models (e.g., a large, powerful model an
 
 
 
-The initial implementation of the AI Personality Server and key supervisor components is complete.
+The initial implementation of the AI Planner Server and key supervisor components is complete.
 
 
 
@@ -363,7 +363,7 @@ The initial implementation of the AI Personality Server and key supervisor compo
 
     - A `/ws/logs` WebSocket endpoint provides real-time log streaming.
 
-    - The `/status` endpoint has been updated to include `face.mood`, `face.talking`, and `last_decision` (the last plan from the personality server).
+    - The `/status` endpoint has been updated to include `face.mood`, `face.talking`, and `last_decision` (the last plan from the planner server).
 
 
 
@@ -405,7 +405,7 @@ The initial implementation of the AI Personality Server and key supervisor compo
 
 - **End-to-End:**
 
-    - Perform a full conversation loop: press PTT, speak a phrase, release PTT, and verify that the robot responds with speech and facial expressions as determined by the personality server's plan.
+    - Perform a full conversation loop: press PTT, speak a phrase, release PTT, and verify that the robot responds with speech and facial expressions as determined by the planner server's plan.
 
 
 
@@ -417,6 +417,6 @@ The initial implementation of the AI Personality Server and key supervisor compo
 
 - **Conversation History:** Implement context/memory so the robot can remember previous turns in a conversation.
 
-- **Sound Effects:** Add a library of sound effects that can be triggered by the personality plan for more expressive, non-verbal communication.
+- **Sound Effects:** Add a library of sound effects that can be triggered by the planner plan for more expressive, non-verbal communication.
 
 - **Dynamic Face Expressions:** Allow the face to show more nuanced expressions by combining base emotions with modifiers (e.g., a "slightly curious" look).

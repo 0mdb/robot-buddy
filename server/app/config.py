@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 @dataclass(slots=True)
 class Settings:
-    """Personality server settings. Override any field via environment variable."""
+    """Planner server settings. Override any field via environment variable."""
 
     ollama_url: str = os.environ.get("OLLAMA_URL", "http://localhost:11434")
     model_name: str = os.environ.get("MODEL_NAME", "qwen3:14b")

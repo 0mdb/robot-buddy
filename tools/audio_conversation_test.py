@@ -263,7 +263,7 @@ async def run_mic_test(
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Test TTS/STT pipeline against personality server"
+        description="Test TTS/STT pipeline against planner server"
     )
     parser.add_argument(
         "--server",

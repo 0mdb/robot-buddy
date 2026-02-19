@@ -4,7 +4,7 @@ Usage:
     python -m supervisor                    # default (expects real hardware)
     python -m supervisor --mock             # use mock reflex MCU
     python -m supervisor --port /dev/...    # specify serial port
-    python -m supervisor --server-api http://10.0.0.20:8100
+    python -m supervisor --planner-api http://10.0.0.20:8100
 """
 
 from __future__ import annotations
@@ -19,10 +19,9 @@ import uvicorn
 from supervisor.api.http_server import create_app
 from supervisor.api.param_registry import create_default_registry
 from supervisor.api.ws_hub import WsHub
-from supervisor.devices.conversation_manager import ConversationManager
+from supervisor.devices.audio_orchestrator import AudioOrchestrator
 from supervisor.devices.face_client import FaceClient
-from supervisor.devices.personality_client import PersonalityClient
-from supervisor.devices.protocol import FaceButtonEventType, FaceButtonId
+from supervisor.devices.planner_client import PlannerClient
 from supervisor.devices.reflex_client import REFLEX_PARAM_IDS, ReflexClient
 from supervisor.inputs.camera_vision import VisionProcess
 from supervisor.io.serial_transport import SerialTransport
@@ -45,15 +44,15 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--face-port", default=DEFAULT_FACE_PORT, help="Face serial port")
     p.add_argument("--no-face", action="store_true", help="Disable face MCU")
     p.add_argument(
-        "--server-api",
+        "--planner-api",
         default="",
-        help="Personality server base URL (e.g. http://10.0.0.20:8100)",
+        help="Planner server base URL (e.g. http://10.0.0.20:8100)",
     )
     p.add_argument(
-        "--server-timeout",
+        "--planner-timeout",
         type=float,
         default=6.0,
-        help="Personality server HTTP timeout in seconds",
+        help="Planner server HTTP timeout in seconds",
     )
     p.add_argument(
         "--usb-speaker-device",
@@ -87,41 +86,30 @@ async def async_main(args: argparse.Namespace) -> None:
     # Face transport + client
     face_transport: SerialTransport | None = None
     face: FaceClient | None = None
-    conversation: ConversationManager | None = None
+    audio: AudioOrchestrator | None = None
     if not args.no_face:
         face_transport = SerialTransport(args.face_port, label="face")
         face = FaceClient(face_transport)
 
-    # Personality server client (optional)
-    personality: PersonalityClient | None = None
-    if args.server_api:
-        personality = PersonalityClient(args.server_api, timeout_s=args.server_timeout)
-        await personality.start()
-        healthy = await personality.health_check()
+    # Planner server client (optional)
+    planner: PlannerClient | None = None
+    if args.planner_api:
+        planner = PlannerClient(args.planner_api, timeout_s=args.planner_timeout)
+        await planner.start()
+        healthy = await planner.health_check()
         if healthy:
-            log.info("personality server reachable at %s", args.server_api)
+            log.info("planner server reachable at %s", args.planner_api)
         else:
-            log.warning("personality server not reachable at startup: %s", args.server_api)
+            log.warning("planner server not reachable at startup: %s", args.planner_api)
 
-    if args.server_api and face is not None:
-        conversation = ConversationManager(
-            args.server_api,
+    if args.planner_api and face is not None:
+        audio = AudioOrchestrator(
+            args.planner_api,
             face=face,
             speaker_device=args.usb_speaker_device,
             mic_device=args.usb_mic_device,
         )
-
-        def _on_face_button(evt) -> None:
-            if evt.button_id == int(FaceButtonId.ACTION) and evt.event_type == int(
-                FaceButtonEventType.CLICK
-            ):
-                asyncio.create_task(conversation.cancel())
-            elif evt.button_id == int(FaceButtonId.PTT) and evt.event_type == int(
-                FaceButtonEventType.TOGGLE
-            ):
-                asyncio.create_task(conversation.set_ptt_enabled(bool(evt.state)))
-
-        face.on_button(_on_face_button)
+        face.subscribe_button(audio.on_face_button)
 
     # Vision process
     vision: VisionProcess | None = None
@@ -176,7 +164,8 @@ async def async_main(args: argparse.Namespace) -> None:
         on_telemetry=ws_hub.broadcast_telemetry,
         vision=vision,
         face=face,
-        personality=personality,
+        planner=planner,
+        audio=audio,
     )
 
     # FastAPI app
@@ -186,8 +175,8 @@ async def async_main(args: argparse.Namespace) -> None:
     await transport.start()
     if face_transport:
         await face_transport.start()
-        if conversation is not None:
-            await conversation.start()
+        if audio is not None:
+            await audio.start()
 
     # Start uvicorn + tick loop concurrently
     config = uvicorn.Config(
@@ -208,12 +197,12 @@ async def async_main(args: argparse.Namespace) -> None:
         if vision:
             vision.stop()
         if face_transport:
-            if conversation:
-                await conversation.stop()
+            if audio:
+                await audio.stop()
             await face_transport.stop()
         await transport.stop()
-        if personality:
-            await personality.stop()
+        if planner:
+            await planner.stop()
         if mock:
             mock.stop()
 

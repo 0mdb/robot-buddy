@@ -88,7 +88,7 @@ Updated: 2026-02-19
 - Server tests: `36 passed`
 - Supervisor targeted parity/arbitration tests added and passing:
   - `supervisor/tests/test_expressions.py`
-  - `supervisor/tests/test_runtime_personality_face.py`
+  - `supervisor/tests/test_runtime_planner_face.py`
 - Firmware build: `esp32-face-v2` builds successfully with ESP-IDF 5.4.
 
 Note: full supervisor suite currently has unrelated pre-existing failures in

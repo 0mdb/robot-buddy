@@ -510,8 +510,8 @@ function updateTelemetry(p) {
 
   // Last LLM plan
   const planEl = document.getElementById('llm-plan');
-  if (p.personality_last_plan) {
-    planEl.textContent = JSON.stringify(p.personality_last_plan, null, 2);
+  if (p.planner_last_plan) {
+    planEl.textContent = JSON.stringify(p.planner_last_plan, null, 2);
   } else {
     planEl.textContent = 'none';
   }

@@ -1,12 +1,12 @@
 # Robot Buddy
 
-A kid-safe, expressive robot platform combining real-time motor control, an animated TFT face, and optional networked AI personality.
+A kid-safe, expressive robot platform combining real-time motor control, an animated TFT face, and optional networked AI planner.
 
 ## How It Works
 
-Two ESP32-S3 microcontrollers handle the deterministic, safety-critical work: one drives motors with PID control and enforces safety limits, the other renders an animated face on a 320x240 TFT touch display (`esp32-face-v2`). A Raspberry Pi 5 orchestrates everything at 50 Hz — reading sensors, running the state machine, applying layered safety policies, and streaming telemetry to a browser UI. An optional AI personality server on a separate machine (3090 Ti) generates expressive behavior plans via a local LLM.
+Two ESP32-S3 microcontrollers handle the deterministic, safety-critical work: one drives motors with PID control and enforces safety limits, the other renders an animated face on a 320x240 TFT touch display (`esp32-face-v2`). A Raspberry Pi 5 orchestrates everything at 50 Hz — reading sensors, running the state machine, applying layered safety policies, and streaming telemetry to a browser UI. An optional AI planner server on a separate machine (3090 Ti) generates expressive behavior plans via a local LLM.
 
-Reflexes are local and deterministic. Personality is remote and optional.
+Reflexes are local and deterministic. Planner is remote and optional.
 
 ## Hardware
 
@@ -37,7 +37,7 @@ robot-buddy/
 │   │   └── main.py      # Entry point, CLI args
 │   ├── tests/           # pytest test suite
 │   └── pyproject.toml   # Package metadata, deps
-├── server/              # AI personality server (3090 Ti, FastAPI + Ollama)
+├── server/              # AI planner server (3090 Ti, FastAPI + Ollama)
 │   ├── app/             # FastAPI app, LLM client, prompts, schemas
 │   ├── tests/           # pytest test suite
 │   ├── Modelfile        # Ollama model config
@@ -86,7 +86,7 @@ robot-buddy/
 │                                    │
 │ Ollama (qwen3:14b) → FastAPI      │
 │ POST /plan → performance plans    │
-│ (emote, say, gesture, move)       │
+│ (emote, say, gesture, skill)      │
 └────────────────────────────────────┘
 ```
 
@@ -154,7 +154,7 @@ python -m supervisor --no-vision         # Disable vision process
 python -m supervisor --http-port 8080    # Custom HTTP port
 ```
 
-### AI Personality Server (3090 Ti PC)
+### AI Planner Server (3090 Ti PC)
 
 ```bash
 # Install Ollama and pull the model
@@ -250,7 +250,7 @@ When the supervisor is running, open `http://<robot_ip>:8080` in a browser for:
 | `/health` | GET | Server + Ollama status |
 | `/plan` | POST | Accept world state, return performance plan |
 
-Plan actions: `say(text)`, `emote(name, intensity)`, `gesture(name, params)`, `move(v, w, duration)` — all bounded for safety. See `server/README.md` for request/response examples.
+Plan actions: `say(text)`, `emote(name, intensity)`, `gesture(name, params)`, `skill(name)` — planner proposes intent and supervisor executes deterministic skills.
 
 ## Project Status
 
@@ -263,16 +263,16 @@ Plan actions: `say(text)`, `emote(name, intensity)`, `gesture(name, params)`, `m
 - [x] Supervisor: mock Reflex MCU for hardware-free development
 - [x] Supervisor: telemetry recording (JSONL)
 - [x] AI Server: FastAPI + Ollama integration with structured output
-- [x] AI Server: bounded performance plans (emote, say, gesture, move)
+- [x] AI Server: bounded performance plans (emote, say, gesture, skill)
 - [x] ESP32 Face v2: TFT face rendering, touch/button telemetry, supervisor-driven emotions/gestures
 - [x] ESP32 Reflex: motor control, PID, encoders, safety enforcement
 
 ### In Progress
-- [ ] Supervisor-side PersonalityClient (connects to AI server)
+- [x] Supervisor-side PlannerClient (connects to AI server)
 - [ ] AI Server: TTS endpoint
 - [ ] AI Server: interaction history / conversation memory
 
 ### Future
-- [ ] WANDER mode driven by AI personality
+- [x] WANDER mode driven by deterministic skills + planner intent
 - [ ] Voice pipeline (STT on Pi, TTS on 3090 Ti)
 - [ ] Additional modes: LINE_FOLLOW, BALL, CRANE, CHARGING

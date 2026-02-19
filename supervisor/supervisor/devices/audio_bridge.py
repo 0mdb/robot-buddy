@@ -1,7 +1,7 @@
 """Audio bridge — routes TTS audio to the face MCU's USB audio device.
 
 Architecture:
-  - Personality server renders TTS as WAV/Opus blobs
+  - Planner server renders TTS as WAV/Opus blobs
   - Supervisor receives audio blobs over HTTP/WebSocket
   - Supervisor plays them to the face MCU's ALSA sound card
     (the face MCU appears as a standard USB Audio Class device)

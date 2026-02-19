@@ -99,8 +99,8 @@ class FaceClient:
         self.last_touch: TouchEvent | None = None
         self.last_button: ButtonEvent | None = None
         self.last_heartbeat: HeartbeatTelemetry | None = None
-        self._on_touch: Callable[[TouchEvent], None] | None = None
-        self._on_button: Callable[[ButtonEvent], None] | None = None
+        self._touch_subscribers: list[Callable[[TouchEvent], None]] = []
+        self._button_subscribers: list[Callable[[ButtonEvent], None]] = []
         self._tx_packets = 0
         self._rx_face_status_packets = 0
         self._rx_touch_packets = 0
@@ -115,11 +115,11 @@ class FaceClient:
     def connected(self) -> bool:
         return self._transport.connected
 
-    def on_touch(self, cb: Callable[[TouchEvent], None]) -> None:
-        self._on_touch = cb
+    def subscribe_touch(self, cb: Callable[[TouchEvent], None]) -> None:
+        self._touch_subscribers.append(cb)
 
-    def on_button(self, cb: Callable[[ButtonEvent], None]) -> None:
-        self._on_button = cb
+    def subscribe_button(self, cb: Callable[[ButtonEvent], None]) -> None:
+        self._button_subscribers.append(cb)
 
     def send_state(
         self,
@@ -225,8 +225,8 @@ class FaceClient:
             self._rx_touch_packets += 1
             evt = TouchEvent(te.event_type, te.x, te.y, time.monotonic() * 1000.0)
             self.last_touch = evt
-            if self._on_touch:
-                self._on_touch(evt)
+            for cb in tuple(self._touch_subscribers):
+                cb(evt)
 
         elif pkt.pkt_type == FaceTelType.BUTTON_EVENT:
             try:
@@ -243,8 +243,8 @@ class FaceClient:
                 timestamp_mono_ms=time.monotonic() * 1000.0,
             )
             self.last_button = evt
-            if self._on_button:
-                self._on_button(evt)
+            for cb in tuple(self._button_subscribers):
+                cb(evt)
 
         elif pkt.pkt_type == FaceTelType.HEARTBEAT:
             try:

@@ -1,6 +1,6 @@
 # server
 
-Optional AI personality stack running on a 3090 Ti on the local network.
+Optional AI planner stack running on a 3090 Ti on the local network.
 
 ## Architecture
 
@@ -159,7 +159,7 @@ Accepts a world-state snapshot, returns a bounded performance plan.
         {"action": "emote", "name": "excited", "intensity": 0.9},
         {"action": "say", "text": "Oh! A ball!"},
         {"action": "gesture", "name": "look_at", "params": {"bearing": 15.2}},
-        {"action": "move", "v_mm_s": 150, "w_mrad_s": 50, "duration_ms": 1500}
+        {"action": "skill", "name": "investigate_ball"}
     ],
     "ttl_ms": 2000
 }
@@ -174,7 +174,7 @@ Accepts a world-state snapshot, returns a bounded performance plan.
 | `say` | `text` | max 200 chars, kid-friendly |
 | `emote` | `name`, `intensity` | intensity 0.0–1.0 |
 | `gesture` | `name`, `params` | params dict varies by gesture |
-| `move` | `v_mm_s`, `w_mrad_s`, `duration_ms` | speed -300..300, turn -500..500, duration 0..3000 ms |
+| `skill` | `name` | one of `patrol_drift`, `investigate_ball`, `avoid_obstacle`, `greet_on_button` |
 
 ## Testing
 
@@ -185,7 +185,7 @@ uv run pytest tests/ -v
 
 ## TODO
 
-- [ ] Implement `/tts` endpoint (optional voice pipeline)
+- [x] Implement `/tts` endpoint
 - [ ] Add caching for instant responses to common triggers
 - [ ] Interaction history / conversation memory
-- [ ] Supervisor-side `PersonalityClient` integration
+- [x] Supervisor-side `PlannerClient` integration

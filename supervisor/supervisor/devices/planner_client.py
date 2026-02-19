@@ -1,4 +1,4 @@
-"""Async client for the external personality server API."""
+"""Async client for the external planner server API."""
 
 from __future__ import annotations
 
@@ -7,12 +7,12 @@ from dataclasses import dataclass, field
 import httpx
 
 
-class PersonalityError(RuntimeError):
-    """Raised when the personality server returns invalid or failed responses."""
+class PlannerError(RuntimeError):
+    """Raised when the planner server returns invalid or failed responses."""
 
 
 @dataclass(slots=True)
-class PersonalityPlan:
+class PlannerPlan:
     actions: list[dict] = field(default_factory=list)
     ttl_ms: int = 0
 
@@ -20,8 +20,8 @@ class PersonalityPlan:
         return {"actions": self.actions, "ttl_ms": self.ttl_ms}
 
 
-class PersonalityClient:
-    """Minimal async wrapper around the personality server `/health` + `/plan`."""
+class PlannerClient:
+    """Minimal async wrapper around the planner server `/health` + `/plan`."""
 
     def __init__(
         self,
@@ -55,36 +55,36 @@ class PersonalityClient:
             return False
         return resp.status_code == 200
 
-    async def request_plan(self, world_state: dict) -> PersonalityPlan:
+    async def request_plan(self, world_state: dict) -> PlannerPlan:
         client = self._require_client()
         try:
             resp = await client.post("/plan", json=world_state)
         except httpx.HTTPError as e:
             msg = str(e).strip() or e.__class__.__name__
-            raise PersonalityError(f"request failed: {msg}") from e
+            raise PlannerError(f"request failed: {msg}") from e
 
         if resp.status_code != 200:
             detail = self._extract_error(resp)
-            raise PersonalityError(f"/plan returned {resp.status_code}: {detail}")
+            raise PlannerError(f"/plan returned {resp.status_code}: {detail}")
 
         try:
             body = resp.json()
         except ValueError as e:
-            raise PersonalityError("invalid JSON response from /plan") from e
+            raise PlannerError("invalid JSON response from /plan") from e
 
         actions = body.get("actions")
         ttl_ms = body.get("ttl_ms", 0)
 
         if not isinstance(actions, list):
-            raise PersonalityError("invalid /plan payload: missing actions list")
+            raise PlannerError("invalid /plan payload: missing actions list")
 
         clean_actions = [a for a in actions if isinstance(a, dict)]
         ttl_ms = ttl_ms if isinstance(ttl_ms, int) else 0
-        return PersonalityPlan(actions=clean_actions, ttl_ms=ttl_ms)
+        return PlannerPlan(actions=clean_actions, ttl_ms=ttl_ms)
 
     def _require_client(self) -> httpx.AsyncClient:
         if self._client is None:
-            raise RuntimeError("personality client not started")
+            raise RuntimeError("planner client not started")
         return self._client
 
     @staticmethod

@@ -136,7 +136,7 @@ class TestFaceClientTelemetry:
 
     def test_touch_callback_fires(self):
         events = []
-        self.client.on_touch(lambda evt: events.append(evt))
+        self.client.subscribe_touch(lambda evt: events.append(evt))
         payload = struct.pack("<BHH", TouchEventType.RELEASE, 50, 75)
         pkt = ParsedPacket(pkt_type=FaceTelType.TOUCH_EVENT, seq=1, payload=payload)
         self.transport.inject_packet(pkt)
@@ -155,13 +155,24 @@ class TestFaceClientTelemetry:
 
     def test_button_callback_fires(self):
         events = []
-        self.client.on_button(lambda evt: events.append(evt))
+        self.client.subscribe_button(lambda evt: events.append(evt))
         payload = struct.pack("<BBBB", 1, FaceButtonEventType.CLICK, 0, 0)
         pkt = ParsedPacket(pkt_type=FaceTelType.BUTTON_EVENT, seq=9, payload=payload)
         self.transport.inject_packet(pkt)
         assert len(events) == 1
         assert events[0].button_id == 1
         assert events[0].event_type == FaceButtonEventType.CLICK
+
+    def test_button_callbacks_fan_out_to_multiple_subscribers(self):
+        events_a = []
+        events_b = []
+        self.client.subscribe_button(lambda evt: events_a.append(evt))
+        self.client.subscribe_button(lambda evt: events_b.append(evt))
+        payload = struct.pack("<BBBB", 1, FaceButtonEventType.CLICK, 1, 0)
+        pkt = ParsedPacket(pkt_type=FaceTelType.BUTTON_EVENT, seq=11, payload=payload)
+        self.transport.inject_packet(pkt)
+        assert len(events_a) == 1
+        assert len(events_b) == 1
 
     def test_heartbeat_updates_last_heartbeat(self):
         payload = struct.pack(

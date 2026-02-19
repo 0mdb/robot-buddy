@@ -8,9 +8,9 @@ from pydantic import ValidationError
 from app.llm.schemas import (
     EmoteAction,
     GestureAction,
-    MoveAction,
     PlanResponse,
     SayAction,
+    SkillAction,
     WorldState,
 )
 
@@ -85,31 +85,26 @@ def test_gesture_alias_normalized():
     assert a.name == "x_eyes"
 
 
-# -- MoveAction ---------------------------------------------------------------
+# -- SkillAction --------------------------------------------------------------
 
 
-def test_move_valid():
-    a = MoveAction(v_mm_s=200, w_mrad_s=-100, duration_ms=2000)
-    assert a.action == "move"
+def test_skill_valid():
+    a = SkillAction(name="investigate_ball")
+    assert a.action == "skill"
+    assert a.name == "investigate_ball"
 
 
-def test_move_speed_bounds():
+def test_skill_invalid_name_rejected():
     with pytest.raises(ValidationError):
-        MoveAction(v_mm_s=301)
+        SkillAction(name="follow_person")
 
+
+def test_move_action_rejected():
     with pytest.raises(ValidationError):
-        MoveAction(v_mm_s=-301)
-
-    with pytest.raises(ValidationError):
-        MoveAction(w_mrad_s=501)
-
-
-def test_move_duration_bounds():
-    with pytest.raises(ValidationError):
-        MoveAction(duration_ms=3001)
-
-    with pytest.raises(ValidationError):
-        MoveAction(duration_ms=-1)
+        PlanResponse(
+            actions=[{"action": "move", "v_mm_s": 100, "w_mrad_s": 0, "duration_ms": 500}],
+            ttl_ms=1000,
+        )
 
 
 # -- PlanResponse -------------------------------------------------------------
@@ -153,7 +148,7 @@ def test_plan_response_from_json():
             {"action": "emote", "name": "excited", "intensity": 0.9},
             {"action": "say", "text": "A ball!"},
             {"action": "gesture", "name": "look_at", "params": {"bearing": 15.0}},
-            {"action": "move", "v_mm_s": 150, "w_mrad_s": 50, "duration_ms": 1500}
+            {"action": "skill", "name": "investigate_ball"}
         ],
         "ttl_ms": 2000
     }"""
@@ -162,7 +157,7 @@ def test_plan_response_from_json():
     assert plan.actions[0].action == "emote"
     assert plan.actions[1].action == "say"
     assert plan.actions[2].action == "gesture"
-    assert plan.actions[3].action == "move"
+    assert plan.actions[3].action == "skill"
 
 
 def test_plan_json_schema_has_discriminator():

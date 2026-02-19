@@ -1,4 +1,4 @@
-"""POST /plan — generate a personality performance plan."""
+"""POST /plan — generate a planner performance plan."""
 
 from __future__ import annotations
 

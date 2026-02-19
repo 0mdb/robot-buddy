@@ -1,7 +1,7 @@
 [project]
 name = "robot-buddy-server"
 version = "0.1.0"
-description = "AI personality server for robot-buddy (runs on 3090 Ti)"
+description = "AI planner server for robot-buddy (runs on 3090 Ti)"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.110",

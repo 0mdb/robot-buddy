@@ -1,4 +1,4 @@
-# Ollama Modelfile for Robot Buddy personality model.
+# Ollama Modelfile for Robot Buddy planner model.
 #
 # Create with:  ollama create robot-buddy -f Modelfile
 # Run with:     ollama run robot-buddy

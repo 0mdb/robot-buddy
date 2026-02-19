@@ -35,6 +35,10 @@ class WorldState(BaseModel):
     v_capped: float = 0.0
     w_capped: float = 0.0
     trigger: str = "heartbeat"
+    recent_events: list[str] = Field(default_factory=list)
+    planner_active_skill: str = "patrol_drift"
+    face_talking: bool = False
+    face_listening: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -81,15 +85,18 @@ class GestureAction(BaseModel):
         return normalized
 
 
-class MoveAction(BaseModel):
-    action: Literal["move"] = "move"
-    v_mm_s: int = Field(ge=-300, le=300, default=0)
-    w_mrad_s: int = Field(ge=-500, le=500, default=0)
-    duration_ms: int = Field(ge=0, le=3000, default=1000)
+class SkillAction(BaseModel):
+    action: Literal["skill"] = "skill"
+    name: Literal[
+        "patrol_drift",
+        "investigate_ball",
+        "avoid_obstacle",
+        "greet_on_button",
+    ]
 
 
 PlanAction = Annotated[
-    Union[SayAction, EmoteAction, GestureAction, MoveAction],
+    Union[SayAction, EmoteAction, GestureAction, SkillAction],
     Field(discriminator="action"),
 ]
 

@@ -6,21 +6,27 @@ import asyncio
 import logging
 import time
 
+from supervisor.devices.audio_orchestrator import AudioOrchestrator
 from supervisor.devices.expressions import (
-    GESTURE_TO_FACE_ID,
     EMOTION_TO_FACE_MOOD,
+    GESTURE_TO_FACE_ID,
     normalize_emotion_name,
     normalize_face_gesture_name,
 )
 from supervisor.devices.face_client import FaceClient
-from supervisor.devices.personality_client import (
-    PersonalityClient,
-    PersonalityError,
-    PersonalityPlan,
+from supervisor.devices.planner_client import PlannerClient, PlannerError, PlannerPlan
+from supervisor.devices.protocol import (
+    FaceButtonEventType,
+    FaceButtonId,
+    FaceSystemMode,
+    Fault,
 )
-from supervisor.devices.protocol import FaceSystemMode, Fault
 from supervisor.devices.reflex_client import ReflexClient
 from supervisor.inputs.camera_vision import VisionProcess
+from supervisor.planner.event_bus import PlannerEventBus
+from supervisor.planner.scheduler import PlannerScheduler
+from supervisor.planner.skill_executor import SkillExecutor
+from supervisor.planner.validator import PlannerValidator
 from supervisor.state.datatypes import DesiredTwist, Mode, RobotState
 from supervisor.state.policies import apply_safety
 from supervisor.state.supervisor_sm import SupervisorSM
@@ -36,6 +42,7 @@ _JITTER_WARN_MS = 5.0
 _PLAN_PERIOD_S = 1.0
 _PLAN_RETRY_S = 3.0
 
+
 class Runtime:
     """Orchestrates the 50 Hz control loop."""
 
@@ -45,12 +52,14 @@ class Runtime:
         on_telemetry: callable | None = None,
         vision: VisionProcess | None = None,
         face: FaceClient | None = None,
-        personality: PersonalityClient | None = None,
+        planner: PlannerClient | None = None,
+        audio: AudioOrchestrator | None = None,
     ) -> None:
         self._reflex = reflex
         self._face = face
         self._vision = vision
-        self._personality = personality
+        self._planner = planner
+        self._audio = audio
         self._sm = SupervisorSM()
         self._state = RobotState()
         self._teleop_twist = DesiredTwist()
@@ -58,12 +67,24 @@ class Runtime:
         self._running = False
         self._tick_count = 0
         self._last_tick_mono = 0.0
-        self._personality_task: asyncio.Task[PersonalityPlan] | None = None
+        self._planner_task: asyncio.Task[PlannerPlan] | None = None
+        self._planner_task_started_mono_ms = 0.0
         self._next_plan_mono = 0.0
         self._last_face_system_mode: int | None = None
+        self._next_greet_allowed_mono_ms = 0.0
+        self._greet_skill_until_mono_ms = 0.0
 
-        if personality:
-            self._state.personality_enabled = True
+        self._event_bus = PlannerEventBus()
+        self._skill_executor = SkillExecutor()
+        self._planner_validator = PlannerValidator()
+        self._planner_scheduler = PlannerScheduler()
+
+        if face is not None:
+            face.subscribe_button(self._on_face_button)
+            face.subscribe_touch(self._on_face_touch)
+
+        if planner:
+            self._state.planner_enabled = True
 
     @property
     def state(self) -> RobotState:
@@ -89,7 +110,7 @@ class Runtime:
             self._last_tick_mono = t0
 
             self._tick(t0, dt_ms)
-            self._step_personality(t0)
+            self._step_planner(t0)
 
             elapsed = time.monotonic() - t0
             sleep_s = max(0.0, TICK_PERIOD_S - elapsed)
@@ -97,8 +118,8 @@ class Runtime:
 
     def stop(self) -> None:
         self._running = False
-        if self._personality_task and not self._personality_task.done():
-            self._personality_task.cancel()
+        if self._planner_task and not self._planner_task.done():
+            self._planner_task.cancel()
 
     def request_mode(self, target: Mode) -> tuple[bool, str]:
         return self._sm.request_mode(
@@ -126,12 +147,24 @@ class Runtime:
                 "age_ms": round(self._state.vision_age_ms, 1),
                 "clear_confidence": round(self._state.clear_confidence, 2),
             },
+            "audio": {
+                "enabled": self._audio is not None,
+            },
             "tick_hz": TICK_HZ,
             "telemetry_hz": TELEMETRY_HZ,
         }
         if self._face is not None:
             debug["face"] = self._face.debug_snapshot()
+        if self._audio is not None:
+            debug["audio"] = self._audio.debug_snapshot()
         return debug
+
+    def debug_planner(self) -> dict:
+        return {
+            "events": self._event_bus.snapshot(limit=100),
+            "scheduler": self._planner_scheduler.snapshot(),
+            "audio": self._audio.debug_snapshot() if self._audio else {"enabled": False},
+        }
 
     # -- tick ----------------------------------------------------------------
 
@@ -189,24 +222,31 @@ class Runtime:
                 s.vision_fps = snap.fps
             # If snap is None, keep previous values (vision_age_ms will grow stale)
 
-        # 2. Update state machine
+        # 2. Edge-detect into event bus
+        self._event_bus.ingest_state(s)
+        s.planner_event_count = self._event_bus.event_count
+
+        # 3. Update state machine
         s.mode = self._sm.update(s.reflex_connected, s.fault_flags)
 
-        # 3. Get desired twist from active input
+        # 4. Get desired twist from active input/skill
         if s.mode == Mode.TELEOP:
             s.twist_cmd = DesiredTwist(
                 self._teleop_twist.v_mm_s, self._teleop_twist.w_mrad_s
             )
         elif s.mode == Mode.WANDER:
-            # TODO: wander behavior
-            s.twist_cmd = DesiredTwist(0, 0)
+            s.twist_cmd = self._skill_executor.step(
+                s,
+                active_skill=self._planner_scheduler.active_skill,
+                recent_events=self._event_bus.latest(limit=20),
+            )
         else:
             s.twist_cmd = DesiredTwist(0, 0)
 
-        # 4. Apply safety policy
+        # 5. Apply safety policy
         s.twist_capped = apply_safety(s.twist_cmd, s)
 
-        # 5. Send to reflex
+        # 6. Send to reflex
         if s.reflex_connected:
             if s.twist_capped.v_mm_s == 0 and s.twist_capped.w_mrad_s == 0:
                 # Still send zero twist to reset command watchdog
@@ -214,7 +254,7 @@ class Runtime:
             else:
                 self._reflex.send_twist(s.twist_capped.v_mm_s, s.twist_capped.w_mrad_s)
 
-        # 6. Push system mode to face
+        # 7. Push system mode to face
         if self._face:
             if self._face.connected:
                 if s.mode == Mode.BOOT:
@@ -230,48 +270,64 @@ class Runtime:
             else:
                 self._last_face_system_mode = None
 
-        # 7. Broadcast telemetry at decimated rate
+        # 8. Execute due planner actions
+        self._execute_due_planner_actions()
+
+        # 9. Mirror planner scheduler/audio state into telemetry payload
+        if (
+            self._planner_scheduler.active_skill == "greet_on_button"
+            and s.tick_mono_ms >= self._greet_skill_until_mono_ms
+        ):
+            self._planner_scheduler.active_skill = "patrol_drift"
+
+        s.planner_active_skill = self._planner_scheduler.active_skill
+        s.planner_plan_dropped_stale = self._planner_scheduler.plan_dropped_stale
+        s.planner_plan_dropped_cooldown = self._planner_scheduler.plan_dropped_cooldown
+        if self._audio is not None:
+            s.planner_speech_queue_depth = self._audio.speech_queue_depth
+
+        # 10. Broadcast telemetry at decimated rate
         self._tick_count += 1
         if self._on_telemetry and (self._tick_count % _TELEM_EVERY_N == 0):
             self._on_telemetry(s)
 
-    def _step_personality(self, t0: float) -> None:
-        if not self._personality:
+    def _step_planner(self, t0: float) -> None:
+        if not self._planner:
             return
 
         s = self._state
 
-        if self._personality_task and self._personality_task.done():
+        if self._planner_task and self._planner_task.done():
             try:
-                plan = self._personality_task.result()
-                s.personality_connected = True
-                s.personality_last_error = ""
-                self._apply_personality_plan(plan)
+                plan = self._planner_task.result()
+                s.planner_connected = True
+                s.planner_last_error = ""
+                self._apply_planner_plan(plan)
                 self._next_plan_mono = t0 + _PLAN_PERIOD_S
             except asyncio.CancelledError:
                 self._next_plan_mono = t0 + _PLAN_RETRY_S
-            except PersonalityError as e:
-                s.personality_connected = False
-                s.personality_last_error = str(e)
+            except PlannerError as e:
+                s.planner_connected = False
+                s.planner_last_error = str(e)
                 self._next_plan_mono = t0 + _PLAN_RETRY_S
-                log.warning("personality: %s", e)
+                log.warning("planner: %s", e)
             except Exception as e:
-                s.personality_connected = False
-                s.personality_last_error = str(e)
+                s.planner_connected = False
+                s.planner_last_error = str(e)
                 self._next_plan_mono = t0 + _PLAN_RETRY_S
-                log.warning("personality: unexpected error: %s", e)
+                log.warning("planner: unexpected error: %s", e)
             finally:
-                self._personality_task = None
+                self._planner_task = None
 
-        if self._personality_task is None and t0 >= self._next_plan_mono:
+        if self._planner_task is None and t0 >= self._next_plan_mono:
             world_state = self._build_world_state()
-            self._personality_task = asyncio.create_task(
-                self._personality.request_plan(world_state)
-            )
+            self._planner_task_started_mono_ms = t0 * 1000.0
+            self._planner_task = asyncio.create_task(self._planner.request_plan(world_state))
 
     def _build_world_state(self) -> dict:
         s = self._state
         trigger = "ball_seen" if s.ball_confidence >= 0.7 else "heartbeat"
+        recent_events = [e.type for e in self._event_bus.latest(limit=8)]
         return {
             "mode": s.mode.value,
             "battery_mv": s.battery_mv,
@@ -285,6 +341,10 @@ class Runtime:
             "v_capped": s.twist_capped.v_mm_s,
             "w_capped": s.twist_capped.w_mrad_s,
             "trigger": trigger,
+            "recent_events": recent_events,
+            "planner_active_skill": self._planner_scheduler.active_skill,
+            "face_talking": s.face_talking,
+            "face_listening": s.face_listening,
         }
 
     @staticmethod
@@ -297,26 +357,41 @@ class Runtime:
                 names.append(fault.name)
         return names
 
-    def _apply_personality_plan(self, plan: PersonalityPlan) -> None:
+    def _apply_planner_plan(self, plan: PlannerPlan) -> None:
         s = self._state
-        s.personality_last_plan_mono_ms = time.monotonic() * 1000.0
-        s.personality_last_plan_actions = len(plan.actions)
-        s.personality_last_plan = plan.actions
+        now_ms = time.monotonic() * 1000.0
+        validated = self._planner_validator.validate(plan.actions, plan.ttl_ms)
+        s.planner_last_plan_mono_ms = now_ms
+        s.planner_last_plan_actions = len(validated.actions)
+        s.planner_last_plan = validated.actions
 
-        if not self._face or not self._face.connected:
+        if validated.dropped_actions:
+            self._planner_scheduler.plan_dropped_cooldown += validated.dropped_actions
+
+        self._planner_scheduler.schedule_plan(
+            validated,
+            now_mono_ms=now_ms,
+            issued_mono_ms=self._planner_task_started_mono_ms,
+        )
+
+    def _execute_due_planner_actions(self) -> None:
+        s = self._state
+        face_locked = bool(s.face_listening or s.face_talking)
+        actions = self._planner_scheduler.pop_due_actions(
+            now_mono_ms=s.tick_mono_ms,
+            face_locked=face_locked,
+        )
+        if not actions:
             return
 
-        face_locked = bool(s.face_listening or s.face_talking)
-
-        for action in plan.actions:
+        for action in actions:
             action_type = action.get("action")
 
             if action_type == "emote":
-                if face_locked:
+                if not self._face or not self._face.connected:
                     continue
-                raw_name = str(action.get("name", ""))
-                name = normalize_emotion_name(raw_name)
-                if name is None:
+                name = normalize_emotion_name(str(action.get("name", "")))
+                if not name:
                     continue
                 mood = EMOTION_TO_FACE_MOOD.get(name)
                 if mood is None:
@@ -330,11 +405,10 @@ class Runtime:
                 )
 
             elif action_type == "gesture":
-                if face_locked:
+                if not self._face or not self._face.connected:
                     continue
-                raw_name = str(action.get("name", ""))
-                name = normalize_face_gesture_name(raw_name)
-                if name is None:
+                name = normalize_face_gesture_name(str(action.get("name", "")))
+                if not name:
                     continue
                 gesture_id = GESTURE_TO_FACE_ID.get(name)
                 if gesture_id is not None:
@@ -343,4 +417,38 @@ class Runtime:
             elif action_type == "say":
                 text = action.get("text")
                 if isinstance(text, str) and text:
-                    log.info("personality say: %s", text[:120])
+                    if self._audio is None:
+                        self._planner_scheduler.plan_dropped_cooldown += 1
+                    elif not self._audio.enqueue_speech(text):
+                        self._planner_scheduler.plan_dropped_cooldown += 1
+
+    def _on_face_button(self, evt) -> None:
+        self._event_bus.on_face_button(evt)
+        if evt.button_id != int(FaceButtonId.ACTION):
+            return
+        if evt.event_type != int(FaceButtonEventType.CLICK):
+            return
+
+        now_ms = float(evt.timestamp_mono_ms)
+        if now_ms < self._next_greet_allowed_mono_ms:
+            return
+
+        self._next_greet_allowed_mono_ms = now_ms + 5000.0
+        self._greet_skill_until_mono_ms = now_ms + 1800.0
+        routine = self._planner_validator.validate(
+            [
+                {"action": "skill", "name": "greet_on_button"},
+                {"action": "emote", "name": "happy", "intensity": 0.8},
+                {"action": "gesture", "name": "nod"},
+                {"action": "say", "text": "Hi friend!"},
+            ],
+            ttl_ms=1600,
+        )
+        self._planner_scheduler.schedule_plan(
+            routine,
+            now_mono_ms=now_ms,
+            issued_mono_ms=now_ms,
+        )
+
+    def _on_face_touch(self, evt) -> None:
+        self._event_bus.on_face_touch(evt)

@@ -106,9 +106,9 @@ Expected:
 - `"face_connected": true`
 - `"reflex_connected": true` (because `--mock` is enabled)
 
-## Personality Server Timeout Tuning
+## Planner Server Timeout Tuning
 
-If `personality_connected` flaps with `"/plan returned 504: Model took too long to respond"`, increase both server and supervisor timeouts.
+If `planner_connected` flaps with `"/plan returned 504: Model took too long to respond"`, increase both server and supervisor timeouts.
 
 Server (3090 host):
 
@@ -125,16 +125,16 @@ cd ~/robot-buddy/supervisor
   --mock \
   --face-port /dev/serial/by-id/usb-Espressif_Systems_Espressif_Device_123456-if00 \
   --no-vision \
-  --server-api http://192.168.55.64:8100 \
-  --server-timeout 15.0 \
+  --planner-api http://192.168.55.64:8100 \
+  --planner-timeout 15.0 \
   --http-port 8080
 ```
 
 Target status fields:
 
-- `"personality_enabled": true`
-- `"personality_connected": true`
-- `"personality_last_error": ""`
+- `"planner_enabled": true`
+- `"planner_connected": true`
+- `"planner_last_error": ""`
 
 ## Supervisor Diagnostics (Face Audio Bring-up)
 

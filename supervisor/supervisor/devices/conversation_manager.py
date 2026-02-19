@@ -1,4 +1,4 @@
-"""Conversation manager — bridges personality server with local USB audio + face."""
+"""Conversation manager — bridges planner server with local USB audio + face."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ from supervisor.devices.face_client import FaceClient
 
 log = logging.getLogger(__name__)
 
-# Audio format constants (personality server stream + local USB audio)
+# Audio format constants (planner server stream + local USB audio)
 SAMPLE_RATE = 16000
 SAMPLE_WIDTH = 2  # 16-bit signed
 CHANNELS = 1

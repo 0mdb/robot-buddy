@@ -1,4 +1,4 @@
-"""Personality server entry point."""
+"""Planner server entry point."""
 
 from __future__ import annotations
 
@@ -41,7 +41,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Robot Buddy Personality Server",
+    title="Robot Buddy Planner Server",
     version="0.1.0",
     lifespan=lifespan,
 )
