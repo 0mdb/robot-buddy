@@ -652,6 +652,14 @@
             <div class="gauge-label">face lock</div>
             <div class="gauge-value" id="g-face-lock">--</div>
           </div>
+          <div class="gauge">
+            <div class="gauge-label">face hw</div>
+            <div class="gauge-value" id="g-face-conn">--</div>
+          </div>
+          <div class="gauge">
+            <div class="gauge-label">reflex hw</div>
+            <div class="gauge-value" id="g-reflex-conn">--</div>
+          </div>
         </div>
       </details>
 
@@ -887,6 +895,14 @@
       document.getElementById('g-face-mood').textContent = p.face_mood;
       document.getElementById('g-face-talking').textContent = p.face_talking;
       document.getElementById('g-face-lock').textContent = p.face_manual_lock ? 'LOCKED' : 'AUTO';
+
+      const fConn = document.getElementById('g-face-conn');
+      fConn.textContent = p.face_connected ? 'OK' : 'ERR';
+      fConn.style.color = p.face_connected ? 'var(--green)' : 'var(--red)';
+
+      const rConn = document.getElementById('g-reflex-conn');
+      rConn.textContent = p.reflex_connected ? 'OK' : 'ERR';
+      rConn.style.color = p.reflex_connected ? 'var(--green)' : 'var(--red)';
 
       // Last LLM plan
       const planEl = document.getElementById('llm-plan');
