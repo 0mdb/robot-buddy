@@ -101,9 +101,7 @@ def vision_main(
                 pass
 
             # Capture
-            # rgb = cam.capture_array()
             rgb = cam.capture_array()
-            rgb = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
             rgb = cv2.rotate(rgb, cv2.ROTATE_180)
             small = cv2.resize(rgb, process_size)
 
