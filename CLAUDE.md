@@ -33,14 +33,14 @@ robot-buddy/
 
 ## Tech Stack
 
-| Component | Stack |
-|-----------|-------|
-| Supervisor | Python 3.11+, asyncio, FastAPI, uvicorn, pyserial, OpenCV |
-| ESP32 firmware | C/C++, ESP-IDF (FreeRTOS), CMake |
+| Component      | Stack                                                      |
+| -------------- | ---------------------------------------------------------- |
+| Supervisor     | Python 3.11+, asyncio, FastAPI, uvicorn, pyserial, OpenCV  |
+| ESP32 firmware | C/C++, ESP-IDF (FreeRTOS), CMake                           |
 | Build (Python) | Hatchling via pyproject.toml, uv for dependency management |
-| Build (ESP32) | `idf.py build` (CMake) |
-| Tests | pytest, pytest-asyncio |
-| Linting | ruff (>=0.15.1) |
+| Build (ESP32)  | `idf.py build` (CMake)                                     |
+| Tests          | pytest, pytest-asyncio                                     |
+| Linting        | ruff (>=0.15.1)                                            |
 
 ## Common Commands
 
@@ -181,3 +181,12 @@ Layered defense-in-depth:
 ## Files to Avoid Committing
 
 Per `.gitignore`: `__pycache__/`, `*.pyc`, `.env`, `.venv/`, `build/`, `dist/`, `sdkconfig`, `*.lock`
+
+# TODO
+- add trigger word so conversations flow more naturally.  wait for silence.  remove need to press button
+- upgrade the camera and adjust settings
+- add camera calibration/mask/cv settings in supervisor dash
+- fix server issue when trying to run better tts model
+- don't send planner updates so often
+- add llm history so conversations feel more natural
+- 
