@@ -61,7 +61,9 @@ def vision_main(
             )
         )
         cam.start()
-        log.info("vision_worker: camera started (%dx%d)", *capture_size)
+        img0 = cam.capture_array()
+        log.info("vision_worker: first frame shape=%s dtype=%s", img0.shape, img0.dtype)
+
     except Exception as e:
         log.warning("vision_worker: camera unavailable (%s), exiting", e)
         # Signal "no camera" and exit
@@ -100,12 +102,27 @@ def vision_main(
             except Empty:
                 pass
 
-            # Capture
-            rgb = cam.capture_array()
-            # bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
-            bgr = rgb
-            # bgr = cv2.cvtColor(rgb, cv2.COLOR_BGRA2BGR)
+            # # Capture
+            # rgb = cam.capture_array()
+            # # bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+            # bgr = rgb
+            # # bgr = cv2.cvtColor(rgb, cv2.COLOR_BGRA2BGR)
+            # bgr = cv2.rotate(bgr, cv2.ROTATE_180)
+            # small = cv2.resize(bgr, process_size)
+            img = cam.capture_array()
+
+            # Convert camera output to BGR (what your detectors expect)
+            if img.ndim == 3 and img.shape[2] == 4:
+                bgr = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+            elif img.ndim == 3 and img.shape[2] == 3:
+                # You asked for RGB888, so this should be RGB
+                bgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+            else:
+                raise RuntimeError(f"Unexpected camera frame shape: {img.shape}")
+
+            # Orientation fix
             bgr = cv2.rotate(bgr, cv2.ROTATE_180)
+
             small = cv2.resize(bgr, process_size)
 
             # Detect
