@@ -19,6 +19,7 @@ class PlannerEvent:
     type: str
     payload: dict
     t_mono_ms: float
+    seq: int = 0
 
 
 class PlannerEventBus:
@@ -50,9 +51,13 @@ class PlannerEventBus:
         self._obstacle_close_mm = obstacle_close_mm
         self._obstacle_clear_mm = obstacle_clear_mm
         self._vision_stale_ms = vision_stale_ms
+        self._next_seq = 1
 
     def emit(self, event_type: str, payload: dict, t_mono_ms: float) -> None:
-        self._events.append(PlannerEvent(event_type, payload, t_mono_ms))
+        self._events.append(
+            PlannerEvent(event_type, payload, t_mono_ms, seq=self._next_seq)
+        )
+        self._next_seq += 1
 
     def on_face_button(self, evt) -> None:
         """Accept FaceClient ButtonEvent callback payload."""
@@ -190,9 +195,22 @@ class PlannerEventBus:
             return []
         return list(self._events)[-limit:]
 
+    def events_since(self, seq: int, *, limit: int = 100) -> list[PlannerEvent]:
+        if limit <= 0:
+            return []
+        start_seq = int(seq)
+        events = [e for e in self._events if e.seq > start_seq]
+        return events[-limit:]
+
     @property
     def event_count(self) -> int:
         return len(self._events)
+
+    @property
+    def last_seq(self) -> int:
+        if not self._events:
+            return 0
+        return int(self._events[-1].seq)
 
     def snapshot(self, limit: int = 20) -> dict:
         return {

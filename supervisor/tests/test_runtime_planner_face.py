@@ -109,7 +109,44 @@ def test_action_button_triggers_greet_routine_with_cooldown():
     assert face.state_calls
     assert face.gesture_calls
     assert audio.said == ["Hi friend!"]
+    assert runtime.state.planner_say_requested == 1
+    assert runtime.state.planner_say_enqueued == 1
 
     runtime._on_face_button(evt)
     runtime._execute_due_planner_actions()
     assert audio.said == ["Hi friend!"]
+
+
+def test_event_speech_policy_enqueues_ball_line_and_updates_counters():
+    audio = _FakeAudio()
+    runtime = Runtime(reflex=_FakeReflex(), audio=audio)
+    runtime.state.tick_mono_ms = time.monotonic() * 1000.0
+
+    runtime._event_bus.emit(
+        "vision.ball_acquired",
+        {"confidence": 0.9, "bearing_deg": 5.0},
+        runtime.state.tick_mono_ms,
+    )
+    runtime._step_speech_policy()
+
+    assert runtime.state.planner_say_requested == 1
+    assert runtime.state.planner_say_enqueued == 1
+    assert len(audio.said) == 1
+
+
+def test_event_speech_policy_tracks_drop_reasons_when_face_busy():
+    audio = _FakeAudio()
+    runtime = Runtime(reflex=_FakeReflex(), audio=audio)
+    runtime.state.tick_mono_ms = time.monotonic() * 1000.0
+    runtime.state.face_talking = True
+
+    runtime._event_bus.emit(
+        "vision.ball_acquired",
+        {"confidence": 0.9, "bearing_deg": 5.0},
+        runtime.state.tick_mono_ms,
+    )
+    runtime._step_speech_policy()
+
+    assert runtime.state.planner_say_requested == 0
+    assert runtime.state.planner_say_enqueued == 0
+    assert runtime.state.planner_say_dropped_reason["policy_face_busy"] == 1

@@ -96,6 +96,9 @@ class RobotState:
     planner_plan_dropped_stale: int = 0
     planner_plan_dropped_cooldown: int = 0
     planner_speech_queue_depth: int = 0
+    planner_say_requested: int = 0
+    planner_say_enqueued: int = 0
+    planner_say_dropped_reason: dict[str, int] = field(default_factory=dict)
 
     # Safety
     speed_caps: list[SpeedCap] = field(default_factory=list)
@@ -160,6 +163,9 @@ class RobotState:
             "planner_plan_dropped_stale": self.planner_plan_dropped_stale,
             "planner_plan_dropped_cooldown": self.planner_plan_dropped_cooldown,
             "planner_speech_queue_depth": self.planner_speech_queue_depth,
+            "planner_say_requested": self.planner_say_requested,
+            "planner_say_enqueued": self.planner_say_enqueued,
+            "planner_say_dropped_reason": dict(self.planner_say_dropped_reason),
             "speed_caps": [
                 {"scale": c.scale, "reason": c.reason} for c in self.speed_caps
             ],

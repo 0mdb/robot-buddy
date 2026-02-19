@@ -49,3 +49,20 @@ def test_mode_change_and_fault_edges():
     bus.ingest_state(s)
     assert bus.latest(limit=1)[0].type == "fault.cleared"
 
+
+def test_events_since_sequence_cursor():
+    bus = PlannerEventBus()
+    s = _state(mode=Mode.IDLE, tick_mono_ms=1000.0, ball_confidence=0.1)
+    bus.ingest_state(s)
+
+    s.tick_mono_ms = 1200.0
+    s.ball_confidence = 0.8
+    bus.ingest_state(s)
+    first = bus.latest(limit=1)[0]
+
+    s.tick_mono_ms = 1400.0
+    s.ball_confidence = 0.1
+    bus.ingest_state(s)
+
+    newer = bus.events_since(first.seq)
+    assert [e.type for e in newer] == ["vision.ball_lost"]

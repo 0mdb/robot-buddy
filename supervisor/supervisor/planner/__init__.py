@@ -3,6 +3,7 @@
 from supervisor.planner.event_bus import PlannerEvent, PlannerEventBus
 from supervisor.planner.scheduler import PlannerScheduler
 from supervisor.planner.skill_executor import SkillExecutor
+from supervisor.planner.speech_policy import SpeechIntent, SpeechPolicy
 from supervisor.planner.validator import PlannerValidator, ValidatedPlannerPlan
 
 __all__ = [
@@ -10,7 +11,8 @@ __all__ = [
     "PlannerEventBus",
     "PlannerScheduler",
     "SkillExecutor",
+    "SpeechIntent",
+    "SpeechPolicy",
     "PlannerValidator",
     "ValidatedPlannerPlan",
 ]
-

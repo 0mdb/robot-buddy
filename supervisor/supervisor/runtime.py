@@ -26,6 +26,7 @@ from supervisor.inputs.camera_vision import VisionProcess
 from supervisor.planner.event_bus import PlannerEventBus
 from supervisor.planner.scheduler import PlannerScheduler
 from supervisor.planner.skill_executor import SkillExecutor
+from supervisor.planner.speech_policy import SpeechPolicy
 from supervisor.planner.validator import PlannerValidator
 from supervisor.state.datatypes import DesiredTwist, Mode, RobotState
 from supervisor.state.policies import apply_safety
@@ -78,6 +79,8 @@ class Runtime:
         self._skill_executor = SkillExecutor()
         self._planner_validator = PlannerValidator()
         self._planner_scheduler = PlannerScheduler()
+        self._speech_policy = SpeechPolicy()
+        self._speech_event_seq_cursor = 0
 
         if face is not None:
             face.subscribe_button(self._on_face_button)
@@ -163,6 +166,12 @@ class Runtime:
         return {
             "events": self._event_bus.snapshot(limit=100),
             "scheduler": self._planner_scheduler.snapshot(),
+            "speech_policy": self._speech_policy.snapshot(),
+            "say_counters": {
+                "requested": self._state.planner_say_requested,
+                "enqueued": self._state.planner_say_enqueued,
+                "dropped_reason": dict(self._state.planner_say_dropped_reason),
+            },
             "audio": self._audio.debug_snapshot() if self._audio else {"enabled": False},
         }
 
@@ -273,7 +282,10 @@ class Runtime:
         # 8. Execute due planner actions
         self._execute_due_planner_actions()
 
-        # 9. Mirror planner scheduler/audio state into telemetry payload
+        # 9. Event-driven deterministic speech overlay
+        self._step_speech_policy()
+
+        # 10. Mirror planner scheduler/audio state into telemetry payload
         if (
             self._planner_scheduler.active_skill == "greet_on_button"
             and s.tick_mono_ms >= self._greet_skill_until_mono_ms
@@ -286,7 +298,7 @@ class Runtime:
         if self._audio is not None:
             s.planner_speech_queue_depth = self._audio.speech_queue_depth
 
-        # 10. Broadcast telemetry at decimated rate
+        # 11. Broadcast telemetry at decimated rate
         self._tick_count += 1
         if self._on_telemetry and (self._tick_count % _TELEM_EVERY_N == 0):
             self._on_telemetry(s)
@@ -417,9 +429,7 @@ class Runtime:
             elif action_type == "say":
                 text = action.get("text")
                 if isinstance(text, str) and text:
-                    if self._audio is None:
-                        self._planner_scheduler.plan_dropped_cooldown += 1
-                    elif not self._audio.enqueue_speech(text):
+                    if not self._enqueue_say(text, source="planner"):
                         self._planner_scheduler.plan_dropped_cooldown += 1
 
     def _on_face_button(self, evt) -> None:
@@ -452,3 +462,49 @@ class Runtime:
 
     def _on_face_touch(self, evt) -> None:
         self._event_bus.on_face_touch(evt)
+
+    def _step_speech_policy(self) -> None:
+        s = self._state
+        new_events = self._event_bus.events_since(self._speech_event_seq_cursor, limit=32)
+        if not new_events:
+            return
+        self._speech_event_seq_cursor = int(new_events[-1].seq)
+
+        intents, drops = self._speech_policy.generate(
+            state=s,
+            events=new_events,
+            now_mono_ms=s.tick_mono_ms,
+        )
+        for reason in drops:
+            self._record_say_drop(reason)
+        for intent in intents:
+            self._enqueue_say(intent.text, source="policy")
+
+    def _enqueue_say(self, text: str, *, source: str) -> bool:
+        s = self._state
+        if not isinstance(text, str):
+            self._record_say_drop(f"{source}_invalid_text")
+            return False
+        clean = text.strip()
+        if not clean:
+            self._record_say_drop(f"{source}_empty_text")
+            return False
+
+        s.planner_say_requested += 1
+        if self._audio is None:
+            self._record_say_drop(f"{source}_audio_unavailable")
+            return False
+        if not self._audio.enqueue_speech(clean):
+            self._record_say_drop(f"{source}_queue_full")
+            return False
+
+        s.planner_say_enqueued += 1
+        return True
+
+    def _record_say_drop(self, reason: str) -> None:
+        if not reason:
+            return
+        s = self._state
+        s.planner_say_dropped_reason[reason] = (
+            s.planner_say_dropped_reason.get(reason, 0) + 1
+        )
