@@ -198,6 +198,8 @@ class AudioOrchestrator:
             "-q",
             "-D",
             self._speaker_device,
+            "--buffer-time=20000",  # 20 ms
+            "--period-time=10000",  # 10 ms
             "-c",
             str(CHANNELS),
             "-r",
