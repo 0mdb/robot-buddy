@@ -50,12 +50,20 @@ def test_format_user_prompt_ball_detected():
         battery_mv=7500,
         range_mm=600,
         ball_detected=True,
+        ball_confidence=0.93,
         ball_bearing_deg=15.3,
+        vision_age_ms=120.0,
+        planner_active_skill="investigate_ball",
+        recent_events=["vision.ball_acquired", "mode.changed"],
         trigger="ball_seen",
     )
     prompt = format_user_prompt(ws)
     assert "Ball detected: True" in prompt
+    assert "confidence: 0.93" in prompt
     assert "15.3" in prompt
+    assert "Vision age: 120 ms" in prompt
+    assert "Active skill: investigate_ball" in prompt
+    assert "vision.ball_acquired" in prompt
     assert "ball_seen" in prompt
 
 

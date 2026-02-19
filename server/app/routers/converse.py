@@ -215,5 +215,8 @@ async def _generate_and_stream(
             log.exception("TTS stream failed")
             await ws.send_json({"type": "error", "message": "tts_unavailable"})
             return
+        if chunk_index == 0:
+            await ws.send_json({"type": "error", "message": "tts_unavailable"})
+            return
 
     await ws.send_json({"type": "done"})

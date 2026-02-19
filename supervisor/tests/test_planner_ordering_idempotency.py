@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 
+from supervisor.devices.protocol import Fault
 from supervisor.devices.planner_client import PlannerPlan
 from supervisor.runtime import Runtime
 
@@ -53,3 +54,27 @@ def test_world_state_includes_robot_metadata_fields():
     assert world["robot_id"] == "robot-xyz"
     assert world["seq"] == 77
     assert world["monotonic_ts_ms"] == 123456
+
+
+def test_world_state_ball_detection_is_gated_by_signal_quality_and_faults():
+    runtime = Runtime(reflex=_FakeReflex(), robot_id="robot-xyz")
+    s = runtime.state
+    s.tick_mono_ms = 123456.0
+    s.ball_confidence = 1.0
+    s.ball_bearing_deg = 1.5
+    s.vision_age_ms = 80.0
+
+    s.clear_confidence = 0.14
+    world = runtime._build_world_state(req_seq=1)
+    assert world["ball_detected"] is False
+    assert world["trigger"] == "heartbeat"
+
+    s.clear_confidence = 0.55
+    world = runtime._build_world_state(req_seq=2)
+    assert world["ball_detected"] is True
+    assert world["trigger"] == "ball_seen"
+
+    s.fault_flags = int(Fault.CMD_TIMEOUT)
+    world = runtime._build_world_state(req_seq=3)
+    assert world["ball_detected"] is False
+    assert world["trigger"] == "heartbeat"

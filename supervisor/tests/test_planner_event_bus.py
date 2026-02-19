@@ -13,7 +13,13 @@ def _state(**updates) -> RobotState:
 
 def test_ball_acquired_and_lost_edges():
     bus = PlannerEventBus()
-    s = _state(mode=Mode.IDLE, tick_mono_ms=1000.0, ball_confidence=0.2)
+    s = _state(
+        mode=Mode.IDLE,
+        tick_mono_ms=1000.0,
+        ball_confidence=0.2,
+        clear_confidence=0.6,
+        vision_age_ms=20.0,
+    )
     bus.ingest_state(s)
     assert bus.event_count == 0
 
@@ -52,7 +58,13 @@ def test_mode_change_and_fault_edges():
 
 def test_events_since_sequence_cursor():
     bus = PlannerEventBus()
-    s = _state(mode=Mode.IDLE, tick_mono_ms=1000.0, ball_confidence=0.1)
+    s = _state(
+        mode=Mode.IDLE,
+        tick_mono_ms=1000.0,
+        ball_confidence=0.1,
+        clear_confidence=0.6,
+        vision_age_ms=20.0,
+    )
     bus.ingest_state(s)
 
     s.tick_mono_ms = 1200.0
@@ -66,3 +78,29 @@ def test_events_since_sequence_cursor():
 
     newer = bus.events_since(first.seq)
     assert [e.type for e in newer] == ["vision.ball_lost"]
+
+
+def test_ball_events_require_fresh_clear_fault_free_signal():
+    bus = PlannerEventBus()
+    s = _state(
+        mode=Mode.IDLE,
+        tick_mono_ms=1000.0,
+        ball_confidence=0.9,
+        clear_confidence=0.14,
+        vision_age_ms=20.0,
+        fault_flags=0,
+    )
+    bus.ingest_state(s)
+    assert bus.event_count == 0
+
+    s.tick_mono_ms = 1200.0
+    s.clear_confidence = 0.6
+    bus.ingest_state(s)
+    assert bus.latest(limit=1)[0].type == "vision.ball_acquired"
+
+    seq_before_fault = bus.last_seq
+    s.tick_mono_ms = 1400.0
+    s.fault_flags = 1
+    bus.ingest_state(s)
+    emitted = [e.type for e in bus.events_since(seq_before_fault)]
+    assert "vision.ball_lost" in emitted

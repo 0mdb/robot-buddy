@@ -63,3 +63,22 @@ async def test_tts_busy_no_fallback_returns_503(monkeypatch):
         resp = await client.post("/tts", json={"text": "hello", "emotion": "neutral"})
     assert resp.status_code == 503
     assert resp.json()["detail"] == "tts_busy_no_fallback"
+
+
+@pytest.mark.asyncio
+async def test_tts_empty_audio_returns_503(monkeypatch):
+    class _EmptyTTS:
+        async def synthesize(self, text: str, emotion: str = "neutral"):
+            del text, emotion
+            return b""
+
+        def debug_snapshot(self) -> dict:
+            return {"init_error": "espeak_not_available"}
+
+    monkeypatch.setattr("app.routers.tts.get_tts", lambda: _EmptyTTS())
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post("/tts", json={"text": "hello", "emotion": "neutral"})
+    assert resp.status_code == 503
+    assert resp.json()["detail"] == "espeak_not_available"

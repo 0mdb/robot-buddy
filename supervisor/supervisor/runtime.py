@@ -44,6 +44,10 @@ _TELEM_EVERY_N = TICK_HZ // TELEMETRY_HZ  # broadcast every N ticks
 _JITTER_WARN_MS = 5.0
 _PLAN_PERIOD_S = 1.0
 _PLAN_RETRY_S = 3.0
+_BALL_DETECT_CONF = 0.80
+_BALL_TRIGGER_CONF = 0.85
+_BALL_MAX_AGE_MS = 500.0
+_BALL_CLEAR_MIN_CONF = 0.20
 
 
 class Runtime:
@@ -366,7 +370,19 @@ class Runtime:
 
     def _build_world_state(self, *, req_seq: int) -> dict:
         s = self._state
-        trigger = "ball_seen" if s.ball_confidence >= 0.7 else "heartbeat"
+        vision_fresh = 0.0 <= s.vision_age_ms <= _BALL_MAX_AGE_MS
+        clear_ok = s.clear_confidence < 0.0 or s.clear_confidence >= _BALL_CLEAR_MIN_CONF
+        ball_detected = (
+            vision_fresh
+            and clear_ok
+            and not s.any_fault
+            and s.ball_confidence >= _BALL_DETECT_CONF
+        )
+        trigger = (
+            "ball_seen"
+            if ball_detected and s.ball_confidence >= _BALL_TRIGGER_CONF
+            else "heartbeat"
+        )
         recent_events = [e.type for e in self._event_bus.latest(limit=8)]
         return {
             "robot_id": self._robot_id,
@@ -377,8 +393,10 @@ class Runtime:
             "range_mm": s.range_mm,
             "faults": self._fault_names(s.fault_flags),
             "clear_confidence": s.clear_confidence,
-            "ball_detected": s.ball_confidence >= 0.5,
+            "ball_detected": ball_detected,
+            "ball_confidence": s.ball_confidence,
             "ball_bearing_deg": s.ball_bearing_deg,
+            "vision_age_ms": s.vision_age_ms,
             "speed_l_mm_s": s.speed_l_mm_s,
             "speed_r_mm_s": s.speed_r_mm_s,
             "v_capped": s.twist_capped.v_mm_s,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import inspect
 import logging
 import time
@@ -42,10 +43,20 @@ def _extract_json_object(text: str) -> str:
     if not raw:
         return ""
     lo = raw.find("{")
-    hi = raw.rfind("}")
-    if lo >= 0 and hi > lo:
-        return raw[lo : hi + 1]
-    return raw
+    if lo < 0:
+        return raw
+
+    # Parse only the first JSON object and ignore any trailing chatter.
+    candidate = raw[lo:]
+    try:
+        parsed, _ = json.JSONDecoder().raw_decode(candidate)
+        return json.dumps(parsed)
+    except json.JSONDecodeError:
+        # Fallback for malformed output: keep the broadest {...} slice.
+        hi = raw.rfind("}")
+        if hi > lo:
+            return raw[lo : hi + 1]
+        return candidate
 
 
 class VLLMBackend(PlannerLLMBackend):

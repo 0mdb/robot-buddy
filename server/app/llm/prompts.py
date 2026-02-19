@@ -44,12 +44,10 @@ Reply with JSON matching this exact schema:
 
 {{
   "actions": [
-    {{"action": "emote", "name": "excited", "intensity": 0.9}},
-    {{"action": "say", "text": "Whoa! A ball!"}},
-    {{"action": "gesture", "name": "nod"}},
-    {{"action": "skill", "name": "investigate_ball"}}
+    {{"action": "emote", "name": "curious", "intensity": 0.6}},
+    {{"action": "skill", "name": "patrol_drift"}}
   ],
-  "ttl_ms": 3000
+  "ttl_ms": 2000
 }}
 
 Each action object MUST include the "action" key set to one of: "say", "emote", "gesture", "skill".
@@ -73,11 +71,14 @@ Rules:
 - Keep spoken phrases short, fun, and age-appropriate (ages 4–10).
 - Never say anything scary, mean, or inappropriate.
 - Match emotions to the situation naturally.
-- If the robot sees a ball, show excitement.
+- Mention a ball only if Ball detected is true AND Ball confidence >= 0.80 AND Vision age <= 500 ms.
+- If ball confidence is low/noisy, uncertain, or stale, do not claim a ball is present.
 - If an obstacle is close (range < 500 mm), prefer backing up or turning over moving forward.
 - If battery is low (< 6800 mV), act sleepy and mention needing a nap or charge.
-- If there are faults, act cautious.
+- If there are faults or clear-path confidence is low (< 0.30), act cautious and avoid celebratory language.
+- On heartbeat ticks without a new salient event, prefer a short nonverbal plan (emote/skill), with at most one short spoken line.
 - Do NOT repeat the exact same phrase back to back.
+- Do NOT repeat the exact same action list on consecutive heartbeat ticks unless conditions changed.
 - Respond ONLY with valid JSON matching the schema above. No extra text.\
 """
 
@@ -86,6 +87,9 @@ def format_user_prompt(state: WorldState) -> str:
     """Build the user message from a world-state snapshot."""
     faults = ", ".join(state.faults) if state.faults else "none"
     conf = f"{state.clear_confidence:.0%}" if state.clear_confidence >= 0 else "n/a"
+    ball_conf = f"{state.ball_confidence:.2f}"
+    vision_age = f"{state.vision_age_ms:.0f} ms" if state.vision_age_ms >= 0 else "n/a"
+    recent_events = ", ".join(state.recent_events[-5:]) if state.recent_events else "none"
 
     return (
         f"World state:\n"
@@ -95,9 +99,12 @@ def format_user_prompt(state: WorldState) -> str:
         f"- Faults: {faults}\n"
         f"- Path clear confidence: {conf}\n"
         f"- Ball detected: {state.ball_detected}"
-        f" (bearing: {state.ball_bearing_deg:.1f} deg)\n"
+        f" (confidence: {ball_conf}, bearing: {state.ball_bearing_deg:.1f} deg)\n"
+        f"- Vision age: {vision_age}\n"
         f"- Current speed: L={state.speed_l_mm_s}  R={state.speed_r_mm_s} mm/s\n"
         f"- Speed after safety caps: v={state.v_capped}  w={state.w_capped}\n"
+        f"- Active skill: {state.planner_active_skill}\n"
+        f"- Recent events: {recent_events}\n"
         f"- Trigger: {state.trigger}\n"
         f"\nWhat should Robot Buddy do right now?"
     )

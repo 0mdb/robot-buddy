@@ -286,6 +286,8 @@ def test_world_state_minimal():
     )
     assert ws.trigger == "heartbeat"
     assert ws.faults == []
+    assert ws.ball_confidence == 0.0
+    assert ws.vision_age_ms == -1.0
 
 
 def test_world_state_full():
@@ -299,7 +301,9 @@ def test_world_state_full():
         faults=["OBSTACLE"],
         clear_confidence=0.6,
         ball_detected=True,
+        ball_confidence=0.91,
         ball_bearing_deg=22.5,
+        vision_age_ms=88.0,
         speed_l_mm_s=100,
         speed_r_mm_s=95,
         v_capped=80,
@@ -307,4 +311,6 @@ def test_world_state_full():
         trigger="ball_seen",
     )
     assert ws.ball_detected is True
+    assert ws.ball_confidence == 0.91
+    assert ws.vision_age_ms == 88.0
     assert ws.trigger == "ball_seen"

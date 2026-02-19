@@ -41,6 +41,42 @@ async def test_vllm_generate_plan_retries_on_bad_json():
 
 
 @pytest.mark.asyncio
+async def test_vllm_generate_plan_tolerates_trailing_text():
+    backend = VLLMBackend()
+
+    async def _fake_generate_text(prompt: str, *, request_tag: str) -> str:
+        del prompt, request_tag
+        return (
+            '{"actions":[{"action":"say","text":"Hi"}],"ttl_ms":2000}\n'
+            "extra trailing text"
+        )
+
+    backend._generate_text = _fake_generate_text  # type: ignore[method-assign]
+
+    plan = await backend.generate_plan(_world_state())
+    assert len(plan.actions) == 1
+    assert plan.actions[0].action == "say"
+
+
+@pytest.mark.asyncio
+async def test_vllm_generate_plan_uses_first_json_object():
+    backend = VLLMBackend()
+
+    async def _fake_generate_text(prompt: str, *, request_tag: str) -> str:
+        del prompt, request_tag
+        return (
+            '{"actions":[{"action":"say","text":"Hi"}],"ttl_ms":2000}\n'
+            '{"actions":[{"action":"say","text":"Ignore me"}],"ttl_ms":3000}'
+        )
+
+    backend._generate_text = _fake_generate_text  # type: ignore[method-assign]
+
+    plan = await backend.generate_plan(_world_state())
+    assert len(plan.actions) == 1
+    assert plan.actions[0].action == "say"
+
+
+@pytest.mark.asyncio
 async def test_vllm_generate_conversation_parses_response():
     backend = VLLMBackend()
 

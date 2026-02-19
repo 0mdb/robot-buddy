@@ -31,6 +31,7 @@ class PlannerEventBus:
         max_events: int = 100,
         ball_acquire_conf: float = 0.60,
         ball_lost_conf: float = 0.35,
+        ball_clear_min_conf: float = 0.20,
         obstacle_close_mm: int = 450,
         obstacle_clear_mm: int = 650,
         vision_stale_ms: float = 500.0,
@@ -48,6 +49,7 @@ class PlannerEventBus:
 
         self._ball_acquire_conf = ball_acquire_conf
         self._ball_lost_conf = ball_lost_conf
+        self._ball_clear_min_conf = ball_clear_min_conf
         self._obstacle_close_mm = obstacle_close_mm
         self._obstacle_clear_mm = obstacle_clear_mm
         self._vision_stale_ms = vision_stale_ms
@@ -114,21 +116,25 @@ class PlannerEventBus:
             )
             self._last_mode = state.mode
 
-        if not self._ball_visible and state.ball_confidence >= self._ball_acquire_conf:
+        effective_ball_conf = (
+            float(state.ball_confidence) if self._ball_signal_valid(state) else 0.0
+        )
+
+        if not self._ball_visible and effective_ball_conf >= self._ball_acquire_conf:
             self._ball_visible = True
             self.emit(
                 "vision.ball_acquired",
                 {
-                    "confidence": round(float(state.ball_confidence), 3),
+                    "confidence": round(effective_ball_conf, 3),
                     "bearing_deg": round(float(state.ball_bearing_deg), 1),
                 },
                 now_ms,
             )
-        elif self._ball_visible and state.ball_confidence < self._ball_lost_conf:
+        elif self._ball_visible and effective_ball_conf < self._ball_lost_conf:
             self._ball_visible = False
             self.emit(
                 "vision.ball_lost",
-                {"confidence": round(float(state.ball_confidence), 3)},
+                {"confidence": round(effective_ball_conf, 3)},
                 now_ms,
             )
 
@@ -227,3 +233,11 @@ class PlannerEventBus:
             if flags & int(fault):
                 names.append(fault.name)
         return names
+
+    def _ball_signal_valid(self, state: RobotState) -> bool:
+        vision_fresh = 0.0 <= state.vision_age_ms <= self._vision_stale_ms
+        clear_ok = (
+            state.clear_confidence < 0.0
+            or state.clear_confidence >= self._ball_clear_min_conf
+        )
+        return vision_fresh and clear_ok and int(state.fault_flags) == 0

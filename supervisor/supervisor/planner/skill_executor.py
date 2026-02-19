@@ -22,6 +22,7 @@ class SkillExecutor:
         investigate_v_mm_s: int = 120,
         investigate_turn_gain: float = 22.0,
         investigate_turn_deadband_deg: float = 12.0,
+        investigate_min_conf: float = 0.80,
         obstacle_close_mm: int = 450,
         obstacle_very_close_mm: int = 300,
         avoid_reverse_mm_s: int = -120,
@@ -33,6 +34,7 @@ class SkillExecutor:
         self._investigate_v_mm_s = investigate_v_mm_s
         self._investigate_turn_gain = investigate_turn_gain
         self._investigate_turn_deadband_deg = investigate_turn_deadband_deg
+        self._investigate_min_conf = investigate_min_conf
         self._obstacle_close_mm = obstacle_close_mm
         self._obstacle_very_close_mm = obstacle_very_close_mm
         self._avoid_reverse_mm_s = avoid_reverse_mm_s
@@ -49,11 +51,14 @@ class SkillExecutor:
         if self._is_obstacle_close(state):
             return self._avoid_obstacle(state)
 
-        if state.ball_confidence >= 0.60:
-            return self._investigate_ball(state)
-
         if active_skill == "greet_on_button":
             return DesiredTwist(0, 0)
+
+        if (
+            active_skill == "investigate_ball"
+            and state.ball_confidence >= self._investigate_min_conf
+        ):
+            return self._investigate_ball(state)
 
         return self._patrol_drift(state)
 
@@ -78,4 +83,3 @@ class SkillExecutor:
         phase = int(state.tick_mono_ms // self._patrol_turn_flip_ms) % 2
         sign = 1 if phase == 0 else -1
         return DesiredTwist(self._patrol_v_mm_s, sign * self._patrol_w_mrad_s)
-

@@ -44,6 +44,9 @@ async def generate_speech(req: TTSRequest) -> StreamingResponse:
     except Exception as e:
         log.error("TTS generation failed: %s", e)
         raise HTTPException(status_code=503, detail="tts_unavailable") from e
+    if not audio:
+        init_error = str(tts.debug_snapshot().get("init_error") or "tts_unavailable")
+        raise HTTPException(status_code=503, detail=init_error)
 
     async def audio_generator() -> AsyncGenerator[bytes, None]:
         chunk_size = 320
