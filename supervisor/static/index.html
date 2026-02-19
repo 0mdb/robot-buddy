@@ -916,35 +916,6 @@
       } else {
         cl.textContent = p.speed_caps.map(c => `${c.reason} (${Math.round(c.scale * 100)}%)`).join(', ');
       }
-
-      const moodSel = document.getElementById('expr-mood');
-      if (moodSel && typeof p.face_mood === 'string') {
-        const opt = Array.from(moodSel.options).find(o => o.value === p.face_mood);
-        if (opt) moodSel.value = p.face_mood;
-      }
-      const lock = document.getElementById('expr-manual-lock');
-      if (lock) lock.checked = !!p.face_manual_lock;
-      const talkEnable = document.getElementById('expr-talk-enable');
-      if (talkEnable) talkEnable.checked = !!p.face_talking;
-      const talkEnergySlider = document.getElementById('expr-talk-energy');
-      const talkEnergyVal = document.getElementById('expr-talk-energy-val');
-      if (talkEnergySlider && talkEnergyVal) {
-        const energy = Number.isFinite(p.face_talking_energy) ? p.face_talking_energy : 0;
-        talkEnergySlider.value = String(energy);
-        talkEnergyVal.textContent = String(energy);
-      }
-      const flags = Number.isFinite(p.face_manual_flags) ? p.face_manual_flags : 0;
-      const setFlag = (id, bit) => {
-        const el = document.getElementById(id);
-        if (el) el.checked = !!(flags & bit);
-      };
-      setFlag('expr-flag-idle', FACE_FLAGS.IDLE);
-      setFlag('expr-flag-blink', FACE_FLAGS.AUTOBLINK);
-      setFlag('expr-flag-solid', FACE_FLAGS.SOLID);
-      setFlag('expr-flag-mouth', FACE_FLAGS.MOUTH);
-      setFlag('expr-flag-glow', FACE_FLAGS.GLOW);
-      setFlag('expr-flag-sparkle', FACE_FLAGS.SPARKLE);
-      setFlag('expr-flag-afterglow', FACE_FLAGS.AFTERGLOW);
     }
 
     // -- Mode buttons -----------------------------------------------------------
