@@ -220,8 +220,8 @@ class AudioOrchestrator:
                     break
 
                 if self._face:
-                    coro = self._face.send_talking(True, self._lip_sync.update_chunk(chunk))
-                    asyncio.run_coroutine_threadsafe(coro, self._main_loop)
+                    energy = self._lip_sync.update_chunk(chunk)
+                    self._main_loop.call_soon_threadsafe(self._face.send_talking, True, energy)
         finally:
             log.info("Playback thread finished for planner speech.")
 
