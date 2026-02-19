@@ -411,6 +411,8 @@ header h1 { font-size: 16px; font-weight: 600; }
         <div class="gauge"><div class="gauge-label">ball conf</div><div class="gauge-value" id="g-ball">--</div><div class="gauge-unit"></div></div>
         <div class="gauge"><div class="gauge-label">ball bearing</div><div class="gauge-value" id="g-bearing">--</div><div class="gauge-unit">deg</div></div>
         <div class="gauge"><div class="gauge-label">vision fps</div><div class="gauge-value" id="g-vfps">--</div><div class="gauge-unit"></div></div>
+        <div class="gauge"><div class="gauge-label">face mood</div><div class="gauge-value" id="g-face-mood">--</div></div>
+        <div class="gauge"><div class="gauge-label">talking</div><div class="gauge-value" id="g-face-talking">false</div></div>
       </div>
     </details>
 
@@ -423,6 +425,13 @@ header h1 { font-size: 16px; font-weight: 600; }
       <div class="caps">
         <div class="gauge-label">Speed Caps</div>
         <div id="cap-list">none</div>
+      </div>
+    </details>
+
+    <details class="collapsible">
+      <summary>Last LLM Plan</summary>
+      <div style="padding: 10px; font-size: 12px; white-space: pre-wrap; word-break: break-all;">
+        <code id="llm-plan"></code>
       </div>
     </details>
 
@@ -496,6 +505,16 @@ function updateTelemetry(p) {
   document.getElementById('g-ball').textContent = p.ball_conf > 0 ? p.ball_conf : '--';
   document.getElementById('g-bearing').textContent = p.ball_conf > 0 ? p.ball_bearing : '--';
   document.getElementById('g-vfps').textContent = p.vision_fps > 0 ? p.vision_fps : '--';
+  document.getElementById('g-face-mood').textContent = p.face_mood;
+  document.getElementById('g-face-talking').textContent = p.face_talking;
+
+  // Last LLM plan
+  const planEl = document.getElementById('llm-plan');
+  if (p.personality_last_plan) {
+    planEl.textContent = JSON.stringify(p.personality_last_plan, null, 2);
+  } else {
+    planEl.textContent = 'none';
+  }
 
   // Mobile status bar
   document.getElementById('ms-mode').textContent = p.mode;
