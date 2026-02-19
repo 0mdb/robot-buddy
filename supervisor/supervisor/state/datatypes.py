@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 
+from supervisor.devices.expressions import FACE_MOOD_TO_EMOTION
 from supervisor.devices.protocol import Fault, RangeStatus
 
 
@@ -89,6 +90,7 @@ class RobotState:
     personality_last_plan_mono_ms: float = 0.0
     personality_last_plan_actions: int = 0
     personality_last_error: str = ""
+    personality_last_plan: list[dict] | None = None
 
     # Safety
     speed_caps: list[SpeedCap] = field(default_factory=list)
@@ -132,7 +134,7 @@ class RobotState:
             "face_connected": self.face_connected,
             "personality_enabled": self.personality_enabled,
             "personality_connected": self.personality_connected,
-            "face_mood": self.face_mood,
+            "face_mood": FACE_MOOD_TO_EMOTION.get(self.face_mood, "unknown"),
             "face_gesture": self.face_gesture,
             "face_system_mode": self.face_system_mode,
             "face_touch_active": self.face_touch_active,
@@ -147,6 +149,7 @@ class RobotState:
             "personality_last_plan_mono_ms": round(self.personality_last_plan_mono_ms, 1),
             "personality_last_plan_actions": self.personality_last_plan_actions,
             "personality_last_error": self.personality_last_error,
+            "personality_last_plan": self.personality_last_plan,
             "speed_caps": [
                 {"scale": c.scale, "reason": c.reason} for c in self.speed_caps
             ],

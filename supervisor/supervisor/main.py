@@ -218,6 +218,9 @@ async def async_main(args: argparse.Namespace) -> None:
             mock.stop()
 
 
+from supervisor.logging.handler import WebSocketLogHandler
+
+
 def main() -> None:
     args = parse_args()
     logging.basicConfig(
@@ -225,6 +228,8 @@ def main() -> None:
         format="%(asctime)s %(name)-20s %(levelname)-5s %(message)s",
         datefmt="%H:%M:%S",
     )
+    root_logger = logging.getLogger()
+    root_logger.addHandler(WebSocketLogHandler())
 
     loop = asyncio.new_event_loop()
 

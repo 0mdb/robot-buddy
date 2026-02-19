@@ -13,6 +13,7 @@ from app.config import settings
 from app.llm.client import OllamaClient
 from app.routers.converse import router as converse_router
 from app.routers.plan import router as plan_router
+from app.routers.tts import router as tts_router
 
 log = logging.getLogger(__name__)
 
@@ -47,6 +48,7 @@ app = FastAPI(
 
 app.include_router(plan_router)
 app.include_router(converse_router)
+app.include_router(tts_router)
 
 
 @app.get("/health")

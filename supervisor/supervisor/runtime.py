@@ -301,6 +301,7 @@ class Runtime:
         s = self._state
         s.personality_last_plan_mono_ms = time.monotonic() * 1000.0
         s.personality_last_plan_actions = len(plan.actions)
+        s.personality_last_plan = plan.actions
 
         if not self._face or not self._face.connected:
             return

@@ -41,6 +41,10 @@ EMOTION_TO_FACE_MOOD: Final[dict[str, int]] = {
     "thinking": int(FaceMood.THINKING),
 }
 
+FACE_MOOD_TO_EMOTION: Final[dict[int, str]] = {
+    v: k for k, v in EMOTION_TO_FACE_MOOD.items()
+}
+
 
 CANONICAL_FACE_GESTURES: Final[tuple[str, ...]] = (
     "blink",

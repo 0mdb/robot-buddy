@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from supervisor.api.ws_hub import WsHub
     from supervisor.inputs.camera_vision import VisionProcess
     from supervisor.runtime import Runtime
+from supervisor.logging.handler import log_queue
 
 log = logging.getLogger(__name__)
 
@@ -30,6 +31,21 @@ def create_app(
     vision: VisionProcess | None = None,
 ) -> FastAPI:
     app = FastAPI(title="Robot Buddy Supervisor", version="0.1.0")
+
+    # -- WebSocket logs ------------------------------------------------------
+    @app.websocket("/ws/logs")
+    async def websocket_logs(ws: WebSocket):
+        await ws.accept()
+        try:
+            while True:
+                log_entry = await log_queue.get()
+                await ws.send_text(log_entry)
+                log_queue.task_done()
+        except WebSocketDisconnect:
+            pass
+        finally:
+            # No special cleanup needed
+            pass
 
     # -- HTTP endpoints ------------------------------------------------------
 

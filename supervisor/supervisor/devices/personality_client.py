@@ -16,6 +16,9 @@ class PersonalityPlan:
     actions: list[dict] = field(default_factory=list)
     ttl_ms: int = 0
 
+    def to_dict(self) -> dict:
+        return {"actions": self.actions, "ttl_ms": self.ttl_ms}
+
 
 class PersonalityClient:
     """Minimal async wrapper around the personality server `/health` + `/plan`."""
