@@ -26,7 +26,7 @@ class FakeFace:
 
 def test_handle_audio_updates_talking_energy():
     face = FakeFace()
-    cm = ConversationManager("http://127.0.0.1:8100", face=face)
+    cm = ConversationManager("http://127.0.0.1:8100", robot_id="robot-1", face=face)
 
     pcm = bytes([i % 256 for i in range(CHUNK_BYTES * 2 + 40)])
     msg = {"type": "audio", "data": base64.b64encode(pcm).decode("ascii")}
@@ -60,7 +60,7 @@ async def test_start_reconnects_after_initial_connect_failure(monkeypatch):
 
     monkeypatch.setitem(sys.modules, "websockets", types.SimpleNamespace(connect=fake_connect))
 
-    cm = ConversationManager("http://127.0.0.1:8100")
+    cm = ConversationManager("http://127.0.0.1:8100", robot_id="robot-1")
     await cm.start()
 
     await asyncio.sleep(RECONNECT_BACKOFF_S + 0.4)
@@ -72,7 +72,7 @@ async def test_start_reconnects_after_initial_connect_failure(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_set_ptt_enabled_toggles_mic_capture(monkeypatch):
-    cm = ConversationManager("http://127.0.0.1:8100")
+    cm = ConversationManager("http://127.0.0.1:8100", robot_id="robot-1")
     calls: list[tuple[str, bool | None]] = []
 
     async def fake_start_mic_capture():
@@ -94,7 +94,7 @@ async def test_set_ptt_enabled_toggles_mic_capture(monkeypatch):
 
 
 def test_playback_queue_drops_oldest_when_full():
-    cm = ConversationManager("http://127.0.0.1:8100")
+    cm = ConversationManager("http://127.0.0.1:8100", robot_id="robot-1")
     cm._playback_queue = asyncio.Queue(maxsize=2)
 
     cm._queue_playback_chunk(b"a")
@@ -108,7 +108,7 @@ def test_playback_queue_drops_oldest_when_full():
 
 
 def test_handle_audio_splits_into_pcm_frames():
-    cm = ConversationManager("http://127.0.0.1:8100")
+    cm = ConversationManager("http://127.0.0.1:8100", robot_id="robot-1")
     chunks: list[bytes] = []
 
     def capture(chunk: bytes) -> None:

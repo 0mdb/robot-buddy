@@ -159,6 +159,22 @@ def test_event_speech_policy_tracks_drop_reasons_when_face_busy():
     assert runtime.state.planner_say_dropped_reason["policy_face_busy"] == 1
 
 
+def test_planner_speech_is_suppressed_while_planner_unreachable():
+    audio = _FakeAudio()
+    runtime = Runtime(
+        reflex=_FakeReflex(),
+        planner=SimpleNamespace(),
+        audio=audio,
+        robot_id="robot-1",
+    )
+    runtime.state.planner_connected = False
+
+    ok = runtime._enqueue_say("hello", source="planner")
+    assert ok is False
+    assert audio.said == []
+    assert runtime.state.planner_say_dropped_reason["planner_planner_unreachable"] == 1
+
+
 @pytest.mark.asyncio
 async def test_face_listening_state_syncs_to_audio_ptt():
     audio = _FakeAudio()

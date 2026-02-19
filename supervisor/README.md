@@ -128,6 +128,13 @@ Supervisor must:
 
 Ultrasonic acts as speed governor, not final stop.
 
+### Planner/Converse Failure Policy (Enforced)
+
+| Failure condition | Immediate supervisor action | Motion policy | Face policy | Speech policy |
+|---|---|---|---|---|
+| `/plan` unreachable / non-200 | Mark planner disconnected; skip remote plan apply | Local deterministic only (`patrol_drift`/`avoid_obstacle`/safe stop) | `confused` gesture with cooldown | Cancel queued planner speech |
+| `/converse` TTS fails mid-turn | Stop playback and clear talking flag | No change to motion authority | Show `thinking` briefly then restore previous mood | Attempt fallback backend once; if unavailable, skip speech |
+
 ---
 
 ## 2.5 Time Model (Monotonic Only)

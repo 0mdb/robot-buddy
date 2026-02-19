@@ -8,6 +8,7 @@ import logging
 import math
 import shutil
 import struct
+import time
 from dataclasses import dataclass
 
 import httpx
@@ -46,17 +47,20 @@ class AudioOrchestrator:
         self,
         planner_url: str,
         *,
+        robot_id: str,
         face: FaceClient | None = None,
         speaker_device: str = "default",
         mic_device: str = "default",
     ) -> None:
         self._planner_url = planner_url.rstrip("/")
+        self._robot_id = str(robot_id or "").strip()
         self._face = face
         self._speaker_device = speaker_device
         self._run = False
 
         self._conversation = ConversationManager(
             self._planner_url,
+            robot_id=self._robot_id,
             face=face,
             speaker_device=speaker_device,
             mic_device=mic_device,
@@ -70,6 +74,7 @@ class AudioOrchestrator:
         self._planner_speaking = False
         self._cancel_planner_speech = asyncio.Event()
         self._active_aplay_proc: asyncio.subprocess.Process | None = None
+        self._planner_speech_seq = 0
 
     @property
     def connected(self) -> bool:
@@ -165,6 +170,7 @@ class AudioOrchestrator:
 
     def debug_snapshot(self) -> dict:
         return {
+            "robot_id": self._robot_id,
             "connected": self.connected,
             "speaking": self.speaking,
             "planner_speaking": self._planner_speaking,
@@ -222,8 +228,15 @@ class AudioOrchestrator:
             async with self._planner_client.stream(
                 "POST",
                 "/tts",
-                json={"text": req.text, "emotion": req.emotion},
+                json={
+                    "text": req.text,
+                    "emotion": req.emotion,
+                    "robot_id": self._robot_id,
+                    "seq": self._planner_speech_seq,
+                    "monotonic_ts_ms": int(time.monotonic() * 1000),
+                },
             ) as resp:
+                self._planner_speech_seq += 1
                 if resp.status_code != 200:
                     body = (await resp.aread()).decode("utf-8", errors="replace")
                     log.warning("planner /tts failed: %s %s", resp.status_code, body[:200])

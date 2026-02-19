@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import logging
+import json
 from collections import deque
 from dataclasses import dataclass, field
 
 import httpx
 
 from app.config import settings
-from app.llm.client import OllamaError
+from app.llm.base import LLMError
 from app.llm.expressions import (
     CANONICAL_EMOTIONS,
     FACE_GESTURES,
@@ -138,7 +139,7 @@ async def generate_conversation_response(
     Raises:
         httpx.TimeoutException: if Ollama doesn't respond in time.
         httpx.ConnectError: if Ollama is unreachable.
-        OllamaError: if the response is invalid.
+        LLMError: if the response is invalid.
     """
     history.add_user(user_text)
 
@@ -160,20 +161,34 @@ async def generate_conversation_response(
     resp = await client.post("/api/chat", json=body)
 
     if resp.status_code != 200:
-        raise OllamaError(f"Ollama returned {resp.status_code}: {resp.text[:200]}")
+        raise LLMError(f"Ollama returned {resp.status_code}: {resp.text[:200]}")
 
     data = resp.json()
     content = data.get("message", {}).get("content", "")
 
     if not content:
-        raise OllamaError("Empty content in Ollama response")
+        raise LLMError("Empty content in Ollama response")
 
-    import json
+    response = parse_conversation_response_content(content)
+    history.add_assistant(response.text)
 
+    log.info(
+        "Conversation response: emotion=%s intensity=%.1f text=%s gestures=%s",
+        response.emotion,
+        response.intensity,
+        response.text[:80],
+        response.gestures,
+    )
+
+    return response
+
+
+def parse_conversation_response_content(content: str) -> ConversationResponse:
+    """Parse and normalize JSON response content into ConversationResponse."""
     try:
         parsed = json.loads(content)
     except json.JSONDecodeError as exc:
-        raise OllamaError(f"Invalid JSON from LLM: {exc}") from exc
+        raise LLMError(f"Invalid JSON from LLM: {exc}") from exc
 
     raw_emotion = str(parsed.get("emotion", "neutral"))
     raw_gestures = parsed.get("gestures", [])
@@ -206,16 +221,5 @@ async def generate_conversation_response(
             continue
         normalized_gestures.append(normalized)
     response.gestures = normalized_gestures
-
-    # Add assistant text to history for context continuity
-    history.add_assistant(response.text)
-
-    log.info(
-        "Conversation response: emotion=%s intensity=%.1f text=%s gestures=%s",
-        response.emotion,
-        response.intensity,
-        response.text[:80],
-        response.gestures,
-    )
 
     return response

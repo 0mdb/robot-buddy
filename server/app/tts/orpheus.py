@@ -10,6 +10,7 @@ the robot's speaker.
 
 from __future__ import annotations
 
+import asyncio
 import audioop
 import io
 import logging
@@ -54,6 +55,10 @@ ORPHEUS_IDLE_TIMEOUT_S = settings.orpheus_idle_timeout_s
 ORPHEUS_TOTAL_TIMEOUT_S = settings.orpheus_total_timeout_s
 
 
+class TTSBusyError(RuntimeError):
+    """Raised when Orpheus is busy and no fallback backend is available."""
+
+
 def apply_prosody_tag(emotion: str, text: str) -> str:
     """Prepend the Orpheus emotion tag to the text."""
     tag = EMOTION_TO_PROSODY_TAG.get(emotion, "")
@@ -69,7 +74,7 @@ def pcm_float32_to_int16(float_audio: bytes, *, src_rate: int = 24000) -> bytes:
     use a proper resampler (e.g. scipy.signal.resample_poly).
     """
     n_samples = len(float_audio) // 4
-    float_samples = struct.unpack(f"<{n_samples}f", float_audio)
+    float_samples = list(struct.unpack(f"<{n_samples}f", float_audio))
 
     # Resample if needed
     if src_rate != OUTPUT_SAMPLE_RATE:
@@ -146,12 +151,46 @@ class OrpheusTTS:
         self._model: Any = None
         self._init_error: str | None = None
         self._espeak_bin: str | None = None
+        self._active_requests = 0
+        self._active_lock = threading.Lock()
+        self._orpheus_allowed = bool(settings.performance_mode)
+        self._orpheus_policy_reason = (
+            "performance_mode_enabled" if settings.performance_mode else "performance_mode_disabled"
+        )
+
+    @property
+    def orpheus_allowed(self) -> bool:
+        return self._orpheus_allowed
+
+    def prefers_orpheus(self) -> bool:
+        return self._backend_pref in {"auto", "orpheus"}
 
     @staticmethod
     def _hf_token_present() -> bool:
         return bool(
             os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_HUB_TOKEN")
         )
+
+    @staticmethod
+    def _espeak_available() -> bool:
+        return bool(shutil.which("espeak-ng") or shutil.which("espeak"))
+
+    def set_orpheus_allowed(self, allowed: bool, reason: str) -> None:
+        self._orpheus_allowed = bool(allowed)
+        self._orpheus_policy_reason = reason or (
+            "performance_mode_enabled" if allowed else "performance_mode_disabled"
+        )
+        if not self._orpheus_allowed and self._backend in {"orpheus_speech", "orpheus_tts"}:
+            self._reset_orpheus_backend()
+
+    async def warmup(self) -> None:
+        if not self.prefers_orpheus() or not self._orpheus_allowed:
+            return
+        try:
+            await self.synthesize("Ready.", "neutral")
+            log.info("TTS warm-up complete")
+        except Exception as exc:
+            log.warning("TTS warm-up skipped/failed: %s", exc)
 
     def _enable_espeak_fallback(self, *, force: bool = False) -> bool:
         if not force and self._backend_pref not in {"auto", "espeak"}:
@@ -188,6 +227,22 @@ class OrpheusTTS:
         if self._backend_pref not in {"auto", "orpheus"}:
             log.warning("Unknown TTS_BACKEND=%r; defaulting to auto", self._backend_pref)
             self._backend_pref = "auto"
+
+        if not self._orpheus_allowed:
+            if self._enable_espeak_fallback(force=True):
+                log.info(
+                    "Orpheus disabled by policy (%s); using espeak fallback",
+                    self._orpheus_policy_reason,
+                )
+                return
+            self._backend = "off"
+            self._init_error = f"orpheus_disabled_{self._orpheus_policy_reason}"
+            self._loaded = True
+            log.warning(
+                "Orpheus disabled by policy (%s) and espeak unavailable; TTS off",
+                self._orpheus_policy_reason,
+            )
+            return
 
         log.info("Loading Orpheus TTS model %s on %s...", self._model_name, self._device)
 
@@ -387,9 +442,34 @@ class OrpheusTTS:
 
         Returns complete PCM audio (16-bit, 16 kHz, mono).
         """
-        import asyncio
+        if not isinstance(text, str) or not text.strip():
+            return b""
 
-        return await asyncio.to_thread(self._synthesize_sync, text, emotion)
+        should_shed_to_espeak = False
+        with self._active_lock:
+            busy = self._active_requests > settings.tts_busy_queue_threshold
+            if busy and self.prefers_orpheus() and self._orpheus_allowed:
+                if self._espeak_available():
+                    log.info(
+                        "TTS busy (active=%d threshold=%d); shedding to espeak",
+                        self._active_requests,
+                        settings.tts_busy_queue_threshold,
+                    )
+                    should_shed_to_espeak = True
+                else:
+                    raise TTSBusyError("tts_busy_no_fallback")
+            if not should_shed_to_espeak:
+                self._active_requests += 1
+
+        if should_shed_to_espeak:
+            return await asyncio.to_thread(self._synthesize_with_espeak, text)
+
+        try:
+            return await asyncio.to_thread(self._synthesize_sync, text, emotion)
+        finally:
+            with self._active_lock:
+                if self._active_requests > 0:
+                    self._active_requests -= 1
 
     def _synthesize_sync(self, text: str, emotion: str) -> bytes:
         """Synchronous synthesis."""
@@ -467,4 +547,9 @@ class OrpheusTTS:
             "espeak_available": bool(
                 self._espeak_bin or shutil.which("espeak-ng") or shutil.which("espeak")
             ),
+            "performance_mode": bool(settings.performance_mode),
+            "orpheus_allowed": self._orpheus_allowed,
+            "orpheus_policy_reason": self._orpheus_policy_reason,
+            "active_requests": self._active_requests,
+            "busy_queue_threshold": settings.tts_busy_queue_threshold,
         }

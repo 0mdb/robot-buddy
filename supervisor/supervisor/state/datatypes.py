@@ -95,6 +95,8 @@ class RobotState:
     planner_event_count: int = 0
     planner_plan_dropped_stale: int = 0
     planner_plan_dropped_cooldown: int = 0
+    planner_plan_dropped_out_of_order: int = 0
+    planner_plan_dropped_duplicate: int = 0
     planner_speech_queue_depth: int = 0
     planner_say_requested: int = 0
     planner_say_enqueued: int = 0
@@ -162,6 +164,8 @@ class RobotState:
             "planner_event_count": self.planner_event_count,
             "planner_plan_dropped_stale": self.planner_plan_dropped_stale,
             "planner_plan_dropped_cooldown": self.planner_plan_dropped_cooldown,
+            "planner_plan_dropped_out_of_order": self.planner_plan_dropped_out_of_order,
+            "planner_plan_dropped_duplicate": self.planner_plan_dropped_duplicate,
             "planner_speech_queue_depth": self.planner_speech_queue_depth,
             "planner_say_requested": self.planner_say_requested,
             "planner_say_enqueued": self.planner_say_enqueued,

@@ -13,7 +13,14 @@ from app.llm.schemas import WorldState
 
 
 def _world_state() -> WorldState:
-    return WorldState(mode="IDLE", battery_mv=8000, range_mm=1000)
+    return WorldState(
+        robot_id="robot-1",
+        seq=1,
+        monotonic_ts_ms=1000,
+        mode="IDLE",
+        battery_mv=8000,
+        range_mm=1000,
+    )
 
 
 def test_model_available_true_when_present_in_tags():

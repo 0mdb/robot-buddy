@@ -8,6 +8,7 @@ from pydantic import ValidationError
 from app.llm.schemas import (
     EmoteAction,
     GestureAction,
+    ModelPlan,
     PlanResponse,
     SayAction,
     SkillAction,
@@ -101,7 +102,7 @@ def test_skill_invalid_name_rejected():
 
 def test_move_action_rejected():
     with pytest.raises(ValidationError):
-        PlanResponse(
+        ModelPlan(
             actions=[{"action": "move", "v_mm_s": 100, "w_mrad_s": 0, "duration_ms": 500}],
             ttl_ms=1000,
         )
@@ -110,8 +111,8 @@ def test_move_action_rejected():
 # -- PlanResponse -------------------------------------------------------------
 
 
-def test_plan_response_valid():
-    plan = PlanResponse(
+def test_model_plan_valid():
+    plan = ModelPlan(
         actions=[
             SayAction(text="Hi!"),
             EmoteAction(name="happy", intensity=0.9),
@@ -122,26 +123,26 @@ def test_plan_response_valid():
     assert plan.ttl_ms == 2000
 
 
-def test_plan_response_empty_actions():
-    plan = PlanResponse(actions=[], ttl_ms=1000)
+def test_model_plan_empty_actions():
+    plan = ModelPlan(actions=[], ttl_ms=1000)
     assert plan.actions == []
 
 
-def test_plan_response_too_many_actions():
+def test_model_plan_too_many_actions():
     actions = [SayAction(text=f"line {i}") for i in range(6)]
     with pytest.raises(ValidationError):
-        PlanResponse(actions=actions)
+        ModelPlan(actions=actions)
 
 
-def test_plan_response_ttl_bounds():
+def test_model_plan_ttl_bounds():
     with pytest.raises(ValidationError):
-        PlanResponse(ttl_ms=499)
+        ModelPlan(ttl_ms=499)
 
     with pytest.raises(ValidationError):
-        PlanResponse(ttl_ms=5001)
+        ModelPlan(ttl_ms=5001)
 
 
-def test_plan_response_from_json():
+def test_model_plan_from_json():
     """Simulate parsing a raw JSON string from the LLM."""
     raw = """{
         "actions": [
@@ -152,7 +153,7 @@ def test_plan_response_from_json():
         ],
         "ttl_ms": 2000
     }"""
-    plan = PlanResponse.model_validate_json(raw)
+    plan = ModelPlan.model_validate_json(raw)
     assert len(plan.actions) == 4
     assert plan.actions[0].action == "emote"
     assert plan.actions[1].action == "say"
@@ -160,7 +161,7 @@ def test_plan_response_from_json():
     assert plan.actions[3].action == "skill"
 
 
-def test_plan_response_from_legacy_json():
+def test_model_plan_from_legacy_json():
     """Accept legacy model output that uses name+params action objects."""
     raw = """{
         "actions": [
@@ -171,7 +172,7 @@ def test_plan_response_from_legacy_json():
         ],
         "ttl_ms": 2000
     }"""
-    plan = PlanResponse.model_validate_json(raw)
+    plan = ModelPlan.model_validate_json(raw)
     assert len(plan.actions) == 4
     assert plan.actions[0].action == "emote"
     assert plan.actions[0].name == "excited"
@@ -184,7 +185,7 @@ def test_plan_response_from_legacy_json():
     assert plan.actions[3].name == "investigate_ball"
 
 
-def test_plan_response_from_malformed_action_tags():
+def test_model_plan_from_malformed_action_tags():
     """Recover from malformed action tags emitted by the LLM."""
     raw = """{
         "actions": [
@@ -195,7 +196,7 @@ def test_plan_response_from_malformed_action_tags():
         ],
         "ttl_ms": 2000
     }"""
-    plan = PlanResponse.model_validate_json(raw)
+    plan = ModelPlan.model_validate_json(raw)
     assert len(plan.actions) == 4
     assert plan.actions[0].action == "emote"
     assert plan.actions[0].name == "excited"
@@ -208,7 +209,7 @@ def test_plan_response_from_malformed_action_tags():
     assert plan.actions[3].name == "investigate_ball"
 
 
-def test_plan_response_from_malformed_gesture_wrappers():
+def test_model_plan_from_malformed_gesture_wrappers():
     """Recover malformed entries tagged as gesture but wrapped as other actions."""
     raw = """{
         "actions": [
@@ -218,7 +219,7 @@ def test_plan_response_from_malformed_gesture_wrappers():
         ],
         "ttl_ms": 2000
     }"""
-    plan = PlanResponse.model_validate_json(raw)
+    plan = ModelPlan.model_validate_json(raw)
     assert len(plan.actions) == 3
     assert plan.actions[0].action == "say"
     assert plan.actions[0].text == "Hello there!"
@@ -228,7 +229,7 @@ def test_plan_response_from_malformed_gesture_wrappers():
     assert plan.actions[2].name == "investigate_ball"
 
 
-def test_plan_response_drops_malformed_wrapper_stubs():
+def test_model_plan_drops_malformed_wrapper_stubs():
     """Drop malformed wrapper-style actions missing required fields."""
     raw = """{
         "actions": [
@@ -238,7 +239,7 @@ def test_plan_response_drops_malformed_wrapper_stubs():
         ],
         "ttl_ms": 2000
     }"""
-    plan = PlanResponse.model_validate_json(raw)
+    plan = ModelPlan.model_validate_json(raw)
     assert len(plan.actions) == 1
     assert plan.actions[0].action == "skill"
     assert plan.actions[0].name == "patrol_drift"
@@ -246,22 +247,52 @@ def test_plan_response_drops_malformed_wrapper_stubs():
 
 def test_plan_json_schema_has_discriminator():
     """Ensure the JSON schema uses the action discriminator."""
-    schema = PlanResponse.model_json_schema()
+    schema = ModelPlan.model_json_schema()
     assert "properties" in schema
     assert "actions" in schema["properties"]
+
+
+def test_plan_response_requires_metadata():
+    with pytest.raises(ValidationError):
+        PlanResponse(actions=[], ttl_ms=1000)
+
+
+def test_plan_response_valid_with_metadata():
+    plan = PlanResponse(
+        plan_id="abc123",
+        robot_id="robot-1",
+        seq=42,
+        monotonic_ts_ms=1000,
+        server_monotonic_ts_ms=1020,
+        actions=[{"action": "say", "text": "hello"}],
+        ttl_ms=1500,
+    )
+    assert plan.plan_id == "abc123"
+    assert plan.robot_id == "robot-1"
+    assert plan.seq == 42
 
 
 # -- WorldState ---------------------------------------------------------------
 
 
 def test_world_state_minimal():
-    ws = WorldState(mode="IDLE", battery_mv=8000, range_mm=1000)
+    ws = WorldState(
+        robot_id="robot-1",
+        seq=1,
+        monotonic_ts_ms=1234,
+        mode="IDLE",
+        battery_mv=8000,
+        range_mm=1000,
+    )
     assert ws.trigger == "heartbeat"
     assert ws.faults == []
 
 
 def test_world_state_full():
     ws = WorldState(
+        robot_id="robot-1",
+        seq=2,
+        monotonic_ts_ms=2345,
         mode="WANDER",
         battery_mv=7200,
         range_mm=350,

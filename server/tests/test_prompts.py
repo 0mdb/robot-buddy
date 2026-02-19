@@ -26,7 +26,14 @@ def test_system_prompt_mentions_safety():
 
 
 def test_format_user_prompt_basic():
-    ws = WorldState(mode="IDLE", battery_mv=8000, range_mm=1000)
+    ws = WorldState(
+        robot_id="robot-1",
+        seq=1,
+        monotonic_ts_ms=1000,
+        mode="IDLE",
+        battery_mv=8000,
+        range_mm=1000,
+    )
     prompt = format_user_prompt(ws)
     assert "Mode: IDLE" in prompt
     assert "Battery: 8000 mV" in prompt
@@ -36,6 +43,9 @@ def test_format_user_prompt_basic():
 
 def test_format_user_prompt_ball_detected():
     ws = WorldState(
+        robot_id="robot-1",
+        seq=2,
+        monotonic_ts_ms=1100,
         mode="WANDER",
         battery_mv=7500,
         range_mm=600,
@@ -51,6 +61,9 @@ def test_format_user_prompt_ball_detected():
 
 def test_format_user_prompt_faults():
     ws = WorldState(
+        robot_id="robot-1",
+        seq=3,
+        monotonic_ts_ms=1200,
         mode="ERROR",
         battery_mv=6500,
         range_mm=200,
@@ -61,14 +74,28 @@ def test_format_user_prompt_faults():
 
 
 def test_format_user_prompt_no_vision():
-    ws = WorldState(mode="IDLE", battery_mv=8000, range_mm=1000, clear_confidence=-1.0)
+    ws = WorldState(
+        robot_id="robot-1",
+        seq=4,
+        monotonic_ts_ms=1300,
+        mode="IDLE",
+        battery_mv=8000,
+        range_mm=1000,
+        clear_confidence=-1.0,
+    )
     prompt = format_user_prompt(ws)
     assert "n/a" in prompt
 
 
 def test_format_user_prompt_with_vision():
     ws = WorldState(
-        mode="WANDER", battery_mv=8000, range_mm=1000, clear_confidence=0.95
+        robot_id="robot-1",
+        seq=5,
+        monotonic_ts_ms=1400,
+        mode="WANDER",
+        battery_mv=8000,
+        range_mm=1000,
+        clear_confidence=0.95,
     )
     prompt = format_user_prompt(ws)
     assert "95%" in prompt

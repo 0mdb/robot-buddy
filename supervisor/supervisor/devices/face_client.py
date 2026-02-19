@@ -223,10 +223,10 @@ class FaceClient:
                 log.warning("face: bad TOUCH_EVENT: %s", e)
                 return
             self._rx_touch_packets += 1
-            evt = TouchEvent(te.event_type, te.x, te.y, time.monotonic() * 1000.0)
-            self.last_touch = evt
-            for cb in tuple(self._touch_subscribers):
-                cb(evt)
+            touch_evt = TouchEvent(te.event_type, te.x, te.y, time.monotonic() * 1000.0)
+            self.last_touch = touch_evt
+            for touch_cb in tuple(self._touch_subscribers):
+                touch_cb(touch_evt)
 
         elif pkt.pkt_type == FaceTelType.BUTTON_EVENT:
             try:
@@ -236,15 +236,15 @@ class FaceClient:
                 log.warning("face: bad BUTTON_EVENT: %s", e)
                 return
             self._rx_button_packets += 1
-            evt = ButtonEvent(
+            button_evt = ButtonEvent(
                 button_id=bp.button_id,
                 event_type=bp.event_type,
                 state=bp.state,
                 timestamp_mono_ms=time.monotonic() * 1000.0,
             )
-            self.last_button = evt
-            for cb in tuple(self._button_subscribers):
-                cb(evt)
+            self.last_button = button_evt
+            for button_cb in tuple(self._button_subscribers):
+                button_cb(button_evt)
 
         elif pkt.pkt_type == FaceTelType.HEARTBEAT:
             try:

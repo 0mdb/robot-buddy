@@ -15,7 +15,7 @@ Reflexes are local and deterministic. Planner is remote and optional.
 | Supervisor | Raspberry Pi 5 | 50 Hz orchestration, safety policy, HTTP/WS API |
 | Face MCU | ESP32-S3 (ES3C28P) | 320x240 TFT face renderer + touch/buttons telemetry |
 | Reflex MCU | ESP32-S3 WROOM | Differential drive, PID, encoders, IMU, ultrasonic, safety |
-| AI Server | PC with 3090 Ti (off-robot) | Local LLM (Qwen 3 14B) + future TTS, on LAN |
+| AI Server | PC with 3090 Ti (off-robot) | Planner/conversation LLM + TTS on LAN (`LLM_BACKEND=ollama|vllm`) |
 | Motor Driver | TB6612FNG | Dual H-bridge for differential drive |
 | Power | 2S LiPo | Split into dirty (motors) and clean 5V regulated rails |
 
@@ -37,10 +37,10 @@ robot-buddy/
 │   │   └── main.py      # Entry point, CLI args
 │   ├── tests/           # pytest test suite
 │   └── pyproject.toml   # Package metadata, deps
-├── server/              # AI planner server (3090 Ti, FastAPI + Ollama)
+├── server/              # AI planner server (3090 Ti, FastAPI + backend switch)
 │   ├── app/             # FastAPI app, LLM client, prompts, schemas
 │   ├── tests/           # pytest test suite
-│   ├── Modelfile        # Ollama model config
+│   ├── Modelfile        # Legacy Ollama model config
 │   └── pyproject.toml   # Package metadata, deps
 ├── esp32-face-v2/       # Face MCU firmware (ESP32-S3, C/C++, ESP-IDF)
 │   └── main/            # TFT face rendering + touch/buttons + USB protocol
@@ -84,9 +84,10 @@ robot-buddy/
 ┌────────▼───────────────────────────┐
 │ AI Server (3090 Ti PC)             │
 │                                    │
-│ Ollama (qwen3:14b) → FastAPI      │
-│ POST /plan → performance plans    │
-│ (emote, say, gesture, skill)      │
+│ FastAPI planner server             │
+│ LLM backend: ollama | vllm         │
+│ TTS: Orpheus (vLLM) + espeak shed  │
+│ POST /plan / WS /converse /tts     │
 └────────────────────────────────────┘
 ```
 
@@ -128,7 +129,7 @@ Auto-reconnect with exponential backoff (0.5s–5s). See `docs/protocols.md` for
 | Component | Stack |
 |---|---|
 | Supervisor | Python 3.11+, asyncio, FastAPI, uvicorn, pyserial, OpenCV |
-| AI Server | Python 3.11+, FastAPI, httpx, Pydantic, Ollama (Qwen 3 14B) |
+| AI Server | Python 3.11+, FastAPI, httpx, Pydantic, Ollama (compat) + vLLM (migration target) |
 | ESP32 Firmware | C/C++, ESP-IDF (FreeRTOS), CMake |
 | Build (Python) | Hatchling via pyproject.toml |
 | Build (ESP32) | `idf.py build` (CMake) |
@@ -152,19 +153,19 @@ python -m supervisor --port /dev/ttyUSB0
 # Other options
 python -m supervisor --no-vision         # Disable vision process
 python -m supervisor --http-port 8080    # Custom HTTP port
+python -m supervisor --planner-api http://10.0.0.20:8100 --robot-id robot-1
 ```
 
 ### AI Planner Server (3090 Ti PC)
 
 ```bash
-# Install Ollama and pull the model
-curl -fsSL https://ollama.com/install.sh | sh
-ollama pull qwen3:14b
-
 # Install and run the server
 cd server
-pip install -e ".[dev]"
-python -m app.main
+uv sync --extra dev --extra llm --extra stt --extra tts
+
+# Recommended testing profile (vLLM planner + CPU STT + espeak)
+LLM_BACKEND=vllm STT_DEVICE=cpu TTS_BACKEND=espeak \
+uv run --extra llm --extra stt --extra tts python -m app.main
 ```
 
 The server starts on port 8100. See `server/README.md` for full API docs and configuration.
@@ -227,7 +228,8 @@ When the supervisor is running, open `http://<robot_ip>:8080` in a browser for:
 - Default serial paths: `/dev/robot_reflex`, `/dev/robot_face` (via udev symlinks)
 
 **AI Server** — environment variables:
-- `OLLAMA_URL`, `MODEL_NAME`, `PLAN_TIMEOUT_S`, `TEMPERATURE`, `NUM_CTX`
+- `LLM_BACKEND`, `VLLM_MODEL_NAME`, `LLM_MAX_INFLIGHT`, `PERFORMANCE_MODE`
+- legacy compatibility: `OLLAMA_URL`, `MODEL_NAME`, `PLAN_TIMEOUT_S`, `TEMPERATURE`, `NUM_CTX`
 - See `server/README.md` for the full table
 
 **ESP32** — `sdkconfig.defaults` + `config.h` constants
@@ -247,10 +249,19 @@ When the supervisor is running, open `http://<robot_ip>:8080` in a browser for:
 
 | Endpoint | Method | Description |
 |---|---|---|
-| `/health` | GET | Server + Ollama status |
-| `/plan` | POST | Accept world state, return performance plan |
+| `/health` | GET | Server + selected LLM backend status |
+| `/plan` | POST | Accept world state + `robot_id/seq/monotonic_ts_ms`, return plan + `plan_id` echo metadata |
+| `/converse` | WS | Conversation stream (single active session per `robot_id`) |
+| `/tts` | POST | Direct TTS with optional metadata (`robot_id`, `seq`, `monotonic_ts_ms`) |
 
 Plan actions: `say(text)`, `emote(name, intensity)`, `gesture(name, params)`, `skill(name)` — planner proposes intent and supervisor executes deterministic skills.
+
+## Supervisor Fallback Policy
+
+| Failure condition | Immediate supervisor action | Motion policy | Face policy | Speech policy |
+|---|---|---|---|---|
+| `/plan` unreachable / non-200 | Mark planner disconnected; skip remote plan apply | Local deterministic only (`patrol_drift`/`avoid_obstacle`/safe stop) | `confused` gesture with cooldown | Cancel queued planner speech |
+| `/converse` TTS fails mid-turn | Stop playback and clear talking flag | No change to motion authority | Show `thinking` briefly then restore previous mood | Attempt fallback backend once; if unavailable, skip speech |
 
 ## Project Status
 
@@ -262,14 +273,14 @@ Plan actions: `say(text)`, `emote(name, intensity)`, `gesture(name, params)`, `s
 - [x] Supervisor: vision process (separate OS process, multiprocessing queue)
 - [x] Supervisor: mock Reflex MCU for hardware-free development
 - [x] Supervisor: telemetry recording (JSONL)
-- [x] AI Server: FastAPI + Ollama integration with structured output
+- [x] AI Server: FastAPI + backend-switchable planner inference (Ollama/vLLM)
 - [x] AI Server: bounded performance plans (emote, say, gesture, skill)
+- [x] AI Server: direct TTS endpoint with Orpheus/espeak fallback
 - [x] ESP32 Face v2: TFT face rendering, touch/button telemetry, supervisor-driven emotions/gestures
 - [x] ESP32 Reflex: motor control, PID, encoders, safety enforcement
 
 ### In Progress
 - [x] Supervisor-side PlannerClient (connects to AI server)
-- [ ] AI Server: TTS endpoint
 - [ ] AI Server: interaction history / conversation memory
 
 ### Future

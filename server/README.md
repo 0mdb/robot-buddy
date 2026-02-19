@@ -5,13 +5,17 @@ Optional AI planner stack running on a 3090 Ti on the local network.
 ## Architecture
 
 ```
-Supervisor (Pi 5) ──POST /plan──► FastAPI server ──/api/chat──► Ollama (qwen3:14b)
-                  ◄── PlanResponse ──┘                           GPU: 3090 Ti
+Supervisor (Pi 5) ──POST /plan / WS /converse──► FastAPI server
+                  ◄────────────── PlanResponse ──┘
+                                      │
+                                      ├─ LLM backend: Ollama (legacy) or vLLM (target)
+                                      └─ TTS backend: Orpheus (vLLM) with espeak shedding
 ```
 
-- **Model:** Qwen 3 14B (Q4_K_M) via Ollama (~9 GB VRAM)
+- **Planner model:** default `Qwen/Qwen2.5-3B-Instruct` when `LLM_BACKEND=vllm`
+- **Rollout backend switch:** `LLM_BACKEND=ollama|vllm` (default `vllm`)
 - **Server:** FastAPI + uvicorn on port 8100
-- **LLM client:** async httpx calling Ollama's `/api/chat` with structured output (JSON schema)
+- **STT:** faster-whisper, CPU-first (`STT_DEVICE=cpu`)
 
 ## Current Conversational Audio Status (2026-02-18)
 
@@ -26,91 +30,71 @@ Supervisor (Pi 5) ──POST /plan──► FastAPI server ──/api/chat──
 
 ## Setup
 
-### 1. Install Ollama
+### 1. Install the server
+
+```bash
+cd server/
+uv sync --extra dev --extra llm --extra stt --extra tts
+```
+
+### 2. Optional: install Ollama (legacy backend only)
 
 ```bash
 curl -fsSL https://ollama.com/install.sh | sh
+ollama pull qwen2.5:3b
 ```
 
-### 2. Pull the model
-
-```bash
-ollama pull qwen3:14b
-```
-
-Or create a custom model with pinned parameters:
+### 3. Run (testing profile, vLLM planner + CPU STT + espeak)
 
 ```bash
 cd server/
-ollama create robot-buddy -f Modelfile
+LLM_BACKEND=vllm \
+VLLM_MODEL_NAME=Qwen/Qwen2.5-3B-Instruct \
+PERFORMANCE_MODE=0 \
+STT_DEVICE=cpu \
+STT_COMPUTE_TYPE=int8 \
+TTS_BACKEND=espeak \
+uv run --extra llm --extra stt --extra tts python -m app.main
 ```
 
-### 3. Install the server
+### 4. Run (performance profile, vLLM planner + Orpheus TTS)
 
 ```bash
 cd server/
-uv sync --extra dev --extra stt --extra tts
-```
-
-### 4. Run
-
-```bash
-# Make sure Ollama is running (ollama serve)
-cd server/
-uv run --extra stt --extra tts python -m app.main
+LLM_BACKEND=vllm \
+VLLM_MODEL_NAME=Qwen/Qwen2.5-3B-Instruct \
+PERFORMANCE_MODE=1 \
+STT_DEVICE=cpu \
+VLLM_GPU_MEMORY_UTILIZATION=0.35 \
+ORPHEUS_GPU_MEMORY_UTILIZATION=0.35 \
+uv run --extra llm --extra stt --extra tts python -m app.main
 ```
 
 The server starts on `http://0.0.0.0:8100`.
 
-Note: `uv run` does not include optional extras unless passed explicitly.
-
 The server now auto-loads a local `.env` file (if present), and by default will
-auto-pull the configured Ollama model when missing.
+use backend-appropriate model loading:
+- `LLM_BACKEND=vllm`: model download handled by Hugging Face/vLLM (`HF_TOKEN` required for gated repos).
+- `LLM_BACKEND=ollama`: optional auto-pull with `AUTO_PULL_OLLAMA_MODEL=1`.
 
 Example `.env`:
 
 ```bash
+LLM_BACKEND=vllm
+VLLM_MODEL_NAME=Qwen/Qwen2.5-3B-Instruct
+STT_DEVICE=cpu
+HF_TOKEN=hf_xxx
+
+# Legacy Ollama compatibility path:
 MODEL_NAME=qwen2.5:3b
 AUTO_PULL_OLLAMA_MODEL=1
 OLLAMA_PULL_TIMEOUT_S=1800
-HF_TOKEN=hf_xxx
-```
-
-### Recommended single-GPU run (Qwen + Orpheus on one 3090)
-
-```bash
-cd server/
-WARMUP_LLM=0 \
-PLAN_TIMEOUT_S=25 \
-CONVERSE_KEEP_ALIVE=0s \
-ORPHEUS_GPU_MEMORY_UTILIZATION=0.35 \
-ORPHEUS_MAX_MODEL_LEN=4096 \
-ORPHEUS_MAX_NUM_SEQS=4 \
-ORPHEUS_MAX_NUM_BATCHED_TOKENS=256 \
-uv run --extra stt --extra tts python -m app.main
-```
-
-This reduces vLLM startup pressure and avoids sampler warmup OOM when Orpheus and Ollama share one GPU.
-
-### Low-memory conversational test profile (recommended for bring-up)
-
-```bash
-cd server/
-MODEL_NAME=qwen2.5:3b \
-PLAN_TIMEOUT_S=35 \
-WARMUP_LLM=0 \
-CONVERSE_KEEP_ALIVE=0s \
-STT_MODEL_SIZE=base.en \
-STT_DEVICE=cpu \
-STT_COMPUTE_TYPE=int8 \
-TTS_BACKEND=espeak \
-uv run --extra stt --extra tts python -m app.main
 ```
 
 Notes:
-- `TTS_BACKEND=espeak` avoids vLLM/Orpheus GPU churn during testing.
-- `STT_DEVICE=cpu` removes Whisper from GPU memory contention.
-- You can switch back to `TTS_BACKEND=orpheus` once memory is stable.
+- `STT_DEVICE=cpu` avoids STT contention with Qwen/Orpheus GPU inference.
+- Keep `CONVERSE_KEEP_ALIVE=0s` and `PLAN_KEEP_ALIVE=0s` when using Ollama compatibility mode.
+- `PERFORMANCE_MODE=0` keeps Orpheus disabled (espeak/off fallback only).
 
 ## Configuration
 
@@ -118,16 +102,31 @@ All settings are overridable via environment variables:
 
 | Variable | Default | Description |
 |---|---|---|
+| `LLM_BACKEND` | `vllm` | `vllm` (default) or `ollama` compatibility backend |
+| `LLM_MAX_INFLIGHT` | `1` | Shared generation concurrency across `/plan` and `/converse` |
+| `VLLM_MODEL_NAME` | `Qwen/Qwen2.5-3B-Instruct` | Planner/conversation model for vLLM backend |
+| `VLLM_DTYPE` | `bfloat16` | vLLM dtype |
+| `VLLM_GPU_MEMORY_UTILIZATION` | `0.35` | GPU memory target for Qwen vLLM engine |
+| `VLLM_MAX_MODEL_LEN` | `4096` | vLLM max sequence length |
+| `VLLM_MAX_NUM_SEQS` | `2` | vLLM max concurrent sequences |
+| `VLLM_MAX_NUM_BATCHED_TOKENS` | `256` | vLLM batch cap |
+| `VLLM_TEMPERATURE` | `0.7` | vLLM sampling temperature |
+| `VLLM_TIMEOUT_S` | `20.0` | vLLM generation timeout |
+| `VLLM_MAX_OUTPUT_TOKENS` | `512` | vLLM max output tokens |
+| `GPU_UTILIZATION_CAP` | `0.80` | Enforced cap for `Qwen + Orpheus` utilization sum |
+| `PLAN_TIMEOUT_S` | `5.0` | Ollama mode timeout |
 | `OLLAMA_URL` | `http://localhost:11434` | Ollama API base URL |
 | `MODEL_NAME` | `qwen3:14b` | Ollama model name |
 | `AUTO_PULL_OLLAMA_MODEL` | `1` | Auto-pull `MODEL_NAME` from Ollama if missing |
 | `OLLAMA_PULL_TIMEOUT_S` | `1800.0` | Timeout for model pull at startup / retry |
-| `PLAN_TIMEOUT_S` | `5.0` | Max seconds to wait for LLM response |
-| `WARMUP_LLM` | `1` | Warm Ollama model at startup (`0` to disable) |
+| `PLAN_MAX_INFLIGHT` | `1` | Max concurrent `/plan` requests before fast 429 shedding |
+| `PLAN_KEEP_ALIVE` | `0s` | Ollama keep-alive for `/plan` calls |
+| `WARMUP_LLM` | `1` | Warm selected LLM backend at startup |
 | `MAX_ACTIONS` | `5` | Max actions per plan |
-| `TEMPERATURE` | `0.7` | LLM sampling temperature |
-| `NUM_CTX` | `4096` | Context window size (tokens) |
+| `TEMPERATURE` | `0.7` | Ollama sampling temperature |
+| `NUM_CTX` | `4096` | Ollama context window size |
 | `CONVERSE_KEEP_ALIVE` | `0s` | Ollama keep-alive for `/converse` calls |
+| `PERFORMANCE_MODE` | `0` | Enables Orpheus path only when true |
 | `STT_MODEL_SIZE` | `base.en` | faster-whisper model size for `/converse` |
 | `STT_DEVICE` | `cpu` | faster-whisper device (`cpu` or `cuda`) |
 | `STT_COMPUTE_TYPE` | `int8` | faster-whisper compute type |
@@ -141,6 +140,8 @@ All settings are overridable via environment variables:
 | `ORPHEUS_MAX_NUM_BATCHED_TOKENS` | `512` | vLLM max batched tokens for Orpheus |
 | `ORPHEUS_IDLE_TIMEOUT_S` | `8.0` | Max idle wait for next Orpheus chunk before reset/retry |
 | `ORPHEUS_TOTAL_TIMEOUT_S` | `60.0` | Max total synthesis wait for one Orpheus request |
+| `ORPHEUS_MIN_FREE_VRAM_GB` | `10.0` | Minimum free VRAM to allow Orpheus startup in performance mode |
+| `TTS_BUSY_QUEUE_THRESHOLD` | `0` | Any active Orpheus request beyond this sheds immediately to `espeak` |
 | `SERVER_HOST` | `0.0.0.0` | Bind address |
 | `SERVER_PORT` | `8100` | Bind port |
 
@@ -148,13 +149,25 @@ All settings are overridable via environment variables:
 
 ### `GET /health`
 
-Returns server and Ollama status.
+Returns server and LLM backend status.
 
 ```json
 {
   "status": "ok",
-  "model": "qwen3:14b",
-  "ollama": true,
+  "model": "Qwen/Qwen2.5-3B-Instruct",
+  "llm_backend": "vllm",
+  "llm_engine_loaded": true,
+  "ollama": false,
+  "resource_profile": "conservative",
+  "performance_mode": false,
+  "orpheus_enabled": false,
+  "gpu_budget": {
+    "qwen_backend": "vllm",
+    "qwen_utilization": 0.35,
+    "orpheus_utilization": 0.35,
+    "combined_utilization": 0.7,
+    "cap": 0.8
+  },
   "ai": {
     "stt": {"model_size": "base.en", "device": "cpu", "compute_type": "int8", "loaded": false},
     "tts": {"backend_pref": "auto", "backend_active": "espeak", "loaded": true}
@@ -162,7 +175,7 @@ Returns server and Ollama status.
 }
 ```
 
-Returns 503 if Ollama is unreachable.
+Returns `503` when the selected LLM backend is not reachable.
 
 ## TTS Notes
 
@@ -185,6 +198,9 @@ Accepts a world-state snapshot, returns a bounded performance plan.
 
 ```json
 {
+    "robot_id": "robot-1",
+    "seq": 42,
+    "monotonic_ts_ms": 123456789,
     "mode": "WANDER",
     "battery_mv": 7800,
     "range_mm": 600,
@@ -204,6 +220,11 @@ Accepts a world-state snapshot, returns a bounded performance plan.
 
 ```json
 {
+    "plan_id": "f6a4d07e9abf49ce88381d0b0b6a93ab",
+    "robot_id": "robot-1",
+    "seq": 42,
+    "monotonic_ts_ms": 123456789,
+    "server_monotonic_ts_ms": 987654321,
     "actions": [
         {"action": "emote", "name": "excited", "intensity": 0.9},
         {"action": "say", "text": "Oh! A ball!"},
@@ -214,7 +235,18 @@ Accepts a world-state snapshot, returns a bounded performance plan.
 }
 ```
 
-**Error codes:** 504 (LLM timeout), 502 (Ollama unreachable or LLM error), 422 (invalid request).
+**Error codes:** 429 (planner busy), 504 (LLM timeout), 502 (LLM unreachable or backend error), 422 (invalid request).
+
+### `WebSocket /converse`
+
+- Requires `robot_id` query parameter.
+- Optional diagnostics: `session_seq`, `session_monotonic_ts_ms`.
+- Only one active stream per `robot_id`; newer sessions preempt older sessions with close code `4001`.
+
+### `POST /tts`
+
+- Optional metadata fields: `robot_id`, `seq`, `monotonic_ts_ms`.
+- If Orpheus is busy and `espeak` fallback is unavailable, returns `503` with `detail=tts_busy_no_fallback` immediately (no long timeout).
 
 ## Plan Actions
 

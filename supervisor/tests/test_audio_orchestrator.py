@@ -24,7 +24,7 @@ class _FakeConversation:
 
 
 def test_enqueue_speech_is_bounded():
-    ao = AudioOrchestrator("http://127.0.0.1:8100")
+    ao = AudioOrchestrator("http://127.0.0.1:8100", robot_id="robot-1")
     for i in range(PLANNER_SPEECH_QUEUE_MAX):
         assert ao.enqueue_speech(f"line {i}")
     assert not ao.enqueue_speech("overflow")
@@ -32,7 +32,7 @@ def test_enqueue_speech_is_bounded():
 
 @pytest.mark.asyncio
 async def test_ptt_enable_preempts_planner_speech(monkeypatch):
-    ao = AudioOrchestrator("http://127.0.0.1:8100")
+    ao = AudioOrchestrator("http://127.0.0.1:8100", robot_id="robot-1")
     ao._conversation = _FakeConversation()  # type: ignore[assignment]
 
     calls: list[str] = []
@@ -48,4 +48,3 @@ async def test_ptt_enable_preempts_planner_speech(monkeypatch):
 
     await ao.set_ptt_enabled(True)
     assert calls == ["cancel", "ptt=True"]
-

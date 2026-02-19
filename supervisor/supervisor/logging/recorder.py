@@ -6,6 +6,7 @@ import json
 import logging
 import time
 from pathlib import Path
+from typing import TextIO
 
 log = logging.getLogger(__name__)
 
@@ -27,7 +28,7 @@ class Recorder:
         self._max_files = max_files
         self._enabled = enabled
 
-        self._file = None
+        self._file: TextIO | None = None
         self._file_path: Path | None = None
         self._file_bytes = 0
         self._last_write = 0.0

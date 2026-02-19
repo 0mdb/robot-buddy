@@ -142,6 +142,10 @@ class SerialTransport:
     # -- internals -----------------------------------------------------------
 
     async def _run_loop(self) -> None:
+        loop = self._loop
+        if loop is None:
+            loop = asyncio.get_running_loop()
+            self._loop = loop
         backoff = _RECONNECT_MIN_S
         while self._running:
             if not self._connected:
@@ -153,7 +157,7 @@ class SerialTransport:
                     continue
 
             try:
-                data = await self._loop.run_in_executor(None, self._blocking_read)
+                data = await loop.run_in_executor(None, self._blocking_read)
                 if data:
                     self._feed(data)
             except (serial.SerialException, OSError) as e:

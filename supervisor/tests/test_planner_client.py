@@ -45,6 +45,11 @@ def test_request_plan_success() -> None:
             json={
                 "actions": [{"action": "emote", "name": "happy", "intensity": 0.8}],
                 "ttl_ms": 1500,
+                "plan_id": "p1",
+                "robot_id": "robot-1",
+                "seq": 7,
+                "monotonic_ts_ms": 1234,
+                "server_monotonic_ts_ms": 1240,
             },
         )
 
@@ -57,6 +62,9 @@ def test_request_plan_success() -> None:
         assert len(plan.actions) == 1
         assert plan.actions[0]["action"] == "emote"
         assert plan.ttl_ms == 1500
+        assert plan.plan_id == "p1"
+        assert plan.robot_id == "robot-1"
+        assert plan.seq == 7
 
     asyncio.run(run())
 
@@ -91,6 +99,31 @@ def test_request_plan_raises_on_bad_payload() -> None:
             await client.request_plan({"mode": "IDLE"})
         except PlannerError as e:
             assert "actions list" in str(e)
+        else:
+            raise AssertionError("expected PlannerError")
+        finally:
+            await client.stop()
+
+    asyncio.run(run())
+
+
+def test_request_plan_raises_when_metadata_missing() -> None:
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "actions": [{"action": "say", "text": "hello"}],
+                "ttl_ms": 2000,
+            },
+        )
+
+    async def run() -> None:
+        client = PlannerClient("http://planner.local", transport=httpx.MockTransport(handler))
+        await client.start()
+        try:
+            await client.request_plan({"mode": "IDLE"})
+        except PlannerError as e:
+            assert "plan_id" in str(e)
         else:
             raise AssertionError("expected PlannerError")
         finally:

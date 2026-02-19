@@ -78,7 +78,7 @@ def load_config(path: str | Path | None = None) -> SupervisorConfig:
         return SupervisorConfig()
 
     try:
-        import yaml
+        import yaml  # type: ignore[import-untyped]
 
         with open(path) as f:
             raw = yaml.safe_load(f) or {}

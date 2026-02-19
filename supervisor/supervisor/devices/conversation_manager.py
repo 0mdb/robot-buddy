@@ -10,6 +10,8 @@ import logging
 import math
 import shutil
 import struct
+import urllib.parse
+from typing import AsyncIterator, Protocol, cast
 
 from supervisor.devices.expressions import (
     EMOTION_TO_FACE_MOOD,
@@ -31,6 +33,12 @@ PLAYBACK_QUEUE_MAX_CHUNKS = 512
 RECONNECT_BACKOFF_S = 1.5
 
 
+class _WebSocketConn(Protocol):
+    async def send(self, message: str) -> None: ...
+    async def close(self) -> None: ...
+    def __aiter__(self) -> AsyncIterator[str]: ...
+
+
 def _compute_rms_energy(pcm_chunk: bytes) -> int:
     """Compute RMS energy of a PCM chunk, returned as 0-255."""
     if len(pcm_chunk) < 2:
@@ -47,15 +55,17 @@ class ConversationManager:
     def __init__(
         self,
         server_url: str,
+        robot_id: str,
         face: FaceClient | None = None,
         speaker_device: str = "default",
         mic_device: str = "default",
     ) -> None:
         self._server_url = server_url.rstrip("/")
+        self._robot_id = str(robot_id or "").strip()
         self._face = face
         self._speaker_device = speaker_device
         self._mic_device = mic_device
-        self._ws = None
+        self._ws: _WebSocketConn | None = None
         self._reconnect_task: asyncio.Task | None = None
         self._receive_task: asyncio.Task | None = None
         self._playback_task: asyncio.Task | None = None
@@ -71,6 +81,9 @@ class ConversationManager:
         self._ptt_enabled = False
         self._logged_missing_aplay = False
         self._logged_missing_arecord = False
+        self._session_seq = 0
+        self._last_face_mood: int | None = None
+        self._last_face_intensity: float = 0.7
 
     @property
     def connected(self) -> bool:
@@ -187,8 +200,11 @@ class ConversationManager:
 
     async def _receive_loop(self) -> None:
         """Process messages from the server."""
+        ws = self._ws
+        if ws is None:
+            return
         try:
-            async for raw in self._ws:
+            async for raw in ws:
                 try:
                     msg = json.loads(raw)
                 except json.JSONDecodeError:
@@ -209,6 +225,7 @@ class ConversationManager:
                     pass
                 elif msg_type == "error":
                     log.warning("Server error: %s", msg.get("message", ""))
+                    await self._show_thinking_face()
                     await self._stop_talking()
 
         except asyncio.CancelledError:
@@ -241,17 +258,34 @@ class ConversationManager:
                     await self._ws.close()
                 self._ws = None
 
-            self._ws = await websockets.connect(
-                f"{ws_url}/converse",
-                ping_interval=20,
-                ping_timeout=10,
+            params = urllib.parse.urlencode(
+                {
+                    "robot_id": self._robot_id,
+                    "session_seq": self._session_seq,
+                    "session_monotonic_ts_ms": int(
+                        asyncio.get_running_loop().time() * 1000
+                    ),
+                }
+            )
+            self._session_seq += 1
+            self._ws = cast(
+                _WebSocketConn,
+                await websockets.connect(
+                    f"{ws_url}/converse?{params}",
+                    ping_interval=20,
+                    ping_timeout=10,
+                ),
             )
             self._connected = True
             if self._receive_task is None or self._receive_task.done():
                 self._receive_task = asyncio.create_task(self._receive_loop())
             if self._ptt_enabled:
                 await self._start_mic_capture()
-            log.info("Conversation connected to %s/converse", ws_url)
+            log.info(
+                "Conversation connected to %s/converse (robot_id=%s)",
+                ws_url,
+                self._robot_id,
+            )
         except Exception as exc:
             self._connected = False
             self._ws = None
@@ -274,6 +308,8 @@ class ConversationManager:
         intensity = msg.get("intensity", 0.5)
         emotion = normalize_emotion_name(raw_emotion) or "neutral"
         mood_id = EMOTION_TO_FACE_MOOD[emotion]
+        self._last_face_mood = mood_id
+        self._last_face_intensity = float(intensity)
 
         if self._face:
             self._face.send_state(
@@ -281,6 +317,21 @@ class ConversationManager:
                 intensity=float(intensity),
             )
         log.debug("Emotion: %s (%.1f) -> mood_id=%d", emotion, intensity, mood_id)
+
+    async def _show_thinking_face(self) -> None:
+        if self._face is None:
+            return
+        thinking_mood = EMOTION_TO_FACE_MOOD.get("thinking")
+        if thinking_mood is None:
+            return
+
+        self._face.send_state(emotion_id=thinking_mood, intensity=0.7)
+        await asyncio.sleep(0.6)
+        if self._last_face_mood is not None:
+            self._face.send_state(
+                emotion_id=self._last_face_mood,
+                intensity=self._last_face_intensity,
+            )
 
     def _handle_gestures(self, msg: dict) -> None:
         """Trigger gesture animations on the face."""

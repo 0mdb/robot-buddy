@@ -4,7 +4,7 @@ Usage:
     python -m supervisor                    # default (expects real hardware)
     python -m supervisor --mock             # use mock reflex MCU
     python -m supervisor --port /dev/...    # specify serial port
-    python -m supervisor --planner-api http://10.0.0.20:8100
+    python -m supervisor --planner-api http://10.0.0.20:8100 --robot-id robot-1
 """
 
 from __future__ import annotations
@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import os
 import signal
 
 import uvicorn
@@ -25,6 +26,7 @@ from supervisor.devices.planner_client import PlannerClient
 from supervisor.devices.reflex_client import REFLEX_PARAM_IDS, ReflexClient
 from supervisor.inputs.camera_vision import VisionProcess
 from supervisor.io.serial_transport import SerialTransport
+from supervisor.logging.handler import WebSocketLogHandler
 from supervisor.mock.mock_reflex import MockReflex
 from supervisor.runtime import Runtime
 
@@ -69,6 +71,11 @@ def parse_args() -> argparse.Namespace:
         help="ALSA capture device passed to arecord -D",
     )
     p.add_argument("--log-level", default="INFO", help="Log level")
+    p.add_argument(
+        "--robot-id",
+        default=os.environ.get("ROBOT_ID", ""),
+        help="Stable robot identity sent to planner server metadata",
+    )
     return p.parse_args()
 
 
@@ -98,6 +105,8 @@ async def async_main(args: argparse.Namespace) -> None:
     # Planner server client (optional)
     planner: PlannerClient | None = None
     if args.planner_api:
+        if not str(args.robot_id or "").strip():
+            raise ValueError("--robot-id (or ROBOT_ID) is required when --planner-api is set")
         planner = PlannerClient(args.planner_api, timeout_s=args.planner_timeout)
         await planner.start()
         healthy = await planner.health_check()
@@ -109,6 +118,7 @@ async def async_main(args: argparse.Namespace) -> None:
     if args.planner_api and face is not None:
         audio = AudioOrchestrator(
             args.planner_api,
+            robot_id=args.robot_id,
             face=face,
             speaker_device=args.usb_speaker_device,
             mic_device=args.usb_mic_device,
@@ -169,6 +179,7 @@ async def async_main(args: argparse.Namespace) -> None:
         face=face,
         planner=planner,
         audio=audio,
+        robot_id=args.robot_id,
     )
 
     # FastAPI app
@@ -208,10 +219,6 @@ async def async_main(args: argparse.Namespace) -> None:
             await planner.stop()
         if mock:
             mock.stop()
-
-
-from supervisor.logging.handler import WebSocketLogHandler
-
 
 def main() -> None:
     args = parse_args()

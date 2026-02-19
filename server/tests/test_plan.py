@@ -7,7 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.llm.client import OllamaClient
-from app.llm.schemas import PlanResponse
+from app.llm.schemas import ModelPlan
 from app.main import app
 
 
@@ -15,7 +15,7 @@ from app.main import app
 # Helpers
 # ---------------------------------------------------------------------------
 
-VALID_PLAN = PlanResponse(
+VALID_PLAN = ModelPlan(
     actions=[
         {"action": "emote", "name": "happy", "intensity": 0.8},
         {"action": "say", "text": "Hello!"},
@@ -24,6 +24,9 @@ VALID_PLAN = PlanResponse(
 )
 
 WORLD_STATE = {
+    "robot_id": "robot-1",
+    "seq": 10,
+    "monotonic_ts_ms": 12345,
     "mode": "WANDER",
     "battery_mv": 7800,
     "range_mm": 600,
@@ -52,7 +55,9 @@ def client():
     ollama._model = "qwen3:14b"
     ollama._timeout = httpx.Timeout(5.0)
     ollama._client = None  # Will be set per-test
-    app.state.ollama = ollama
+    ollama._max_inflight = 1
+    ollama._active_generations = 0
+    app.state.llm = ollama
 
     return TestClient(app, raise_server_exceptions=False)
 
@@ -73,6 +78,11 @@ def test_health_ollama_down(client):
     data = resp.json()
     assert "status" in data
     assert "model" in data
+    assert "llm_backend" in data
+    assert "llm_model" in data
+    assert "llm_engine_loaded" in data
+    assert "gpu_budget" in data
+    assert "qwen_backend" in data["gpu_budget"]
     assert "ai" in data
     assert "tts" in data["ai"]
     assert "model_available" in data
@@ -90,6 +100,9 @@ def test_plan_returns_valid_plan(client, monkeypatch):
     assert resp.status_code == 200
     data = resp.json()
     assert "actions" in data
+    assert data["robot_id"] == "robot-1"
+    assert data["seq"] == 10
+    assert data["plan_id"]
     assert len(data["actions"]) == 2
     assert data["actions"][0]["action"] == "emote"
     assert data["ttl_ms"] == 2000
@@ -108,8 +121,8 @@ def test_plan_timeout(client, monkeypatch):
     assert resp.json()["error"] == "llm_timeout"
 
 
-def test_plan_ollama_unreachable(client, monkeypatch):
-    """POST /plan returns 502 when Ollama is unreachable."""
+def test_plan_llm_unreachable(client, monkeypatch):
+    """POST /plan returns 502 when LLM backend is unreachable."""
 
     async def mock_connect_error(self, state):
         raise httpx.ConnectError("connection refused")
@@ -118,7 +131,7 @@ def test_plan_ollama_unreachable(client, monkeypatch):
 
     resp = client.post("/plan", json=WORLD_STATE)
     assert resp.status_code == 502
-    assert resp.json()["error"] == "ollama_unreachable"
+    assert resp.json()["error"] == "llm_unreachable"
 
 
 def test_plan_invalid_world_state(client):

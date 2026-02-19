@@ -264,7 +264,28 @@ class FaceHeartbeatPayload:
         if len(data) >= (tail_off + cls._TAIL_FMT.size):
             tail = cls._TAIL_FMT.unpack_from(data, tail_off)
 
-        return cls(*base, *usb, *tail)
+        return cls(
+            uptime_ms=base[0],
+            status_tx_count=base[1],
+            touch_tx_count=base[2],
+            button_tx_count=base[3],
+            usb_tx_calls=usb[0],
+            usb_tx_bytes_requested=usb[1],
+            usb_tx_bytes_queued=usb[2],
+            usb_tx_short_writes=usb[3],
+            usb_tx_flush_ok=usb[4],
+            usb_tx_flush_not_finished=usb[5],
+            usb_tx_flush_timeout=usb[6],
+            usb_tx_flush_error=usb[7],
+            usb_rx_calls=usb[8],
+            usb_rx_bytes=usb[9],
+            usb_rx_errors=usb[10],
+            usb_line_state_events=usb[11],
+            usb_dtr=tail[0],
+            usb_rts=tail[1],
+            ptt_listening=tail[2],
+            reserved=tail[3],
+        )
 
 
 # -- Packet building --------------------------------------------------------

@@ -92,6 +92,11 @@ class PlannerScheduler:
             "queued_actions": [asdict(x) for x in self._queue],
         }
 
+    def clear_queued_actions(self) -> int:
+        dropped = len(self._queue)
+        self._queue.clear()
+        return dropped
+
     def _on_cooldown(self, action: dict, action_type: str, now_mono_ms: float) -> bool:
         type_cd = self._cooldown_type_ms.get(action_type, 0)
         last_type = self._last_action_type_ms.get(action_type, -1e12)
@@ -127,4 +132,3 @@ class PlannerScheduler:
             name = str(action.get("name", "")).strip().lower()
             return f"skill:{name}" if name else ""
         return ""
-

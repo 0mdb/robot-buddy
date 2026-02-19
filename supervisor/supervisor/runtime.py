@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from collections import OrderedDict
+from typing import Callable
 
 from supervisor.devices.audio_orchestrator import AudioOrchestrator
 from supervisor.devices.expressions import (
@@ -50,17 +52,19 @@ class Runtime:
     def __init__(
         self,
         reflex: ReflexClient,
-        on_telemetry: callable | None = None,
+        on_telemetry: Callable[[RobotState], None] | None = None,
         vision: VisionProcess | None = None,
         face: FaceClient | None = None,
         planner: PlannerClient | None = None,
         audio: AudioOrchestrator | None = None,
+        robot_id: str = "",
     ) -> None:
         self._reflex = reflex
         self._face = face
         self._vision = vision
         self._planner = planner
         self._audio = audio
+        self._robot_id = robot_id.strip()
         self._sm = SupervisorSM()
         self._state = RobotState()
         self._teleop_twist = DesiredTwist()
@@ -71,11 +75,16 @@ class Runtime:
         self._planner_task: asyncio.Task[PlannerPlan] | None = None
         self._audio_ptt_task: asyncio.Task[None] | None = None
         self._planner_task_started_mono_ms = 0.0
+        self._planner_req_seq = 0
+        self._planner_last_accepted_seq = -1
+        self._planner_seen_plan_ids: OrderedDict[str, float] = OrderedDict()
+        self._planner_seen_plan_ids_max = 256
         self._next_plan_mono = 0.0
         self._last_face_system_mode: int | None = None
         self._last_face_listening: bool | None = None
         self._next_greet_allowed_mono_ms = 0.0
         self._greet_skill_until_mono_ms = 0.0
+        self._planner_fail_face_cooldown_until_ms = 0.0
 
         self._event_bus = PlannerEventBus()
         self._skill_executor = SkillExecutor()
@@ -175,6 +184,10 @@ class Runtime:
                 "requested": self._state.planner_say_requested,
                 "enqueued": self._state.planner_say_enqueued,
                 "dropped_reason": dict(self._state.planner_say_dropped_reason),
+            },
+            "ordering": {
+                "last_accepted_seq": self._planner_last_accepted_seq,
+                "seen_plan_ids": len(self._planner_seen_plan_ids),
             },
             "audio": self._audio.debug_snapshot() if self._audio else {"enabled": False},
         }
@@ -332,26 +345,33 @@ class Runtime:
             except PlannerError as e:
                 s.planner_connected = False
                 s.planner_last_error = str(e)
+                self._on_planner_unavailable(now_mono_ms=t0 * 1000.0)
                 self._next_plan_mono = t0 + _PLAN_RETRY_S
                 log.warning("planner: %s", e)
             except Exception as e:
                 s.planner_connected = False
                 s.planner_last_error = str(e)
+                self._on_planner_unavailable(now_mono_ms=t0 * 1000.0)
                 self._next_plan_mono = t0 + _PLAN_RETRY_S
                 log.warning("planner: unexpected error: %s", e)
             finally:
                 self._planner_task = None
 
         if self._planner_task is None and t0 >= self._next_plan_mono:
-            world_state = self._build_world_state()
+            req_seq = self._planner_req_seq
+            self._planner_req_seq += 1
+            world_state = self._build_world_state(req_seq=req_seq)
             self._planner_task_started_mono_ms = t0 * 1000.0
             self._planner_task = asyncio.create_task(self._planner.request_plan(world_state))
 
-    def _build_world_state(self) -> dict:
+    def _build_world_state(self, *, req_seq: int) -> dict:
         s = self._state
         trigger = "ball_seen" if s.ball_confidence >= 0.7 else "heartbeat"
         recent_events = [e.type for e in self._event_bus.latest(limit=8)]
         return {
+            "robot_id": self._robot_id,
+            "seq": int(req_seq),
+            "monotonic_ts_ms": int(s.tick_mono_ms),
             "mode": s.mode.value,
             "battery_mv": s.battery_mv,
             "range_mm": s.range_mm,
@@ -383,7 +403,35 @@ class Runtime:
     def _apply_planner_plan(self, plan: PlannerPlan) -> None:
         s = self._state
         now_ms = time.monotonic() * 1000.0
+
+        if plan.robot_id and self._robot_id and plan.robot_id != self._robot_id:
+            s.planner_plan_dropped_out_of_order += 1
+            log.warning(
+                "planner: robot_id mismatch (expected=%s got=%s)",
+                self._robot_id,
+                plan.robot_id,
+            )
+            return
+
+        if plan.seq < self._planner_last_accepted_seq:
+            s.planner_plan_dropped_out_of_order += 1
+            log.warning(
+                "planner: dropping out-of-order plan seq=%d (last=%d)",
+                plan.seq,
+                self._planner_last_accepted_seq,
+            )
+            return
+
+        self._evict_seen_plan_ids(now_ms)
+        seen_until = self._planner_seen_plan_ids.get(plan.plan_id)
+        if seen_until is not None and seen_until >= now_ms:
+            s.planner_plan_dropped_duplicate += 1
+            log.debug("planner: dropping duplicate plan_id=%s", plan.plan_id)
+            return
+
         validated = self._planner_validator.validate(plan.actions, plan.ttl_ms)
+        self._planner_last_accepted_seq = plan.seq
+        self._remember_plan_id(plan.plan_id, now_ms + max(validated.ttl_ms, 500))
         s.planner_last_plan_mono_ms = now_ms
         s.planner_last_plan_actions = len(validated.actions)
         s.planner_last_plan = validated.actions
@@ -396,6 +444,40 @@ class Runtime:
             now_mono_ms=now_ms,
             issued_mono_ms=self._planner_task_started_mono_ms,
         )
+
+    def _on_planner_unavailable(self, *, now_mono_ms: float) -> None:
+        dropped = self._planner_scheduler.clear_queued_actions()
+        if dropped:
+            self._planner_scheduler.plan_dropped_stale += dropped
+
+        if self._audio is not None:
+            asyncio.create_task(self._audio.cancel_planner_speech())
+
+        if (
+            self._face
+            and self._face.connected
+            and now_mono_ms >= self._planner_fail_face_cooldown_until_ms
+        ):
+            gesture_id = GESTURE_TO_FACE_ID.get("confused")
+            if gesture_id is not None:
+                self._face.send_gesture(gesture_id)
+            self._planner_fail_face_cooldown_until_ms = now_mono_ms + 3000.0
+
+    def _evict_seen_plan_ids(self, now_mono_ms: float) -> None:
+        stale = [k for k, exp in self._planner_seen_plan_ids.items() if exp < now_mono_ms]
+        for key in stale:
+            self._planner_seen_plan_ids.pop(key, None)
+        while len(self._planner_seen_plan_ids) > self._planner_seen_plan_ids_max:
+            self._planner_seen_plan_ids.popitem(last=False)
+
+    def _remember_plan_id(self, plan_id: str, expires_mono_ms: float) -> None:
+        key = str(plan_id).strip()
+        if not key:
+            return
+        self._planner_seen_plan_ids[key] = float(expires_mono_ms)
+        self._planner_seen_plan_ids.move_to_end(key)
+        while len(self._planner_seen_plan_ids) > self._planner_seen_plan_ids_max:
+            self._planner_seen_plan_ids.popitem(last=False)
 
     def _execute_due_planner_actions(self) -> None:
         s = self._state
@@ -532,6 +614,9 @@ class Runtime:
             return False
 
         s.planner_say_requested += 1
+        if self._planner is not None and not s.planner_connected:
+            self._record_say_drop(f"{source}_planner_unreachable")
+            return False
         if self._audio is None:
             self._record_say_drop(f"{source}_audio_unavailable")
             return False

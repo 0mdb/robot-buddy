@@ -15,9 +15,22 @@ class PlannerError(RuntimeError):
 class PlannerPlan:
     actions: list[dict] = field(default_factory=list)
     ttl_ms: int = 0
+    plan_id: str = ""
+    robot_id: str = ""
+    seq: int = 0
+    monotonic_ts_ms: int = 0
+    server_monotonic_ts_ms: int = 0
 
     def to_dict(self) -> dict:
-        return {"actions": self.actions, "ttl_ms": self.ttl_ms}
+        return {
+            "actions": self.actions,
+            "ttl_ms": self.ttl_ms,
+            "plan_id": self.plan_id,
+            "robot_id": self.robot_id,
+            "seq": self.seq,
+            "monotonic_ts_ms": self.monotonic_ts_ms,
+            "server_monotonic_ts_ms": self.server_monotonic_ts_ms,
+        }
 
 
 class PlannerClient:
@@ -77,10 +90,34 @@ class PlannerClient:
 
         if not isinstance(actions, list):
             raise PlannerError("invalid /plan payload: missing actions list")
+        plan_id = body.get("plan_id")
+        robot_id = body.get("robot_id")
+        seq = body.get("seq")
+        mono = body.get("monotonic_ts_ms")
+        server_mono = body.get("server_monotonic_ts_ms")
+
+        if not isinstance(plan_id, str) or not plan_id.strip():
+            raise PlannerError("invalid /plan payload: missing plan_id")
+        if not isinstance(robot_id, str) or not robot_id.strip():
+            raise PlannerError("invalid /plan payload: missing robot_id")
+        if not isinstance(seq, int):
+            raise PlannerError("invalid /plan payload: missing seq")
+        if not isinstance(mono, int):
+            raise PlannerError("invalid /plan payload: missing monotonic_ts_ms")
+        if not isinstance(server_mono, int):
+            raise PlannerError("invalid /plan payload: missing server_monotonic_ts_ms")
 
         clean_actions = [a for a in actions if isinstance(a, dict)]
         ttl_ms = ttl_ms if isinstance(ttl_ms, int) else 0
-        return PlannerPlan(actions=clean_actions, ttl_ms=ttl_ms)
+        return PlannerPlan(
+            actions=clean_actions,
+            ttl_ms=ttl_ms,
+            plan_id=plan_id.strip(),
+            robot_id=robot_id.strip(),
+            seq=seq,
+            monotonic_ts_ms=mono,
+            server_monotonic_ts_ms=server_mono,
+        )
 
     def _require_client(self) -> httpx.AsyncClient:
         if self._client is None:

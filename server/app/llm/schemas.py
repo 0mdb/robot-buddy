@@ -23,6 +23,9 @@ from app.llm.expressions import (
 class WorldState(BaseModel):
     """Compact snapshot of the robot's world, sent by the supervisor."""
 
+    robot_id: str = Field(min_length=1, max_length=64)
+    seq: int = Field(ge=0)
+    monotonic_ts_ms: int = Field(ge=0)
     mode: str
     battery_mv: int
     range_mm: int
@@ -104,8 +107,8 @@ PlanAction = Annotated[
 ]
 
 
-class PlanResponse(BaseModel):
-    """Bounded performance plan returned by the LLM."""
+class ModelPlan(BaseModel):
+    """Bounded action payload returned by the LLM."""
 
     actions: list[PlanAction] = Field(default_factory=list, max_length=5)
     ttl_ms: int = Field(default=2000, ge=500, le=5000)
@@ -258,3 +261,13 @@ class PlanResponse(BaseModel):
         if not isinstance(name, str):
             return False
         return name.strip().lower() in {"say", "emote", "gesture", "skill"}
+
+
+class PlanResponse(ModelPlan):
+    """Full /plan response including request metadata echo + plan identity."""
+
+    plan_id: str = Field(min_length=1, max_length=80)
+    robot_id: str = Field(min_length=1, max_length=64)
+    seq: int = Field(ge=0)
+    monotonic_ts_ms: int = Field(ge=0)
+    server_monotonic_ts_ms: int = Field(ge=0)

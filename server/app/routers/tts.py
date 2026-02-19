@@ -10,6 +10,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from app.ai_runtime import get_tts
+from app.tts.orpheus import TTSBusyError
 
 log = logging.getLogger(__name__)
 
@@ -20,6 +21,9 @@ class TTSRequest(BaseModel):
     text: str
     emotion: str = "neutral"
     stream: bool = True
+    robot_id: str | None = None
+    seq: int | None = None
+    monotonic_ts_ms: int | None = None
 
 
 @router.post("/tts")
@@ -33,18 +37,20 @@ async def generate_speech(req: TTSRequest) -> StreamingResponse:
         raise HTTPException(status_code=400, detail="Text cannot be empty")
 
     tts = get_tts()
+    try:
+        audio = await tts.synthesize(req.text, req.emotion)
+    except TTSBusyError:
+        raise HTTPException(status_code=503, detail="tts_busy_no_fallback") from None
+    except Exception as e:
+        log.error("TTS generation failed: %s", e)
+        raise HTTPException(status_code=503, detail="tts_unavailable") from e
 
     async def audio_generator() -> AsyncGenerator[bytes, None]:
-        try:
-            # Stream chunks from the TTS engine
-            async for chunk in tts.stream(req.text, req.emotion):
-                if chunk:
-                    yield chunk
-        except Exception as e:
-            log.error(f"TTS generation failed: {e}")
-            # We cannot raise HTTP exception here once stream starts,
-            # but we can log it.
-            return
+        chunk_size = 320
+        for off in range(0, len(audio), chunk_size):
+            chunk = audio[off : off + chunk_size]
+            if chunk:
+                yield chunk
 
     return StreamingResponse(
         audio_generator(),
