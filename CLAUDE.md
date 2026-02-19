@@ -189,4 +189,5 @@ Per `.gitignore`: `__pycache__/`, `*.pyc`, `.env`, `.venv/`, `build/`, `dist/`, 
 - fix server issue when trying to run better tts model
 - don't send planner updates so often
 - add llm history so conversations feel more natural
+- tts from non-button press (determinisitic sources) either cut off or not firing at all
 - 
