@@ -54,7 +54,8 @@ def vision_main(
         cam = Picamera2(camera_id)
         cam.configure(
             cam.create_video_configuration(
-                main={"size": capture_size, "format": "RGB888"},
+                # main={"size": capture_size, "format": "RGB888"},
+                main={"size": capture_size, "format": "BGR888"},
 
             )
         )
