@@ -5,7 +5,9 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import queue
 import shutil
+import threading
 import time
 from dataclasses import dataclass
 
@@ -47,6 +49,7 @@ class AudioOrchestrator:
         self._face = face
         self._speaker_device = speaker_device
         self._run = False
+        self._main_loop: asyncio.AbstractEventLoop | None = None
 
         self._conversation = ConversationManager(
             self._planner_url,
@@ -57,9 +60,10 @@ class AudioOrchestrator:
         )
         self._planner_client: httpx.AsyncClient | None = None
 
-        self._speech_queue: asyncio.Queue[_SpeechRequest] = asyncio.Queue(
+        self._speech_queue: queue.Queue[_SpeechRequest | None] = queue.Queue(
             maxsize=PLANNER_SPEECH_QUEUE_MAX
         )
+        self._speech_thread: threading.Thread | None = None
         self._speech_task: asyncio.Task | None = None
         self._planner_speaking = False
         self._cancel_planner_speech = asyncio.Event()
@@ -87,16 +91,22 @@ class AudioOrchestrator:
         if self._run:
             return
         self._run = True
+        self._main_loop = asyncio.get_running_loop()
         self._planner_client = httpx.AsyncClient(
             base_url=self._planner_url,
             timeout=httpx.Timeout(30.0),
         )
         await self._conversation.start()
-        self._speech_task = asyncio.create_task(self._planner_speech_loop())
+        self._speech_task = asyncio.create_task(self._planner_speech_consume_loop())
 
     async def stop(self) -> None:
         self._run = False
         await self.cancel_planner_speech()
+        if self._speech_thread is not None:
+            with contextlib.suppress(queue.Full):
+                self._speech_queue.put_nowait(None)
+            self._speech_thread.join(timeout=1.0)
+            self._speech_thread = None
         if self._speech_task and not self._speech_task.done():
             self._speech_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -126,16 +136,14 @@ class AudioOrchestrator:
         try:
             self._speech_queue.put_nowait(req)
             return True
-        except asyncio.QueueFull:
+        except queue.Full:
             return False
 
     async def cancel_planner_speech(self) -> None:
         self._cancel_planner_speech.set()
-        while True:
-            with contextlib.suppress(asyncio.QueueEmpty):
+        while not self._speech_queue.empty():
+            with contextlib.suppress(queue.Empty):
                 self._speech_queue.get_nowait()
-                continue
-            break
 
         proc = self._active_aplay_proc
         if proc is not None:
@@ -169,16 +177,49 @@ class AudioOrchestrator:
             "speech_queue_depth": self.speech_queue_depth,
         }
 
-    async def _planner_speech_loop(self) -> None:
+    async def _planner_speech_consume_loop(self) -> None:
+        """Pulls requests from the queue and executes them in a thread."""
         while self._run:
-            req = await self._speech_queue.get()
+            req = await asyncio.to_thread(self._speech_queue.get)
+            if req is None:
+                break
             self._cancel_planner_speech.clear()
             try:
                 await self._play_tts_request(req)
             except asyncio.CancelledError:
-                raise
+                break
             except Exception:
                 log.exception("planner speech failed")
+
+    def _playback_thread_loop(self, proc: asyncio.subprocess.Process, resp: httpx.Response) -> None:
+        """Dedicated thread for handling aplay stdin and lip sync messages."""
+        if proc.stdin is None or self._main_loop is None:
+            return
+
+        try:
+            for chunk in resp.iter_bytes(_STREAM_CHUNK_BYTES):
+                if self._cancel_planner_speech.is_set():
+                    break
+                if not chunk:
+                    continue
+                if len(chunk) % 2:
+                    chunk = chunk[:-1]
+                if not chunk:
+                    continue
+
+                try:
+                    proc.stdin.write(chunk)
+                except (BrokenPipeError, ConnectionResetError):
+                    break
+                except Exception as e:
+                    log.warning("aplay stdin write failed: %s", e)
+                    break
+
+                if self._face:
+                    coro = self._face.send_talking(True, self._lip_sync.update_chunk(chunk))
+                    asyncio.run_coroutine_threadsafe(coro, self._main_loop)
+        finally:
+            log.info("Playback thread finished for planner speech.")
 
     async def _play_tts_request(self, req: _SpeechRequest) -> None:
         if self._planner_client is None:
@@ -187,19 +228,17 @@ class AudioOrchestrator:
             log.warning("aplay not found; planner speech disabled")
             return
 
-        # Planner speech never overlaps active conversation speech.
         if self._conversation.speaking:
             log.warning("Planner speech dropped: conversation is active")
             return
-
 
         cmd = [
             "aplay",
             "-q",
             "-D",
             self._speaker_device,
-            "--buffer-time=20000",  # 20 ms
-            "--period-time=10000",  # 10 ms
+            "--buffer-time=20000",
+            "--period-time=10000",
             "-c",
             str(CHANNELS),
             "-r",
@@ -239,38 +278,26 @@ class AudioOrchestrator:
                     log.warning("planner /tts failed: %s %s", resp.status_code, body[:200])
                     return
 
-                async for chunk in resp.aiter_bytes(_STREAM_CHUNK_BYTES):
-                    if self._cancel_planner_speech.is_set():
-                        break
-                    if not chunk:
-                        continue
-                    if len(chunk) % 2:
-                        chunk = chunk[:-1]
-                    if not chunk:
-                        continue
-                    if proc.stdin:
-                        try:
-                            proc.stdin.write(chunk)
-                            if proc.stdin.transport.get_write_buffer_size() > 1280:
-                                await proc.stdin.drain()
-                        except (BrokenPipeError, ConnectionResetError):
-                            # Process was killed by cancellation, exit loop
-                            break
-                    if self._face:
-                        self._face.send_talking(True, self._lip_sync.update_chunk(chunk))
+                # The httpx response object is not thread-safe, so we start
+                # the thread here and pass it the response to consume.
+                self._speech_thread = threading.Thread(
+                    target=self._playback_thread_loop, args=(proc, resp), daemon=True
+                )
+                self._speech_thread.start()
+                self._speech_thread.join()  # Wait for thread to finish
+
         finally:
             if proc.stdin:
                 with contextlib.suppress(Exception):
                     proc.stdin.close()
-                with contextlib.suppress(Exception):
-                    await proc.stdin.wait_closed()
+                await proc.stdin.wait_closed()
             with contextlib.suppress(asyncio.TimeoutError):
                 await asyncio.wait_for(proc.wait(), timeout=0.5)
             if proc.returncode is None:
                 with contextlib.suppress(Exception):
                     proc.kill()
-                with contextlib.suppress(Exception):
-                    await proc.wait()
+                await proc.wait()
+
             self._active_aplay_proc = None
             self._planner_speaking = False
             self._cancel_planner_speech.clear()

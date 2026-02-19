@@ -7,7 +7,9 @@ import base64
 import contextlib
 import json
 import logging
+import queue
 import shutil
+import threading
 import urllib.parse
 from typing import AsyncIterator, Protocol, cast
 
@@ -57,13 +59,14 @@ class ConversationManager:
         self._ws: _WebSocketConn | None = None
         self._reconnect_task: asyncio.Task | None = None
         self._receive_task: asyncio.Task | None = None
-        self._playback_task: asyncio.Task | None = None
         self._mic_forward_task: asyncio.Task | None = None
-        self._playback_queue: asyncio.Queue[bytes] = asyncio.Queue(
+        self._playback_queue: queue.Queue[bytes | None] = queue.Queue(
             maxsize=PLAYBACK_QUEUE_MAX_CHUNKS
         )
+        self._playback_thread: threading.Thread | None = None
         self._speaker_proc: asyncio.subprocess.Process | None = None
         self._mic_proc: asyncio.subprocess.Process | None = None
+        self._main_loop: asyncio.AbstractEventLoop | None = None
         self._connected = False
         self._speaking = False
         self._run = False
@@ -92,8 +95,7 @@ class ConversationManager:
         if self._run:
             return
         self._run = True
-        if self._playback_task is None or self._playback_task.done():
-            self._playback_task = asyncio.create_task(self._playback_loop())
+        self._main_loop = asyncio.get_running_loop()
         if self._reconnect_task is None or self._reconnect_task.done():
             self._reconnect_task = asyncio.create_task(self._connection_loop())
 
@@ -117,11 +119,11 @@ class ConversationManager:
 
         await self._stop_talking()
 
-        if self._playback_task and not self._playback_task.done():
-            self._playback_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._playback_task
-            self._playback_task = None
+        if self._playback_thread is not None:
+            with contextlib.suppress(queue.Full):
+                self._playback_queue.put_nowait(None)
+            self._playback_thread.join(timeout=1.0)
+            self._playback_thread = None
 
         await self._stop_speaker_playback()
 
@@ -206,7 +208,7 @@ class ConversationManager:
                 elif msg_type == "gestures":
                     self._handle_gestures(msg)
                 elif msg_type == "audio":
-                    self._handle_audio(msg)
+                    await self._handle_audio(msg)
                 elif msg_type == "transcription":
                     log.info("User said: %s", msg.get("text", "")[:120])
                 elif msg_type == "done":
@@ -338,8 +340,10 @@ class ConversationManager:
             if gesture_id is not None and self._face:
                 self._face.send_gesture(gesture_id)
 
-    def _handle_audio(self, msg: dict) -> None:
+    async def _handle_audio(self, msg: dict) -> None:
         """Route streamed TTS audio to local USB speaker and face talking animation."""
+        if not await self._ensure_speaker_proc():
+            return
         data = msg.get("data", "")
         if not data:
             return
@@ -373,7 +377,11 @@ class ConversationManager:
             await self._drain_playback_queue()
         else:
             self._clear_playback_queue()
-            await self._stop_speaker_playback()
+
+        # The playback thread will stop when the queue is empty.
+        # No need to explicitly stop the speaker process here,
+        # as the thread manages its lifecycle.
+
         self._speaking = False
         self._lip_sync.reset()
         if self._face:
@@ -382,49 +390,51 @@ class ConversationManager:
     # -- local speaker playback ---------------------------------------------
 
     def _queue_playback_chunk(self, pcm_chunk: bytes) -> None:
-        if self._playback_queue.full():
-            with contextlib.suppress(asyncio.QueueEmpty):
-                self._playback_queue.get_nowait()
-        with contextlib.suppress(asyncio.QueueFull):
+        try:
             self._playback_queue.put_nowait(pcm_chunk)
+        except queue.Full:
+            # Drop oldest chunk to make room
+            with contextlib.suppress(queue.Empty):
+                self._playback_queue.get_nowait()
+            with contextlib.suppress(queue.Full):
+                self._playback_queue.put_nowait(pcm_chunk)
 
     def _clear_playback_queue(self) -> None:
-        while True:
-            with contextlib.suppress(asyncio.QueueEmpty):
+        while not self._playback_queue.empty():
+            with contextlib.suppress(queue.Empty):
                 self._playback_queue.get_nowait()
-                continue
-            break
 
-    async def _playback_loop(self) -> None:
-        while True:
-            chunk = await self._playback_queue.get()
-            await self._play_audio_chunk(chunk)
-
-    async def _play_audio_chunk(self, pcm_chunk: bytes) -> None:
-        if not await self._ensure_speaker_proc():
-            return
+    def _playback_thread_loop(self) -> None:
+        """Dedicated thread for writing to the blocking aplay stdin."""
         proc = self._speaker_proc
-        if proc is None or proc.stdin is None:
+        if proc is None or proc.stdin is None or self._main_loop is None:
             return
-        try:
-            proc.stdin.write(pcm_chunk)
-            # Drain only if the write buffer is getting large.
-            # This prevents blocking the event loop on every small chunk.
-            if proc.stdin.transport.get_write_buffer_size() > 1280:
-                await proc.stdin.drain()
+
+        while self._run:
+            try:
+                chunk = self._playback_queue.get(timeout=1.0)
+            except queue.Empty:
+                continue
+            if chunk is None:
+                break
+
+            try:
+                proc.stdin.write(chunk)
+            except (BrokenPipeError, ConnectionResetError):
+                break
+            except Exception as e:
+                log.warning("aplay stdin write failed: %s", e)
+                break
+
             if self._speaking and self._face:
-                self._face.send_talking(True, self._lip_sync.update_chunk(pcm_chunk))
-        except Exception as e:
-            log.warning("speaker write failed: %s", e)
-            await self._stop_speaker_playback()
+                coro = self._face.send_talking(True, self._lip_sync.update_chunk(chunk))
+                asyncio.run_coroutine_threadsafe(coro, self._main_loop)
+
+        log.info("Playback thread finished.")
 
     async def _drain_playback_queue(self) -> None:
         """Wait briefly for queued PCM to flush to the speaker pipeline."""
-        loop = asyncio.get_running_loop()
-        deadline = loop.time() + 5.0
         while not self._playback_queue.empty():
-            if loop.time() >= deadline:
-                break
             await asyncio.sleep(0.01)
         await asyncio.sleep(0.04)
 
@@ -442,8 +452,8 @@ class ConversationManager:
             "-q",
             "-D",
             self._speaker_device,
-            "--buffer-time=20000",  # 20 ms
-            "--period-time=10000",  # 10 ms
+            "--buffer-time=20000",
+            "--period-time=10000",
             "-c",
             str(CHANNELS),
             "-r",
@@ -460,6 +470,11 @@ class ConversationManager:
                 stdout=asyncio.subprocess.DEVNULL,
                 stderr=asyncio.subprocess.DEVNULL,
             )
+            if self._playback_thread is None or not self._playback_thread.is_alive():
+                self._playback_thread = threading.Thread(
+                    target=self._playback_thread_loop, daemon=True
+                )
+                self._playback_thread.start()
             log.info("speaker playback started via aplay device=%s", self._speaker_device)
             return True
         except Exception as e:
