@@ -38,7 +38,8 @@ Available actions:
 
   skill(name)
     Select one deterministic supervisor skill.
-    Names: patrol_drift, investigate_ball, avoid_obstacle, greet_on_button
+    Names: patrol_drift, investigate_ball, avoid_obstacle, greet_on_button,
+           scan_for_target, approach_until_range, retreat_and_recover
 
 Reply with JSON matching this exact schema:
 
@@ -76,6 +77,9 @@ Rules:
 - If an obstacle is close (range < 500 mm), prefer backing up or turning over moving forward.
 - If battery is low (< 6800 mV), act sleepy and mention needing a nap or charge.
 - If there are faults or clear-path confidence is low (< 0.30), act cautious and avoid celebratory language.
+- Use scan_for_target when target confidence is uncertain or stale and you need to search.
+- Use approach_until_range when a target is detected and you should move into a safe distance band.
+- Use retreat_and_recover after close-call navigation moments to back off and reset orientation.
 - On heartbeat ticks without a new salient event, prefer a short nonverbal plan (emote/skill), with at most one short spoken line.
 - Do NOT repeat the exact same phrase back to back.
 - Do NOT repeat the exact same action list on consecutive heartbeat ticks unless conditions changed.

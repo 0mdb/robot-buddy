@@ -45,3 +45,19 @@ def test_scheduler_drops_stale_and_applies_cooldowns():
     sched.schedule_plan(valid2, now_mono_ms=5200.0, issued_mono_ms=5100.0)
     assert sched.plan_dropped_cooldown >= 1
 
+
+def test_validator_accepts_new_skill_names():
+    validator = PlannerValidator()
+    plan = validator.validate(
+        actions=[
+            {"action": "skill", "name": "scan_for_target"},
+            {"action": "skill", "name": "approach_until_range"},
+            {"action": "skill", "name": "retreat_and_recover"},
+        ],
+        ttl_ms=1000,
+    )
+    assert [a["name"] for a in plan.actions] == [
+        "scan_for_target",
+        "approach_until_range",
+        "retreat_and_recover",
+    ]

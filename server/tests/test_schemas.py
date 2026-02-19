@@ -89,10 +89,22 @@ def test_gesture_alias_normalized():
 # -- SkillAction --------------------------------------------------------------
 
 
-def test_skill_valid():
-    a = SkillAction(name="investigate_ball")
+@pytest.mark.parametrize(
+    "skill_name",
+    [
+        "patrol_drift",
+        "investigate_ball",
+        "avoid_obstacle",
+        "greet_on_button",
+        "scan_for_target",
+        "approach_until_range",
+        "retreat_and_recover",
+    ],
+)
+def test_skill_valid(skill_name: str):
+    a = SkillAction(name=skill_name)
     assert a.action == "skill"
-    assert a.name == "investigate_ball"
+    assert a.name == skill_name
 
 
 def test_skill_invalid_name_rejected():

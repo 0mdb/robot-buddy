@@ -59,7 +59,15 @@ class SayAction(BaseModel):
 VALID_EMOTIONS = frozenset(CANONICAL_EMOTIONS)
 VALID_GESTURES = frozenset(FACE_GESTURES + BODY_GESTURES)
 VALID_SKILLS = frozenset(
-    {"patrol_drift", "investigate_ball", "avoid_obstacle", "greet_on_button"}
+    {
+        "patrol_drift",
+        "investigate_ball",
+        "avoid_obstacle",
+        "greet_on_button",
+        "scan_for_target",
+        "approach_until_range",
+        "retreat_and_recover",
+    }
 )
 
 
@@ -100,6 +108,9 @@ class SkillAction(BaseModel):
         "investigate_ball",
         "avoid_obstacle",
         "greet_on_button",
+        "scan_for_target",
+        "approach_until_range",
+        "retreat_and_recover",
     ]
 
 

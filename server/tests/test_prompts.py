@@ -18,6 +18,12 @@ def test_system_prompt_mentions_actions():
     assert "move(" not in SYSTEM_PROMPT
 
 
+def test_system_prompt_mentions_new_skills():
+    assert "scan_for_target" in SYSTEM_PROMPT
+    assert "approach_until_range" in SYSTEM_PROMPT
+    assert "retreat_and_recover" in SYSTEM_PROMPT
+
+
 def test_system_prompt_mentions_safety():
     assert (
         "kid-friendly" in SYSTEM_PROMPT.lower()

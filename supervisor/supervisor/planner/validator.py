@@ -11,6 +11,9 @@ ALLOWED_SKILLS = frozenset(
         "investigate_ball",
         "avoid_obstacle",
         "greet_on_button",
+        "scan_for_target",
+        "approach_until_range",
+        "retreat_and_recover",
     }
 )
 
@@ -104,4 +107,3 @@ class PlannerValidator:
                 safe_actions.append({"action": "skill", "name": name})
 
         return ValidatedPlannerPlan(actions=safe_actions, ttl_ms=ttl_ms_i, dropped_actions=dropped)
-
