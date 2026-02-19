@@ -188,7 +188,10 @@ class AudioOrchestrator:
             return
 
         # Planner speech never overlaps active conversation speech.
-        await self._conversation.cancel()
+        if self._conversation.speaking:
+            log.warning("Planner speech dropped: conversation is active")
+            return
+
 
         cmd = [
             "aplay",
