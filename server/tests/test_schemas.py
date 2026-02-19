@@ -184,6 +184,30 @@ def test_plan_response_from_legacy_json():
     assert plan.actions[3].name == "investigate_ball"
 
 
+def test_plan_response_from_malformed_action_tags():
+    """Recover from malformed action tags emitted by the LLM."""
+    raw = """{
+        "actions": [
+            {"action": "excited", "intensity": 0.9},
+            {"text": "Whoa! A ball!"},
+            {"action": "look_at", "bearing": -0.1},
+            {"action": "investigate_ball"}
+        ],
+        "ttl_ms": 2000
+    }"""
+    plan = PlanResponse.model_validate_json(raw)
+    assert len(plan.actions) == 4
+    assert plan.actions[0].action == "emote"
+    assert plan.actions[0].name == "excited"
+    assert plan.actions[1].action == "say"
+    assert plan.actions[1].text == "Whoa! A ball!"
+    assert plan.actions[2].action == "gesture"
+    assert plan.actions[2].name == "look_at"
+    assert plan.actions[2].params["bearing"] == -0.1
+    assert plan.actions[3].action == "skill"
+    assert plan.actions[3].name == "investigate_ball"
+
+
 def test_plan_json_schema_has_discriminator():
     """Ensure the JSON schema uses the action discriminator."""
     schema = PlanResponse.model_json_schema()
