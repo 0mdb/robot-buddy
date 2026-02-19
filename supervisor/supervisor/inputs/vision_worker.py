@@ -102,10 +102,10 @@ def vision_main(
 
             # Capture
             # rgb = cam.capture_array()
-            bgr = cam.capture_array()
-            # bgr = cv2.cvtColor(bgr, cv2.COLOR_RGB2BGR)
-            bgr = cv2.rotate(bgr, cv2.ROTATE_180)
-            small = cv2.resize(bgr, process_size)
+            rgb = cam.capture_array()
+            rgb = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+            rgb = cv2.rotate(rgb, cv2.ROTATE_180)
+            small = cv2.resize(rgb, process_size)
 
             # Detect
             clear_conf = detect_clear_path(small, floor_hsv_low, floor_hsv_high)
