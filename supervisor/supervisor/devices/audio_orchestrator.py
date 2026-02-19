@@ -247,8 +247,12 @@ class AudioOrchestrator:
                     if not chunk:
                         continue
                     if proc.stdin:
-                        proc.stdin.write(chunk)
-                        await proc.stdin.drain()
+                        try:
+                            proc.stdin.write(chunk)
+                            await proc.stdin.drain()
+                        except (BrokenPipeError, ConnectionResetError):
+                            # Process was killed by cancellation, exit loop
+                            break
                     if self._face:
                         self._face.send_talking(True, self._lip_sync.update_chunk(chunk))
         finally:
