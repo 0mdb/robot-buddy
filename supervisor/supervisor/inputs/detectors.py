@@ -60,8 +60,10 @@ def detect_clear_path(
 
 def detect_ball(
     frame: np.ndarray,
-    hsv_low: Tuple[int, int, int] = (0, 120, 70),
-    hsv_high: Tuple[int, int, int] = (15, 255, 255),
+    # hsv_low: Tuple[int, int, int] = (0, 120, 70),
+    # hsv_high: Tuple[int, int, int] = (15, 255, 255),
+    hsv_low: Tuple[int, int, int] = (170, 120, 70),
+    hsv_high: Tuple[int, int, int] = (10, 255, 255),
     min_radius_px: int = 10,
     max_area_px: int = 50000,
 ) -> tuple[float, float] | None:
