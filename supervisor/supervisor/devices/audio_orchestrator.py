@@ -158,11 +158,7 @@ class AudioOrchestrator:
             self._face.send_talking(False, 0)
 
     def on_face_button(self, evt) -> None:
-        if evt.button_id == int(FaceButtonId.ACTION) and evt.event_type == int(
-            FaceButtonEventType.CLICK
-        ):
-            asyncio.create_task(self.cancel())
-        elif evt.button_id == int(FaceButtonId.PTT) and evt.event_type == int(
+        if evt.button_id == int(FaceButtonId.PTT) and evt.event_type == int(
             FaceButtonEventType.TOGGLE
         ):
             asyncio.create_task(self.set_ptt_enabled(bool(evt.state)))
@@ -265,4 +261,3 @@ class AudioOrchestrator:
             self._cancel_planner_speech.clear()
             if self._face:
                 self._face.send_talking(False, 0)
-

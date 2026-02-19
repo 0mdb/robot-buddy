@@ -69,9 +69,11 @@ class Runtime:
         self._tick_count = 0
         self._last_tick_mono = 0.0
         self._planner_task: asyncio.Task[PlannerPlan] | None = None
+        self._audio_ptt_task: asyncio.Task[None] | None = None
         self._planner_task_started_mono_ms = 0.0
         self._next_plan_mono = 0.0
         self._last_face_system_mode: int | None = None
+        self._last_face_listening: bool | None = None
         self._next_greet_allowed_mono_ms = 0.0
         self._greet_skill_until_mono_ms = 0.0
 
@@ -123,6 +125,8 @@ class Runtime:
         self._running = False
         if self._planner_task and not self._planner_task.done():
             self._planner_task.cancel()
+        if self._audio_ptt_task and not self._audio_ptt_task.done():
+            self._audio_ptt_task.cancel()
 
     def request_mode(self, target: Mode) -> tuple[bool, str]:
         return self._sm.request_mode(
@@ -205,20 +209,27 @@ class Runtime:
         # 1a. Snapshot face telemetry
         if self._face:
             s.face_connected = self._face.connected
-            ft = self._face.telemetry
-            s.face_mood = ft.mood_id
-            s.face_gesture = ft.active_gesture
-            s.face_system_mode = ft.system_mode
-            s.face_touch_active = ft.touch_active
-            s.face_talking = ft.talking
-            s.face_listening = ft.ptt_listening
-            s.face_seq = ft.seq
-            s.face_rx_mono_ms = ft.rx_mono_ms
-            last_button = self._face.last_button
-            if last_button is not None:
-                s.face_last_button_id = last_button.button_id
-                s.face_last_button_event = last_button.event_type
-                s.face_last_button_state = last_button.state
+            if self._face.connected:
+                ft = self._face.telemetry
+                s.face_mood = ft.mood_id
+                s.face_gesture = ft.active_gesture
+                s.face_system_mode = ft.system_mode
+                s.face_touch_active = ft.touch_active
+                s.face_talking = ft.talking
+                s.face_listening = ft.ptt_listening
+                s.face_seq = ft.seq
+                s.face_rx_mono_ms = ft.rx_mono_ms
+                last_button = self._face.last_button
+                if last_button is not None:
+                    s.face_last_button_id = last_button.button_id
+                    s.face_last_button_event = last_button.event_type
+                    s.face_last_button_state = last_button.state
+            else:
+                s.face_touch_active = False
+                s.face_talking = False
+                s.face_listening = False
+
+        self._sync_audio_ptt_from_face()
 
         # 1.5. Read latest vision snapshot (non-blocking)
         if self._vision:
@@ -462,6 +473,36 @@ class Runtime:
 
     def _on_face_touch(self, evt) -> None:
         self._event_bus.on_face_touch(evt)
+
+    def _sync_audio_ptt_from_face(self) -> None:
+        if self._audio is None:
+            return
+        listening = bool(self._state.face_listening)
+        if self._last_face_listening is None:
+            self._last_face_listening = listening
+            if listening:
+                self._schedule_audio_ptt_sync(listening)
+            return
+        if listening == self._last_face_listening:
+            return
+        self._last_face_listening = listening
+        self._schedule_audio_ptt_sync(listening)
+
+    def _schedule_audio_ptt_sync(self, enabled: bool) -> None:
+        if self._audio is None:
+            return
+        if self._audio_ptt_task and not self._audio_ptt_task.done():
+            self._audio_ptt_task.cancel()
+        task = asyncio.create_task(self._audio.set_ptt_enabled(enabled))
+        self._audio_ptt_task = task
+        task.add_done_callback(self._on_audio_ptt_task_done)
+
+    def _on_audio_ptt_task_done(self, task: asyncio.Task[None]) -> None:
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is not None:
+            log.warning("audio ptt sync failed: %s", exc)
 
     def _step_speech_policy(self) -> None:
         s = self._state

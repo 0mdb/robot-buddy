@@ -113,7 +113,6 @@ async def async_main(args: argparse.Namespace) -> None:
             speaker_device=args.usb_speaker_device,
             mic_device=args.usb_mic_device,
         )
-        face.subscribe_button(audio.on_face_button)
 
     # Vision process
     vision: VisionProcess | None = None

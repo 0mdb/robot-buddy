@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import time
 from types import SimpleNamespace
+
+import pytest
 
 from supervisor.devices.planner_client import PlannerPlan
 from supervisor.devices.protocol import FaceButtonEventType, FaceButtonId, FaceGesture, FaceMood
@@ -38,6 +41,7 @@ class _FakeAudio:
     def __init__(self) -> None:
         self.said: list[str] = []
         self.speech_queue_depth = 0
+        self.ptt_enabled_calls: list[bool] = []
 
     def enqueue_speech(self, text: str, *, emotion: str = "neutral") -> bool:
         del emotion
@@ -46,6 +50,9 @@ class _FakeAudio:
 
     def debug_snapshot(self) -> dict:
         return {"speech_queue_depth": len(self.said)}
+
+    async def set_ptt_enabled(self, enabled: bool) -> None:
+        self.ptt_enabled_calls.append(bool(enabled))
 
 
 def test_planner_plan_emote_and_gesture_dispatch_uses_canonical_mapping():
@@ -150,3 +157,24 @@ def test_event_speech_policy_tracks_drop_reasons_when_face_busy():
     assert runtime.state.planner_say_requested == 0
     assert runtime.state.planner_say_enqueued == 0
     assert runtime.state.planner_say_dropped_reason["policy_face_busy"] == 1
+
+
+@pytest.mark.asyncio
+async def test_face_listening_state_syncs_to_audio_ptt():
+    audio = _FakeAudio()
+    runtime = Runtime(reflex=_FakeReflex(), audio=audio)
+
+    runtime.state.face_listening = False
+    runtime._sync_audio_ptt_from_face()
+    await asyncio.sleep(0)
+    assert audio.ptt_enabled_calls == []
+
+    runtime.state.face_listening = True
+    runtime._sync_audio_ptt_from_face()
+    await asyncio.sleep(0)
+    assert audio.ptt_enabled_calls == [True]
+
+    runtime.state.face_listening = False
+    runtime._sync_audio_ptt_from_face()
+    await asyncio.sleep(0)
+    assert audio.ptt_enabled_calls == [True, False]
