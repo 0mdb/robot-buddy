@@ -1,1143 +1,1299 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Robot Buddy</title>
-<style>
-:root {
-  --bg: #1a1a2e;
-  --panel: #16213e;
-  --border: #0f3460;
-  --text: #e0e0e0;
-  --accent: #00adb5;
-  --red: #e23636;
-  --green: #4caf50;
-  --yellow: #ffc107;
-  --dim: #666;
-}
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body {
-  font-family: 'Segoe UI', system-ui, sans-serif;
-  background: var(--bg);
-  color: var(--text);
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-  overflow: hidden;
-}
-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 16px;
-  background: var(--panel);
-  border-bottom: 1px solid var(--border);
-}
-header h1 { font-size: 16px; font-weight: 600; }
-#conn-status {
-  font-size: 12px;
-  padding: 2px 8px;
-  border-radius: 10px;
-  background: var(--red);
-}
-#conn-status.ok { background: var(--green); }
-
-/* Mobile tab bar */
-.tab-bar {
-  display: none;
-  background: var(--panel);
-  border-bottom: 1px solid var(--border);
-}
-.tab-bar button {
-  flex: 1;
-  padding: 10px 0;
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
-  color: var(--dim);
-  font-size: 13px;
-  cursor: pointer;
-}
-.tab-bar button.active {
-  color: var(--accent);
-  border-bottom-color: var(--accent);
-}
-
-.main {
-  display: flex;
-  flex: 1;
-  overflow: hidden;
-}
-
-/* Left panel */
-.panel-left {
-  width: 200px;
-  padding: 12px;
-  border-right: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.mode-btn {
-  padding: 8px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--panel);
-  color: var(--text);
-  cursor: pointer;
-  font-size: 13px;
-  text-align: center;
-}
-.mode-btn:hover { border-color: var(--accent); }
-.mode-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
-#btn-estop {
-  margin-top: auto;
-  padding: 16px;
-  background: var(--red);
-  color: white;
-  border: 2px solid #ff0000;
-  border-radius: 8px;
-  font-size: 18px;
-  font-weight: bold;
-  cursor: pointer;
-}
-#btn-estop:hover { background: #ff0000; }
-#btn-clear {
-  padding: 8px;
-  background: var(--panel);
-  color: var(--yellow);
-  border: 1px solid var(--yellow);
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 13px;
-}
-
-/* Center panel */
-.panel-center {
-  flex: 1;
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  overflow-y: auto;
-}
-.gauge-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 8px;
-}
-.gauge {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 10px;
-}
-.gauge-label { font-size: 11px; color: var(--dim); text-transform: uppercase; }
-.gauge-value { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
-.gauge-unit { font-size: 11px; color: var(--dim); }
-
-.faults {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 10px;
-}
-.fault-chip {
-  display: inline-block;
-  padding: 2px 8px;
-  margin: 2px;
-  border-radius: 10px;
-  font-size: 11px;
-  background: var(--dim);
-}
-.fault-chip.active { background: var(--red); color: white; }
-
-.caps {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 10px;
-  font-size: 12px;
-}
-
-/* Joystick */
-.joystick-area {
-  display: flex;
-  justify-content: center;
-  padding: 12px;
-}
-#joystick {
-  width: 180px;
-  height: 180px;
-  background: var(--panel);
-  border: 2px solid var(--border);
-  border-radius: 50%;
-  position: relative;
-  touch-action: none;
-}
-#joy-knob {
-  width: 40px;
-  height: 40px;
-  background: var(--accent);
-  border-radius: 50%;
-  position: absolute;
-  left: 70px;
-  top: 70px;
-  pointer-events: none;
-}
-
-/* Right panel */
-.panel-right {
-  width: 280px;
-  padding: 12px;
-  border-left: 1px solid var(--border);
-  overflow-y: auto;
-}
-.panel-expr {
-  width: 320px;
-  padding: 12px;
-  border-left: 1px solid var(--border);
-  overflow-y: auto;
-}
-.param-group { margin-bottom: 12px; }
-.param-group h3 {
-  font-size: 12px;
-  color: var(--accent);
-  text-transform: uppercase;
-  margin-bottom: 6px;
-}
-.param-row {
-  margin-bottom: 8px;
-}
-.param-row label {
-  display: flex;
-  justify-content: space-between;
-  font-size: 11px;
-  color: var(--dim);
-  margin-bottom: 2px;
-}
-.param-row input[type=range] {
-  width: 100%;
-  accent-color: var(--accent);
-}
-
-.expr-block {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 10px;
-  margin-bottom: 10px;
-}
-.expr-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-.expr-row label {
-  font-size: 11px;
-  color: var(--dim);
-  text-transform: uppercase;
-}
-.expr-row select,
-.expr-row input[type=number] {
-  width: 160px;
-  background: #0e1930;
-  border: 1px solid var(--border);
-  color: var(--text);
-  border-radius: 4px;
-  padding: 4px 6px;
-  font-size: 12px;
-}
-.expr-slider {
-  width: 100%;
-  accent-color: var(--accent);
-}
-.expr-actions {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-.expr-btn {
-  padding: 6px 10px;
-  background: var(--panel);
-  color: var(--accent);
-  border: 1px solid var(--accent);
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 12px;
-}
-.expr-btn:hover { background: #12304d; }
-.gesture-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
-}
-.flag-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
-  margin-bottom: 8px;
-}
-.flag-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-}
-
-/* Collapsible sections */
-.collapsible {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-}
-.collapsible summary {
-  padding: 8px 12px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--accent);
-  text-transform: uppercase;
-  cursor: pointer;
-  user-select: none;
-}
-.collapsible summary::-webkit-details-marker { color: var(--dim); }
-.collapsible > .gauge-grid,
-.collapsible > .faults,
-.collapsible > .caps,
-.collapsible > div {
-  padding: 0 12px 10px;
-}
-
-/* Mobile status bar (hidden on desktop) */
-.mobile-status-bar {
-  display: none;
-  gap: 12px;
-  padding: 6px 8px;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  justify-content: space-around;
-  flex-wrap: wrap;
-}
-.ms-item { font-size: 12px; white-space: nowrap; }
-.ms-label { color: var(--dim); font-size: 10px; text-transform: uppercase; }
-.ms-val { font-weight: 600; font-variant-numeric: tabular-nums; }
-
-/* ---- Mobile responsive ---- */
-@media (max-width: 768px) {
-  .tab-bar {
-    display: flex;
-  }
-  .main {
-    flex-direction: column;
-    position: relative;
-  }
-  .panel-left, .panel-right {
-    display: none;
-    width: 100%;
-    border: none;
-    flex: 1;
-    overflow-y: auto;
-  }
-  .panel-expr {
-    display: none;
-    width: 100%;
-    border: none;
-    flex: 1;
-    overflow-y: auto;
-  }
-  .panel-center {
-    display: none;
-    flex: 1;
-    padding: 12px;
-  }
-  /* Show active tab panel */
-  .panel-left.tab-active,
-  .panel-center.tab-active,
-  .panel-right.tab-active,
-  .panel-expr.tab-active {
-    display: flex;
-  }
-
-  /* Mobile: modes in a row */
-  .panel-left {
-    flex-direction: column;
-    padding: 12px;
-  }
-  .mode-row {
-    display: flex;
-    gap: 6px;
-    flex-wrap: wrap;
-  }
-  .mode-row .mode-btn {
-    flex: 1;
-    min-width: 70px;
-  }
-
-  /* Bigger joystick on mobile */
-  #joystick {
-    width: 220px;
-    height: 220px;
-  }
-  #joy-knob {
-    width: 50px;
-    height: 50px;
-    left: 85px;
-    top: 85px;
-  }
-
-  /* Show compact status bar on mobile */
-  .mobile-status-bar { display: flex; }
-
-  /* Compact gauges on mobile */
-  .collapsible .gauge-grid {
-    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-    gap: 6px;
-  }
-  .collapsible .gauge { padding: 6px; }
-  .collapsible .gauge-value { font-size: 16px; }
-
-  /* Faults/caps inside collapsible: remove double border */
-  .collapsible .faults,
-  .collapsible .caps {
-    border: none;
-    border-radius: 0;
-    padding: 4px 0;
-  }
-
-  /* E-stop always visible at bottom on drive tab */
-  .mobile-estop {
-    display: block;
-    padding: 8px 12px;
-    background: var(--panel);
-    border-top: 1px solid var(--border);
-  }
-  .mobile-estop button {
-    width: 100%;
-    padding: 14px;
-    background: var(--red);
-    color: white;
-    border: 2px solid #ff0000;
-    border-radius: 8px;
-    font-size: 16px;
-    font-weight: bold;
-    cursor: pointer;
-  }
-}
-
-/* Desktop: hide mobile-only elements */
-@media (min-width: 769px) {
-  .mobile-estop { display: none; }
-  .panel-left, .panel-center, .panel-right, .panel-expr {
-    display: flex !important;
-  }
-}
-</style>
-</head>
-<body>
-
-<header>
-  <h1>Robot Buddy</h1>
-  <span id="conn-status">disconnected</span>
-</header>
-
-<div class="tab-bar">
-  <button class="active" data-tab="center">Drive</button>
-  <button data-tab="left">Modes</button>
-  <button data-tab="right">Params</button>
-  <button data-tab="expr">Expressions</button>
-</div>
-
-<div class="main">
-  <!-- Left: Mode + E-Stop -->
-  <div class="panel-left">
-    <div class="mode-row">
-      <div class="mode-btn active" data-mode="IDLE">IDLE</div>
-      <div class="mode-btn" data-mode="TELEOP">TELEOP</div>
-      <div class="mode-btn" data-mode="WANDER">WANDER</div>
-    </div>
-    <button id="btn-clear">Clear Faults</button>
-    <button id="btn-estop">E-STOP</button>
-  </div>
-
-  <!-- Center: Telemetry + Joystick -->
-  <div class="panel-center">
-    <!-- Mobile: compact status bar above joystick -->
-    <div class="mobile-status-bar">
-      <span class="ms-item"><span class="ms-label">MODE</span> <span class="ms-val" id="ms-mode">BOOT</span></span>
-      <span class="ms-item"><span class="ms-label">v</span> <span class="ms-val" id="ms-v">0</span></span>
-      <span class="ms-item"><span class="ms-label">rng</span> <span class="ms-val" id="ms-range">--</span></span>
-      <span class="ms-item"><span class="ms-label">bat</span> <span class="ms-val" id="ms-batt">--</span></span>
-    </div>
-
-    <div class="joystick-area">
-      <div id="joystick"><div id="joy-knob"></div></div>
-    </div>
-
-    <details class="collapsible" open>
-      <summary>Telemetry</summary>
-      <div class="gauge-grid">
-        <div class="gauge"><div class="gauge-label">v meas</div><div class="gauge-value" id="g-v">0</div><div class="gauge-unit">mm/s</div></div>
-        <div class="gauge"><div class="gauge-label">w meas</div><div class="gauge-value" id="g-w">0</div><div class="gauge-unit">mrad/s</div></div>
-        <div class="gauge"><div class="gauge-label">range</div><div class="gauge-value" id="g-range">--</div><div class="gauge-unit">mm</div></div>
-        <div class="gauge"><div class="gauge-label">battery</div><div class="gauge-value" id="g-batt">--</div><div class="gauge-unit">mV</div></div>
-        <div class="gauge"><div class="gauge-label">v cmd</div><div class="gauge-value" id="g-vcmd">0</div><div class="gauge-unit">mm/s</div></div>
-        <div class="gauge"><div class="gauge-label">w cmd</div><div class="gauge-value" id="g-wcmd">0</div><div class="gauge-unit">mrad/s</div></div>
-        <div class="gauge"><div class="gauge-label">tick dt</div><div class="gauge-value" id="g-dt">--</div><div class="gauge-unit">ms</div></div>
-        <div class="gauge"><div class="gauge-label">mode</div><div class="gauge-value" id="g-mode">BOOT</div><div class="gauge-unit"></div></div>
-        <div class="gauge"><div class="gauge-label">clear conf</div><div class="gauge-value" id="g-clear">--</div><div class="gauge-unit"></div></div>
-        <div class="gauge"><div class="gauge-label">ball conf</div><div class="gauge-value" id="g-ball">--</div><div class="gauge-unit"></div></div>
-        <div class="gauge"><div class="gauge-label">ball bearing</div><div class="gauge-value" id="g-bearing">--</div><div class="gauge-unit">deg</div></div>
-        <div class="gauge"><div class="gauge-label">vision fps</div><div class="gauge-value" id="g-vfps">--</div><div class="gauge-unit"></div></div>
-        <div class="gauge"><div class="gauge-label">face mood</div><div class="gauge-value" id="g-face-mood">--</div></div>
-        <div class="gauge"><div class="gauge-label">talking</div><div class="gauge-value" id="g-face-talking">false</div></div>
-      </div>
-    </details>
-
-    <details class="collapsible">
-      <summary>Faults &amp; Speed Caps</summary>
-      <div class="faults">
-        <div class="gauge-label">Fault Flags</div>
-        <div id="fault-chips"></div>
-      </div>
-      <div class="caps">
-        <div class="gauge-label">Speed Caps</div>
-        <div id="cap-list">none</div>
-      </div>
-    </details>
-
-    <details class="collapsible">
-      <summary>Last LLM Plan</summary>
-      <div style="padding: 10px; font-size: 12px; white-space: pre-wrap; word-break: break-all;">
-        <code id="llm-plan"></code>
-      </div>
-    </details>
-
-    <details class="collapsible">
-      <summary>Video</summary>
-      <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
-        <button id="btn-video" style="padding:6px 12px; background:var(--panel); color:var(--accent); border:1px solid var(--accent); border-radius:4px; cursor:pointer; font-size:12px;">Toggle Video</button>
-        <span id="video-status" style="font-size:11px; color:var(--dim);">off</span>
-      </div>
-      <div id="video-container" style="display:none; margin-bottom:8px;">
-        <img id="video-feed" style="max-width:100%; border:1px solid var(--border); border-radius:4px;">
-      </div>
-    </details>
-  </div>
-
-  <!-- Right: Parameters -->
-  <div class="panel-right">
-    <h3 style="font-size:12px; margin-bottom:8px; color:var(--accent);">Parameters</h3>
-    <div id="params-container"></div>
-  </div>
-
-  <!-- Expressions -->
-  <div class="panel-expr">
-    <h3 style="font-size:12px; margin-bottom:8px; color:var(--accent);">Expressions</h3>
-
-    <div class="expr-block">
-      <div class="expr-row" style="margin-bottom:0;">
-        <label for="expr-manual-lock">Manual lock planner face actions</label>
-        <input id="expr-manual-lock" type="checkbox">
-      </div>
-    </div>
-
-    <div class="expr-block">
-      <div class="expr-row">
-        <label for="expr-mood">Mood</label>
-        <select id="expr-mood">
-          <option value="neutral">neutral</option>
-          <option value="happy">happy</option>
-          <option value="excited">excited</option>
-          <option value="curious">curious</option>
-          <option value="sad">sad</option>
-          <option value="scared">scared</option>
-          <option value="angry">angry</option>
-          <option value="surprised">surprised</option>
-          <option value="sleepy">sleepy</option>
-          <option value="love">love</option>
-          <option value="silly">silly</option>
-          <option value="thinking">thinking</option>
-        </select>
-      </div>
-      <div class="expr-row">
-        <label for="expr-intensity">Intensity <span id="expr-intensity-val">1.00</span></label>
-      </div>
-      <input id="expr-intensity" class="expr-slider" type="range" min="0" max="1" step="0.01" value="1">
-      <div class="expr-row" style="margin-top:8px;">
-        <label for="expr-brightness">Brightness <span id="expr-brightness-val">1.00</span></label>
-      </div>
-      <input id="expr-brightness" class="expr-slider" type="range" min="0" max="1" step="0.01" value="1">
-      <div class="expr-actions" style="margin-top:8px;">
-        <button class="expr-btn" id="expr-apply-state">Apply State</button>
-      </div>
-    </div>
-
-    <div class="expr-block">
-      <div class="expr-row">
-        <label for="expr-gaze-x">Gaze X <span id="expr-gaze-x-val">0.00</span></label>
-      </div>
-      <input id="expr-gaze-x" class="expr-slider" type="range" min="-1" max="1" step="0.01" value="0">
-      <div class="expr-row" style="margin-top:8px;">
-        <label for="expr-gaze-y">Gaze Y <span id="expr-gaze-y-val">0.00</span></label>
-      </div>
-      <input id="expr-gaze-y" class="expr-slider" type="range" min="-1" max="1" step="0.01" value="0">
-      <div class="expr-actions" style="margin-top:8px;">
-        <button class="expr-btn" id="expr-apply-gaze">Apply Gaze</button>
-        <button class="expr-btn" id="expr-center-gaze">Center</button>
-      </div>
-    </div>
-
-    <div class="expr-block">
-      <div class="expr-row">
-        <label for="expr-gesture-duration">Gesture duration ms</label>
-        <input id="expr-gesture-duration" type="number" min="0" max="5000" step="10" value="0">
-      </div>
-      <div class="gesture-grid">
-        <button class="expr-btn expr-gesture-btn" data-gesture="blink">blink</button>
-        <button class="expr-btn expr-gesture-btn" data-gesture="wink_l">wink_l</button>
-        <button class="expr-btn expr-gesture-btn" data-gesture="wink_r">wink_r</button>
-        <button class="expr-btn expr-gesture-btn" data-gesture="confused">confused</button>
-        <button class="expr-btn expr-gesture-btn" data-gesture="laugh">laugh</button>
-        <button class="expr-btn expr-gesture-btn" data-gesture="surprise">surprise</button>
-        <button class="expr-btn expr-gesture-btn" data-gesture="heart">heart</button>
-        <button class="expr-btn expr-gesture-btn" data-gesture="x_eyes">x_eyes</button>
-        <button class="expr-btn expr-gesture-btn" data-gesture="sleepy">sleepy</button>
-        <button class="expr-btn expr-gesture-btn" data-gesture="rage">rage</button>
-        <button class="expr-btn expr-gesture-btn" data-gesture="nod">nod</button>
-        <button class="expr-btn expr-gesture-btn" data-gesture="headshake">headshake</button>
-        <button class="expr-btn expr-gesture-btn" data-gesture="wiggle">wiggle</button>
-      </div>
-    </div>
-
-    <div class="expr-block">
-      <div class="expr-row">
-        <label for="expr-system-mode">System mode</label>
-        <select id="expr-system-mode">
-          <option value="NONE">NONE</option>
-          <option value="BOOTING">BOOTING</option>
-          <option value="ERROR_DISPLAY">ERROR_DISPLAY</option>
-          <option value="LOW_BATTERY">LOW_BATTERY</option>
-          <option value="UPDATING">UPDATING</option>
-          <option value="SHUTTING_DOWN">SHUTTING_DOWN</option>
-        </select>
-      </div>
-      <div class="expr-row">
-        <label for="expr-system-param">System param <span id="expr-system-param-val">0</span></label>
-      </div>
-      <input id="expr-system-param" class="expr-slider" type="range" min="0" max="255" step="1" value="0">
-      <div class="expr-actions" style="margin-top:8px;">
-        <button class="expr-btn" id="expr-apply-system">Apply System</button>
-      </div>
-    </div>
-
-    <div class="expr-block">
-      <div class="expr-row">
-        <label for="expr-talk-enable">Talking enabled</label>
-        <input id="expr-talk-enable" type="checkbox">
-      </div>
-      <div class="expr-row">
-        <label for="expr-talk-energy">Talking energy <span id="expr-talk-energy-val">128</span></label>
-      </div>
-      <input id="expr-talk-energy" class="expr-slider" type="range" min="0" max="255" step="1" value="128">
-      <div class="expr-actions" style="margin-top:8px;">
-        <button class="expr-btn" id="expr-send-talking">Send Talking</button>
-      </div>
-    </div>
-
-    <div class="expr-block">
-      <div class="flag-grid">
-        <label class="flag-item"><input type="checkbox" id="expr-flag-idle" checked>idle</label>
-        <label class="flag-item"><input type="checkbox" id="expr-flag-blink" checked>autoblink</label>
-        <label class="flag-item"><input type="checkbox" id="expr-flag-solid" checked>solid eyes</label>
-        <label class="flag-item"><input type="checkbox" id="expr-flag-mouth" checked>show mouth</label>
-        <label class="flag-item"><input type="checkbox" id="expr-flag-glow" checked>edge glow</label>
-        <label class="flag-item"><input type="checkbox" id="expr-flag-sparkle" checked>sparkle</label>
-        <label class="flag-item"><input type="checkbox" id="expr-flag-afterglow" checked>afterglow</label>
-      </div>
-      <div class="expr-actions">
-        <button class="expr-btn" id="expr-apply-flags">Apply Toggles</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<div class="mobile-estop">
-  <button id="btn-estop-mobile">E-STOP</button>
-</div>
-
-<script>
-const FAULT_NAMES = ['CMD_TIMEOUT','ESTOP','TILT','STALL','IMU_FAIL','BROWNOUT','OBSTACLE'];
-const MAX_V = 500, MAX_W = 2000;
-const FACE_FLAGS = {
-  IDLE: 1 << 0,
-  AUTOBLINK: 1 << 1,
-  SOLID: 1 << 2,
-  MOUTH: 1 << 3,
-  GLOW: 1 << 4,
-  SPARKLE: 1 << 5,
-  AFTERGLOW: 1 << 6,
-};
-
-let ws = null;
-let joyActive = false;
-let joyX = 0, joyY = 0;
-
-// -- WebSocket connection ---------------------------------------------------
-
-function connect() {
-  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  ws = new WebSocket(`${proto}//${location.host}/ws`);
-
-  ws.onopen = () => {
-    document.getElementById('conn-status').textContent = 'connected';
-    document.getElementById('conn-status').classList.add('ok');
-    loadParams();
-  };
-
-  ws.onclose = () => {
-    document.getElementById('conn-status').textContent = 'disconnected';
-    document.getElementById('conn-status').classList.remove('ok');
-    setTimeout(connect, 1000);
-  };
-
-  ws.onmessage = (e) => {
-    const msg = JSON.parse(e.data);
-    if (msg.type === 'telemetry') updateTelemetry(msg.payload);
-  };
-}
-
-// -- Telemetry display ------------------------------------------------------
-
-function updateTelemetry(p) {
-  document.getElementById('g-v').textContent = p.v_meas;
-  document.getElementById('g-w').textContent = p.w_meas;
-  document.getElementById('g-range').textContent = p.range_mm;
-  document.getElementById('g-batt').textContent = p.battery_mv;
-  document.getElementById('g-vcmd').textContent = p.v_capped;
-  document.getElementById('g-wcmd').textContent = p.w_capped;
-  document.getElementById('g-dt').textContent = p.tick_dt_ms;
-  document.getElementById('g-mode').textContent = p.mode;
-  document.getElementById('g-clear').textContent = p.clear_conf >= 0 ? p.clear_conf : '--';
-  document.getElementById('g-ball').textContent = p.ball_conf > 0 ? p.ball_conf : '--';
-  document.getElementById('g-bearing').textContent = p.ball_conf > 0 ? p.ball_bearing : '--';
-  document.getElementById('g-vfps').textContent = p.vision_fps > 0 ? p.vision_fps : '--';
-  document.getElementById('g-face-mood').textContent = p.face_mood;
-  document.getElementById('g-face-talking').textContent = p.face_talking;
-
-  // Last LLM plan
-  const planEl = document.getElementById('llm-plan');
-  if (p.planner_last_plan) {
-    planEl.textContent = JSON.stringify(p.planner_last_plan, null, 2);
-  } else {
-    planEl.textContent = 'none';
-  }
-
-  // Mobile status bar
-  document.getElementById('ms-mode').textContent = p.mode;
-  document.getElementById('ms-v').textContent = p.v_meas;
-  document.getElementById('ms-range').textContent = p.range_mm;
-  document.getElementById('ms-batt').textContent = p.battery_mv;
-
-  // Update mode buttons
-  document.querySelectorAll('.mode-btn').forEach(b => {
-    b.classList.toggle('active', b.dataset.mode === p.mode);
-  });
-
-  // Fault chips
-  const fc = document.getElementById('fault-chips');
-  fc.innerHTML = FAULT_NAMES.map((name, i) => {
-    const active = (p.fault_flags >> i) & 1;
-    return `<span class="fault-chip${active ? ' active' : ''}">${name}</span>`;
-  }).join('');
-
-  // Speed caps
-  const cl = document.getElementById('cap-list');
-  if (p.speed_caps.length === 0) {
-    cl.textContent = 'none';
-  } else {
-    cl.textContent = p.speed_caps.map(c => `${c.reason} (${Math.round(c.scale*100)}%)`).join(', ');
-  }
-
-  const moodSel = document.getElementById('expr-mood');
-  if (moodSel && typeof p.face_mood === 'string') {
-    const opt = Array.from(moodSel.options).find(o => o.value === p.face_mood);
-    if (opt) moodSel.value = p.face_mood;
-  }
-  const lock = document.getElementById('expr-manual-lock');
-  if (lock) lock.checked = !!p.face_manual_lock;
-  const talkEnable = document.getElementById('expr-talk-enable');
-  if (talkEnable) talkEnable.checked = !!p.face_talking;
-  const talkEnergySlider = document.getElementById('expr-talk-energy');
-  const talkEnergyVal = document.getElementById('expr-talk-energy-val');
-  if (talkEnergySlider && talkEnergyVal) {
-    const energy = Number.isFinite(p.face_talking_energy) ? p.face_talking_energy : 0;
-    talkEnergySlider.value = String(energy);
-    talkEnergyVal.textContent = String(energy);
-  }
-  const flags = Number.isFinite(p.face_manual_flags) ? p.face_manual_flags : 0;
-  const setFlag = (id, bit) => {
-    const el = document.getElementById(id);
-    if (el) el.checked = !!(flags & bit);
-  };
-  setFlag('expr-flag-idle', FACE_FLAGS.IDLE);
-  setFlag('expr-flag-blink', FACE_FLAGS.AUTOBLINK);
-  setFlag('expr-flag-solid', FACE_FLAGS.SOLID);
-  setFlag('expr-flag-mouth', FACE_FLAGS.MOUTH);
-  setFlag('expr-flag-glow', FACE_FLAGS.GLOW);
-  setFlag('expr-flag-sparkle', FACE_FLAGS.SPARKLE);
-  setFlag('expr-flag-afterglow', FACE_FLAGS.AFTERGLOW);
-}
-
-// -- Mode buttons -----------------------------------------------------------
-
-document.querySelectorAll('.mode-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    send({ type: 'set_mode', mode: btn.dataset.mode });
-  });
-});
-
-document.getElementById('btn-estop').addEventListener('click', () => {
-  send({ type: 'e_stop' });
-});
-
-document.getElementById('btn-clear').addEventListener('click', () => {
-  send({ type: 'clear' });
-});
-
-function send(obj) {
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify(obj));
-  }
-}
-
-function clamp(v, lo, hi) {
-  return Math.max(lo, Math.min(hi, v));
-}
-
-function parseNum(id, fallback = 0) {
-  const el = document.getElementById(id);
-  if (!el) return fallback;
-  const n = Number(el.value);
-  return Number.isFinite(n) ? n : fallback;
-}
-
-function setLabel(sliderId, labelId, digits = 2) {
-  const slider = document.getElementById(sliderId);
-  const label = document.getElementById(labelId);
-  if (!slider || !label) return;
-  const n = Number(slider.value);
-  label.textContent = Number.isFinite(n) ? n.toFixed(digits) : slider.value;
-}
-
-function sendFaceState() {
-  const mood = document.getElementById('expr-mood').value;
-  send({
-    type: 'face_set_state',
-    emotion: mood,
-    intensity: clamp(parseNum('expr-intensity', 1.0), 0, 1),
-    gaze_x: clamp(parseNum('expr-gaze-x', 0), -1, 1),
-    gaze_y: clamp(parseNum('expr-gaze-y', 0), -1, 1),
-    brightness: clamp(parseNum('expr-brightness', 1.0), 0, 1),
-  });
-}
-
-function sendFaceGazeOnly() {
-  send({
-    type: 'face_set_state',
-    emotion: document.getElementById('expr-mood').value,
-    intensity: clamp(parseNum('expr-intensity', 1.0), 0, 1),
-    gaze_x: clamp(parseNum('expr-gaze-x', 0), -1, 1),
-    gaze_y: clamp(parseNum('expr-gaze-y', 0), -1, 1),
-    brightness: clamp(parseNum('expr-brightness', 1.0), 0, 1),
-  });
-}
-
-function sendFaceFlags() {
-  send({
-    type: 'face_set_flags',
-    idle_wander: !!document.getElementById('expr-flag-idle').checked,
-    autoblink: !!document.getElementById('expr-flag-blink').checked,
-    solid_eye: !!document.getElementById('expr-flag-solid').checked,
-    show_mouth: !!document.getElementById('expr-flag-mouth').checked,
-    edge_glow: !!document.getElementById('expr-flag-glow').checked,
-    sparkle: !!document.getElementById('expr-flag-sparkle').checked,
-    afterglow: !!document.getElementById('expr-flag-afterglow').checked,
-  });
-}
-
-document.getElementById('expr-intensity').addEventListener('input', () => setLabel('expr-intensity', 'expr-intensity-val', 2));
-document.getElementById('expr-brightness').addEventListener('input', () => setLabel('expr-brightness', 'expr-brightness-val', 2));
-document.getElementById('expr-gaze-x').addEventListener('input', () => setLabel('expr-gaze-x', 'expr-gaze-x-val', 2));
-document.getElementById('expr-gaze-y').addEventListener('input', () => setLabel('expr-gaze-y', 'expr-gaze-y-val', 2));
-document.getElementById('expr-system-param').addEventListener('input', () => {
-  document.getElementById('expr-system-param-val').textContent = String(parseInt(document.getElementById('expr-system-param').value, 10));
-});
-document.getElementById('expr-talk-energy').addEventListener('input', () => {
-  document.getElementById('expr-talk-energy-val').textContent = String(parseInt(document.getElementById('expr-talk-energy').value, 10));
-});
-
-document.getElementById('expr-apply-state').addEventListener('click', sendFaceState);
-document.getElementById('expr-apply-gaze').addEventListener('click', sendFaceGazeOnly);
-document.getElementById('expr-center-gaze').addEventListener('click', () => {
-  document.getElementById('expr-gaze-x').value = '0';
-  document.getElementById('expr-gaze-y').value = '0';
-  setLabel('expr-gaze-x', 'expr-gaze-x-val', 2);
-  setLabel('expr-gaze-y', 'expr-gaze-y-val', 2);
-  sendFaceGazeOnly();
-});
-
-document.querySelectorAll('.expr-gesture-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    send({
-      type: 'face_gesture',
-      name: btn.dataset.gesture,
-      duration_ms: Math.max(0, parseInt(document.getElementById('expr-gesture-duration').value || '0', 10)),
-    });
-  });
-});
-
-document.getElementById('expr-apply-system').addEventListener('click', () => {
-  send({
-    type: 'face_set_system',
-    mode: document.getElementById('expr-system-mode').value,
-    param: clamp(parseInt(document.getElementById('expr-system-param').value || '0', 10), 0, 255),
-  });
-});
-
-document.getElementById('expr-send-talking').addEventListener('click', () => {
-  const enabled = !!document.getElementById('expr-talk-enable').checked;
-  const energy = clamp(parseInt(document.getElementById('expr-talk-energy').value || '0', 10), 0, 255);
-  send({ type: 'face_set_talking', talking: enabled, energy });
-});
-
-document.getElementById('expr-apply-flags').addEventListener('click', sendFaceFlags);
-document.getElementById('expr-manual-lock').addEventListener('change', (e) => {
-  send({ type: 'face_manual_lock', enabled: !!e.target.checked });
-});
-
-// -- Joystick ---------------------------------------------------------------
-
-const joystick = document.getElementById('joystick');
-const knob = document.getElementById('joy-knob');
-
-function getJoyMetrics() {
-  const knobSize = knob.offsetWidth;
-  const joySize = joystick.offsetWidth;
-  const center = (joySize - knobSize) / 2;
-  const maxR = center;
-  return { center, maxR };
-}
-
-function joyStart(e) {
-  joyActive = true;
-  e.preventDefault();
-  joyMove(e);
-}
-
-function joyMove(e) {
-  if (!joyActive) return;
-  e.preventDefault();
-  const { center, maxR } = getJoyMetrics();
-  const rect = joystick.getBoundingClientRect();
-  const cx = rect.left + rect.width / 2;
-  const cy = rect.top + rect.height / 2;
-
-  const pt = e.touches ? e.touches[0] : e;
-  let dx = pt.clientX - cx;
-  let dy = pt.clientY - cy;
-
-  const dist = Math.sqrt(dx*dx + dy*dy);
-  if (dist > maxR) {
-    dx = dx / dist * maxR;
-    dy = dy / dist * maxR;
-  }
-
-  knob.style.left = (center + dx) + 'px';
-  knob.style.top = (center + dy) + 'px';
-
-  joyX = dx / maxR;  // -1..1
-  joyY = -dy / maxR; // -1..1 (inverted)
-}
-
-function joyEnd() {
-  joyActive = false;
-  const { center } = getJoyMetrics();
-  knob.style.left = center + 'px';
-  knob.style.top = center + 'px';
-  joyX = 0;
-  joyY = 0;
-}
-
-joystick.addEventListener('mousedown', joyStart);
-joystick.addEventListener('touchstart', joyStart);
-window.addEventListener('mousemove', joyMove);
-window.addEventListener('touchmove', joyMove, { passive: false });
-window.addEventListener('mouseup', joyEnd);
-window.addEventListener('touchend', joyEnd);
-
-// Send twist at 20 Hz
-setInterval(() => {
-  const v = Math.round(joyY * MAX_V);
-  const w = Math.round(-joyX * MAX_W);  // right = negative w (clockwise)
-  send({ type: 'twist', v, w });
-}, 50);
-
-// -- WASD support -----------------------------------------------------------
-
-const keys = {};
-window.addEventListener('keydown', e => {
-  if (['w','a','s','d',' '].includes(e.key)) {
-    keys[e.key] = true;
-    if (e.key === ' ') send({ type: 'e_stop' });
-  }
-});
-window.addEventListener('keyup', e => { keys[e.key] = false; });
-
-setInterval(() => {
-  if (joyActive) return; // joystick takes priority
-  let v = 0, w = 0;
-  if (keys['w']) v += MAX_V * 0.5;
-  if (keys['s']) v -= MAX_V * 0.5;
-  if (keys['a']) w += MAX_W * 0.5;
-  if (keys['d']) w -= MAX_W * 0.5;
-  if (v !== 0 || w !== 0) {
-    send({ type: 'twist', v: Math.round(v), w: Math.round(w) });
-  }
-}, 50);
-
-// -- Parameters -------------------------------------------------------------
-
-async function loadParams() {
-  try {
-    const res = await fetch('/params');
-    const params = await res.json();
-    renderParams(params);
-  } catch (e) {
-    console.warn('Failed to load params:', e);
-  }
-}
-
-function renderParams(params) {
-  const container = document.getElementById('params-container');
-  container.innerHTML = '';
-
-  const groups = {};
-  params.forEach(p => {
-    const g = p.owner || 'other';
-    if (!groups[g]) groups[g] = [];
-    groups[g].push(p);
-  });
-
-  for (const [owner, items] of Object.entries(groups)) {
-    const div = document.createElement('div');
-    div.className = 'param-group';
-    div.innerHTML = `<h3>${owner}</h3>`;
-
-    items.forEach(p => {
-      const row = document.createElement('div');
-      row.className = 'param-row';
-
-      if (p.mutable === 'boot_only') {
-        // Read-only: show name + value as static text
-        row.innerHTML = `<label><span>${p.name}</span><span style="color:var(--text)">${p.value}</span></label>`;
-        div.appendChild(row);
-        return;
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Robot Buddy</title>
+  <style>
+    :root {
+      --bg: #1a1a2e;
+      --panel: #16213e;
+      --border: #0f3460;
+      --text: #e0e0e0;
+      --accent: #00adb5;
+      --red: #e23636;
+      --green: #4caf50;
+      --yellow: #ffc107;
+      --dim: #666;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 16px;
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+    }
+
+    header h1 {
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    #conn-status {
+      font-size: 12px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      background: var(--red);
+    }
+
+    #conn-status.ok {
+      background: var(--green);
+    }
+
+    /* Mobile tab bar */
+    .tab-bar {
+      display: none;
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .tab-bar button {
+      flex: 1;
+      padding: 10px 0;
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: var(--dim);
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    .tab-bar button.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+
+    .main {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* Left panel */
+    .panel-left {
+      width: 200px;
+      padding: 12px;
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .mode-btn {
+      padding: 8px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--panel);
+      color: var(--text);
+      cursor: pointer;
+      font-size: 13px;
+      text-align: center;
+    }
+
+    .mode-btn:hover {
+      border-color: var(--accent);
+    }
+
+    .mode-btn.active {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+
+    #btn-estop {
+      margin-top: auto;
+      padding: 16px;
+      background: var(--red);
+      color: white;
+      border: 2px solid #ff0000;
+      border-radius: 8px;
+      font-size: 18px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    #btn-estop:hover {
+      background: #ff0000;
+    }
+
+    #btn-clear {
+      padding: 8px;
+      background: var(--panel);
+      color: var(--yellow);
+      border: 1px solid var(--yellow);
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+
+    /* Center panel */
+    .panel-center {
+      flex: 1;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      overflow-y: auto;
+    }
+
+    .gauge-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 8px;
+    }
+
+    .gauge {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px;
+    }
+
+    .gauge-label {
+      font-size: 11px;
+      color: var(--dim);
+      text-transform: uppercase;
+    }
+
+    .gauge-value {
+      font-size: 22px;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .gauge-unit {
+      font-size: 11px;
+      color: var(--dim);
+    }
+
+    .faults {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px;
+    }
+
+    .fault-chip {
+      display: inline-block;
+      padding: 2px 8px;
+      margin: 2px;
+      border-radius: 10px;
+      font-size: 11px;
+      background: var(--dim);
+    }
+
+    .fault-chip.active {
+      background: var(--red);
+      color: white;
+    }
+
+    .caps {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px;
+      font-size: 12px;
+    }
+
+    /* Joystick */
+    .joystick-area {
+      display: flex;
+      justify-content: center;
+      padding: 12px;
+    }
+
+    #joystick {
+      width: 180px;
+      height: 180px;
+      background: var(--panel);
+      border: 2px solid var(--border);
+      border-radius: 50%;
+      position: relative;
+      touch-action: none;
+    }
+
+    #joy-knob {
+      width: 40px;
+      height: 40px;
+      background: var(--accent);
+      border-radius: 50%;
+      position: absolute;
+      left: 70px;
+      top: 70px;
+      pointer-events: none;
+    }
+
+    /* Right panel */
+    .panel-right {
+      width: 280px;
+      padding: 12px;
+      border-left: 1px solid var(--border);
+      overflow-y: auto;
+    }
+
+    .param-group {
+      margin-bottom: 12px;
+    }
+
+    .param-group h3 {
+      font-size: 12px;
+      color: var(--accent);
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+
+    .param-row {
+      margin-bottom: 8px;
+    }
+
+    .param-row label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--dim);
+      margin-bottom: 2px;
+    }
+
+    .param-row input[type=range] {
+      width: 100%;
+      accent-color: var(--accent);
+    }
+
+    /* Expressions */
+    .expr-block {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px;
+      margin-bottom: 10px;
+    }
+
+    .expr-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .expr-row label {
+      font-size: 11px;
+      color: var(--dim);
+      text-transform: uppercase;
+    }
+
+    .expr-row select,
+    .expr-row input[type=number] {
+      width: 160px;
+      background: #0e1930;
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 4px;
+      padding: 4px 6px;
+      font-size: 12px;
+    }
+
+    .expr-slider {
+      width: 100%;
+      accent-color: var(--accent);
+    }
+
+    .expr-actions {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .expr-btn {
+      padding: 6px 10px;
+      background: var(--panel);
+      color: var(--accent);
+      border: 1px solid var(--accent);
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+
+    .expr-btn:hover {
+      background: #12304d;
+    }
+
+    .gesture-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 6px;
+    }
+
+    .flag-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+
+    .flag-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+    }
+
+    /* Collapsible sections */
+    .collapsible {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+    }
+
+    .collapsible summary {
+      padding: 8px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--accent);
+      text-transform: uppercase;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .collapsible summary::-webkit-details-marker {
+      color: var(--dim);
+    }
+
+    .collapsible>.gauge-grid,
+    .collapsible>.faults,
+    .collapsible>.caps,
+    .collapsible>div {
+      padding: 0 12px 10px;
+    }
+
+    /* Mobile status bar (hidden on desktop) */
+    .mobile-status-bar {
+      display: none;
+      gap: 12px;
+      padding: 6px 8px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      justify-content: space-around;
+      flex-wrap: wrap;
+    }
+
+    .ms-item {
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .ms-label {
+      color: var(--dim);
+      font-size: 10px;
+      text-transform: uppercase;
+    }
+
+    .ms-val {
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ---- Mobile responsive ---- */
+    @media (max-width: 768px) {
+      .tab-bar {
+        display: flex;
       }
 
-      const step = p.step || (p.type === 'float' ? 0.01 : 1);
-      const valSpan = `<span id="pval-${p.name}">${p.value}</span>`;
+      .main {
+        flex-direction: column;
+        position: relative;
+      }
 
-      row.innerHTML = `
+      .panel-left,
+      .panel-right {
+        display: none;
+        width: 100%;
+        border: none;
+        flex: 1;
+        overflow-y: auto;
+      }
+
+      .panel-center {
+        display: none;
+        flex: 1;
+        padding: 12px;
+      }
+
+      /* Show active tab panel */
+      .panel-left.tab-active,
+      .panel-center.tab-active,
+      .panel-right.tab-active {
+        display: flex;
+      }
+
+      /* Mobile: modes in a row */
+      .panel-left {
+        flex-direction: column;
+        padding: 12px;
+      }
+
+      .mode-row {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+
+      .mode-row .mode-btn {
+        flex: 1;
+        min-width: 70px;
+      }
+
+      /* Bigger joystick on mobile */
+      #joystick {
+        width: 220px;
+        height: 220px;
+      }
+
+      #joy-knob {
+        width: 50px;
+        height: 50px;
+        left: 85px;
+        top: 85px;
+      }
+
+      /* Show compact status bar on mobile */
+      .mobile-status-bar {
+        display: flex;
+      }
+
+      /* Compact gauges on mobile */
+      .collapsible .gauge-grid {
+        grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+        gap: 6px;
+      }
+
+      .collapsible .gauge {
+        padding: 6px;
+      }
+
+      .collapsible .gauge-value {
+        font-size: 16px;
+      }
+
+      /* Faults/caps inside collapsible: remove double border */
+      .collapsible .faults,
+      .collapsible .caps {
+        border: none;
+        border-radius: 0;
+        padding: 4px 0;
+      }
+
+      /* E-stop always visible at bottom on drive tab */
+      .mobile-estop {
+        display: block;
+        padding: 8px 12px;
+        background: var(--panel);
+        border-top: 1px solid var(--border);
+      }
+
+      .mobile-estop button {
+        width: 100%;
+        padding: 14px;
+        background: var(--red);
+        color: white;
+        border: 2px solid #ff0000;
+        border-radius: 8px;
+        font-size: 16px;
+        font-weight: bold;
+        cursor: pointer;
+      }
+    }
+
+    /* Desktop: hide mobile-only elements */
+    @media (min-width: 769px) {
+      .mobile-estop {
+        display: none;
+      }
+
+      .panel-left,
+      .panel-center,
+      .panel-right {
+        display: flex !important;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <header>
+    <h1>Robot Buddy</h1>
+    <span id="conn-status">disconnected</span>
+  </header>
+
+  <div class="tab-bar">
+    <button class="active" data-tab="center">Drive</button>
+    <button data-tab="left">Modes</button>
+    <button data-tab="right">Params</button>
+  </div>
+
+  <div class="main">
+    <div class="panel-left">
+      <div class="mode-row">
+        <div class="mode-btn active" data-mode="IDLE">IDLE</div>
+        <div class="mode-btn" data-mode="TELEOP">TELEOP</div>
+        <div class="mode-btn" data-mode="WANDER">WANDER</div>
+      </div>
+      <button id="btn-clear">Clear Faults</button>
+      <button id="btn-estop">E-STOP</button>
+    </div>
+
+    <div class="panel-center">
+      <div class="mobile-status-bar">
+        <span class="ms-item"><span class="ms-label">MODE</span> <span class="ms-val" id="ms-mode">BOOT</span></span>
+        <span class="ms-item"><span class="ms-label">v</span> <span class="ms-val" id="ms-v">0</span></span>
+        <span class="ms-item"><span class="ms-label">rng</span> <span class="ms-val" id="ms-range">--</span></span>
+        <span class="ms-item"><span class="ms-label">bat</span> <span class="ms-val" id="ms-batt">--</span></span>
+      </div>
+
+      <div class="joystick-area">
+        <div id="joystick">
+          <div id="joy-knob"></div>
+        </div>
+      </div>
+
+      <details class="collapsible" open>
+        <summary>Telemetry</summary>
+        <div class="gauge-grid">
+          <div class="gauge">
+            <div class="gauge-label">v meas</div>
+            <div class="gauge-value" id="g-v">0</div>
+            <div class="gauge-unit">mm/s</div>
+          </div>
+          <div class="gauge">
+            <div class="gauge-label">w meas</div>
+            <div class="gauge-value" id="g-w">0</div>
+            <div class="gauge-unit">mrad/s</div>
+          </div>
+          <div class="gauge">
+            <div class="gauge-label">range</div>
+            <div class="gauge-value" id="g-range">--</div>
+            <div class="gauge-unit">mm</div>
+          </div>
+          <div class="gauge">
+            <div class="gauge-label">battery</div>
+            <div class="gauge-value" id="g-batt">--</div>
+            <div class="gauge-unit">mV</div>
+          </div>
+          <div class="gauge">
+            <div class="gauge-label">v cmd</div>
+            <div class="gauge-value" id="g-vcmd">0</div>
+            <div class="gauge-unit">mm/s</div>
+          </div>
+          <div class="gauge">
+            <div class="gauge-label">w cmd</div>
+            <div class="gauge-value" id="g-wcmd">0</div>
+            <div class="gauge-unit">mrad/s</div>
+          </div>
+          <div class="gauge">
+            <div class="gauge-label">tick dt</div>
+            <div class="gauge-value" id="g-dt">--</div>
+            <div class="gauge-unit">ms</div>
+          </div>
+          <div class="gauge">
+            <div class="gauge-label">mode</div>
+            <div class="gauge-value" id="g-mode">BOOT</div>
+            <div class="gauge-unit"></div>
+          </div>
+          <div class="gauge">
+            <div class="gauge-label">clear conf</div>
+            <div class="gauge-value" id="g-clear">--</div>
+            <div class="gauge-unit"></div>
+          </div>
+          <div class="gauge">
+            <div class="gauge-label">ball conf</div>
+            <div class="gauge-value" id="g-ball">--</div>
+            <div class="gauge-unit"></div>
+          </div>
+          <div class="gauge">
+            <div class="gauge-label">ball bearing</div>
+            <div class="gauge-value" id="g-bearing">--</div>
+            <div class="gauge-unit">deg</div>
+          </div>
+          <div class="gauge">
+            <div class="gauge-label">vision fps</div>
+            <div class="gauge-value" id="g-vfps">--</div>
+            <div class="gauge-unit"></div>
+          </div>
+          <div class="gauge">
+            <div class="gauge-label">face mood</div>
+            <div class="gauge-value" id="g-face-mood">--</div>
+          </div>
+          <div class="gauge">
+            <div class="gauge-label">talking</div>
+            <div class="gauge-value" id="g-face-talking">false</div>
+          </div>
+        </div>
+      </details>
+
+      <details class="collapsible">
+        <summary>Faults &amp; Speed Caps</summary>
+        <div class="faults">
+          <div class="gauge-label">Fault Flags</div>
+          <div id="fault-chips"></div>
+        </div>
+        <div class="caps">
+          <div class="gauge-label">Speed Caps</div>
+          <div id="cap-list">none</div>
+        </div>
+      </details>
+
+      <details class="collapsible">
+        <summary>Last LLM Plan</summary>
+        <div style="padding: 10px; font-size: 12px; white-space: pre-wrap; word-break: break-all;">
+          <code id="llm-plan"></code>
+        </div>
+      </details>
+
+      <details class="collapsible">
+        <summary>Video</summary>
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+          <button id="btn-video"
+            style="padding:6px 12px; background:var(--panel); color:var(--accent); border:1px solid var(--accent); border-radius:4px; cursor:pointer; font-size:12px;">Toggle
+            Video</button>
+          <span id="video-status" style="font-size:11px; color:var(--dim);">off</span>
+        </div>
+        <div id="video-container" style="display:none; margin-bottom:8px;">
+          <img id="video-feed" style="max-width:100%; border:1px solid var(--border); border-radius:4px;">
+        </div>
+      </details>
+
+      <details class="collapsible">
+        <summary>Expressions</summary>
+        <div>
+          <div class="expr-block">
+            <div class="expr-row" style="margin-bottom:0;">
+              <label for="expr-manual-lock">Manual lock planner face actions</label>
+              <input id="expr-manual-lock" type="checkbox">
+            </div>
+          </div>
+
+          <div class="expr-block">
+            <div class="expr-row">
+              <label for="expr-mood">Mood</label>
+              <select id="expr-mood">
+                <option value="neutral">neutral</option>
+                <option value="happy">happy</option>
+                <option value="excited">excited</option>
+                <option value="curious">curious</option>
+                <option value="sad">sad</option>
+                <option value="scared">scared</option>
+                <option value="angry">angry</option>
+                <option value="surprised">surprised</option>
+                <option value="sleepy">sleepy</option>
+                <option value="love">love</option>
+                <option value="silly">silly</option>
+                <option value="thinking">thinking</option>
+              </select>
+            </div>
+            <div class="expr-row">
+              <label for="expr-intensity">Intensity <span id="expr-intensity-val">1.00</span></label>
+            </div>
+            <input id="expr-intensity" class="expr-slider" type="range" min="0" max="1" step="0.01" value="1">
+            <div class="expr-row" style="margin-top:8px;">
+              <label for="expr-brightness">Brightness <span id="expr-brightness-val">1.00</span></label>
+            </div>
+            <input id="expr-brightness" class="expr-slider" type="range" min="0" max="1" step="0.01" value="1">
+            <div class="expr-actions" style="margin-top:8px;">
+              <button class="expr-btn" id="expr-apply-state">Apply State</button>
+            </div>
+          </div>
+
+          <div class="expr-block">
+            <div class="expr-row">
+              <label for="expr-gaze-x">Gaze X <span id="expr-gaze-x-val">0.00</span></label>
+            </div>
+            <input id="expr-gaze-x" class="expr-slider" type="range" min="-1" max="1" step="0.01" value="0">
+            <div class="expr-row" style="margin-top:8px;">
+              <label for="expr-gaze-y">Gaze Y <span id="expr-gaze-y-val">0.00</span></label>
+            </div>
+            <input id="expr-gaze-y" class="expr-slider" type="range" min="-1" max="1" step="0.01" value="0">
+            <div class="expr-actions" style="margin-top:8px;">
+              <button class="expr-btn" id="expr-apply-gaze">Apply Gaze</button>
+              <button class="expr-btn" id="expr-center-gaze">Center</button>
+            </div>
+          </div>
+
+          <div class="expr-block">
+            <div class="expr-row">
+              <label for="expr-gesture-duration">Gesture duration ms</label>
+              <input id="expr-gesture-duration" type="number" min="0" max="5000" step="10" value="0">
+            </div>
+            <div class="gesture-grid">
+              <button class="expr-btn expr-gesture-btn" data-gesture="blink">blink</button>
+              <button class="expr-btn expr-gesture-btn" data-gesture="wink_l">wink_l</button>
+              <button class="expr-btn expr-gesture-btn" data-gesture="wink_r">wink_r</button>
+              <button class="expr-btn expr-gesture-btn" data-gesture="confused">confused</button>
+              <button class="expr-btn expr-gesture-btn" data-gesture="laugh">laugh</button>
+              <button class="expr-btn expr-gesture-btn" data-gesture="surprise">surprise</button>
+              <button class="expr-btn expr-gesture-btn" data-gesture="heart">heart</button>
+              <button class="expr-btn expr-gesture-btn" data-gesture="x_eyes">x_eyes</button>
+              <button class="expr-btn expr-gesture-btn" data-gesture="sleepy">sleepy</button>
+              <button class="expr-btn expr-gesture-btn" data-gesture="rage">rage</button>
+              <button class="expr-btn expr-gesture-btn" data-gesture="nod">nod</button>
+              <button class="expr-btn expr-gesture-btn" data-gesture="headshake">headshake</button>
+              <button class="expr-btn expr-gesture-btn" data-gesture="wiggle">wiggle</button>
+            </div>
+          </div>
+
+          <div class="expr-block">
+            <div class="expr-row">
+              <label for="expr-system-mode">System mode</label>
+              <select id="expr-system-mode">
+                <option value="NONE">NONE</option>
+                <option value="BOOTING">BOOTING</option>
+                <option value="ERROR_DISPLAY">ERROR_DISPLAY</option>
+                <option value="LOW_BATTERY">LOW_BATTERY</option>
+                <option value="UPDATING">UPDATING</option>
+                <option value="SHUTTING_DOWN">SHUTTING_DOWN</option>
+              </select>
+            </div>
+            <div class="expr-row">
+              <label for="expr-system-param">System param <span id="expr-system-param-val">0</span></label>
+            </div>
+            <input id="expr-system-param" class="expr-slider" type="range" min="0" max="255" step="1" value="0">
+            <div class="expr-actions" style="margin-top:8px;">
+              <button class="expr-btn" id="expr-apply-system">Apply System</button>
+            </div>
+          </div>
+
+          <div class="expr-block">
+            <div class="expr-row">
+              <label for="expr-talk-enable">Talking enabled</label>
+              <input id="expr-talk-enable" type="checkbox">
+            </div>
+            <div class="expr-row">
+              <label for="expr-talk-energy">Talking energy <span id="expr-talk-energy-val">128</span></label>
+            </div>
+            <input id="expr-talk-energy" class="expr-slider" type="range" min="0" max="255" step="1" value="128">
+            <div class="expr-actions" style="margin-top:8px;">
+              <button class="expr-btn" id="expr-send-talking">Send Talking</button>
+            </div>
+          </div>
+
+          <div class="expr-block">
+            <div class="flag-grid">
+              <label class="flag-item"><input type="checkbox" id="expr-flag-idle" checked>idle</label>
+              <label class="flag-item"><input type="checkbox" id="expr-flag-blink" checked>autoblink</label>
+              <label class="flag-item"><input type="checkbox" id="expr-flag-solid" checked>solid eyes</label>
+              <label class="flag-item"><input type="checkbox" id="expr-flag-mouth" checked>show mouth</label>
+              <label class="flag-item"><input type="checkbox" id="expr-flag-glow" checked>edge glow</label>
+              <label class="flag-item"><input type="checkbox" id="expr-flag-sparkle" checked>sparkle</label>
+              <label class="flag-item"><input type="checkbox" id="expr-flag-afterglow" checked>afterglow</label>
+            </div>
+            <div class="expr-actions">
+              <button class="expr-btn" id="expr-apply-flags">Apply Toggles</button>
+            </div>
+          </div>
+        </div>
+      </details>
+    </div>
+
+    <div class="panel-right">
+      <h3 style="font-size:12px; margin-bottom:8px; color:var(--accent);">Parameters</h3>
+      <div id="params-container"></div>
+    </div>
+  </div>
+
+  <div class="mobile-estop">
+    <button id="btn-estop-mobile">E-STOP</button>
+  </div>
+
+  <script>
+    const FAULT_NAMES = ['CMD_TIMEOUT', 'ESTOP', 'TILT', 'STALL', 'IMU_FAIL', 'BROWNOUT', 'OBSTACLE'];
+    const MAX_V = 500, MAX_W = 2000;
+    const FACE_FLAGS = {
+      IDLE: 1 << 0,
+      AUTOBLINK: 1 << 1,
+      SOLID: 1 << 2,
+      MOUTH: 1 << 3,
+      GLOW: 1 << 4,
+      SPARKLE: 1 << 5,
+      AFTERGLOW: 1 << 6,
+    };
+
+    let ws = null;
+    let joyActive = false;
+    let joyX = 0, joyY = 0;
+
+    // -- WebSocket connection ---------------------------------------------------
+
+    function connect() {
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      ws = new WebSocket(`${proto}//${location.host}/ws`);
+
+      ws.onopen = () => {
+        document.getElementById('conn-status').textContent = 'connected';
+        document.getElementById('conn-status').classList.add('ok');
+        loadParams();
+      };
+
+      ws.onclose = () => {
+        document.getElementById('conn-status').textContent = 'disconnected';
+        document.getElementById('conn-status').classList.remove('ok');
+        setTimeout(connect, 1000);
+      };
+
+      ws.onmessage = (e) => {
+        const msg = JSON.parse(e.data);
+        if (msg.type === 'telemetry') updateTelemetry(msg.payload);
+      };
+    }
+
+    // -- Telemetry display ------------------------------------------------------
+
+    function updateTelemetry(p) {
+      document.getElementById('g-v').textContent = p.v_meas;
+      document.getElementById('g-w').textContent = p.w_meas;
+      document.getElementById('g-range').textContent = p.range_mm;
+      document.getElementById('g-batt').textContent = p.battery_mv;
+      document.getElementById('g-vcmd').textContent = p.v_capped;
+      document.getElementById('g-wcmd').textContent = p.w_capped;
+      document.getElementById('g-dt').textContent = p.tick_dt_ms;
+      document.getElementById('g-mode').textContent = p.mode;
+      document.getElementById('g-clear').textContent = p.clear_conf >= 0 ? p.clear_conf : '--';
+      document.getElementById('g-ball').textContent = p.ball_conf > 0 ? p.ball_conf : '--';
+      document.getElementById('g-bearing').textContent = p.ball_conf > 0 ? p.ball_bearing : '--';
+      document.getElementById('g-vfps').textContent = p.vision_fps > 0 ? p.vision_fps : '--';
+      document.getElementById('g-face-mood').textContent = p.face_mood;
+      document.getElementById('g-face-talking').textContent = p.face_talking;
+
+      // Last LLM plan
+      const planEl = document.getElementById('llm-plan');
+      if (p.planner_last_plan) {
+        planEl.textContent = JSON.stringify(p.planner_last_plan, null, 2);
+      } else {
+        planEl.textContent = 'none';
+      }
+
+      // Mobile status bar
+      document.getElementById('ms-mode').textContent = p.mode;
+      document.getElementById('ms-v').textContent = p.v_meas;
+      document.getElementById('ms-range').textContent = p.range_mm;
+      document.getElementById('ms-batt').textContent = p.battery_mv;
+
+      // Update mode buttons
+      document.querySelectorAll('.mode-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.mode === p.mode);
+      });
+
+      // Fault chips
+      const fc = document.getElementById('fault-chips');
+      fc.innerHTML = FAULT_NAMES.map((name, i) => {
+        const active = (p.fault_flags >> i) & 1;
+        return `<span class="fault-chip${active ? ' active' : ''}">${name}</span>`;
+      }).join('');
+
+      // Speed caps
+      const cl = document.getElementById('cap-list');
+      if (p.speed_caps.length === 0) {
+        cl.textContent = 'none';
+      } else {
+        cl.textContent = p.speed_caps.map(c => `${c.reason} (${Math.round(c.scale * 100)}%)`).join(', ');
+      }
+
+      const moodSel = document.getElementById('expr-mood');
+      if (moodSel && typeof p.face_mood === 'string') {
+        const opt = Array.from(moodSel.options).find(o => o.value === p.face_mood);
+        if (opt) moodSel.value = p.face_mood;
+      }
+      const lock = document.getElementById('expr-manual-lock');
+      if (lock) lock.checked = !!p.face_manual_lock;
+      const talkEnable = document.getElementById('expr-talk-enable');
+      if (talkEnable) talkEnable.checked = !!p.face_talking;
+      const talkEnergySlider = document.getElementById('expr-talk-energy');
+      const talkEnergyVal = document.getElementById('expr-talk-energy-val');
+      if (talkEnergySlider && talkEnergyVal) {
+        const energy = Number.isFinite(p.face_talking_energy) ? p.face_talking_energy : 0;
+        talkEnergySlider.value = String(energy);
+        talkEnergyVal.textContent = String(energy);
+      }
+      const flags = Number.isFinite(p.face_manual_flags) ? p.face_manual_flags : 0;
+      const setFlag = (id, bit) => {
+        const el = document.getElementById(id);
+        if (el) el.checked = !!(flags & bit);
+      };
+      setFlag('expr-flag-idle', FACE_FLAGS.IDLE);
+      setFlag('expr-flag-blink', FACE_FLAGS.AUTOBLINK);
+      setFlag('expr-flag-solid', FACE_FLAGS.SOLID);
+      setFlag('expr-flag-mouth', FACE_FLAGS.MOUTH);
+      setFlag('expr-flag-glow', FACE_FLAGS.GLOW);
+      setFlag('expr-flag-sparkle', FACE_FLAGS.SPARKLE);
+      setFlag('expr-flag-afterglow', FACE_FLAGS.AFTERGLOW);
+    }
+
+    // -- Mode buttons -----------------------------------------------------------
+
+    document.querySelectorAll('.mode-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        send({ type: 'set_mode', mode: btn.dataset.mode });
+      });
+    });
+
+    document.getElementById('btn-estop').addEventListener('click', () => {
+      send({ type: 'e_stop' });
+    });
+
+    document.getElementById('btn-clear').addEventListener('click', () => {
+      send({ type: 'clear' });
+    });
+
+    function send(obj) {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(obj));
+      }
+    }
+
+    function clamp(v, lo, hi) {
+      return Math.max(lo, Math.min(hi, v));
+    }
+
+    function parseNum(id, fallback = 0) {
+      const el = document.getElementById(id);
+      if (!el) return fallback;
+      const n = Number(el.value);
+      return Number.isFinite(n) ? n : fallback;
+    }
+
+    function setLabel(sliderId, labelId, digits = 2) {
+      const slider = document.getElementById(sliderId);
+      const label = document.getElementById(labelId);
+      if (!slider || !label) return;
+      const n = Number(slider.value);
+      label.textContent = Number.isFinite(n) ? n.toFixed(digits) : slider.value;
+    }
+
+    function sendFaceState() {
+      const mood = document.getElementById('expr-mood').value;
+      send({
+        type: 'face_set_state',
+        emotion: mood,
+        intensity: clamp(parseNum('expr-intensity', 1.0), 0, 1),
+        gaze_x: clamp(parseNum('expr-gaze-x', 0), -1, 1),
+        gaze_y: clamp(parseNum('expr-gaze-y', 0), -1, 1),
+        brightness: clamp(parseNum('expr-brightness', 1.0), 0, 1),
+      });
+    }
+
+    function sendFaceGazeOnly() {
+      send({
+        type: 'face_set_state',
+        emotion: document.getElementById('expr-mood').value,
+        intensity: clamp(parseNum('expr-intensity', 1.0), 0, 1),
+        gaze_x: clamp(parseNum('expr-gaze-x', 0), -1, 1),
+        gaze_y: clamp(parseNum('expr-gaze-y', 0), -1, 1),
+        brightness: clamp(parseNum('expr-brightness', 1.0), 0, 1),
+      });
+    }
+
+    function sendFaceFlags() {
+      send({
+        type: 'face_set_flags',
+        idle_wander: !!document.getElementById('expr-flag-idle').checked,
+        autoblink: !!document.getElementById('expr-flag-blink').checked,
+        solid_eye: !!document.getElementById('expr-flag-solid').checked,
+        show_mouth: !!document.getElementById('expr-flag-mouth').checked,
+        edge_glow: !!document.getElementById('expr-flag-glow').checked,
+        sparkle: !!document.getElementById('expr-flag-sparkle').checked,
+        afterglow: !!document.getElementById('expr-flag-afterglow').checked,
+      });
+    }
+
+    document.getElementById('expr-intensity').addEventListener('input', () => setLabel('expr-intensity', 'expr-intensity-val', 2));
+    document.getElementById('expr-brightness').addEventListener('input', () => setLabel('expr-brightness', 'expr-brightness-val', 2));
+    document.getElementById('expr-gaze-x').addEventListener('input', () => setLabel('expr-gaze-x', 'expr-gaze-x-val', 2));
+    document.getElementById('expr-gaze-y').addEventListener('input', () => setLabel('expr-gaze-y', 'expr-gaze-y-val', 2));
+    document.getElementById('expr-system-param').addEventListener('input', () => {
+      document.getElementById('expr-system-param-val').textContent = String(parseInt(document.getElementById('expr-system-param').value, 10));
+    });
+    document.getElementById('expr-talk-energy').addEventListener('input', () => {
+      document.getElementById('expr-talk-energy-val').textContent = String(parseInt(document.getElementById('expr-talk-energy').value, 10));
+    });
+
+    document.getElementById('expr-apply-state').addEventListener('click', sendFaceState);
+    document.getElementById('expr-apply-gaze').addEventListener('click', sendFaceGazeOnly);
+    document.getElementById('expr-center-gaze').addEventListener('click', () => {
+      document.getElementById('expr-gaze-x').value = '0';
+      document.getElementById('expr-gaze-y').value = '0';
+      setLabel('expr-gaze-x', 'expr-gaze-x-val', 2);
+      setLabel('expr-gaze-y', 'expr-gaze-y-val', 2);
+      sendFaceGazeOnly();
+    });
+
+    document.querySelectorAll('.expr-gesture-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        send({
+          type: 'face_gesture',
+          name: btn.dataset.gesture,
+          duration_ms: Math.max(0, parseInt(document.getElementById('expr-gesture-duration').value || '0', 10)),
+        });
+      });
+    });
+
+    document.getElementById('expr-apply-system').addEventListener('click', () => {
+      send({
+        type: 'face_set_system',
+        mode: document.getElementById('expr-system-mode').value,
+        param: clamp(parseInt(document.getElementById('expr-system-param').value || '0', 10), 0, 255),
+      });
+    });
+
+    document.getElementById('expr-send-talking').addEventListener('click', () => {
+      const enabled = !!document.getElementById('expr-talk-enable').checked;
+      const energy = clamp(parseInt(document.getElementById('expr-talk-energy').value || '0', 10), 0, 255);
+      send({ type: 'face_set_talking', talking: enabled, energy });
+    });
+
+    document.getElementById('expr-apply-flags').addEventListener('click', sendFaceFlags);
+    document.getElementById('expr-manual-lock').addEventListener('change', (e) => {
+      send({ type: 'face_manual_lock', enabled: !!e.target.checked });
+    });
+
+    // -- Joystick ---------------------------------------------------------------
+
+    const joystick = document.getElementById('joystick');
+    const knob = document.getElementById('joy-knob');
+
+    function getJoyMetrics() {
+      const knobSize = knob.offsetWidth;
+      const joySize = joystick.offsetWidth;
+      const center = (joySize - knobSize) / 2;
+      const maxR = center;
+      return { center, maxR };
+    }
+
+    function joyStart(e) {
+      joyActive = true;
+      e.preventDefault();
+      joyMove(e);
+    }
+
+    function joyMove(e) {
+      if (!joyActive) return;
+      e.preventDefault();
+      const { center, maxR } = getJoyMetrics();
+      const rect = joystick.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+
+      const pt = e.touches ? e.touches[0] : e;
+      let dx = pt.clientX - cx;
+      let dy = pt.clientY - cy;
+
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > maxR) {
+        dx = dx / dist * maxR;
+        dy = dy / dist * maxR;
+      }
+
+      knob.style.left = (center + dx) + 'px';
+      knob.style.top = (center + dy) + 'px';
+
+      joyX = dx / maxR;  // -1..1
+      joyY = -dy / maxR; // -1..1 (inverted)
+    }
+
+    function joyEnd() {
+      joyActive = false;
+      const { center } = getJoyMetrics();
+      knob.style.left = center + 'px';
+      knob.style.top = center + 'px';
+      joyX = 0;
+      joyY = 0;
+    }
+
+    joystick.addEventListener('mousedown', joyStart);
+    joystick.addEventListener('touchstart', joyStart);
+    window.addEventListener('mousemove', joyMove);
+    window.addEventListener('touchmove', joyMove, { passive: false });
+    window.addEventListener('mouseup', joyEnd);
+    window.addEventListener('touchend', joyEnd);
+
+    // Send twist at 20 Hz
+    setInterval(() => {
+      const v = Math.round(joyY * MAX_V);
+      const w = Math.round(-joyX * MAX_W);  // right = negative w (clockwise)
+      send({ type: 'twist', v, w });
+    }, 50);
+
+    // -- WASD support -----------------------------------------------------------
+
+    const keys = {};
+    window.addEventListener('keydown', e => {
+      if (['w', 'a', 's', 'd', ' '].includes(e.key)) {
+        keys[e.key] = true;
+        if (e.key === ' ') send({ type: 'e_stop' });
+      }
+    });
+    window.addEventListener('keyup', e => { keys[e.key] = false; });
+
+    setInterval(() => {
+      if (joyActive) return; // joystick takes priority
+      let v = 0, w = 0;
+      if (keys['w']) v += MAX_V * 0.5;
+      if (keys['s']) v -= MAX_V * 0.5;
+      if (keys['a']) w += MAX_W * 0.5;
+      if (keys['d']) w -= MAX_W * 0.5;
+      if (v !== 0 || w !== 0) {
+        send({ type: 'twist', v: Math.round(v), w: Math.round(w) });
+      }
+    }, 50);
+
+    // -- Parameters -------------------------------------------------------------
+
+    async function loadParams() {
+      try {
+        const res = await fetch('/params');
+        const params = await res.json();
+        renderParams(params);
+      } catch (e) {
+        console.warn('Failed to load params:', e);
+      }
+    }
+
+    function renderParams(params) {
+      const container = document.getElementById('params-container');
+      container.innerHTML = '';
+
+      const groups = {};
+      params.forEach(p => {
+        const g = p.owner || 'other';
+        if (!groups[g]) groups[g] = [];
+        groups[g].push(p);
+      });
+
+      for (const [owner, items] of Object.entries(groups)) {
+        const div = document.createElement('div');
+        div.className = 'param-group';
+        div.innerHTML = `<h3>${owner}</h3>`;
+
+        items.forEach(p => {
+          const row = document.createElement('div');
+          row.className = 'param-row';
+
+          if (p.mutable === 'boot_only') {
+            // Read-only: show name + value as static text
+            row.innerHTML = `<label><span>${p.name}</span><span style="color:var(--text)">${p.value}</span></label>`;
+            div.appendChild(row);
+            return;
+          }
+
+          const step = p.step || (p.type === 'float' ? 0.01 : 1);
+          const valSpan = `<span id="pval-${p.name}">${p.value}</span>`;
+
+          row.innerHTML = `
         <label><span>${p.name}</span>${valSpan}</label>
         <input type="range" min="${p.min}" max="${p.max}" step="${step}"
                value="${p.value}" data-param="${p.name}">
       `;
 
-      const input = row.querySelector('input');
-      input.addEventListener('input', () => {
-        document.getElementById(`pval-${p.name}`).textContent = input.value;
-      });
-      input.addEventListener('change', async () => {
-        const val = p.type === 'float' ? parseFloat(input.value) : parseInt(input.value);
+          const input = row.querySelector('input');
+          input.addEventListener('input', () => {
+            document.getElementById(`pval-${p.name}`).textContent = input.value;
+          });
+          input.addEventListener('change', async () => {
+            const val = p.type === 'float' ? parseFloat(input.value) : parseInt(input.value);
+            await fetch('/params', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ items: { [p.name]: val } }),
+            });
+          });
+
+          div.appendChild(row);
+        });
+
+        container.appendChild(div);
+      }
+    }
+
+    // -- Video toggle -----------------------------------------------------------
+
+    let videoOn = false;
+    document.getElementById('btn-video').addEventListener('click', async () => {
+      videoOn = !videoOn;
+      document.getElementById('video-status').textContent = videoOn ? 'on' : 'off';
+      document.getElementById('video-container').style.display = videoOn ? 'block' : 'none';
+      if (videoOn) {
+        document.getElementById('video-feed').src = '/video';
         await fetch('/params', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ items: { [p.name]: val } }),
+          body: JSON.stringify({ items: { 'vision.mjpeg_enabled': true } }),
         });
-      });
-
-      div.appendChild(row);
+      } else {
+        document.getElementById('video-feed').src = '';
+        await fetch('/params', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ items: { 'vision.mjpeg_enabled': false } }),
+        });
+      }
     });
 
-    container.appendChild(div);
-  }
-}
+    // -- Mobile tabs ------------------------------------------------------------
 
-// -- Video toggle -----------------------------------------------------------
+    const tabMap = { left: '.panel-left', center: '.panel-center', right: '.panel-right' };
+    const tabButtons = document.querySelectorAll('.tab-bar button');
 
-let videoOn = false;
-document.getElementById('btn-video').addEventListener('click', async () => {
-  videoOn = !videoOn;
-  document.getElementById('video-status').textContent = videoOn ? 'on' : 'off';
-  document.getElementById('video-container').style.display = videoOn ? 'block' : 'none';
-  if (videoOn) {
-    document.getElementById('video-feed').src = '/video';
-    await fetch('/params', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ items: { 'vision.mjpeg_enabled': true } }),
+    function switchTab(tabName) {
+      tabButtons.forEach(b => b.classList.toggle('active', b.dataset.tab === tabName));
+      for (const [key, sel] of Object.entries(tabMap)) {
+        document.querySelector(sel).classList.toggle('tab-active', key === tabName);
+      }
+    }
+
+    tabButtons.forEach(btn => {
+      btn.addEventListener('click', () => switchTab(btn.dataset.tab));
     });
-  } else {
-    document.getElementById('video-feed').src = '';
-    await fetch('/params', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ items: { 'vision.mjpeg_enabled': false } }),
+
+    // Set initial active tab on mobile
+    switchTab('center');
+
+    // On mobile, collapse telemetry by default (status bar shows key values)
+    if (window.matchMedia('(max-width: 768px)').matches) {
+      document.querySelectorAll('.collapsible[open]').forEach(d => d.removeAttribute('open'));
+    }
+
+    // Mobile e-stop
+    document.getElementById('btn-estop-mobile').addEventListener('click', () => {
+      send({ type: 'e_stop' });
     });
-  }
-});
 
-// -- Mobile tabs ------------------------------------------------------------
-
-const tabMap = { left: '.panel-left', center: '.panel-center', right: '.panel-right', expr: '.panel-expr' };
-const tabButtons = document.querySelectorAll('.tab-bar button');
-
-function switchTab(tabName) {
-  tabButtons.forEach(b => b.classList.toggle('active', b.dataset.tab === tabName));
-  for (const [key, sel] of Object.entries(tabMap)) {
-    document.querySelector(sel).classList.toggle('tab-active', key === tabName);
-  }
-}
-
-tabButtons.forEach(btn => {
-  btn.addEventListener('click', () => switchTab(btn.dataset.tab));
-});
-
-// Set initial active tab on mobile
-switchTab('center');
-
-// On mobile, collapse telemetry by default (status bar shows key values)
-if (window.matchMedia('(max-width: 768px)').matches) {
-  document.querySelectorAll('.collapsible[open]').forEach(d => d.removeAttribute('open'));
-}
-
-// Mobile e-stop
-document.getElementById('btn-estop-mobile').addEventListener('click', () => {
-  send({ type: 'e_stop' });
-});
-
-// -- Init -------------------------------------------------------------------
-setLabel('expr-intensity', 'expr-intensity-val', 2);
-setLabel('expr-brightness', 'expr-brightness-val', 2);
-setLabel('expr-gaze-x', 'expr-gaze-x-val', 2);
-setLabel('expr-gaze-y', 'expr-gaze-y-val', 2);
-document.getElementById('expr-system-param-val').textContent = document.getElementById('expr-system-param').value;
-document.getElementById('expr-talk-energy-val').textContent = document.getElementById('expr-talk-energy').value;
-connect();
-</script>
+    // -- Init -------------------------------------------------------------------
+    setLabel('expr-intensity', 'expr-intensity-val', 2);
+    setLabel('expr-brightness', 'expr-brightness-val', 2);
+    setLabel('expr-gaze-x', 'expr-gaze-x-val', 2);
+    setLabel('expr-gaze-y', 'expr-gaze-y-val', 2);
+    document.getElementById('expr-system-param-val').textContent = document.getElementById('expr-system-param').value;
+    document.getElementById('expr-talk-energy-val').textContent = document.getElementById('expr-talk-energy').value;
+    connect();
+  </script>
 </body>
+
 </html>
