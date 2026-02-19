@@ -55,7 +55,9 @@ def vision_main(
         cam.configure(
             cam.create_video_configuration(
                 # main={"size": capture_size, "format": "RGB888"},
-                main={"size": capture_size, "format": "BGRA2BGR"},
+                # main={"size": capture_size, "format": "BGRA2BGR"},
+                main={"size": capture_size, "format": "RGB2BGR"},
+
             )
         )
         cam.start()
@@ -100,8 +102,8 @@ def vision_main(
 
             # Capture
             rgb = cam.capture_array()
-            # bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
-            bgr = cv2.cvtColor(rgb, cv2.COLOR_BGRA2BGR)
+            bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+            # bgr = cv2.cvtColor(rgb, cv2.COLOR_BGRA2BGR)
             bgr = cv2.rotate(bgr, cv2.ROTATE_180)
             small = cv2.resize(bgr, process_size)
 
