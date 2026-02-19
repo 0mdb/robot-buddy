@@ -99,7 +99,8 @@ def vision_main(
 
             # Capture
             rgb = cam.capture_array()
-            bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+            # bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+            bgr = cv2.cvtColor(rgb, cv2.COLOR_BGRA2BGR)
             bgr = cv2.rotate(bgr, cv2.ROTATE_180)
             small = cv2.resize(bgr, process_size)
 
