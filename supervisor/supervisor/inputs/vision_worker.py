@@ -131,6 +131,7 @@ def vision_main(
 
             # Optional MJPEG frame
             if mjpeg_enabled:
+                cv2.imwrite("/tmp/vision_small.jpg", small)
                 _, jpeg = cv2.imencode(".jpg", small, [cv2.IMWRITE_JPEG_QUALITY, 50])
                 drain_and_put(frame_q, jpeg.tobytes())
 
