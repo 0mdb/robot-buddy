@@ -169,6 +169,11 @@ class PlanResponse(BaseModel):
         if not action_kind and wrapper_name in {"say", "emote", "gesture", "skill"}:
             action_kind = wrapper_name
 
+        # Malformed variant: {"action":"gesture","name":"say|emote|skill",...}
+        # where name is actually the intended action wrapper.
+        if explicit_action == "gesture" and wrapper_name in {"say", "emote", "skill"}:
+            action_kind = wrapper_name
+
         # Recover malformed tags where action holds a concrete symbol (emotion/gesture/skill).
         if action_kind not in {"say", "emote", "gesture", "skill"}:
             token = action_kind or _tok(payload.get("name"))

@@ -208,6 +208,26 @@ def test_plan_response_from_malformed_action_tags():
     assert plan.actions[3].name == "investigate_ball"
 
 
+def test_plan_response_from_malformed_gesture_wrappers():
+    """Recover malformed entries tagged as gesture but wrapped as other actions."""
+    raw = """{
+        "actions": [
+            {"action": "gesture", "name": "say", "params": {"text": "Hello there!"}},
+            {"action": "gesture", "name": "emote", "params": {"name": "happy", "intensity": 0.8}},
+            {"action": "gesture", "name": "skill", "params": {"name": "investigate_ball"}}
+        ],
+        "ttl_ms": 2000
+    }"""
+    plan = PlanResponse.model_validate_json(raw)
+    assert len(plan.actions) == 3
+    assert plan.actions[0].action == "say"
+    assert plan.actions[0].text == "Hello there!"
+    assert plan.actions[1].action == "emote"
+    assert plan.actions[1].name == "happy"
+    assert plan.actions[2].action == "skill"
+    assert plan.actions[2].name == "investigate_ball"
+
+
 def test_plan_json_schema_has_discriminator():
     """Ensure the JSON schema uses the action discriminator."""
     schema = PlanResponse.model_json_schema()
