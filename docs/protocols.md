@@ -80,6 +80,8 @@ Command channel semantics in `esp32-face-v2`:
 - button `0`: PTT (tap-toggle)
 - button `1`: ACTION (click)
 
+UI note: face-v2 renders these as small bottom-corner icon controls; telemetry IDs and event types are unchanged.
+
 `BUTTON_EVENT` types:
 - `0`: PRESS
 - `1`: RELEASE

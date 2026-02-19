@@ -5,6 +5,7 @@
 #include "led.h"
 #include "protocol.h"
 #include "touch.h"
+#include "system_overlay_v2.h"
 
 #include "esp_lvgl_port.h"
 #include "esp_log.h"
@@ -14,18 +15,20 @@
 #include "freertos/task.h"
 
 #include <cmath>
+#include <cstddef>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 
 static const char* TAG = "face_ui";
 static constexpr uint32_t TALKING_CMD_TIMEOUT_MS = 450;
-static constexpr int BTN_BAR_H = 54;
-static constexpr int BTN_W = 138;
-static constexpr int BTN_H = 42;
 static constexpr uint8_t BG_R = 0;
 static constexpr uint8_t BG_G = 0;
 static constexpr uint8_t BG_B = 0;
+// Keep canvas format explicit to avoid lv_color_t/native-depth stride mismatch.
+static constexpr lv_color_format_t CANVAS_COLOR_FORMAT = LV_COLOR_FORMAT_RGB888;
+static constexpr std::size_t CANVAS_BYTES =
+    SCREEN_W * SCREEN_H * LV_COLOR_FORMAT_GET_SIZE(CANVAS_COLOR_FORMAT);
 
 static float now_s();
 
@@ -322,102 +325,6 @@ static void render_mouth(lv_color_t* buf, const FaceState& fs)
     }
 }
 
-static void render_system_overlay(lv_color_t* buf, const FaceState& fs)
-{
-    const float elapsed = now_s() - fs.system.timer;
-    if (fs.system.mode == SystemMode::BOOTING) {
-        draw_filled_rect(buf, 0, 0, SCREEN_W, SCREEN_H, rgb_to_color(0, 8, 20));
-        const int cx = SCREEN_W / 2;
-        const int cy = SCREEN_H / 2 - 10;
-        const int ring = 70;
-        const float ang = fmodf(elapsed * 3.0f, 2.0f * static_cast<float>(M_PI));
-        for (int i = 0; i < 360; i += 3) {
-            float a = static_cast<float>(i) * static_cast<float>(M_PI) / 180.0f;
-            int x = cx + static_cast<int>(cosf(a) * ring);
-            int y = cy + static_cast<int>(sinf(a) * ring);
-            if (x < 0 || x >= SCREEN_W || y < 0 || y >= SCREEN_H) continue;
-            float d = fabsf(a - ang);
-            while (d > static_cast<float>(M_PI)) d -= static_cast<float>(M_PI);
-            const lv_color_t c = (d < 0.5f) ? rgb_to_color(0, 220, 255) : rgb_to_color(0, 80, 150);
-            buf[y * SCREEN_W + x] = c;
-        }
-        const int bar_w = 180;
-        const int bar_h = 10;
-        const int bx = (SCREEN_W - bar_w) / 2;
-        const int by = SCREEN_H - 44;
-        draw_filled_rect(buf, bx, by, bar_w, bar_h, rgb_to_color(20, 40, 70));
-        const float p = fminf(1.0f, elapsed / 3.0f);
-        draw_filled_rect(buf, bx, by, static_cast<int>(bar_w * p), bar_h, rgb_to_color(0, 220, 255));
-        return;
-    }
-
-    if (fs.system.mode == SystemMode::ERROR_DISPLAY) {
-        const bool flash = (static_cast<int>(elapsed * 4.0f) % 2) == 0;
-        draw_filled_rect(buf, 0, 0, SCREEN_W, SCREEN_H, flash ? rgb_to_color(40, 0, 0) : rgb_to_color(18, 0, 0));
-        const int cx = SCREEN_W / 2;
-        const int cy = SCREEN_H / 2;
-        for (int y = -50; y <= 40; y++) {
-            int py = cy + y;
-            if (py < 0 || py >= SCREEN_H) continue;
-            const int half = (y + 50);
-            int w = static_cast<int>(half * 1.2f);
-            int x0 = cx - w;
-            int x1 = cx + w;
-            if (y < -44) continue;
-            draw_hline(buf, x0, x1, py, rgb_to_color(220, 190, 20));
-        }
-        draw_filled_rect(buf, cx - 4, cy - 20, 8, 30, rgb_to_color(20, 0, 0));
-        draw_filled_circle(buf, cx, cy + 20, 5, rgb_to_color(20, 0, 0));
-        return;
-    }
-
-    if (fs.system.mode == SystemMode::LOW_BATTERY) {
-        draw_filled_rect(buf, 0, 0, SCREEN_W, SCREEN_H, rgb_to_color(8, 10, 16));
-        const int cx = SCREEN_W / 2;
-        const int cy = SCREEN_H / 2;
-        const int bw = 120;
-        const int bh = 56;
-        draw_filled_rounded_rect(buf, cx - bw / 2, cy - bh / 2, bw, bh, 6, rgb_to_color(180, 180, 190));
-        draw_filled_rect(buf, cx + bw / 2, cy - 14, 10, 28, rgb_to_color(180, 180, 190));
-        draw_filled_rounded_rect(buf, cx - bw / 2 + 4, cy - bh / 2 + 4, bw - 8, bh - 8, 4, rgb_to_color(0, 0, 0));
-        const float lvl = fmaxf(0.0f, fminf(1.0f, fs.system.param));
-        lv_color_t fill = (lvl > 0.5f) ? rgb_to_color(0, 220, 100) :
-                          (lvl > 0.2f) ? rgb_to_color(220, 170, 0) :
-                                         rgb_to_color(220, 40, 40);
-        draw_filled_rect(buf, cx - bw / 2 + 6, cy - bh / 2 + 6,
-                         static_cast<int>((bw - 12) * lvl), bh - 12, fill);
-        return;
-    }
-
-    if (fs.system.mode == SystemMode::UPDATING) {
-        draw_filled_rect(buf, 0, 0, SCREEN_W, SCREEN_H, rgb_to_color(5, 10, 14));
-        const int cx = SCREEN_W / 2;
-        const int cy = SCREEN_H / 2;
-        const float base_ang = elapsed * 4.0f;
-        for (int i = 0; i < 72; i++) {
-            const float a = base_ang + static_cast<float>(i) * 0.12f;
-            const int r = 32 + (i % 6) * 3;
-            const int x = cx + static_cast<int>(cosf(a) * r);
-            const int y = cy + static_cast<int>(sinf(a) * r);
-            if (x < 0 || x >= SCREEN_W || y < 0 || y >= SCREEN_H) continue;
-            const uint8_t br = static_cast<uint8_t>(80 + (i % 12) * 14);
-            buf[y * SCREEN_W + x] = rgb_to_color(0, br, static_cast<uint8_t>(120 + br / 3));
-        }
-        return;
-    }
-
-    if (fs.system.mode == SystemMode::SHUTTING_DOWN) {
-        draw_filled_rect(buf, 0, 0, SCREEN_W, SCREEN_H, rgb_to_color(0, 0, 0));
-        const float t = fmaxf(0.0f, 1.0f - elapsed / 0.8f);
-        int w = static_cast<int>(SCREEN_W * t);
-        int h = static_cast<int>(SCREEN_H * (0.1f + 0.9f * t));
-        if (w < 2) w = 2;
-        if (h < 2) h = 2;
-        draw_filled_rect(buf, (SCREEN_W - w) / 2, (SCREEN_H - h) / 2, w, h, rgb_to_color(210, 220, 255));
-        return;
-    }
-}
-
 static void render_fire_effect(lv_color_t* buf, const FaceState& fs)
 {
     for (const auto& px : fs.fx.fire_pixels) {
@@ -455,7 +362,7 @@ static void apply_afterglow(lv_color_t* buf, const FaceState& fs)
             buf[i] = faded;
         }
     }
-    memcpy(afterglow_buf, buf, SCREEN_W * SCREEN_H * sizeof(lv_color_t));
+    memcpy(afterglow_buf, buf, CANVAS_BYTES);
 }
 
 static void render_calibration(lv_color_t* buf)
@@ -463,9 +370,10 @@ static void render_calibration(lv_color_t* buf)
     const lv_color_t bg = rgb_to_color(8, 8, 10);
     const lv_color_t grid = rgb_to_color(34, 34, 38);
     const lv_color_t axis = rgb_to_color(74, 74, 84);
-    const lv_color_t bar = rgb_to_color(18, 18, 20);
     const lv_color_t ptt_outline = rgb_to_color(34, 180, 102);
     const lv_color_t action_outline = rgb_to_color(190, 98, 54);
+    const lv_color_t ptt_fill = rgb_to_color(20, 96, 64);
+    const lv_color_t action_fill = rgb_to_color(148, 78, 42);
     const lv_color_t touch = rgb_to_color(255, 228, 128);
     const lv_color_t cross = rgb_to_color(240, 250, 255);
 
@@ -480,30 +388,35 @@ static void render_calibration(lv_color_t* buf)
     draw_vline(buf, SCREEN_W / 2, 0, SCREEN_H - 1, rgb_to_color(120, 120, 130));
     draw_hline(buf, 0, SCREEN_W - 1, SCREEN_H / 2, rgb_to_color(120, 120, 130));
 
-    const int bar_y = SCREEN_H - BTN_BAR_H;
-    draw_filled_rect(buf, 0, bar_y, SCREEN_W, BTN_BAR_H, bar);
-    draw_hline(buf, 0, SCREEN_W - 1, bar_y, rgb_to_color(70, 42, 42));
+    const int hit = UI_ICON_HITBOX;
+    const int vis = UI_ICON_DIAMETER;
+    const int vis_r = vis / 2;
+    const int ptt_x = UI_ICON_MARGIN;
+    const int ptt_y = SCREEN_H - UI_ICON_MARGIN - hit;
+    const int action_x = SCREEN_W - UI_ICON_MARGIN - hit;
+    const int action_y = SCREEN_H - UI_ICON_MARGIN - hit;
+    const int ptt_cx = ptt_x + hit / 2;
+    const int ptt_cy = ptt_y + hit / 2;
+    const int action_cx = action_x + hit / 2;
+    const int action_cy = action_y + hit / 2;
 
-    const int ptt_x = 10;
-    const int ptt_y = SCREEN_H - 6 - BTN_H;
-    const int action_x = SCREEN_W - 10 - BTN_W;
-    const int action_y = SCREEN_H - 6 - BTN_H;
+    draw_hline(buf, ptt_x, ptt_x + hit - 1, ptt_y, ptt_outline);
+    draw_hline(buf, ptt_x, ptt_x + hit - 1, ptt_y + hit - 1, ptt_outline);
+    draw_vline(buf, ptt_x, ptt_y, ptt_y + hit - 1, ptt_outline);
+    draw_vline(buf, ptt_x + hit - 1, ptt_y, ptt_y + hit - 1, ptt_outline);
+    draw_hline(buf, action_x, action_x + hit - 1, action_y, action_outline);
+    draw_hline(buf, action_x, action_x + hit - 1, action_y + hit - 1, action_outline);
+    draw_vline(buf, action_x, action_y, action_y + hit - 1, action_outline);
+    draw_vline(buf, action_x + hit - 1, action_y, action_y + hit - 1, action_outline);
 
-    draw_hline(buf, ptt_x, ptt_x + BTN_W - 1, ptt_y, ptt_outline);
-    draw_hline(buf, ptt_x, ptt_x + BTN_W - 1, ptt_y + BTN_H - 1, ptt_outline);
-    draw_vline(buf, ptt_x, ptt_y, ptt_y + BTN_H - 1, ptt_outline);
-    draw_vline(buf, ptt_x + BTN_W - 1, ptt_y, ptt_y + BTN_H - 1, ptt_outline);
+    draw_filled_circle(buf, ptt_cx, ptt_cy, vis_r, ptt_fill);
+    draw_filled_circle(buf, action_cx, action_cy, vis_r, action_fill);
 
-    draw_hline(buf, action_x, action_x + BTN_W - 1, action_y, action_outline);
-    draw_hline(buf, action_x, action_x + BTN_W - 1, action_y + BTN_H - 1, action_outline);
-    draw_vline(buf, action_x, action_y, action_y + BTN_H - 1, action_outline);
-    draw_vline(buf, action_x + BTN_W - 1, action_y, action_y + BTN_H - 1, action_outline);
-
-    if (s_last_touch_active && point_in_rect(s_last_touch_x, s_last_touch_y, ptt_x, ptt_y, BTN_W, BTN_H)) {
-        draw_filled_rect(buf, ptt_x + 2, ptt_y + 2, BTN_W - 4, BTN_H - 4, rgb_to_color(14, 52, 30));
+    if (s_last_touch_active && point_in_rect(s_last_touch_x, s_last_touch_y, ptt_x, ptt_y, hit, hit)) {
+        draw_filled_circle(buf, ptt_cx, ptt_cy, vis_r - 4, rgb_to_color(58, 214, 145));
     }
-    if (s_last_touch_active && point_in_rect(s_last_touch_x, s_last_touch_y, action_x, action_y, BTN_W, BTN_H)) {
-        draw_filled_rect(buf, action_x + 2, action_y + 2, BTN_W - 4, BTN_H - 4, rgb_to_color(64, 30, 16));
+    if (s_last_touch_active && point_in_rect(s_last_touch_x, s_last_touch_y, action_x, action_y, hit, hit)) {
+        draw_filled_circle(buf, action_cx, action_cy, vis_r - 4, rgb_to_color(255, 140, 84));
     }
 
     const int tx = (s_last_touch_x < 0) ? 0 : ((s_last_touch_x >= SCREEN_W) ? (SCREEN_W - 1) : s_last_touch_x);
@@ -604,11 +517,10 @@ static void update_ptt_button_visual(bool listening)
     }
     if (listening) {
         lv_obj_set_style_bg_color(ptt_btn, lv_color_hex(0x2F80ED), LV_PART_MAIN);
-        lv_label_set_text(ptt_label, "Listening");
     } else {
-        lv_obj_set_style_bg_color(ptt_btn, lv_color_hex(0x1F6F43), LV_PART_MAIN);
-        lv_label_set_text(ptt_label, "Push To Talk");
+        lv_obj_set_style_bg_color(ptt_btn, lv_color_hex(0x2A6A4A), LV_PART_MAIN);
     }
+    lv_label_set_text(ptt_label, LV_SYMBOL_AUDIO);
 }
 
 static void root_touch_event_cb(lv_event_t* e)
@@ -690,21 +602,21 @@ void face_ui_create(lv_obj_t* parent)
 {
     // Allocate canvas buffer in PSRAM
     canvas_buf = static_cast<lv_color_t*>(
-        heap_caps_malloc(SCREEN_W * SCREEN_H * sizeof(lv_color_t), MALLOC_CAP_SPIRAM));
+        heap_caps_malloc(CANVAS_BYTES, MALLOC_CAP_SPIRAM));
     if (!canvas_buf) {
         ESP_LOGE(TAG, "failed to allocate canvas buffer in PSRAM!");
         return;
     }
     afterglow_buf = static_cast<lv_color_t*>(
-        heap_caps_malloc(SCREEN_W * SCREEN_H * sizeof(lv_color_t), MALLOC_CAP_SPIRAM));
+        heap_caps_malloc(CANVAS_BYTES, MALLOC_CAP_SPIRAM));
     if (!afterglow_buf) {
         ESP_LOGW(TAG, "failed to allocate afterglow buffer; disabling afterglow effect");
     } else {
-        memset(afterglow_buf, 0, SCREEN_W * SCREEN_H * sizeof(lv_color_t));
+        memset(afterglow_buf, 0, CANVAS_BYTES);
     }
 
     canvas_obj = lv_canvas_create(parent);
-    lv_canvas_set_buffer(canvas_obj, canvas_buf, SCREEN_W, SCREEN_H, LV_COLOR_FORMAT_NATIVE);
+    lv_canvas_set_buffer(canvas_obj, canvas_buf, SCREEN_W, SCREEN_H, CANVAS_COLOR_FORMAT);
     lv_obj_align(canvas_obj, LV_ALIGN_TOP_MID, 0, 0);
     lv_obj_add_flag(canvas_obj, LV_OBJ_FLAG_CLICKABLE);
 
@@ -716,27 +628,49 @@ void face_ui_create(lv_obj_t* parent)
     lv_obj_add_event_cb(parent, root_touch_event_cb, LV_EVENT_PRESSING, nullptr);
     lv_obj_add_event_cb(parent, root_touch_event_cb, LV_EVENT_RELEASED, nullptr);
 
-    // Bottom control bar buttons.
+    // Discreet corner icon controls.
     ptt_btn = lv_button_create(parent);
-    lv_obj_set_size(ptt_btn, BTN_W, BTN_H);
-    lv_obj_align(ptt_btn, LV_ALIGN_BOTTOM_LEFT, 10, -6);
-    lv_obj_set_style_radius(ptt_btn, 10, LV_PART_MAIN);
-    lv_obj_set_style_border_width(ptt_btn, 0, LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(ptt_btn, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_size(ptt_btn, UI_ICON_HITBOX, UI_ICON_HITBOX);
+    lv_obj_align(ptt_btn, LV_ALIGN_BOTTOM_LEFT, UI_ICON_MARGIN, -UI_ICON_MARGIN);
+    lv_obj_set_style_radius(ptt_btn, UI_ICON_HITBOX / 2, LV_PART_MAIN);
+    lv_obj_set_style_border_width(ptt_btn, 1, LV_PART_MAIN);
+    lv_obj_set_style_border_color(ptt_btn, lv_color_hex(0x54C896), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(
+        ptt_btn,
+        UI_ICON_IDLE_OPA,
+        static_cast<lv_style_selector_t>(LV_PART_MAIN) |
+            static_cast<lv_style_selector_t>(LV_STATE_DEFAULT));
+    lv_obj_set_style_bg_opa(
+        ptt_btn,
+        UI_ICON_PRESSED_OPA,
+        static_cast<lv_style_selector_t>(LV_PART_MAIN) |
+            static_cast<lv_style_selector_t>(LV_STATE_PRESSED));
     lv_obj_add_event_cb(ptt_btn, ptt_button_event_cb, LV_EVENT_ALL, nullptr);
     ptt_label = lv_label_create(ptt_btn);
+    lv_obj_set_style_text_color(ptt_label, lv_color_hex(0xF4FFFF), LV_PART_MAIN);
     lv_obj_center(ptt_label);
 
     action_btn = lv_button_create(parent);
-    lv_obj_set_size(action_btn, BTN_W, BTN_H);
-    lv_obj_align(action_btn, LV_ALIGN_BOTTOM_RIGHT, -10, -6);
-    lv_obj_set_style_radius(action_btn, 10, LV_PART_MAIN);
-    lv_obj_set_style_border_width(action_btn, 0, LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(action_btn, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(action_btn, lv_color_hex(0xA4472A), LV_PART_MAIN);
+    lv_obj_set_size(action_btn, UI_ICON_HITBOX, UI_ICON_HITBOX);
+    lv_obj_align(action_btn, LV_ALIGN_BOTTOM_RIGHT, -UI_ICON_MARGIN, -UI_ICON_MARGIN);
+    lv_obj_set_style_radius(action_btn, UI_ICON_HITBOX / 2, LV_PART_MAIN);
+    lv_obj_set_style_border_width(action_btn, 1, LV_PART_MAIN);
+    lv_obj_set_style_border_color(action_btn, lv_color_hex(0xFFBE8B), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(
+        action_btn,
+        UI_ICON_IDLE_OPA,
+        static_cast<lv_style_selector_t>(LV_PART_MAIN) |
+            static_cast<lv_style_selector_t>(LV_STATE_DEFAULT));
+    lv_obj_set_style_bg_opa(
+        action_btn,
+        UI_ICON_PRESSED_OPA,
+        static_cast<lv_style_selector_t>(LV_PART_MAIN) |
+            static_cast<lv_style_selector_t>(LV_STATE_PRESSED));
+    lv_obj_set_style_bg_color(action_btn, lv_color_hex(0xB66A3A), LV_PART_MAIN);
     lv_obj_add_event_cb(action_btn, action_button_event_cb, LV_EVENT_ALL, nullptr);
     lv_obj_t* action_label = lv_label_create(action_btn);
-    lv_label_set_text(action_label, "Action");
+    lv_label_set_text(action_label, LV_SYMBOL_CHARGE);
+    lv_obj_set_style_text_color(action_label, lv_color_hex(0xFFF7EA), LV_PART_MAIN);
     lv_obj_center(action_label);
 
     update_ptt_button_visual(false);
@@ -782,7 +716,7 @@ void face_ui_update(const FaceState& fs)
         render_calibration(canvas_buf);
     } else {
         if (fs.system.mode != SystemMode::NONE) {
-            render_system_overlay(canvas_buf, fs);
+            render_system_overlay_v2(canvas_buf, fs, now_s());
         } else {
             render_eye(canvas_buf, fs.eye_l, fs, true, LEFT_EYE_CX, LEFT_EYE_CY);
             render_eye(canvas_buf, fs.eye_r, fs, false, RIGHT_EYE_CX, RIGHT_EYE_CY);
@@ -795,7 +729,7 @@ void face_ui_update(const FaceState& fs)
         }
 
         if ((fs.system.mode != SystemMode::NONE || !fs.fx.afterglow) && afterglow_buf) {
-            memcpy(afterglow_buf, canvas_buf, SCREEN_W * SCREEN_H * sizeof(lv_color_t));
+            memcpy(afterglow_buf, canvas_buf, CANVAS_BYTES);
         }
     }
 
@@ -843,6 +777,10 @@ void face_ui_task(void* arg)
     bool last_led_talking = false;
     bool last_led_listening = false;
     uint32_t next_touch_cycle_ms = 0;
+    uint32_t next_frame_log_ms = static_cast<uint32_t>(esp_timer_get_time() / 1000ULL) + FRAME_TIME_LOG_INTERVAL_MS;
+    uint32_t frame_count = 0;
+    uint64_t frame_accum_us = 0;
+    uint32_t frame_max_us = 0;
 
     if (!afterglow_buf) {
         fs.fx.afterglow = false;
@@ -871,6 +809,7 @@ void face_ui_task(void* arg)
     }
 
     while (true) {
+        const uint64_t frame_start_us = static_cast<uint64_t>(esp_timer_get_time());
         const uint32_t now_us = static_cast<uint32_t>(esp_timer_get_time());
         const uint32_t now_ms = now_us / 1000U;
         // 1. Apply latest latched state command.
@@ -977,6 +916,31 @@ void face_ui_task(void* arg)
                 update_calibration_labels(now_ms, next_touch_cycle_ms);
             }
             lvgl_port_unlock();
+        }
+
+        const uint32_t frame_us =
+            static_cast<uint32_t>(static_cast<uint64_t>(esp_timer_get_time()) - frame_start_us);
+        frame_accum_us += frame_us;
+        frame_count++;
+        if (frame_us > frame_max_us) {
+            frame_max_us = frame_us;
+        }
+        if (FRAME_TIME_LOG_INTERVAL_MS > 0 &&
+            static_cast<int32_t>(now_ms - next_frame_log_ms) >= 0) {
+            const uint32_t avg_us =
+                (frame_count > 0) ? static_cast<uint32_t>(frame_accum_us / frame_count) : 0U;
+            const float fps = (avg_us > 0U) ? (1'000'000.0f / static_cast<float>(avg_us)) : 0.0f;
+            ESP_LOGI(
+                TAG,
+                "frame stats avg=%u us max=%u us fps=%.1f system=%u",
+                static_cast<unsigned>(avg_us),
+                static_cast<unsigned>(frame_max_us),
+                fps,
+                static_cast<unsigned>(fs.system.mode));
+            frame_count = 0;
+            frame_accum_us = 0;
+            frame_max_us = 0;
+            next_frame_log_ms = now_ms + FRAME_TIME_LOG_INTERVAL_MS;
         }
 
         // 7. Sleep for frame period

@@ -42,6 +42,22 @@ constexpr float BREATH_AMOUNT    = 0.04f;  // ±4% scale (subtler than LED)
 // ---- Brightness ----
 constexpr uint8_t DEFAULT_BRIGHTNESS = 200;  // TFT backlight (0-255 via LEDC)
 
+// ---- UI controls (discreet corner icons) ----
+constexpr int UI_ICON_DIAMETER = 32;   // visible icon button size
+constexpr int UI_ICON_HITBOX = 40;     // interactive touch target
+constexpr int UI_ICON_MARGIN = 8;      // edge inset
+constexpr uint8_t UI_ICON_IDLE_OPA = 140;     // ~55%
+constexpr uint8_t UI_ICON_PRESSED_OPA = 217;  // ~85%
+
+// ---- System overlay FX toggles ----
+// Performance fallback order (disable first -> last): GLITCH, VIGNETTE, SCANLINES.
+constexpr bool SYSTEM_FX_SCANLINES = true;
+constexpr bool SYSTEM_FX_VIGNETTE = true;
+constexpr bool SYSTEM_FX_GLITCH = true;
+
+// ---- Runtime diagnostics ----
+constexpr uint32_t FRAME_TIME_LOG_INTERVAL_MS = 5000;
+
 // ---- Telemetry ----
 constexpr int TELEMETRY_HZ = 20;
 

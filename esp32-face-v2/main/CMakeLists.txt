@@ -7,6 +7,7 @@ idf_component_register(
          "display.cpp"
          "touch.cpp"
          "face_state.cpp"
+         "system_overlay_v2.cpp"
          "face_ui.cpp"
          "led.cpp"
     INCLUDE_DIRS "."

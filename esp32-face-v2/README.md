@@ -8,9 +8,10 @@ ESP32-S3 firmware for Robot Buddy face rendering + supervisor link.
 - Python-v2 animation parity target (moods, gestures, system overlays, talking modulation)
 - USB CDC command/telemetry protocol
 - Touch telemetry
-- Bottom touch buttons:
-  - `PTT` (tap-toggle listening state)
-  - `ACTION` (click event)
+- Discreet corner icon controls:
+  - bottom-left `PTT` (`LV_SYMBOL_AUDIO`, tap-toggle listening state)
+  - bottom-right `ACTION` (`LV_SYMBOL_CHARGE`, click event)
+  - visual diameter `32px`, hitbox `40px`, margin `8px`
 - WS2812 status LED:
   - talking: orange
   - listening: blue
@@ -23,6 +24,21 @@ Audio codec/microphone handling was removed from this firmware. Audio is owned b
 - `SET_STATE`, `SET_SYSTEM`, `SET_TALKING` use latched channels (latest value wins).
 - `GESTURE` uses a FIFO queue for one-shot animations.
 - This prevents high-rate talking energy updates from dropping mood/system/gesture commands.
+
+## Rendering Note
+
+- The face canvas uses explicit `LV_COLOR_FORMAT_RGB888` to match `lv_color_t` buffer layout.
+- This removed the earlier garbled text/color corruption seen with native-format assumptions.
+- System overlays are rendered through `system_overlay_v2.cpp` for Python-v2 parity:
+  - booting/error/low-battery/updating/shutdown visual modes
+  - scanlines + vignette post FX (config-gated in `main/config.h`)
+
+## Current Parity Gaps
+
+- Face center rendering is not yet pixel-for-pixel with `tools/face_render_v2.py`
+  (SDF eye/mouth rasterization differences remain).
+- A hardware-visible scaling/placement artifact is still open in face mode
+  (multi-eye duplication / missing mouth in recent test photos); this is under active parity tuning.
 
 ## Protocol (v3)
 
