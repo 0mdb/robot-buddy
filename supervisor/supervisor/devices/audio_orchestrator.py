@@ -251,7 +251,8 @@ class AudioOrchestrator:
                     if proc.stdin:
                         try:
                             proc.stdin.write(chunk)
-                            await proc.stdin.drain()
+                            if proc.stdin.transport.get_write_buffer_size() > 1280:
+                                await proc.stdin.drain()
                         except (BrokenPipeError, ConnectionResetError):
                             # Process was killed by cancellation, exit loop
                             break

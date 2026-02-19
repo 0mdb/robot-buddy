@@ -408,7 +408,10 @@ class ConversationManager:
             return
         try:
             proc.stdin.write(pcm_chunk)
-            await proc.stdin.drain()
+            # Drain only if the write buffer is getting large.
+            # This prevents blocking the event loop on every small chunk.
+            if proc.stdin.transport.get_write_buffer_size() > 1280:
+                await proc.stdin.drain()
             if self._speaking and self._face:
                 self._face.send_talking(True, self._lip_sync.update_chunk(pcm_chunk))
         except Exception as e:
