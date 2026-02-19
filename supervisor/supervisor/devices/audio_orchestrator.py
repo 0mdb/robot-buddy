@@ -23,6 +23,7 @@ log = logging.getLogger(__name__)
 SAMPLE_RATE = 16000
 CHANNELS = 1
 PLANNER_SPEECH_QUEUE_MAX = 5
+PLAYBACK_CHUNK_QUEUE_MAX = 512
 _STREAM_CHUNK_BYTES = 320  # 10 ms @ 16kHz, int16 mono
 
 
@@ -60,10 +61,13 @@ class AudioOrchestrator:
         )
         self._planner_client: httpx.AsyncClient | None = None
 
-        self._speech_queue: queue.Queue[_SpeechRequest | None] = queue.Queue(
+        self._speech_request_queue: asyncio.Queue[_SpeechRequest] = asyncio.Queue(
             maxsize=PLANNER_SPEECH_QUEUE_MAX
         )
-        self._speech_thread: threading.Thread | None = None
+        self._playback_chunk_queue: queue.Queue[bytes | None] = queue.Queue(
+            maxsize=PLAYBACK_CHUNK_QUEUE_MAX
+        )
+        self._playback_thread: threading.Thread | None = None
         self._speech_task: asyncio.Task | None = None
         self._planner_speaking = False
         self._cancel_planner_speech = asyncio.Event()
@@ -85,7 +89,7 @@ class AudioOrchestrator:
 
     @property
     def speech_queue_depth(self) -> int:
-        return self._speech_queue.qsize()
+        return self._speech_request_queue.qsize()
 
     async def start(self) -> None:
         if self._run:
@@ -102,11 +106,11 @@ class AudioOrchestrator:
     async def stop(self) -> None:
         self._run = False
         await self.cancel_planner_speech()
-        if self._speech_thread is not None:
+        if self._playback_thread is not None:
             with contextlib.suppress(queue.Full):
-                self._speech_queue.put_nowait(None)
-            self._speech_thread.join(timeout=1.0)
-            self._speech_thread = None
+                self._playback_chunk_queue.put_nowait(None)
+            self._playback_thread.join(timeout=1.0)
+            self._playback_thread = None
         if self._speech_task and not self._speech_task.done():
             self._speech_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -134,16 +138,19 @@ class AudioOrchestrator:
             return False
         req = _SpeechRequest(text=clean[:200], emotion=str(emotion or "neutral"))
         try:
-            self._speech_queue.put_nowait(req)
+            self._speech_request_queue.put_nowait(req)
             return True
-        except queue.Full:
+        except asyncio.QueueFull:
             return False
 
     async def cancel_planner_speech(self) -> None:
         self._cancel_planner_speech.set()
-        while not self._speech_queue.empty():
+        while not self._speech_request_queue.empty():
+            with contextlib.suppress(asyncio.QueueEmpty):
+                self._speech_request_queue.get_nowait()
+        while not self._playback_chunk_queue.empty():
             with contextlib.suppress(queue.Empty):
-                self._speech_queue.get_nowait()
+                self._playback_chunk_queue.get_nowait()
 
         proc = self._active_aplay_proc
         if proc is not None:
@@ -178,11 +185,9 @@ class AudioOrchestrator:
         }
 
     async def _planner_speech_consume_loop(self) -> None:
-        """Pulls requests from the queue and executes them in a thread."""
+        """Pulls requests from the queue and executes them."""
         while self._run:
-            req = await asyncio.to_thread(self._speech_queue.get)
-            if req is None:
-                break
+            req = await self._speech_request_queue.get()
             self._cancel_planner_speech.clear()
             try:
                 await self._play_tts_request(req)
@@ -191,21 +196,20 @@ class AudioOrchestrator:
             except Exception:
                 log.exception("planner speech failed")
 
-    def _playback_thread_loop(self, proc: asyncio.subprocess.Process, resp: httpx.Response) -> None:
-        """Dedicated thread for handling aplay stdin and lip sync messages."""
-        if proc.stdin is None or self._main_loop is None:
+    def _playback_thread_loop(self) -> None:
+        """Dedicated thread for writing to the blocking aplay stdin."""
+        proc = self._active_aplay_proc
+        if proc is None or proc.stdin is None or self._main_loop is None:
             return
 
         try:
-            for chunk in resp.iter_bytes(_STREAM_CHUNK_BYTES):
-                if self._cancel_planner_speech.is_set():
+            while self._run:
+                try:
+                    chunk = self._playback_chunk_queue.get(timeout=1.0)
+                except queue.Empty:
+                    continue
+                if chunk is None:
                     break
-                if not chunk:
-                    continue
-                if len(chunk) % 2:
-                    chunk = chunk[:-1]
-                if not chunk:
-                    continue
 
                 try:
                     proc.stdin.write(chunk)
@@ -258,6 +262,12 @@ class AudioOrchestrator:
         self._planner_speaking = True
         self._lip_sync.reset()
 
+        if self._playback_thread is None or not self._playback_thread.is_alive():
+            self._playback_thread = threading.Thread(
+                target=self._playback_thread_loop, daemon=True
+            )
+            self._playback_thread.start()
+
         try:
             if self._face:
                 self._face.send_talking(True, 0)
@@ -278,15 +288,15 @@ class AudioOrchestrator:
                     log.warning("planner /tts failed: %s %s", resp.status_code, body[:200])
                     return
 
-                # The httpx response object is not thread-safe, so we start
-                # the thread here and pass it the response to consume.
-                self._speech_thread = threading.Thread(
-                    target=self._playback_thread_loop, args=(proc, resp), daemon=True
-                )
-                self._speech_thread.start()
-                self._speech_thread.join()  # Wait for thread to finish
+                async for chunk in resp.aiter_bytes(_STREAM_CHUNK_BYTES):
+                    if self._cancel_planner_speech.is_set():
+                        break
+                    await asyncio.to_thread(self._playback_chunk_queue.put, chunk)
 
         finally:
+            # Signal playback thread to exit
+            await asyncio.to_thread(self._playback_chunk_queue.put, None)
+
             if proc.stdin:
                 with contextlib.suppress(Exception):
                     proc.stdin.close()

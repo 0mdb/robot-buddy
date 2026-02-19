@@ -367,7 +367,7 @@ class ConversationManager:
                 sub = sub[:-1]
             if not sub:
                 continue
-            self._queue_playback_chunk(sub)
+            await asyncio.to_thread(self._queue_playback_chunk, sub)
 
     async def _stop_talking(self, *, drain: bool = False) -> None:
         """End talking animation and flush/stop local playback."""
@@ -378,10 +378,6 @@ class ConversationManager:
         else:
             self._clear_playback_queue()
 
-        # The playback thread will stop when the queue is empty.
-        # No need to explicitly stop the speaker process here,
-        # as the thread manages its lifecycle.
-
         self._speaking = False
         self._lip_sync.reset()
         if self._face:
@@ -391,7 +387,7 @@ class ConversationManager:
 
     def _queue_playback_chunk(self, pcm_chunk: bytes) -> None:
         try:
-            self._playback_queue.put_nowait(pcm_chunk)
+            self._playback_queue.put(pcm_chunk, timeout=0.1)
         except queue.Full:
             # Drop oldest chunk to make room
             with contextlib.suppress(queue.Empty):
