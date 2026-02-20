@@ -91,14 +91,10 @@ class VisionWorker(BaseWorker):
             self.send(VISION_LIFECYCLE_ERROR, {"error": f"missing dependency: {e}"})
             return
 
-        # Import detectors (reuse v1 detection logic)
+        # Import detectors
         try:
-            # Try to import from the supervisor package (detectors.py)
-            from supervisor.inputs.detectors import detect_ball, detect_clear_path
+            from supervisor_v2.inputs.detectors import detect_ball, detect_clear_path
         except ImportError:
-            # Fallback: define inline minimal stubs for environments without
-            # the full supervisor package installed. In production the supervisor
-            # package should be available.
             self.send(VISION_LIFECYCLE_ERROR, {"error": "detectors not available"})
             return
 
