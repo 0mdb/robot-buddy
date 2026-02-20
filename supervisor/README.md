@@ -64,26 +64,21 @@ Configuration must reference stable symlinks.
 
 ## 2.2 Modes
 
-Supported Modes:
+Implemented Modes:
 
 * BOOT
 * IDLE
 * TELEOP
 * WANDER
+* ERROR
+
+Deferred Modes (not yet implemented):
+
 * LINE_FOLLOW
 * BALL
 * CRANE
 * CHARGING (or DOCKED)
-* ERROR
-* SLEEP (optional)
-
-### CHARGING Mode
-
-If dock detected (switch, voltage signature, or charger signal):
-
-* Motion commands are ignored
-* Mode becomes CHARGING
-* Exit only allowed when undock detected and explicit command issued
+* SLEEP
 
 ### ERROR Mode
 
@@ -351,22 +346,39 @@ supervisor/
 
   io/
     serial_transport.py
-    udp_transport.py
+    cobs.py
+    crc.py
 
   devices/
     reflex_client.py
     face_client.py
+    protocol.py
+    planner_client.py
+    conversation_manager.py
+    audio_orchestrator.py
+    audio_bridge.py
+    lip_sync.py
+    expressions.py
 
   inputs/
     camera_vision.py
-    ultrasonic.py
-    line_sensor.py
-    cyberpi.py
+    vision_worker.py
+    detectors.py
 
   state/
     datatypes.py
     supervisor_sm.py
     policies.py
+
+  planner/
+    scheduler.py
+    event_bus.py
+    skill_executor.py
+    validator.py
+    speech_policy.py
+
+  services/
+    audio.py
 
   api/
     http_server.py
@@ -375,6 +387,9 @@ supervisor/
 
   logging/
     recorder.py
+
+  mock/
+    mock_reflex.py
 ```
 
 ---

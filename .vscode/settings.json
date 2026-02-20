@@ -1,3 +1,8 @@
 {
-    "cmake.sourceDirectory": "/home/ben/robot-buddy/esp32-face-display"
+    "cmake.sourceDirectory": "/home/ben/robot-buddy/esp32-face-v2",
+    "python.testing.pytestArgs": [
+        "supervisor"
+    ],
+    "python.testing.unittestEnabled": false,
+    "python.testing.pytestEnabled": true
 }

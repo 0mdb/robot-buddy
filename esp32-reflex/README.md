@@ -2,7 +2,7 @@
 
 ESP32-S3 (Reflex MCU) firmware: owns motors, encoders, and safety.
 
-Design goal: **deterministic motion control** with reliable feedback, smooth starts/stops, and hard safety guarantees. Jetson sends high-level velocity targets; MCU owns PWM, PID, and stop behavior.
+Design goal: **deterministic motion control** with reliable feedback, smooth starts/stops, and hard safety guarantees. Supervisor (Raspberry Pi 5) sends high-level velocity targets; MCU owns PWM, PID, and stop behavior.
 
 ---
 
@@ -15,23 +15,24 @@ Design goal: **deterministic motion control** with reliable feedback, smooth sta
 
 ---
 
-## Hardware Assumptions
+## Hardware
 - Differential drive (left/right motors)
 - TT gear motors with integrated quadrature encoders
 - Motor driver TB6612FNG
 - 2S battery pack
-- Optional inputs (future): e-stop switch, battery sense ADC, IMU
+- BMI270 IMU (gyro + accelerometer, 400 Hz ODR)
+- Ultrasonic range sensor
 
 ---
 
 ## Control Philosophy
 ### Reflexes stay local
-- The MCU is responsible for **stable motion** regardless of Jetson load.
-- No real-time PWM from Jetson. Ever.
+- The MCU is responsible for **stable motion** regardless of supervisor load.
+- No real-time PWM from supervisor. Ever.
 
 ### Interfaces are narrow and stable
-- Jetson commands *intent*: `SET_TWIST(v, w)`, `STOP()`
-- MCU returns *truth*: wheel speed, odom, battery, faults
+- Supervisor commands *intent*: `SET_TWIST(v, w)`, `STOP()`
+- MCU returns *truth*: wheel speed, gyro, battery, faults
 
 ---
 
@@ -68,11 +69,10 @@ Without an IMU, "traction control" is limited. What we *can* do:
   - pulse-retry pattern
 This is practical and improves robustness, but it’s not true traction control.
 
-### B) IMU-assisted heading hold (worth it if you add IMU)
-If you add an IMU (later), you can implement:
-- yaw-rate or heading PID to maintain straight travel
-- better slip detection
-This is the point where "traction control" becomes real.
+### B) IMU-assisted yaw damping (implemented)
+BMI270 IMU is integrated. Current implementation:
+- Gyro-Z feedback for yaw damping in the control loop
+- 400 Hz ODR, ±500 dps gyro range, ±4g accel range
 
 ### C) Battery-aware torque limiting (high leverage)
 - Monitor battery voltage
@@ -86,7 +86,7 @@ Note: odom on tracks drifts; still valuable.
 
 ---
 
-## Protocol (Jetson ↔ Reflex MCU)
+## Protocol (Supervisor ↔ Reflex MCU)
 Binary packets, fixed-size, no JSON.
 
 ### Commands
@@ -133,30 +133,21 @@ Faults force stop or limit mode depending on severity.
 
 ---
 
+## Completed
+- [x] Motor driver pinout + open-loop control (LEDC PWM + GPIO direction into TB6612FNG)
+- [x] Encoders with PCNT (quadrature, per wheel) + wheel speed measurement
+- [x] Per-wheel FF+PI speed control @ 100 Hz
+- [x] Acceleration limiting / ramping (kid-safe, power-safe)
+- [x] Stall detection + safe recovery
+- [x] STOP behavior (ramped stop, brake/coast)
+- [x] Command timeout → safe stop
+- [x] Watchdog integration (esp_task_wdt)
+- [x] E-stop + fault flags → forced stop
+- [x] USB serial binary protocol (COBS + CRC16) to supervisor
+- [x] Telemetry packets (STATE: speeds, gyro, battery, faults, range)
+- [x] BMI270 IMU integration (gyro-Z yaw damping)
+
 ## TODO
-### Bring-up
-- [ ] Finalize motor driver pinout (AIN1/AIN2/PWMA/STBY etc.)
-- [ ] Implement open-loop motor control (direction + PWM)
-- [ ] Bring up encoders with PCNT (A/B per wheel) + verify counts
-- [ ] Implement wheel speed measurement (counts/dt) and telemetry
-
-### Control
-- [ ] Implement per-wheel PID speed control @ 100–200 Hz
-- [ ] Add accel limiting / ramping (kid-safe, power-safe)
-- [ ] Add stall detection + safe recovery (optional)
-- [ ] Implement STOP behavior (ramped stop, then brake/coast mode)
-
-### Safety
-- [ ] Command timeout -> safe stop
-- [ ] Watchdog integration
-- [ ] E-stop input (if added)
-- [ ] Fault flags + forced stop behavior
-
-### Protocol
-- [ ] Implement USB serial binary protocol to Jetson
-- [ ] Add telemetry packets + versioning
-
-### Future
 - [ ] Battery voltage sense (ADC) + sag-aware limiting
 - [ ] Odometry integration (x, y, theta)
-- [ ] Optional IMU support (heading hold)
+- [ ] Full IMU heading hold PID (currently gyro damping only)

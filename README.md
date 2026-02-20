@@ -26,27 +26,29 @@ robot-buddy/
 ├── supervisor/          # Python supervisor (Raspberry Pi 5)
 │   ├── supervisor/      # Main package
 │   │   ├── io/          # Serial transport, COBS framing
-│   │   ├── devices/     # MCU clients (reflex, face, protocol)
+│   │   ├── devices/     # MCU clients, audio orchestration, conversation, expressions
 │   │   ├── state/       # State machine, datatypes, safety policies
-│   │   ├── api/         # FastAPI HTTP/WebSocket server, param registry
+│   │   ├── api/         # FastAPI HTTP/WebSocket server, param registry, dashboard
 │   │   ├── inputs/      # Vision (camera, multiprocessing worker)
 │   │   ├── logging/     # Telemetry recording (JSONL)
 │   │   ├── mock/        # Mock Reflex MCU for testing (PTY-based)
+│   │   ├── planner/     # Planner integration (scheduler, event bus, skills, speech)
+│   │   ├── services/    # Audio service
 │   │   ├── config.py    # YAML config with dataclass schemas
 │   │   ├── runtime.py   # 50 Hz control loop
 │   │   └── main.py      # Entry point, CLI args
 │   ├── tests/           # pytest test suite
 │   └── pyproject.toml   # Package metadata, deps
 ├── server/              # AI planner server (3090 Ti, FastAPI + backend switch)
-│   ├── app/             # FastAPI app, LLM client, prompts, schemas
+│   ├── app/             # FastAPI app, LLM/STT/TTS backends, prompts, schemas
 │   ├── tests/           # pytest test suite
 │   ├── Modelfile        # Legacy Ollama model config
 │   └── pyproject.toml   # Package metadata, deps
 ├── esp32-face-v2/       # Face MCU firmware (ESP32-S3, C/C++, ESP-IDF)
 │   └── main/            # TFT face rendering + touch/buttons + USB protocol
-├── esp32-face/          # Legacy LED-matrix face firmware
 ├── esp32-reflex/        # Reflex MCU firmware (ESP32-S3, C/C++, ESP-IDF)
-│   └── main/            # Differential drive, PID, safety, encoders
+│   └── main/            # Differential drive, PID, IMU, safety, encoders
+├── deploy/              # Deployment (systemd service, install/update scripts)
 ├── tools/               # Dev utilities (face simulation via pygame)
 └── docs/                # Architecture, protocol specs, power topology
 ```
@@ -243,7 +245,10 @@ When the supervisor is running, open `http://<robot_ip>:8080` in a browser for:
 | `/params` | POST | Transactional parameter updates |
 | `/actions` | POST | RPC: `set_mode`, `e_stop`, `clear_e_stop` |
 | `/video` | GET | MJPEG stream (if vision enabled) |
+| `/debug/devices` | GET | Device connection state |
+| `/debug/planner` | GET | Planner state |
 | `/ws` | WS | Telemetry stream (20 Hz, JSON) |
+| `/ws/logs` | WS | Live log stream |
 
 ## AI Server API
 
@@ -277,13 +282,16 @@ Plan actions: `say(text)`, `emote(name, intensity)`, `gesture(name, params)`, `s
 - [x] AI Server: bounded performance plans (emote, say, gesture, skill)
 - [x] AI Server: direct TTS endpoint with Orpheus/espeak fallback
 - [x] ESP32 Face v2: TFT face rendering, touch/button telemetry, supervisor-driven emotions/gestures
-- [x] ESP32 Reflex: motor control, PID, encoders, safety enforcement
+- [x] ESP32 Reflex: motor control, PID, encoders, IMU, safety enforcement
+- [x] Supervisor-side PlannerClient + planner module (scheduler, event bus, skills)
+- [x] WANDER mode driven by deterministic skills + planner intent
+- [x] Voice pipeline (STT + TTS on 3090 Ti server, audio on Pi USB devices)
+- [x] Conversation flow (button-triggered STT → LLM → TTS → face animation)
 
 ### In Progress
-- [x] Supervisor-side PlannerClient (connects to AI server)
 - [ ] AI Server: interaction history / conversation memory
+- [ ] Lip sync / face-speech timing improvements
+- [ ] Wake word detection (remove need for button press)
 
 ### Future
-- [x] WANDER mode driven by deterministic skills + planner intent
-- [ ] Voice pipeline (STT on Pi, TTS on 3090 Ti)
 - [ ] Additional modes: LINE_FOLLOW, BALL, CRANE, CHARGING
