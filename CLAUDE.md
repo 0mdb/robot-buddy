@@ -190,4 +190,5 @@ Per `.gitignore`: `__pycache__/`, `*.pyc`, `.env`, `.venv/`, `build/`, `dist/`, 
 - don't send planner updates so often
 - add llm history so conversations feel more natural
 - tts from non-button press (determinisitic sources) either cut off or not firing at all
+- face stops talking before speach stops playing, needs better sync
 - 
