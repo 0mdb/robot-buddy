@@ -5,26 +5,48 @@
 #
 # Usage:
 #   cd ~/robot-buddy
-#   bash deploy/install.sh
+#   bash deploy/install.sh          # install v1 supervisor
+#   bash deploy/install.sh --v2     # install v2 supervisor
 #
 # Idempotent: safe to re-run after pulling changes.
 
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SUPERVISOR_DIR="$REPO_ROOT/supervisor"
 DEPLOY_DIR="$REPO_ROOT/deploy"
-SERVICE_NAME="robot-buddy-supervisor"
-SERVICE_FILE="$DEPLOY_DIR/$SERVICE_NAME.service"
-ENV_DEST="/etc/robot-buddy/supervisor.env"
-SYSTEMD_DEST="/etc/systemd/system/$SERVICE_NAME.service"
-VENV="$SUPERVISOR_DIR/.venv"
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 info()  { echo "[install] $*"; }
 ok()    { echo "[install] ✓ $*"; }
 warn()  { echo "[install] WARNING: $*" >&2; }
 die()   { echo "[install] ERROR: $*" >&2; exit 1; }
+
+# ── Parse version flag ──────────────────────────────────────────────────────
+VERSION="v1"
+for arg in "$@"; do
+    case "$arg" in
+        --v2) VERSION="v2" ;;
+    esac
+done
+
+if [[ "$VERSION" == "v2" ]]; then
+    SUPERVISOR_DIR="$REPO_ROOT/supervisor_v2"
+    SERVICE_NAME="robot-buddy-supervisor-v2"
+    SERVICE_FILE="$DEPLOY_DIR/$SERVICE_NAME.service"
+    ENV_SOURCE="$DEPLOY_DIR/supervisor-v2.env"
+    ENV_DEST="/etc/robot-buddy/supervisor-v2.env"
+    MODULE_NAME="supervisor_v2"
+else
+    SUPERVISOR_DIR="$REPO_ROOT/supervisor"
+    SERVICE_NAME="robot-buddy-supervisor"
+    SERVICE_FILE="$DEPLOY_DIR/$SERVICE_NAME.service"
+    ENV_SOURCE="$DEPLOY_DIR/supervisor.env"
+    ENV_DEST="/etc/robot-buddy/supervisor.env"
+    MODULE_NAME="supervisor"
+fi
+
+SYSTEMD_DEST="/etc/systemd/system/$SERVICE_NAME.service"
+VENV="$SUPERVISOR_DIR/.venv"
 
 # ── 0. Sanity checks ──────────────────────────────────────────────────────────
 [[ -f "$SERVICE_FILE" ]]   || die "Service file not found: $SERVICE_FILE"
@@ -34,7 +56,7 @@ die()   { echo "[install] ERROR: $*" >&2; exit 1; }
 SERVICE_USER="${SUDO_USER:-${USER}}"
 [[ "$SERVICE_USER" == "root" ]] && die "Run this script as a normal user, not root."
 
-info "Installing robot-buddy-supervisor as user '$SERVICE_USER'"
+info "Installing $MODULE_NAME as user '$SERVICE_USER'"
 info "Repo root: $REPO_ROOT"
 
 # ── 1. Install uv ─────────────────────────────────────────────────────────────
@@ -65,7 +87,7 @@ uv venv --python python3 --system-site-packages --seed --allow-existing "$VENV"
 ok "venv at $VENV"
 
 # ── 4. Install Python dependencies ────────────────────────────────────────────
-info "Installing supervisor dependencies..."
+info "Installing $MODULE_NAME dependencies..."
 cd "$SUPERVISOR_DIR"
 # Use `uv pip install -e .` rather than `uv sync`.
 # `uv sync` resolves ALL extras (including [rpi]) when building the lockfile and
@@ -97,7 +119,7 @@ if [[ -f "$ENV_DEST" ]]; then
     info "Environment file already exists at $ENV_DEST — not overwriting."
     info "Edit it manually to change startup flags."
 else
-    sudo cp "$DEPLOY_DIR/supervisor.env" "$ENV_DEST"
+    sudo cp "$ENV_SOURCE" "$ENV_DEST"
     sudo chmod 644 "$ENV_DEST"
     ok "environment file at $ENV_DEST"
 fi
@@ -126,4 +148,4 @@ echo "  View live logs:   journalctl -fu $SERVICE_NAME"
 echo "  Stop service:     sudo systemctl stop $SERVICE_NAME"
 echo "  Disable autorun:  sudo systemctl disable $SERVICE_NAME"
 echo "  Edit runtime flags: sudo nano $ENV_DEST"
-echo "  Update code:      bash deploy/update.sh"
+echo "  Update code:      bash deploy/update.sh$([ "$VERSION" == "v2" ] && echo " --v2")"

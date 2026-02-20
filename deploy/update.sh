@@ -3,19 +3,38 @@
 #
 # Usage:
 #   cd ~/robot-buddy
-#   bash deploy/update.sh
+#   bash deploy/update.sh          # update v1 supervisor
+#   bash deploy/update.sh --v2     # update v2 supervisor
 #
 # Run this whenever you push new commits from your dev machine.
 
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SUPERVISOR_DIR="$REPO_ROOT/supervisor"
-SERVICE_NAME="robot-buddy-supervisor"
 
 info() { echo "[update] $*"; }
 ok()   { echo "[update] ✓ $*"; }
 die()  { echo "[update] ERROR: $*" >&2; exit 1; }
+
+# ── Parse version flag ──────────────────────────────────────────────────────
+VERSION="v1"
+for arg in "$@"; do
+    case "$arg" in
+        --v2) VERSION="v2" ;;
+    esac
+done
+
+if [[ "$VERSION" == "v2" ]]; then
+    SUPERVISOR_DIR="$REPO_ROOT/supervisor_v2"
+    SERVICE_NAME="robot-buddy-supervisor-v2"
+    MODULE_NAME="supervisor_v2"
+else
+    SUPERVISOR_DIR="$REPO_ROOT/supervisor"
+    SERVICE_NAME="robot-buddy-supervisor"
+    MODULE_NAME="supervisor"
+fi
+
+info "Updating $MODULE_NAME..."
 
 cd "$REPO_ROOT"
 
