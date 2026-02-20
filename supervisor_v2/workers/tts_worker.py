@@ -265,7 +265,7 @@ class TTSWorker(BaseWorker):
             pass
         except Exception as e:
             self.send(TTS_EVENT_ERROR, {"error": str(e)})
-            log.exception("TTS playback error")
+            log.warning("TTS playback error: %s", e)
         finally:
             self._speaking = False
             await self._kill_aplay()
