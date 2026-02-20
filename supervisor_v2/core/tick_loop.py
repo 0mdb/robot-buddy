@@ -66,8 +66,8 @@ log = logging.getLogger(__name__)
 TICK_HZ = 50
 _TICK_PERIOD_S = 1.0 / TICK_HZ
 _TELEM_EVERY_N = max(1, TICK_HZ // 20)  # 20 Hz telemetry
-_PLAN_PERIOD_S = 1.0
-_PLAN_RETRY_S = 3.0
+_PLAN_PERIOD_S = 5.0
+_PLAN_RETRY_S = 5.0
 
 
 class TickLoop:
