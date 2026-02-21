@@ -24,6 +24,11 @@ Controls:
   S  Solid/pupil style    M  Mouth on/off
   T  Talking on/off       G  Edge glow
   K  Sparkle              F  Afterglow
+  P  PTT button toggle
+
+  Conversation states (F7-F12, Shift+F7-F8):
+  F7  Attention    F8  Listening    F9  PTT       F10 Thinking
+  F11 Speaking     F12 Error       Shift+F7 Done  Shift+F8 Idle
 
   System modes:
   F1 Boot    F2 Error    F3 Battery    F4 Updating    F5 Shutdown    F6 Clear
@@ -56,14 +61,17 @@ from face_state_v2 import (
     MAX_GAZE,
 )
 from face_render_v2 import render_face, BG_COLOR
+from conv_border import ConvBorder, ConvState, CONV_NAMES  # noqa: E402
 
 # ── Display constants ────────────────────────────────────────────────
 
 PIXEL_SCALE = 2
 CANVAS_W = SCREEN_W * PIXEL_SCALE  # 640
 CANVAS_H = SCREEN_H * PIXEL_SCALE  # 480
+LED_SIZE = 16  # simulated WS2812B indicator
+LED_MARGIN = 12
 WINDOW_W = CANVAS_W + 40  # padding
-WINDOW_H = CANVAS_H + 140  # room for HUD
+WINDOW_H = CANVAS_H + 160  # room for HUD + LED
 
 FPS = 30
 BG = (20, 20, 25)
@@ -90,6 +98,23 @@ def draw_canvas(
             pygame.draw.rect(surface, (r, g, b), rect)
 
 
+def draw_led(
+    surface: pygame.Surface, color: tuple[int, int, int], x: int, y: int
+) -> None:
+    """Draw the simulated WS2812B LED indicator."""
+    # Glow halo
+    if any(c > 5 for c in color):
+        glow = pygame.Surface((LED_SIZE * 3, LED_SIZE * 3), pygame.SRCALPHA)
+        gc = (*color, 40)
+        pygame.draw.circle(
+            glow, gc, (LED_SIZE * 3 // 2, LED_SIZE * 3 // 2), LED_SIZE * 3 // 2
+        )
+        surface.blit(glow, (x - LED_SIZE, y - LED_SIZE))
+    # LED body
+    pygame.draw.circle(surface, color, (x, y), LED_SIZE // 2)
+    pygame.draw.circle(surface, (60, 60, 65), (x, y), LED_SIZE // 2, 1)
+
+
 def main() -> None:
     pygame.init()
     screen = pygame.display.set_mode((WINDOW_W, WINDOW_H))
@@ -101,14 +126,20 @@ def main() -> None:
     fs.anim.autoblink = True
     fs.anim.idle = True
 
+    conv = ConvBorder()
+
     manual_gaze = False
 
     running = True
     while running:
+        dt = 1.0 / FPS
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
             elif event.type == pygame.KEYDOWN:
+                shift = event.mod & pygame.KMOD_SHIFT
+
                 if event.key in (pygame.K_q, pygame.K_ESCAPE):
                     running = False
 
@@ -138,7 +169,7 @@ def main() -> None:
                     face_set_mood(fs, Mood.LOVE)
                 elif event.key == pygame.K_MINUS:
                     face_set_mood(fs, Mood.SILLY)
-                elif event.key == pygame.K_EQUALS:
+                elif event.key == pygame.K_EQUALS and not shift:
                     face_set_mood(fs, Mood.THINKING)
 
                 # ── Gestures ───────────────────────────────────
@@ -186,10 +217,12 @@ def main() -> None:
                     fs.fx.sparkle = not fs.fx.sparkle
                 elif event.key == pygame.K_f:
                     fs.fx.afterglow = not fs.fx.afterglow
+                elif event.key == pygame.K_p:
+                    conv.ptt_active = not conv.ptt_active
 
                 # ── Brightness ─────────────────────────────────
                 elif event.key == pygame.K_PLUS or (
-                    event.key == pygame.K_EQUALS and event.mod & pygame.KMOD_SHIFT
+                    event.key == pygame.K_EQUALS and shift
                 ):
                     fs.brightness = min(1.0, fs.brightness + 0.1)
 
@@ -198,6 +231,26 @@ def main() -> None:
                     fs.talking_energy = max(0.0, fs.talking_energy - 0.1)
                 elif event.key == pygame.K_RIGHTBRACKET:
                     fs.talking_energy = min(1.0, fs.talking_energy + 0.1)
+
+                # ── Conversation states ────────────────────────
+                elif event.key == pygame.K_F7:
+                    if shift:
+                        conv.set_state(ConvState.DONE)
+                    else:
+                        conv.set_state(ConvState.ATTENTION)
+                elif event.key == pygame.K_F8:
+                    if shift:
+                        conv.set_state(ConvState.IDLE)
+                    else:
+                        conv.set_state(ConvState.LISTENING)
+                elif event.key == pygame.K_F9:
+                    conv.set_state(ConvState.PTT)
+                elif event.key == pygame.K_F10:
+                    conv.set_state(ConvState.THINKING)
+                elif event.key == pygame.K_F11:
+                    conv.set_state(ConvState.SPEAKING)
+                elif event.key == pygame.K_F12:
+                    conv.set_state(ConvState.ERROR)
 
                 # ── System modes ───────────────────────────────
                 elif event.key == pygame.K_F1:
@@ -232,11 +285,17 @@ def main() -> None:
             face_set_gaze(fs, 0, 0)
             manual_gaze = False
 
-        # ── Update state machine ─────────────────────────────────
+        # ── Update state machines ────────────────────────────────
         face_state_update(fs)
+        conv.set_energy(fs.talking_energy)
+        conv.update(dt)
+
+        # ── Update window title with conv state ──────────────────
+        conv_name = CONV_NAMES.get(conv.state, "?")
+        pygame.display.set_caption(f"Robot Buddy — Face Sim v2  |  Conv: {conv_name}")
 
         # ── Render ───────────────────────────────────────────────
-        buf = render_face(fs)
+        buf = render_face(fs, conv)
 
         screen.fill(BG)
 
@@ -245,32 +304,40 @@ def main() -> None:
         oy = 10
         draw_canvas(screen, buf, ox, oy)
 
+        # ── LED indicator (top-right, outside canvas) ────────────
+        led_x = ox + CANVAS_W + LED_MARGIN
+        led_y = oy + LED_SIZE
+        draw_led(screen, conv.led_color, led_x, led_y)
+
         # ── HUD ──────────────────────────────────────────────────
-        hud_y = CANVAS_H + 20
+        hud_y = CANVAS_H + 24
 
         mood_name = fs.mood.name
         idle_str = "ON" if fs.anim.idle else "OFF"
         blink_str = "ON" if fs.anim.autoblink else "OFF"
         style_str = "SOLID" if fs.solid_eye else "PUPIL"
         talk_str = f"TALK({fs.talking_energy:.1f})" if fs.talking else "off"
+        ptt_str = "ON" if conv.ptt_active else "off"
         hud = (
             f"Mood: {mood_name}  |  Style: {style_str}  |  Idle: {idle_str}"
             f"  |  Blink: {blink_str}  |  Bright: {fs.brightness:.1f}"
-            f"  |  Talk: {talk_str}"
+            f"  |  Talk: {talk_str}  |  PTT: {ptt_str}"
         )
         text_surf = font.render(hud, True, (160, 160, 170))
         screen.blit(text_surf, (10, hud_y))
 
-        # FX status
+        # Conv state + FX status
+        conv_col = conv.color if conv.alpha > 0.1 else (100, 100, 110)
+        conv_hud = f"Conv: {conv_name} (a={conv.alpha:.2f})"
         glow_str = "ON" if fs.fx.edge_glow else "OFF"
         sparkle_str = "ON" if fs.fx.sparkle else "OFF"
         afterglow_str = "ON" if fs.fx.afterglow else "OFF"
         mouth_str = "ON" if fs.show_mouth else "OFF"
         fx_hud = (
-            f"Glow: {glow_str}  |  Sparkle: {sparkle_str}  |  Afterglow: {afterglow_str}"
-            f"  |  Mouth: {mouth_str}"
+            f"{conv_hud}  |  Glow: {glow_str}  |  Sparkle: {sparkle_str}"
+            f"  |  Afterglow: {afterglow_str}  |  Mouth: {mouth_str}"
         )
-        fx_surf = font.render(fx_hud, True, (130, 140, 150))
+        fx_surf = font.render(fx_hud, True, conv_col)
         screen.blit(fx_surf, (10, hud_y + 18))
 
         # Controls line 1: moods
@@ -281,15 +348,19 @@ def main() -> None:
         ctrl2 = "C:confused L:laugh W/E:wink H:heart X:x-eyes Z:sleepy R:rage N:nod D:headshake J:wiggle"
         screen.blit(font.render(ctrl2, True, (90, 90, 100)), (10, hud_y + 56))
 
-        # Controls line 3: toggles + system
+        # Controls line 3: toggles
         sys_name = fs.system.mode.name if fs.system.mode != SystemMode.NONE else ""
-        ctrl3 = "S:style I:idle B:blink M:mouth T:talk G:glow K:sparkle F:afterglow [/]:energy"
+        ctrl3 = "S:style I:idle B:blink M:mouth T:talk G:glow K:sparkle F:afterglow P:ptt [/]:energy"
         if sys_name:
             ctrl3 = f"[{sys_name}]  " + ctrl3
         screen.blit(font.render(ctrl3, True, (90, 90, 100)), (10, hud_y + 74))
 
-        ctrl4 = "F1:boot F2:error F3:battery F4:update F5:shutdown F6:clear"
+        # Controls line 4: conv states + system
+        ctrl4 = "F7:attention F8:listen F9:ptt F10:think F11:speak F12:error  Sh+F7:done Sh+F8:idle"
         screen.blit(font.render(ctrl4, True, (90, 90, 100)), (10, hud_y + 92))
+
+        ctrl5 = "F1:boot F2:error F3:battery F4:update F5:shutdown F6:clear"
+        screen.blit(font.render(ctrl5, True, (70, 70, 80)), (10, hud_y + 110))
 
         pygame.display.flip()
         clock.tick(FPS)

@@ -33,6 +33,7 @@ from face_state_v2 import (
     get_breath_scale,
     get_emotion_color,
 )
+from conv_border import ConvBorder  # noqa: E402
 
 BG_COLOR = (10, 10, 14)
 
@@ -580,7 +581,10 @@ def _apply_afterglow(buf: list, fs: FaceState) -> None:
                 )
 
 
-def render_face(fs: FaceState) -> list[tuple[int, int, int]]:
+def render_face(
+    fs: FaceState,
+    conv: ConvBorder | None = None,
+) -> list[tuple[int, int, int]]:
     buf = [BG_COLOR] * (SCREEN_W * SCREEN_H)
     mode = fs.system.mode
     if mode != SystemMode.NONE:
@@ -598,6 +602,10 @@ def render_face(fs: FaceState) -> list[tuple[int, int, int]]:
         _draw_vignette(buf)
         return buf
 
+    # Conversation border (background layer — behind eyes)
+    if conv is not None:
+        conv.render(buf)
+
     _render_eye(buf, fs, True)
     _render_eye(buf, fs, False)
     _render_mouth(buf, fs)
@@ -611,6 +619,10 @@ def render_face(fs: FaceState) -> list[tuple[int, int, int]]:
         if 0 <= sx < SCREEN_W and 0 <= sy < SCREEN_H:
             idx = sy * SCREEN_W + sx
             _set_px_blend(buf, idx, (255, 255, 255), min(1.0, life / 5.0))
+
+    # Buttons (foreground layer — on top of everything)
+    if conv is not None:
+        conv.render_buttons(buf)
 
     # Store frame for afterglow
     if fs.fx.afterglow:

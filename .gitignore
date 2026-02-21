@@ -31,3 +31,10 @@ node_modules/
 # ESP-IDF
 sdkconfig
 sdkconfig.old
+
+# Wake word training (large generated data)
+training/.venv/
+training/openWakeWord/
+training/piper-sample-generator/
+training/data/
+training/output/

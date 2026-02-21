@@ -116,6 +116,21 @@ deploy:
 install:
     cd {{project}} && bash deploy/install.sh
 
+# ── Wake Word Training ─────────────────────────────────────
+
+# Setup training environment (run once)
+setup-training:
+    cd {{project}}/training && bash setup.sh
+
+# Train "Hey Buddy" wake word model
+train-wakeword *phase:
+    cd {{project}}/training && bash train.sh {{phase}}
+
+# Deploy trained model to supervisor
+deploy-wakeword:
+    cp {{project}}/training/output/hey_buddy.onnx {{project}}/supervisor_v2/models/hey_buddy.onnx
+    @echo "Deployed hey_buddy.onnx to supervisor_v2/models/"
+
 # ── Preflight ────────────────────────────────────────────
 
 # Full pre-commit quality check

@@ -484,8 +484,10 @@ def face_state_update(fs: FaceState) -> None:
 
     # ── 6. TALKING ───────────────────────────────────────────────────
     if fs.talking:
-        fs.talking_phase += 15.0 * dt
         e = fs.talking_energy
+        # Phase speed coupling: faster chatter at higher energy
+        phase_speed = 12.0 + 6.0 * e
+        fs.talking_phase += phase_speed * dt
         noise_open = math.sin(fs.talking_phase) + math.sin(fs.talking_phase * 2.3)
         noise_width = math.cos(fs.talking_phase * 0.7)
 

@@ -38,7 +38,5 @@
     },
     "editor.codeActionsOnSave": {
         "quickfix.biome": "explicit"
-    },
-
-    "idf.showOnboardingOnInit": false
+    }
 }
