@@ -18,7 +18,6 @@ void telemetry_task(void* arg)
     ESP_LOGI(TAG, "telemetry_task started (%d Hz)", TELEMETRY_HZ);
 
     uint8_t tx_buf[256];
-    uint8_t seq = 0;
     uint32_t status_tx_count = 0;
     uint32_t touch_tx_count = 0;
     uint32_t button_tx_count = 0;
@@ -34,34 +33,53 @@ void telemetry_task(void* arg)
 
     while (true) {
         const int64_t now_us = esp_timer_get_time();
+        const uint64_t t_src = static_cast<uint64_t>(now_us);
 
         if (last_status_us == 0 || (now_us - last_status_us) >= status_period_us) {
-            FaceStatusPayload status = {};
-            status.mood_id = g_current_mood.load(std::memory_order_relaxed);
-            status.active_gesture = g_active_gesture.load(std::memory_order_relaxed);
-            status.system_mode = g_system_mode.load(std::memory_order_relaxed);
-            if (g_touch_active.load(std::memory_order_relaxed)) {
-                status.flags |= 0x01;
-            }
-            if (g_talking_active.load(std::memory_order_relaxed)) {
-                status.flags |= 0x02;
-            }
-            if (g_ptt_listening.load(std::memory_order_relaxed)) {
-                status.flags |= 0x04;
-            }
 
-            const size_t len = packet_build(
-                static_cast<uint8_t>(FaceTelId::FACE_STATUS),
-                seq++,
-                reinterpret_cast<const uint8_t*>(&status),
-                sizeof(status),
-                tx_buf,
-                sizeof(tx_buf));
+            // Build common status fields
+            uint8_t mood     = g_current_mood.load(std::memory_order_relaxed);
+            uint8_t gesture  = g_active_gesture.load(std::memory_order_relaxed);
+            uint8_t sys_mode = g_system_mode.load(std::memory_order_relaxed);
+            uint8_t flags    = 0;
+            if (g_touch_active.load(std::memory_order_relaxed))  flags |= 0x01;
+            if (g_talking_active.load(std::memory_order_relaxed)) flags |= 0x02;
+            if (g_ptt_listening.load(std::memory_order_relaxed))  flags |= 0x04;
+
+            size_t len = 0;
+            if (g_protocol_version.load(std::memory_order_acquire) == 2) {
+                // v2: extended payload with cmd causality
+                FaceStatusPayloadV2 status = {};
+                status.mood_id = mood;
+                status.active_gesture = gesture;
+                status.system_mode = sys_mode;
+                status.flags = flags;
+                status.cmd_seq_last_applied = g_cmd_seq_last.load(std::memory_order_acquire);
+                status.t_state_applied_us = g_cmd_applied_us.load(std::memory_order_acquire);
+                len = packet_build_v2(
+                    static_cast<uint8_t>(FaceTelId::FACE_STATUS),
+                    next_seq(), t_src,
+                    reinterpret_cast<const uint8_t*>(&status), sizeof(status),
+                    tx_buf, sizeof(tx_buf));
+            } else {
+                // v1: original 4-byte payload
+                FaceStatusPayload status = {};
+                status.mood_id = mood;
+                status.active_gesture = gesture;
+                status.system_mode = sys_mode;
+                status.flags = flags;
+                len = packet_build_v2(
+                    static_cast<uint8_t>(FaceTelId::FACE_STATUS),
+                    next_seq(), t_src,
+                    reinterpret_cast<const uint8_t*>(&status), sizeof(status),
+                    tx_buf, sizeof(tx_buf));
+            }
             if (len > 0) {
                 usb_cdc_write(tx_buf, len);
                 status_tx_count++;
             }
 
+            // Touch events — use t_src_us from the touch ISR timestamp
             const TouchSample* touch = g_touch.read();
             if (touch->event_type != 0xFF) {
                 TouchEventPayload tev = {};
@@ -69,13 +87,12 @@ void telemetry_task(void* arg)
                 tev.x = touch->x;
                 tev.y = touch->y;
 
-                const size_t tlen = packet_build(
+                const uint64_t touch_t = static_cast<uint64_t>(touch->timestamp_us);
+                const size_t tlen = packet_build_v2(
                     static_cast<uint8_t>(FaceTelId::TOUCH_EVENT),
-                    seq++,
-                    reinterpret_cast<const uint8_t*>(&tev),
-                    sizeof(tev),
-                    tx_buf,
-                    sizeof(tx_buf));
+                    next_seq(), touch_t,
+                    reinterpret_cast<const uint8_t*>(&tev), sizeof(tev),
+                    tx_buf, sizeof(tx_buf));
                 if (tlen > 0) {
                     usb_cdc_write(tx_buf, tlen);
                     touch_tx_count++;
@@ -86,6 +103,7 @@ void telemetry_task(void* arg)
                 }
             }
 
+            // Button events — use t_src_us from the button ISR timestamp
             const ButtonEventSample* btn = g_button.read();
             if (btn->event_type != 0xFF && btn->button_id != 0xFF) {
                 FaceButtonEventPayload bp = {};
@@ -93,13 +111,12 @@ void telemetry_task(void* arg)
                 bp.event_type = btn->event_type;
                 bp.state = btn->state;
 
-                const size_t blen = packet_build(
+                const uint64_t btn_t = static_cast<uint64_t>(btn->timestamp_us);
+                const size_t blen = packet_build_v2(
                     static_cast<uint8_t>(FaceTelId::BUTTON_EVENT),
-                    seq++,
-                    reinterpret_cast<const uint8_t*>(&bp),
-                    sizeof(bp),
-                    tx_buf,
-                    sizeof(tx_buf));
+                    next_seq(), btn_t,
+                    reinterpret_cast<const uint8_t*>(&bp), sizeof(bp),
+                    tx_buf, sizeof(tx_buf));
                 if (blen > 0) {
                     usb_cdc_write(tx_buf, blen);
                     button_tx_count++;
@@ -140,13 +157,11 @@ void telemetry_task(void* arg)
             hb.ptt_listening = g_ptt_listening.load(std::memory_order_relaxed) ? 1 : 0;
             hb.reserved = 0;
 
-            const size_t hlen = packet_build(
+            const size_t hlen = packet_build_v2(
                 static_cast<uint8_t>(FaceTelId::HEARTBEAT),
-                seq++,
-                reinterpret_cast<const uint8_t*>(&hb),
-                sizeof(hb),
-                tx_buf,
-                sizeof(tx_buf));
+                next_seq(), t_src,
+                reinterpret_cast<const uint8_t*>(&hb), sizeof(hb),
+                tx_buf, sizeof(tx_buf));
             if (hlen > 0) {
                 usb_cdc_write(tx_buf, hlen);
                 last_heartbeat_us = now_us;

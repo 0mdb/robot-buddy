@@ -6,14 +6,29 @@
 //   [COBS-encoded payload] [0x00 delimiter]
 //
 // Payload (before COBS):
-//   [type:u8] [seq:u8] [data:N bytes] [crc16:u16-LE]
+//   v1: [type:u8] [seq:u8]                        [data:N bytes] [crc16:u16-LE]
+//   v2: [type:u8] [seq:u32-LE] [t_src_us:u64-LE]  [data:N bytes] [crc16:u16-LE]
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 
 // ---- Packet type IDs ----
+// Common commands (host -> MCU): 0x00-0x0F
+// Common telemetry (MCU -> host): 0x80-0x8F
 // Face commands (host -> MCU): 0x20-0x2F
 // Face telemetry (MCU -> host): 0x90+
+
+// Protocol handshake / time sync (shared with esp32-reflex)
+enum class CommonCmdId : uint8_t {
+    TIME_SYNC_REQ        = 0x06,  // Pi -> MCU: {ping_seq:u32, reserved:u32}
+    SET_PROTOCOL_VERSION = 0x07,  // Pi -> MCU: {version:u8}
+};
+
+enum class CommonTelId : uint8_t {
+    TIME_SYNC_RESP       = 0x86,  // MCU -> Pi: {ping_seq:u32, t_src_us:u64}
+    PROTOCOL_VERSION_ACK = 0x87,  // MCU -> Pi: {version:u8}
+};
 
 enum class FaceCmdId : uint8_t {
     SET_STATE   = 0x20,   // mood + gaze + brightness
@@ -132,6 +147,28 @@ struct __attribute__((packed)) FaceHeartbeatPayload {
     uint8_t  reserved;
 };
 
+// ---- v2 extended payloads ----
+
+struct __attribute__((packed)) FaceStatusPayloadV2 {
+    // Original (4 bytes)
+    uint8_t mood_id;
+    uint8_t active_gesture;
+    uint8_t system_mode;
+    uint8_t flags;
+    // v2 additions (8 bytes)
+    uint32_t cmd_seq_last_applied;
+    uint32_t t_state_applied_us;   // when display buffer was committed
+};
+
+struct __attribute__((packed)) TimeSyncRespPayload {
+    uint32_t ping_seq;
+    uint64_t t_src_us;
+};
+
+struct __attribute__((packed)) ProtocolVersionPayload {
+    uint8_t version;
+};
+
 // ---- COBS encode/decode ----
 
 size_t cobs_encode(const uint8_t* src, size_t len, uint8_t* dst);
@@ -141,17 +178,33 @@ size_t cobs_decode(const uint8_t* src, size_t len, uint8_t* dst);
 
 uint16_t crc16(const uint8_t* data, size_t len);
 
+// ---- Protocol version negotiation ----
+
+extern std::atomic<uint8_t>  g_protocol_version;  // 1 or 2, default 1
+extern std::atomic<uint32_t> g_tx_seq;             // global monotonic TX seq
+
+inline uint32_t next_seq() {
+    return g_tx_seq.fetch_add(1, std::memory_order_relaxed);
+}
+
 // ---- Packet building (MCU -> host) ----
 
+// v1 builder (legacy — kept for backward compat)
 size_t packet_build(uint8_t type, uint8_t seq,
                     const uint8_t* payload, size_t payload_len,
                     uint8_t* out, size_t out_cap);
+
+// v2 builder (uses v2 envelope when g_protocol_version==2, else falls back to v1)
+size_t packet_build_v2(uint8_t type, uint32_t seq, uint64_t t_src_us,
+                       const uint8_t* payload, size_t payload_len,
+                       uint8_t* out, size_t out_cap);
 
 // ---- Packet parsing (host -> MCU) ----
 
 struct ParsedPacket {
     uint8_t  type;
-    uint8_t  seq;
+    uint32_t seq;          // u32 in v2, zero-extended u8 in v1
+    uint64_t t_src_us;     // 0 in v1
     const uint8_t* data;
     size_t   data_len;
     bool     valid;

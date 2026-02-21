@@ -1,0 +1,14 @@
+{
+  "include": [
+    "supervisor/supervisor",
+    "supervisor/tests",
+    "server/app",
+    "server/tests",
+    "supervisor_v2/supervisor_v2",
+    "supervisor_v2/tests"
+  ],
+  "pythonVersion": "3.11",
+  "typeCheckingMode": "basic",
+  "reportMissingTypeStubs": "none",
+  "reportUnknownMemberType": "none"
+}

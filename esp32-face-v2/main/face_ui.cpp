@@ -790,6 +790,8 @@ std::atomic<bool> g_ptt_listening{false};
 std::atomic<uint8_t> g_current_mood{0};
 std::atomic<uint8_t> g_active_gesture{0xFF};
 std::atomic<uint8_t> g_system_mode{0};
+std::atomic<uint32_t> g_cmd_seq_last{0};
+std::atomic<uint32_t> g_cmd_applied_us{0};
 
 void face_ui_task(void* arg)
 {
@@ -954,6 +956,11 @@ void face_ui_task(void* arg)
                 update_calibration_labels(now_ms, next_touch_cycle_ms);
             }
             lvgl_port_unlock();
+
+            // v2: record when display buffer was committed (render completion)
+            g_cmd_applied_us.store(
+                static_cast<uint32_t>(esp_timer_get_time()),
+                std::memory_order_release);
         }
 
         const uint32_t frame_us =

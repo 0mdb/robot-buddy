@@ -1,0 +1,47 @@
+---
+# Robot Buddy — C/C++ formatting rules
+# Matches existing ESP32 firmware code style.
+# Usage: clang-format --dry-run -Werror esp32-*/main/*.cpp esp32-*/main/*.h
+#        clang-format -i esp32-*/main/*.cpp esp32-*/main/*.h    (auto-fix)
+
+Language: Cpp
+BasedOnStyle: LLVM
+
+# Indentation
+IndentWidth: 4
+ContinuationIndentWidth: 4
+IndentCaseLabels: false
+
+# Braces: Linux style (functions on new line, everything else attached)
+BreakBeforeBraces: Linux
+
+# Line width — 120 keeps long FreeRTOS calls (xTaskCreatePinnedToCore etc.) on one line
+ColumnLimit: 120
+
+# Short forms
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortLoopsOnASingleLine: false
+AllowShortBlocksOnASingleLine: Empty
+
+# Pointer / reference alignment: const char* TAG, WheelPI& state
+PointerAlignment: Left
+ReferenceAlignment: Left
+
+# Don't reorder includes — ESP-IDF has specific ordering requirements
+SortIncludes: Never
+
+# Packing
+BinPackParameters: true
+BinPackArguments: true
+
+# Alignment
+AlignAfterOpenBracket: Align
+AlignTrailingComments:
+  Kind: Always
+  OverEmptyLines: 0
+
+# Spaces
+SpaceAfterCStyleCast: false
+SpaceBeforeParens: ControlStatements
+SpaceInEmptyBlock: false

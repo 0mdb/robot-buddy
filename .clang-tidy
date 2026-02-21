@@ -1,0 +1,29 @@
+---
+# Robot Buddy — C/C++ static analysis rules
+# Requires compile_commands.json from `idf.py build`.
+# Usage: clang-tidy -p esp32-reflex/build esp32-reflex/main/*.cpp
+#        clang-tidy -p esp32-face-v2/build esp32-face-v2/main/*.cpp
+
+# Start with high-value checks, avoid noise from ESP-IDF headers.
+Checks: >
+  -*,
+  bugprone-*,
+  performance-*,
+  readability-implicit-bool-conversion,
+  readability-redundant-*,
+  misc-unused-*,
+  misc-redundant-expression,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-narrowing-conversions,
+  -bugprone-reserved-identifier,
+
+# Only check our own headers, not ESP-IDF / FreeRTOS / component headers.
+HeaderFilterRegex: '.*/main/.*\.h$'
+
+WarningsAsErrors: ''
+
+CheckOptions:
+  - key: readability-implicit-bool-conversion.AllowIntegerConditions
+    value: true
+  - key: readability-implicit-bool-conversion.AllowPointerConditions
+    value: true

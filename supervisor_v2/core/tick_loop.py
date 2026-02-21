@@ -282,7 +282,7 @@ class TickLoop:
             from supervisor_v2.devices.protocol import FACE_FLAGS_ALL
             self._face.send_flags(FACE_FLAGS_ALL)
 
-        tel = self._face.last_telemetry
+        tel = self._face.telemetry
         if tel:
             self.robot.face_mood = tel.mood_id
             self.robot.face_gesture = tel.active_gesture

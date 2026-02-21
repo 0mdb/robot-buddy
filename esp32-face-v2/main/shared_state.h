@@ -128,3 +128,7 @@ extern std::atomic<bool> g_ptt_listening;
 extern std::atomic<uint8_t> g_current_mood;
 extern std::atomic<uint8_t> g_active_gesture;   // 0xFF = none
 extern std::atomic<uint8_t> g_system_mode;
+
+// v2 command causality tracking (writer: usb_rx for seq, face_ui for applied_us)
+extern std::atomic<uint32_t> g_cmd_seq_last;     // last received cmd seq (from v2 envelope)
+extern std::atomic<uint32_t> g_cmd_applied_us;   // when display buffer was committed
