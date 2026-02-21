@@ -165,6 +165,7 @@ export default function ProtocolTab() {
   )
   const [typeFilter, setTypeFilter] = useState('')
   const [search, setSearch] = useState('')
+  const [newestFirst, setNewestFirst] = useState(true)
   const [pinned, setPinned] = useState(true)
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
 
@@ -192,11 +193,16 @@ export default function ProtocolTab() {
     })
   }, [packets, enabledDirs, enabledDevices, typeFilter, search])
 
+  const displayed = useMemo(
+    () => (newestFirst ? [...filtered].reverse() : filtered),
+    [filtered, newestFirst],
+  )
+
   useEffect(() => {
-    if (pinned && listRef.current && filtered.length > 0) {
-      listRef.current.scrollToRow({ index: filtered.length - 1, align: 'end' })
+    if (pinned && !newestFirst && listRef.current && displayed.length > 0) {
+      listRef.current.scrollToRow({ index: displayed.length - 1, align: 'end' })
     }
-  }, [filtered.length, pinned, listRef])
+  }, [displayed.length, pinned, newestFirst, listRef])
 
   const handleRowsRendered = useCallback(
     (
@@ -235,11 +241,11 @@ export default function ProtocolTab() {
   }
 
   const rowProps = useMemo(
-    () => ({ packets: filtered, baseTs, selectedIndex, onSelect: setSelectedIndex }),
-    [filtered, baseTs, selectedIndex],
+    () => ({ packets: displayed, baseTs, selectedIndex, onSelect: setSelectedIndex }),
+    [displayed, baseTs, selectedIndex],
   )
 
-  const selectedPkt = selectedIndex !== null ? (filtered[selectedIndex] ?? null) : null
+  const selectedPkt = selectedIndex !== null ? (displayed[selectedIndex] ?? null) : null
   const TOOLBAR_HEIGHT = 40
   const DETAIL_HEIGHT = selectedPkt ? 120 : 0
 
@@ -379,6 +385,25 @@ export default function ProtocolTab() {
         <button
           type="button"
           onClick={() => {
+            setNewestFirst((n) => !n)
+            setSelectedIndex(null)
+          }}
+          style={{
+            padding: '3px 10px',
+            fontSize: 11,
+            border: `1px solid ${newestFirst ? '#9c27b0' : '#333'}`,
+            borderRadius: 4,
+            background: newestFirst ? 'rgba(156,39,176,0.15)' : '#1a1a2e',
+            color: newestFirst ? '#ce93d8' : '#888',
+            cursor: 'pointer',
+          }}
+        >
+          {newestFirst ? 'Newest' : 'Oldest'}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
             setPaused(!paused)
           }}
           style={{
@@ -398,8 +423,8 @@ export default function ProtocolTab() {
           type="button"
           onClick={() => {
             setPinned((p) => !p)
-            if (!pinned && listRef.current && filtered.length > 0)
-              listRef.current.scrollToRow({ index: filtered.length - 1, align: 'end' })
+            if (!pinned && listRef.current && displayed.length > 0)
+              listRef.current.scrollToRow({ index: displayed.length - 1, align: 'end' })
           }}
           style={{
             padding: '3px 10px',
@@ -415,7 +440,7 @@ export default function ProtocolTab() {
         </button>
 
         <span style={{ fontSize: 11, color: '#666', fontFamily: 'var(--font-mono)' }}>
-          {filtered.length} / {packets.length}
+          {displayed.length} / {packets.length}
         </span>
 
         <span
@@ -460,7 +485,7 @@ export default function ProtocolTab() {
         className={styles.card}
         style={{ flex: 1, minHeight: 0, padding: 0, overflow: 'hidden' }}
       >
-        {filtered.length === 0 ? (
+        {displayed.length === 0 ? (
           <div
             style={{
               display: 'flex',
@@ -478,7 +503,7 @@ export default function ProtocolTab() {
           <List<RowProps>
             listRef={listRef}
             rowComponent={ProtocolRow}
-            rowCount={filtered.length}
+            rowCount={displayed.length}
             rowHeight={ROW_HEIGHT}
             rowProps={rowProps}
             overscanCount={20}
