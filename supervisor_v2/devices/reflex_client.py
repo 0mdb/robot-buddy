@@ -6,9 +6,10 @@ import logging
 import struct
 import time
 from dataclasses import dataclass
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 
 from supervisor_v2.devices.protocol import (
+    CmdType,
     Fault,
     ParsedPacket,
     RangeStatus,
@@ -21,6 +22,9 @@ from supervisor_v2.devices.protocol import (
     build_stop,
 )
 from supervisor_v2.io.serial_transport import SerialTransport
+
+if TYPE_CHECKING:
+    from supervisor_v2.api.protocol_capture import ProtocolCapture
 
 log = logging.getLogger(__name__)
 
@@ -84,8 +88,13 @@ class ReflexTelemetry:
 class ReflexClient:
     """Send commands to and receive telemetry from the reflex MCU."""
 
-    def __init__(self, transport: SerialTransport) -> None:
+    def __init__(
+        self,
+        transport: SerialTransport,
+        capture: ProtocolCapture | None = None,
+    ) -> None:
         self._transport = transport
+        self._capture = capture
         self._seq = 0
         self.telemetry = ReflexTelemetry()
         self._on_telemetry: Callable[[ReflexTelemetry], None] | None = None
@@ -104,24 +113,51 @@ class ReflexClient:
         self._on_telemetry = cb
 
     def send_twist(self, v_mm_s: int, w_mrad_s: int) -> None:
-        pkt = build_set_twist(self._next_seq(), v_mm_s, w_mrad_s)
+        seq = self._next_seq()
+        pkt = build_set_twist(seq, v_mm_s, w_mrad_s)
         self._transport.write(pkt)
         self._tx_packets += 1
+        if self._capture and self._capture.active:
+            self._capture.capture_tx(
+                "reflex",
+                CmdType.SET_TWIST,
+                seq,
+                struct.pack("<hh", v_mm_s, w_mrad_s),
+            )
 
     def send_stop(self, reason: int = 0) -> None:
-        pkt = build_stop(self._next_seq(), reason)
+        seq = self._next_seq()
+        pkt = build_stop(seq, reason)
         self._transport.write(pkt)
         self._tx_packets += 1
+        if self._capture and self._capture.active:
+            self._capture.capture_tx(
+                "reflex",
+                CmdType.STOP,
+                seq,
+                struct.pack("<B", reason),
+            )
 
     def send_estop(self) -> None:
-        pkt = build_estop(self._next_seq())
+        seq = self._next_seq()
+        pkt = build_estop(seq)
         self._transport.write(pkt)
         self._tx_packets += 1
+        if self._capture and self._capture.active:
+            self._capture.capture_tx("reflex", CmdType.ESTOP, seq, b"")
 
     def send_clear_faults(self, mask: int = 0xFFFF) -> None:
-        pkt = build_clear_faults(self._next_seq(), mask)
+        seq = self._next_seq()
+        pkt = build_clear_faults(seq, mask)
         self._transport.write(pkt)
         self._tx_packets += 1
+        if self._capture and self._capture.active:
+            self._capture.capture_tx(
+                "reflex",
+                CmdType.CLEAR_FAULTS,
+                seq,
+                struct.pack("<H", mask),
+            )
 
     def send_set_config(self, param_name: str, value: int | float) -> bool:
         """Send a SET_CONFIG command for a named parameter.
@@ -142,13 +178,21 @@ class ReflexClient:
             # All others are int (u32 or i32 on wire, truncated on MCU side)
             value_bytes = struct.pack("<i", int(value))
 
-        pkt = build_set_config(self._next_seq(), param_id, value_bytes)
+        seq = self._next_seq()
+        pkt = build_set_config(seq, param_id, value_bytes)
         sent = self._transport.write(pkt)
         self._tx_packets += 1
         if not sent:
             log.warning("SET_CONFIG send failed %s (0x%02X)", param_name, param_id)
             return False
         log.info("SET_CONFIG %s (0x%02X) = %s", param_name, param_id, value)
+        if self._capture and self._capture.active:
+            self._capture.capture_tx(
+                "reflex",
+                CmdType.SET_CONFIG,
+                seq,
+                struct.pack("<B", param_id) + value_bytes,
+            )
         return True
 
     def debug_snapshot(self) -> dict:
@@ -176,6 +220,9 @@ class ReflexClient:
         return s
 
     def _handle_packet(self, pkt: ParsedPacket) -> None:
+        if self._capture and self._capture.active:
+            self._capture.capture_rx("reflex", pkt.pkt_type, pkt.seq, pkt.payload)
+
         if pkt.pkt_type == TelType.STATE:
             try:
                 state = StatePayload.unpack(pkt.payload)

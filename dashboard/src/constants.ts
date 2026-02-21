@@ -89,6 +89,7 @@ export const TABS: { id: TabId; label: string }[] = [
   { id: 'telemetry', label: 'Telemetry' },
   { id: 'devices', label: 'Devices' },
   { id: 'logs', label: 'Logs' },
+  { id: 'protocol', label: 'Protocol' },
   { id: 'calibration', label: 'Calibration' },
   { id: 'params', label: 'Parameters' },
   { id: 'face', label: 'Face' },

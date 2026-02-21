@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import logging
+import struct
 import time
 from dataclasses import dataclass
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 
 from supervisor_v2.devices.protocol import (
     FACE_FLAGS_ALL,
     FaceButtonEventPayload,
+    FaceCmdType,
     FaceHeartbeatPayload,
     FaceStatusPayload,
     FaceTelType,
@@ -22,6 +24,9 @@ from supervisor_v2.devices.protocol import (
     build_face_set_talking,
 )
 from supervisor_v2.io.serial_transport import SerialTransport
+
+if TYPE_CHECKING:
+    from supervisor_v2.api.protocol_capture import ProtocolCapture
 
 log = logging.getLogger(__name__)
 
@@ -94,8 +99,13 @@ class HeartbeatTelemetry:
 class FaceClient:
     """Send commands to and receive telemetry from the face MCU."""
 
-    def __init__(self, transport: SerialTransport) -> None:
+    def __init__(
+        self,
+        transport: SerialTransport,
+        capture: ProtocolCapture | None = None,
+    ) -> None:
         self._transport = transport
+        self._capture = capture
         self._seq = 0
         self.telemetry = FaceTelemetry()
         self.last_touch: TouchEvent | None = None
@@ -139,8 +149,9 @@ class FaceClient:
         gaze_x_i8 = max(-128, min(127, int(gaze_x * 32)))
         gaze_y_i8 = max(-128, min(127, int(gaze_y * 32)))
         brightness_u8 = max(0, min(255, int(brightness * 255)))
+        seq = self._next_seq()
         pkt = build_face_set_state(
-            self._next_seq(),
+            seq,
             emotion_id,
             intensity_u8,
             gaze_x_i8,
@@ -149,40 +160,86 @@ class FaceClient:
         )
         self._transport.write(pkt)
         self._tx_packets += 1
+        if self._capture and self._capture.active:
+            self._capture.capture_tx(
+                "face",
+                FaceCmdType.SET_STATE,
+                seq,
+                struct.pack(
+                    "<BBbbB",
+                    emotion_id,
+                    intensity_u8,
+                    gaze_x_i8,
+                    gaze_y_i8,
+                    brightness_u8,
+                ),
+            )
 
     def send_gesture(self, gesture_id: int = 0, duration_ms: int = 0) -> None:
         if not self.connected:
             return
-        pkt = build_face_gesture(self._next_seq(), gesture_id, duration_ms)
+        seq = self._next_seq()
+        pkt = build_face_gesture(seq, gesture_id, duration_ms)
         self._transport.write(pkt)
         self._tx_packets += 1
+        if self._capture and self._capture.active:
+            self._capture.capture_tx(
+                "face",
+                FaceCmdType.GESTURE,
+                seq,
+                struct.pack("<BH", gesture_id, duration_ms),
+            )
 
     def send_system_mode(self, mode: int = 0, param: int = 0) -> None:
         if not self.connected:
             return
-        pkt = build_face_set_system(self._next_seq(), mode, 0, param)
+        seq = self._next_seq()
+        pkt = build_face_set_system(seq, mode, 0, param)
         self._transport.write(pkt)
         self._tx_packets += 1
+        if self._capture and self._capture.active:
+            self._capture.capture_tx(
+                "face",
+                FaceCmdType.SET_SYSTEM,
+                seq,
+                struct.pack("<BBB", mode, 0, param),
+            )
 
     def send_talking(self, talking: bool, energy: int = 0) -> None:
         """Send SET_TALKING command (speaking animation state + energy)."""
         if not self.connected:
             return
         energy_u8 = max(0, min(255, int(energy)))
-        pkt = build_face_set_talking(self._next_seq(), talking, energy_u8)
+        seq = self._next_seq()
+        pkt = build_face_set_talking(seq, talking, energy_u8)
         self._transport.write(pkt)
         self._tx_packets += 1
         self.last_talking_energy_cmd = energy_u8 if talking else 0
+        if self._capture and self._capture.active:
+            self._capture.capture_tx(
+                "face",
+                FaceCmdType.SET_TALKING,
+                seq,
+                struct.pack("<BB", 1 if talking else 0, energy_u8),
+            )
 
     def send_flags(self, flags: int) -> None:
         """Send SET_FLAGS command (renderer/animation feature toggles)."""
         if not self.connected:
             return
         flags_u8 = int(flags) & FACE_FLAGS_ALL
-        pkt = build_face_set_flags(self._next_seq(), flags_u8)
+        seq = self._next_seq()
+        pkt = build_face_set_flags(seq, flags_u8)
         self._transport.write(pkt)
         self._tx_packets += 1
         self.last_flags_cmd = flags_u8
+        if self._capture and self._capture.active:
+            self._capture.capture_tx(
+                "face",
+                FaceCmdType.SET_FLAGS,
+                seq,
+                struct.pack("<B", flags_u8),
+            )
 
     def debug_snapshot(self) -> dict:
         now_ms = time.monotonic() * 1000.0
@@ -217,6 +274,9 @@ class FaceClient:
         return s
 
     def _handle_packet(self, pkt: ParsedPacket) -> None:
+        if self._capture and self._capture.active:
+            self._capture.capture_rx("face", pkt.pkt_type, pkt.seq, pkt.payload)
+
         if pkt.pkt_type == FaceTelType.FACE_STATUS:
             try:
                 status = FaceStatusPayload.unpack(pkt.payload)

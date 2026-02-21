@@ -216,4 +216,12 @@ export interface LogEntry {
 
 // ---- Tab IDs ----
 
-export type TabId = 'drive' | 'telemetry' | 'devices' | 'logs' | 'calibration' | 'params' | 'face'
+export type TabId =
+  | 'drive'
+  | 'telemetry'
+  | 'devices'
+  | 'logs'
+  | 'protocol'
+  | 'calibration'
+  | 'params'
+  | 'face'

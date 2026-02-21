@@ -6,25 +6,36 @@ import argparse
 import asyncio
 import logging
 import os
-import sys
 
 log = logging.getLogger(__name__)
 
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Robot Buddy Supervisor v2")
-    p.add_argument("--mock", action="store_true", help="Use mock Reflex MCU (no hardware)")
-    p.add_argument("--port", default=None, help="Reflex serial port (default: /dev/robot_reflex)")
-    p.add_argument("--face-port", default=None, help="Face serial port (default: /dev/robot_face)")
+    p.add_argument(
+        "--mock", action="store_true", help="Use mock Reflex MCU (no hardware)"
+    )
+    p.add_argument(
+        "--port", default=None, help="Reflex serial port (default: /dev/robot_reflex)"
+    )
+    p.add_argument(
+        "--face-port", default=None, help="Face serial port (default: /dev/robot_face)"
+    )
     p.add_argument("--no-face", action="store_true", help="Disable Face MCU")
     p.add_argument("--no-vision", action="store_true", help="Disable vision worker")
-    p.add_argument("--no-planner", action="store_true", help="Disable AI/planner worker")
+    p.add_argument(
+        "--no-planner", action="store_true", help="Disable AI/planner worker"
+    )
     p.add_argument("--http-port", type=int, default=8080, help="HTTP server port")
     p.add_argument("--planner-api", default=None, help="Planner server base URL")
-    p.add_argument("--robot-id", default=os.environ.get("ROBOT_ID", ""), help="Robot ID")
+    p.add_argument(
+        "--robot-id", default=os.environ.get("ROBOT_ID", ""), help="Robot ID"
+    )
     p.add_argument("--config", default=None, help="YAML config file path")
     p.add_argument("--log-level", default="INFO", help="Log level")
-    p.add_argument("--usb-speaker-device", default="default", help="ALSA speaker device")
+    p.add_argument(
+        "--usb-speaker-device", default="default", help="ALSA speaker device"
+    )
     p.add_argument("--usb-mic-device", default="default", help="ALSA mic device")
     return p.parse_args()
 
@@ -53,6 +64,9 @@ async def async_main(args: argparse.Namespace) -> None:
         cfg.mock = True
     cfg.network.http_port = args.http_port
 
+    from supervisor_v2.api.protocol_capture import ProtocolCapture
+
+    capture = ProtocolCapture()
     mock_reflex = None
     reflex = None
     face = None
@@ -62,6 +76,7 @@ async def async_main(args: argparse.Namespace) -> None:
         # ── Reflex MCU ───────────────────────────────────────────
         if cfg.mock:
             from supervisor_v2.mock.mock_reflex import MockReflex
+
             mock_reflex = MockReflex()
             mock_reflex.start()
             reflex_port = mock_reflex.device_path
@@ -72,7 +87,7 @@ async def async_main(args: argparse.Namespace) -> None:
         reflex_transport = SerialTransport(
             port=reflex_port, baudrate=cfg.serial.baudrate, label="reflex"
         )
-        reflex = ReflexClient(reflex_transport)
+        reflex = ReflexClient(reflex_transport, capture=capture)
         await reflex_transport.start()
 
         # ── Face MCU ─────────────────────────────────────────────
@@ -80,7 +95,7 @@ async def async_main(args: argparse.Namespace) -> None:
             face_transport = SerialTransport(
                 port=cfg.serial.face_port, baudrate=cfg.serial.baudrate, label="face"
             )
-            face = FaceClient(face_transport)
+            face = FaceClient(face_transport, capture=capture)
             await face_transport.start()
 
         # ── API components ─────────────────────────────────────
@@ -88,7 +103,9 @@ async def async_main(args: argparse.Namespace) -> None:
         ws_hub = WsHub()
 
         # ── Worker Manager ───────────────────────────────────────
-        planner_enabled = bool(args.robot_id and args.planner_api and not args.no_planner)
+        planner_enabled = bool(
+            args.robot_id and args.planner_api and not args.no_planner
+        )
 
         # We create the tick loop first so we can use its on_worker_event as callback
         workers = WorkerManager(
@@ -116,7 +133,7 @@ async def async_main(args: argparse.Namespace) -> None:
         )
 
         # ── HTTP server ──────────────────────────────────────────
-        app = create_app(tick, registry, ws_hub, workers)
+        app = create_app(tick, registry, ws_hub, workers, capture=capture)
         http_config = uvicorn.Config(
             app,
             host=cfg.network.host,
@@ -130,9 +147,13 @@ async def async_main(args: argparse.Namespace) -> None:
 
         # Send init configs to workers
         if not args.no_vision:
-            await workers.send_to("vision", "vision.config.update", {
-                "mjpeg_enabled": False,
-            })
+            await workers.send_to(
+                "vision",
+                "vision.config.update",
+                {
+                    "mjpeg_enabled": False,
+                },
+            )
 
         if planner_enabled:
             tts_init = {
@@ -158,16 +179,25 @@ async def async_main(args: argparse.Namespace) -> None:
         def _on_param_change(name: str, value: object) -> None:
             if name.startswith("vision.") and workers.worker_alive("vision"):
                 asyncio.ensure_future(
-                    workers.send_to("vision", "vision.config.update", {
-                        _vision_param_to_key(name): value,
-                    })
+                    workers.send_to(
+                        "vision",
+                        "vision.config.update",
+                        {
+                            _vision_param_to_key(name): value,
+                        },
+                    )
                 )
 
         registry.on_change(_on_param_change)
 
-        log.info("supervisor v2 running (mock=%s, vision=%s, planner=%s, http=%s:%d)",
-                 cfg.mock, not args.no_vision, planner_enabled,
-                 cfg.network.host, cfg.network.http_port)
+        log.info(
+            "supervisor v2 running (mock=%s, vision=%s, planner=%s, http=%s:%d)",
+            cfg.mock,
+            not args.no_vision,
+            planner_enabled,
+            cfg.network.host,
+            cfg.network.http_port,
+        )
 
         # Run tick loop and HTTP server concurrently
         await asyncio.gather(
@@ -179,11 +209,11 @@ async def async_main(args: argparse.Namespace) -> None:
         log.info("shutting down...")
         if http_server:
             http_server.should_exit = True
-        if 'workers' in dir():
+        if "workers" in dir():
             await workers.stop()
-        if reflex and hasattr(reflex, '_transport'):
+        if reflex and hasattr(reflex, "_transport"):
             await reflex._transport.stop()
-        if face and hasattr(face, '_transport'):
+        if face and hasattr(face, "_transport"):
             await face._transport.stop()
         if mock_reflex:
             mock_reflex.stop()

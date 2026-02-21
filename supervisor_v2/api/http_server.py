@@ -24,6 +24,7 @@ from starlette.responses import Response
 
 if TYPE_CHECKING:
     from supervisor_v2.api.param_registry import ParamRegistry
+    from supervisor_v2.api.protocol_capture import ProtocolCapture
     from supervisor_v2.api.ws_hub import WsHub
     from supervisor_v2.core.tick_loop import TickLoop
     from supervisor_v2.core.worker_manager import WorkerManager
@@ -112,6 +113,7 @@ def create_app(
     registry: ParamRegistry,
     ws_hub: WsHub,
     workers: WorkerManager,
+    capture: ProtocolCapture | None = None,
 ) -> FastAPI:
     app = FastAPI(title="Robot Buddy Supervisor v2", version="2.0.0")
     app.add_middleware(NoCacheIndexMiddleware)
@@ -131,6 +133,23 @@ def create_app(
             pass
         finally:
             _log_broadcaster.remove_client(q)
+
+    # -- WebSocket protocol capture ------------------------------------------
+
+    if capture is not None:
+
+        @app.websocket("/ws/protocol")
+        async def websocket_protocol(ws: WebSocket):
+            await ws.accept()
+            q = capture.add_client()
+            try:
+                while True:
+                    entry = await q.get()
+                    await ws.send_text(entry)
+            except WebSocketDisconnect:
+                pass
+            finally:
+                capture.remove_client(q)
 
     # -- HTTP endpoints ------------------------------------------------------
 
