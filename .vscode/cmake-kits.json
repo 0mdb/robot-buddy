@@ -1,0 +1,15 @@
+[
+    {
+        "name": "ESP-IDF v5.4 (ESP32-S3)",
+        "compilers": {
+            "C": "/home/ben/.espressif/tools/xtensa-esp-elf/esp-14.2.0_20241119/xtensa-esp-elf/bin/xtensa-esp32s3-elf-gcc",
+            "CXX": "/home/ben/.espressif/tools/xtensa-esp-elf/esp-14.2.0_20241119/xtensa-esp-elf/bin/xtensa-esp32s3-elf-g++"
+        },
+        "environmentVariables": {
+            "IDF_PATH": "/home/ben/esp/esp-idf",
+            "IDF_TARGET": "esp32s3",
+            "PATH": "/home/ben/.espressif/tools/xtensa-esp-elf/esp-14.2.0_20241119/xtensa-esp-elf/bin:/home/ben/.espressif/tools/xtensa-esp-elf-gdb/14.2_20240403/xtensa-esp-elf-gdb/bin:/home/ben/.espressif/tools/riscv32-esp-elf/esp-14.2.0_20241119/riscv32-esp-elf/bin:/home/ben/.espressif/tools/esp32ulp-elf/2.38_20240113/esp32ulp-elf/bin:/home/ben/.espressif/tools/openocd-esp32/v0.12.0-esp32-20241016/openocd-esp32/bin:/home/ben/.espressif/python_env/idf5.4_py3.12_env/bin:/home/ben/esp/esp-idf/tools:${env:PATH}"
+        },
+        "isTrusted": true
+    }
+]

@@ -1,5 +1,11 @@
 {
-    "cmake.sourceDirectory": "/home/ben/robot-buddy/esp32-face-v2",
+    "cmake.sourceDirectory": [
+        "${workspaceFolder}/esp32-face-v2",
+        "${workspaceFolder}/esp32-reflex"
+    ],
+    "cmake.generator": "Ninja",
+    "cmake.buildDirectory": "${sourceDir}/build",
+    "cmake.configureOnOpen": false,
     "python.testing.pytestArgs": [
         "supervisor"
     ],
