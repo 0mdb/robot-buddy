@@ -17,6 +17,8 @@ import threading
 import time
 
 from supervisor_v2.devices.protocol import (
+    COMMON_TIME_SYNC_REQ,
+    COMMON_TIME_SYNC_RESP,
     CmdType,
     Fault,
     TelType,
@@ -114,6 +116,21 @@ class MockReflex:
             pkt = parse_frame(frame)
         except ValueError as e:
             log.debug("mock_reflex: bad frame: %s", e)
+            return
+
+        # TIME_SYNC: respond immediately, don't update cmd timeout
+        if pkt.pkt_type == COMMON_TIME_SYNC_REQ:
+            if len(pkt.payload) >= 8:
+                ping_seq = struct.unpack_from("<I", pkt.payload, 0)[0]
+                now_us = int(time.monotonic() * 1_000_000)
+                resp_payload = struct.pack("<IQ", ping_seq, now_us)
+                resp = build_packet(
+                    COMMON_TIME_SYNC_RESP, self._next_seq(), resp_payload
+                )
+                try:
+                    os.write(self._master_fd, resp)
+                except OSError:
+                    pass
             return
 
         self._last_cmd_time = time.monotonic()

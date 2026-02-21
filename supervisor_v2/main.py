@@ -50,6 +50,7 @@ async def async_main(args: argparse.Namespace) -> None:
     from supervisor_v2.config import load_config
     from supervisor_v2.core.tick_loop import TickLoop
     from supervisor_v2.core.worker_manager import WorkerManager
+    from supervisor_v2.devices.clock_sync import ClockSyncEngine
     from supervisor_v2.devices.face_client import FaceClient
     from supervisor_v2.devices.reflex_client import ReflexClient
     from supervisor_v2.io.serial_transport import SerialTransport
@@ -202,6 +203,21 @@ async def async_main(args: argparse.Namespace) -> None:
 
         registry.on_change(_on_param_change)
 
+        # ── Clock Sync ────────────────────────────────────────────
+        reflex_sync = ClockSyncEngine(
+            transport=reflex_transport,
+            clock_state=tick.robot.reflex_clock,
+            label="reflex",
+        )
+
+        face_sync: ClockSyncEngine | None = None
+        if face:
+            face_sync = ClockSyncEngine(
+                transport=face_transport,
+                clock_state=tick.robot.face_clock,
+                label="face",
+            )
+
         log.info(
             "supervisor v2 running (mock=%s, vision=%s, planner=%s, http=%s:%d)",
             cfg.mock,
@@ -211,11 +227,11 @@ async def async_main(args: argparse.Namespace) -> None:
             cfg.network.http_port,
         )
 
-        # Run tick loop and HTTP server concurrently
-        await asyncio.gather(
-            tick.run(),
-            http_server.serve(),
-        )
+        # Run tick loop, HTTP server, and clock sync concurrently
+        tasks = [tick.run(), http_server.serve(), reflex_sync.run()]
+        if face_sync:
+            tasks.append(face_sync.run())
+        await asyncio.gather(*tasks)
 
     finally:
         log.info("shutting down...")

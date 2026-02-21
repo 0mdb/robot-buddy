@@ -15,9 +15,9 @@ function ConnBadge({ connected }: { connected: boolean }) {
 
 function SyncBadge({ state }: { state: string }) {
   const cls =
-    state === 'SYNCED'
+    state === 'synced'
       ? styles.badgeGreen
-      : state === 'CONVERGING'
+      : state === 'degraded'
         ? styles.badgeYellow
         : styles.badgeRed
   return <span className={`${styles.badge} ${cls}`}>{state}</span>

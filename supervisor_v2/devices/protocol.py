@@ -18,6 +18,12 @@ from supervisor_v2.io.cobs import encode as cobs_encode
 from supervisor_v2.io.crc import crc16
 
 
+# -- Common packet type IDs (shared by reflex + face MCUs) ------------------
+
+COMMON_TIME_SYNC_REQ: int = 0x06
+COMMON_TIME_SYNC_RESP: int = 0x86
+
+
 # -- Packet type IDs --------------------------------------------------------
 
 
@@ -378,7 +384,9 @@ def build_set_config(seq: int, param_id: int, value_bytes: bytes) -> bytes:
 
 # -- Face packet building ----------------------------------------------------
 
-_FACE_SET_STATE_FMT = struct.Struct("<BBbbB")  # mood, intensity, gaze_x, gaze_y, brightness
+_FACE_SET_STATE_FMT = struct.Struct(
+    "<BBbbB"
+)  # mood, intensity, gaze_x, gaze_y, brightness
 _FACE_GESTURE_FMT = struct.Struct("<BH")  # gesture_id, duration_ms
 _FACE_SET_SYSTEM_FMT = struct.Struct("<BBB")  # mode, phase, param
 _FACE_SET_TALKING_FMT = struct.Struct("<BB")  # talking, energy
@@ -402,11 +410,10 @@ def build_face_gesture(seq: int, gesture_id: int, duration_ms: int = 0) -> bytes
     return build_packet(FaceCmdType.GESTURE, seq, payload)
 
 
-def build_face_set_system(
-    seq: int, mode: int, phase: int = 0, param: int = 0
-) -> bytes:
+def build_face_set_system(seq: int, mode: int, phase: int = 0, param: int = 0) -> bytes:
     payload = _FACE_SET_SYSTEM_FMT.pack(mode, phase, param)
     return build_packet(FaceCmdType.SET_SYSTEM, seq, payload)
+
 
 def build_face_set_talking(seq: int, talking: bool, energy: int = 0) -> bytes:
     """Build a SET_TALKING packet (speaking animation state + energy)."""
@@ -418,6 +425,33 @@ def build_face_set_flags(seq: int, flags: int) -> bytes:
     """Build a SET_FLAGS packet (renderer/animation feature toggles)."""
     payload = _FACE_SET_FLAGS_FMT.pack(flags & FACE_FLAGS_ALL)
     return build_packet(FaceCmdType.SET_FLAGS, seq, payload)
+
+
+# -- TIME_SYNC packet building / parsing ------------------------------------
+
+_TIME_SYNC_REQ_FMT = struct.Struct("<II")  # ping_seq:u32, reserved:u32
+_TIME_SYNC_RESP_FMT = struct.Struct("<IQ")  # ping_seq:u32, t_src_us:u64
+
+
+@dataclass(slots=True)
+class TimeSyncRespPayload:
+    ping_seq: int
+    t_src_us: int
+
+    @classmethod
+    def unpack(cls, data: bytes) -> TimeSyncRespPayload:
+        if len(data) < _TIME_SYNC_RESP_FMT.size:
+            raise ValueError(
+                f"TIME_SYNC_RESP too short: {len(data)} < {_TIME_SYNC_RESP_FMT.size}"
+            )
+        ping_seq, t_src_us = _TIME_SYNC_RESP_FMT.unpack_from(data)
+        return cls(ping_seq=ping_seq, t_src_us=t_src_us)
+
+
+def build_time_sync_req(seq: int, ping_seq: int) -> bytes:
+    """Build a TIME_SYNC_REQ packet (PROTOCOL.md section 2.2)."""
+    payload = _TIME_SYNC_REQ_FMT.pack(ping_seq, 0)
+    return build_packet(COMMON_TIME_SYNC_REQ, seq, payload)
 
 
 # -- Packet parsing ----------------------------------------------------------

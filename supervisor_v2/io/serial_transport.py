@@ -35,7 +35,7 @@ class SerialTransport:
         self._buf = bytearray()
         self._connected = False
         self._running = False
-        self._on_packet: Callable[[ParsedPacket], None] | None = None
+        self._on_packet_handlers: list[Callable[[ParsedPacket], None]] = []
         self._on_connect: Callable[[], None] | None = None
         self._on_disconnect: Callable[[], None] | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -62,7 +62,7 @@ class SerialTransport:
         return self._connected
 
     def on_packet(self, cb: Callable[[ParsedPacket], None]) -> None:
-        self._on_packet = cb
+        self._on_packet_handlers.append(cb)
 
     def on_connect(self, cb: Callable[[], None]) -> None:
         self._on_connect = cb
@@ -87,9 +87,7 @@ class SerialTransport:
                 written = self._ser.write(data) or 0
                 if written != len(data):
                     self._write_timeouts += 1
-                    self._last_error = (
-                        f"Short write ({written}/{len(data)} bytes)"
-                    )
+                    self._last_error = f"Short write ({written}/{len(data)} bytes)"
                     return False
                 self._tx_bytes += written
                 return True
@@ -228,8 +226,8 @@ class SerialTransport:
             return
         self._frames_ok += 1
         self._last_frame_mono_ms = time.monotonic() * 1000.0
-        if self._on_packet:
-            self._on_packet(pkt)
+        for handler in self._on_packet_handlers:
+            handler(pkt)
 
     def _handle_disconnect(self) -> None:
         if self._connected:
