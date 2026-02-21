@@ -7,19 +7,15 @@ project := justfile_directory()
 # ── Testing ──────────────────────────────────────────────
 
 # Run all tests
-test-all: test-supervisor test-server test-sv2 test-dashboard
+test-all: test-supervisor test-server test-dashboard
 
 # Run supervisor tests (with optional filter)
 test-supervisor *filter:
-    cd {{project}}/supervisor && python -m pytest tests/ -v {{filter}}
+    cd {{project}}/supervisor_v2 && python -m pytest tests/ -v {{filter}}
 
 # Run server tests (with optional filter)
 test-server *filter:
     cd {{project}}/server && uv run pytest tests/ -v {{filter}}
-
-# Run supervisor_v2 tests (with optional filter)
-test-sv2 *filter:
-    cd {{project}}/supervisor_v2 && python -m pytest tests/ -v {{filter}}
 
 # Run dashboard tests
 test-dashboard *filter:
@@ -35,13 +31,13 @@ lint-fix: lint-python-fix lint-cpp-fix lint-dashboard-fix
 
 # Check Python formatting + lint
 lint-python:
-    ruff format --check {{project}}/supervisor/ {{project}}/server/ {{project}}/supervisor_v2/
-    ruff check {{project}}/supervisor/ {{project}}/server/ {{project}}/supervisor_v2/
+    ruff format --check {{project}}/server/ {{project}}/supervisor_v2/
+    ruff check {{project}}/server/ {{project}}/supervisor_v2/
 
 # Auto-fix Python formatting + lint
 lint-python-fix:
-    ruff format {{project}}/supervisor/ {{project}}/server/ {{project}}/supervisor_v2/
-    ruff check --fix {{project}}/supervisor/ {{project}}/server/ {{project}}/supervisor_v2/
+    ruff format {{project}}/server/ {{project}}/supervisor_v2/
+    ruff check --fix {{project}}/server/ {{project}}/supervisor_v2/
 
 # Check C++ formatting + static analysis
 lint-cpp:
@@ -66,15 +62,11 @@ lint-dashboard-fix:
 
 # Run supervisor with mock hardware (no robot needed)
 run-mock:
-    cd {{project}}/supervisor && python -m supervisor --mock --no-face --no-vision
+    cd {{project}}/supervisor_v2 && python -m supervisor_v2 --mock --no-face --no-vision
 
 # Run supervisor (default ports)
 run:
-    cd {{project}}/supervisor && python -m supervisor
-
-# Run supervisor v2 with mock hardware
-run-v2-mock:
-    cd {{project}}/supervisor_v2 && python -m supervisor_v2 --mock --no-face --no-vision
+    cd {{project}}/supervisor_v2 && python -m supervisor_v2
 
 # Run planner server
 run-server:
@@ -116,21 +108,13 @@ monitor-face:
 
 # ── Deployment ───────────────────────────────────────────
 
-# Deploy supervisor v1 (update)
+# Deploy supervisor (update)
 deploy:
     cd {{project}} && bash deploy/update.sh
-
-# Deploy supervisor v2 (update)
-deploy-v2:
-    cd {{project}} && bash deploy/update.sh --v2
 
 # First-time install on Pi
 install:
     cd {{project}} && bash deploy/install.sh
-
-# First-time install v2 on Pi
-install-v2:
-    cd {{project}} && bash deploy/install.sh --v2
 
 # ── Preflight ────────────────────────────────────────────
 

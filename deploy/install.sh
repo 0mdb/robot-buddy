@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
-# deploy/install.sh — One-time setup for robot-buddy-supervisor on Raspberry Pi OS
+# deploy/install.sh — One-time setup for robot-buddy supervisor on Raspberry Pi OS
 #
 # Run as your normal user (pi).  Will prompt for sudo where needed.
 #
 # Usage:
 #   cd ~/robot-buddy
-#   bash deploy/install.sh          # install v1 supervisor
-#   bash deploy/install.sh --v2     # install v2 supervisor
+#   bash deploy/install.sh
 #
 # Idempotent: safe to re-run after pulling changes.
 
@@ -21,29 +20,13 @@ ok()    { echo "[install] ✓ $*"; }
 warn()  { echo "[install] WARNING: $*" >&2; }
 die()   { echo "[install] ERROR: $*" >&2; exit 1; }
 
-# ── Parse version flag ──────────────────────────────────────────────────────
-VERSION="v1"
-for arg in "$@"; do
-    case "$arg" in
-        --v2) VERSION="v2" ;;
-    esac
-done
-
-if [[ "$VERSION" == "v2" ]]; then
-    SUPERVISOR_DIR="$REPO_ROOT/supervisor_v2"
-    SERVICE_NAME="robot-buddy-supervisor-v2"
-    SERVICE_FILE="$DEPLOY_DIR/$SERVICE_NAME.service"
-    ENV_SOURCE="$DEPLOY_DIR/supervisor-v2.env"
-    ENV_DEST="/etc/robot-buddy/supervisor-v2.env"
-    MODULE_NAME="supervisor_v2"
-else
-    SUPERVISOR_DIR="$REPO_ROOT/supervisor"
-    SERVICE_NAME="robot-buddy-supervisor"
-    SERVICE_FILE="$DEPLOY_DIR/$SERVICE_NAME.service"
-    ENV_SOURCE="$DEPLOY_DIR/supervisor.env"
-    ENV_DEST="/etc/robot-buddy/supervisor.env"
-    MODULE_NAME="supervisor"
-fi
+# ── Paths ─────────────────────────────────────────────────────────────────────
+SUPERVISOR_DIR="$REPO_ROOT/supervisor_v2"
+SERVICE_NAME="robot-buddy-supervisor-v2"
+SERVICE_FILE="$DEPLOY_DIR/$SERVICE_NAME.service"
+ENV_SOURCE="$DEPLOY_DIR/supervisor-v2.env"
+ENV_DEST="/etc/robot-buddy/supervisor-v2.env"
+MODULE_NAME="supervisor_v2"
 
 SYSTEMD_DEST="/etc/systemd/system/$SERVICE_NAME.service"
 VENV="$SUPERVISOR_DIR/.venv"
@@ -148,4 +131,4 @@ echo "  View live logs:   journalctl -fu $SERVICE_NAME"
 echo "  Stop service:     sudo systemctl stop $SERVICE_NAME"
 echo "  Disable autorun:  sudo systemctl disable $SERVICE_NAME"
 echo "  Edit runtime flags: sudo nano $ENV_DEST"
-echo "  Update code:      bash deploy/update.sh$([ "$VERSION" == "v2" ] && echo " --v2")"
+echo "  Update code:      bash deploy/update.sh"

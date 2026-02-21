@@ -23,20 +23,14 @@ Reflexes are local and deterministic. Planner is remote and optional.
 
 ```
 robot-buddy/
-├── supervisor/          # Python supervisor (Raspberry Pi 5)
-│   ├── supervisor/      # Main package
-│   │   ├── io/          # Serial transport, COBS framing
-│   │   ├── devices/     # MCU clients, audio orchestration, conversation, expressions
-│   │   ├── state/       # State machine, datatypes, safety policies
-│   │   ├── api/         # FastAPI HTTP/WebSocket server, param registry, dashboard
-│   │   ├── inputs/      # Vision (camera, multiprocessing worker)
-│   │   ├── logging/     # Telemetry recording (JSONL)
-│   │   ├── mock/        # Mock Reflex MCU for testing (PTY-based)
-│   │   ├── planner/     # Planner integration (scheduler, event bus, skills, speech)
-│   │   ├── services/    # Audio service
-│   │   ├── config.py    # YAML config with dataclass schemas
-│   │   ├── runtime.py   # 50 Hz control loop
-│   │   └── main.py      # Entry point, CLI args
+├── supervisor_v2/       # Python supervisor (Raspberry Pi 5, process-isolated workers)
+│   ├── core/            # 50 Hz tick loop, state machine, safety, behavior engine
+│   ├── devices/         # MCU clients (reflex, face), protocol, expressions
+│   ├── io/              # Serial transport, COBS framing, CRC
+│   ├── workers/         # Process-isolated workers (TTS, vision, AI)
+│   ├── messages/        # NDJSON envelope, event/action types
+│   ├── api/             # FastAPI HTTP/WebSocket server, param registry
+│   ├── mock/            # Mock Reflex MCU for testing (PTY-based)
 │   ├── tests/           # pytest test suite
 │   └── pyproject.toml   # Package metadata, deps
 ├── server/              # AI planner server (3090 Ti, FastAPI + backend switch)
@@ -143,19 +137,19 @@ Auto-reconnect with exponential backoff (0.5s–5s). See `docs/protocols.md` for
 ### Supervisor (Raspberry Pi 5)
 
 ```bash
-cd supervisor
+cd supervisor_v2
 pip install -e ".[dev]"
 
 # Run with mock hardware (no physical robot needed)
-python -m supervisor --mock
+python -m supervisor_v2 --mock
 
 # Run with real hardware
-python -m supervisor --port /dev/ttyUSB0
+python -m supervisor_v2 --port /dev/ttyUSB0
 
 # Other options
-python -m supervisor --no-vision         # Disable vision process
-python -m supervisor --http-port 8080    # Custom HTTP port
-python -m supervisor --planner-api http://10.0.0.20:8100 --robot-id robot-1
+python -m supervisor_v2 --no-vision         # Disable vision worker
+python -m supervisor_v2 --http-port 8080    # Custom HTTP port
+python -m supervisor_v2 --planner-api http://10.0.0.20:8100 --robot-id robot-1
 ```
 
 ### AI Planner Server (3090 Ti PC)
@@ -189,7 +183,7 @@ idf.py monitor
 
 ```bash
 # Supervisor tests (from repo root)
-python -m pytest supervisor/tests/ -v
+python -m pytest supervisor_v2/tests/ -v
 
 # AI server tests
 cd server
@@ -200,19 +194,19 @@ python -m pytest tests/ -v
 
 ```bash
 # Check
-ruff check supervisor/
+ruff check supervisor_v2/
 ruff check server/
 
 # Auto-fix
-ruff check --fix supervisor/ server/
+ruff check --fix supervisor_v2/ server/
 
 # Format
-ruff format supervisor/ server/
+ruff format supervisor_v2/ server/
 ```
 
 ### Mock Mode
 
-The supervisor includes a PTY-based mock Reflex MCU (`supervisor/mock/mock_reflex.py`) that simulates serial communication, telemetry, and fault injection. Use `--mock` to run the full supervisor stack without any hardware.
+The supervisor includes a PTY-based mock Reflex MCU (`supervisor_v2/mock/mock_reflex.py`) that simulates serial communication, telemetry, and fault injection. Use `--mock` to run the full supervisor stack without any hardware.
 
 ### Web UI
 
@@ -225,7 +219,7 @@ When the supervisor is running, open `http://<robot_ip>:8080` in a browser for:
 
 ### Configuration
 
-**Supervisor** — YAML config file (schema in `supervisor/config.py`):
+**Supervisor** — YAML config file (schema in `supervisor_v2/config.py`):
 - Sections: serial, control, safety, network, logging, vision
 - Default serial paths: `/dev/robot_reflex`, `/dev/robot_face` (via udev symlinks)
 

@@ -1,5 +1,8 @@
 # Supervisor V2 Migration Plan
 
+> **Note:** V1 has been removed from the repository. This document is retained
+> as architectural context for the v2 design decisions.
+
 ## Context
 
 The current supervisor (`supervisor/supervisor/`) is a single-process, tightly-coupled architecture where `runtime.py` (728 lines) orchestrates everything inline: MCU I/O, vision polling, planner lifecycle, audio/speech, face commands, and safety policies — all in one 350-line `_tick()` method. This works but creates jitter risk (audio/camera/LLM can stall the control loop), makes fault isolation impossible (a bad TTS lib can freeze the robot), and blocks the GIL across all subsystems.
