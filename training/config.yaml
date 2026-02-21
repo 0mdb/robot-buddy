@@ -1,0 +1,64 @@
+# OpenWakeWord training config for "Hey Buddy" wake word.
+# Docs: https://github.com/dscripka/openWakeWord/blob/main/examples/custom_model.yml
+#
+# v1 results (2025-02-21): accuracy 71%, recall 42%, FP/hr 0.27
+# To improve recall: increase n_samples to 50k+, add speech backgrounds,
+# increase augmentation_rounds to 5, try layer_size 64.
+
+model_name: "hey_buddy"
+target_phrase:
+  - "hey buddy"
+output_dir: "./output"
+
+# ── Synthetic data generation (Phase 1) ────────────────────
+piper_sample_generator_path: "./piper-sample-generator"
+n_samples: 15000
+n_samples_val: 3000
+tts_batch_size: 50
+
+# ── Augmentation (Phase 2) ─────────────────────────────────
+augmentation_rounds: 3
+augmentation_batch_size: 16
+
+rir_paths:
+  - "./data/mit_rirs"
+
+background_paths:
+  - "./data/fma"
+
+background_paths_duplication_rate:
+  - 1
+
+# ── Training data (Phase 3) ────────────────────────────────
+feature_data_files:
+  "ACAV100M_sample": "./data/openwakeword_features_ACAV100M_2000_hrs_16bit.npy"
+
+false_positive_validation_data_path: "./data/validation_set_features.npy"
+
+batch_n_per_class:
+  "ACAV100M_sample": 1024
+  "adversarial_negative": 50
+  "positive": 50
+
+# ── Model architecture ─────────────────────────────────────
+model_type: "dnn"
+layer_size: 32
+
+# ── Training hyperparameters ───────────────────────────────
+steps: 50000
+max_negative_weight: 1500
+target_false_positives_per_hour: 0.2
+
+# ── Negative phrases (phonemically similar, should NOT trigger)
+custom_negative_phrases:
+  - "hey body"
+  - "hey bunny"
+  - "hey baby"
+  - "hey bubby"
+  - "hey betty"
+  - "a buddy"
+  - "hey birdie"
+  - "hey daddy"
+  - "hi buddy"
+  - "hey muddy"
+  - "hey puppy"
