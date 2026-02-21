@@ -27,9 +27,9 @@ constexpr gpio_num_t PIN_IMU_SDA = GPIO_NUM_17;
 constexpr gpio_num_t PIN_IMU_SCL = GPIO_NUM_18;
 
 // ---- Ultrasonic range sensor (HC-SR04 or similar) ----
-constexpr gpio_num_t PIN_RANGE_TRIG = GPIO_NUM_1; // output: 10 µs trigger pulse
-constexpr gpio_num_t PIN_RANGE_ECHO = GPIO_NUM_2; // input: echo pulse (level-shift if 5 V)
+constexpr gpio_num_t PIN_RANGE_TRIG = GPIO_NUM_21; // output: 10 µs trigger pulse
+constexpr gpio_num_t PIN_RANGE_ECHO = GPIO_NUM_2;  // input: echo pulse (level-shift if 5 V)
 
 // ---- Optional ----
-constexpr gpio_num_t PIN_ESTOP_N = GPIO_NUM_13;    // active-low, external pull-up
-constexpr gpio_num_t PIN_VBAT_SENSE = GPIO_NUM_14; // ADC input, voltage divider
+constexpr gpio_num_t PIN_ESTOP_N = GPIO_NUM_13;   // active-low, external pull-up
+constexpr gpio_num_t PIN_VBAT_SENSE = GPIO_NUM_1; // ADC1_CH0, voltage divider
