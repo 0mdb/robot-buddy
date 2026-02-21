@@ -1,0 +1,38 @@
+.tabBar {
+  display: flex;
+  height: var(--tabbar-height);
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  overflow-x: auto;
+}
+
+.tab {
+  padding: 0 16px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-dim);
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+  transition:
+    color 0.15s,
+    border-color 0.15s;
+  background: none;
+  border-top: none;
+  border-left: none;
+  border-right: none;
+  border-radius: 0;
+}
+
+.tab:hover {
+  color: var(--text);
+}
+
+.tabActive {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}

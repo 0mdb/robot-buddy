@@ -16,9 +16,11 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response
 
 if TYPE_CHECKING:
     from supervisor_v2.api.param_registry import ParamRegistry
@@ -31,6 +33,80 @@ log = logging.getLogger(__name__)
 STATIC_DIR = Path(__file__).parent.parent / "static"
 
 
+# -- WebSocket log broadcaster ------------------------------------------------
+
+
+class WebSocketLogBroadcaster(logging.Handler):
+    """Logging handler that broadcasts JSON log entries to connected WS clients.
+
+    Supports multiple concurrent clients (broadcast, not single-consumer queue).
+    Each client gets its own asyncio.Queue so slow clients don't block others.
+    """
+
+    def __init__(self, maxsize: int = 256) -> None:
+        super().__init__()
+        self._clients: set[asyncio.Queue[str]] = set()
+        self._maxsize = maxsize
+
+    def add_client(self) -> asyncio.Queue[str]:
+        q: asyncio.Queue[str] = asyncio.Queue(maxsize=self._maxsize)
+        self._clients.add(q)
+        return q
+
+    def remove_client(self, q: asyncio.Queue[str]) -> None:
+        self._clients.discard(q)
+
+    def emit(self, record: logging.LogRecord) -> None:
+        entry = json.dumps(
+            {
+                "ts": record.created,
+                "level": record.levelname,
+                "name": record.name,
+                "msg": self.format(record),
+            }
+        )
+        for q in list(self._clients):
+            try:
+                q.put_nowait(entry)
+            except asyncio.QueueFull:
+                # Drop oldest entry to make room
+                try:
+                    q.get_nowait()
+                    q.put_nowait(entry)
+                except (asyncio.QueueEmpty, asyncio.QueueFull):
+                    pass
+
+
+_log_broadcaster = WebSocketLogBroadcaster()
+
+
+def install_log_handler() -> None:
+    """Attach the broadcast handler to the root logger. Call once at startup."""
+    root = logging.getLogger()
+    # Avoid duplicate installs
+    if _log_broadcaster not in root.handlers:
+        _log_broadcaster.setFormatter(logging.Formatter("%(message)s"))
+        root.addHandler(_log_broadcaster)
+
+
+# -- Cache-Control middleware --------------------------------------------------
+
+
+class NoCacheIndexMiddleware(BaseHTTPMiddleware):
+    """Set Cache-Control: no-cache on index.html so browsers pick up new builds.
+
+    Vite's hashed asset filenames (index-D3fX.js) are safe to cache indefinitely,
+    but index.html must be fetched fresh so the browser loads new asset hashes.
+    """
+
+    async def dispatch(self, request: Request, call_next) -> Response:
+        response = await call_next(request)
+        path = request.url.path
+        if path == "/" or path.endswith("/index.html"):
+            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        return response
+
+
 def create_app(
     tick: TickLoop,
     registry: ParamRegistry,
@@ -38,6 +114,23 @@ def create_app(
     workers: WorkerManager,
 ) -> FastAPI:
     app = FastAPI(title="Robot Buddy Supervisor v2", version="2.0.0")
+    app.add_middleware(NoCacheIndexMiddleware)
+    install_log_handler()
+
+    # -- WebSocket logs ------------------------------------------------------
+
+    @app.websocket("/ws/logs")
+    async def websocket_logs(ws: WebSocket):
+        await ws.accept()
+        q = _log_broadcaster.add_client()
+        try:
+            while True:
+                entry = await q.get()
+                await ws.send_text(entry)
+        except WebSocketDisconnect:
+            pass
+        finally:
+            _log_broadcaster.remove_client(q)
 
     # -- HTTP endpoints ------------------------------------------------------
 
@@ -61,22 +154,24 @@ def create_app(
 
     @app.get("/debug/clocks")
     async def get_clock_debug():
-        return JSONResponse({
-            "reflex": {
-                "state": tick.robot.reflex_clock.state,
-                "offset_ns": tick.robot.reflex_clock.offset_ns,
-                "rtt_min_us": tick.robot.reflex_clock.rtt_min_us,
-                "drift_us_per_s": tick.robot.reflex_clock.drift_us_per_s,
-                "samples": tick.robot.reflex_clock.samples,
-            },
-            "face": {
-                "state": tick.robot.face_clock.state,
-                "offset_ns": tick.robot.face_clock.offset_ns,
-                "rtt_min_us": tick.robot.face_clock.rtt_min_us,
-                "drift_us_per_s": tick.robot.face_clock.drift_us_per_s,
-                "samples": tick.robot.face_clock.samples,
-            },
-        })
+        return JSONResponse(
+            {
+                "reflex": {
+                    "state": tick.robot.reflex_clock.state,
+                    "offset_ns": tick.robot.reflex_clock.offset_ns,
+                    "rtt_min_us": tick.robot.reflex_clock.rtt_min_us,
+                    "drift_us_per_s": tick.robot.reflex_clock.drift_us_per_s,
+                    "samples": tick.robot.reflex_clock.samples,
+                },
+                "face": {
+                    "state": tick.robot.face_clock.state,
+                    "offset_ns": tick.robot.face_clock.offset_ns,
+                    "rtt_min_us": tick.robot.face_clock.rtt_min_us,
+                    "drift_us_per_s": tick.robot.face_clock.drift_us_per_s,
+                    "samples": tick.robot.face_clock.samples,
+                },
+            }
+        )
 
     @app.get("/params")
     async def get_params():
@@ -137,7 +232,9 @@ def create_app(
             nonlocal _video_clients
             _video_clients += 1
             # Enable MJPEG on vision worker
-            await workers.send_to("vision", "vision.config.update", {"mjpeg_enabled": True})
+            await workers.send_to(
+                "vision", "vision.config.update", {"mjpeg_enabled": True}
+            )
             log.info("video: client connected (%d active)", _video_clients)
             try:
                 last_seq = 0
@@ -232,12 +329,16 @@ async def _handle_ws_cmd(msg: dict, tick: TickLoop) -> None:
         if tick._face and tick._face.connected:
             tick._face.send_flags(flags)
     elif msg_type == "face_set_state":
-        from supervisor_v2.devices.expressions import EMOTION_TO_FACE_MOOD, normalize_emotion_name
+        from supervisor_v2.devices.expressions import (
+            EMOTION_TO_FACE_MOOD,
+            normalize_emotion_name,
+        )
 
         mood_id = msg.get("mood_id")
         if not isinstance(mood_id, int):
             mood_id = EMOTION_TO_FACE_MOOD.get(
-                normalize_emotion_name(str(msg.get("emotion", "")) or "neutral") or "neutral"
+                normalize_emotion_name(str(msg.get("emotion", "")) or "neutral")
+                or "neutral"
             )
         if mood_id is None:
             return
@@ -250,7 +351,10 @@ async def _handle_ws_cmd(msg: dict, tick: TickLoop) -> None:
                 brightness=float(msg.get("brightness", 1.0)),
             )
     elif msg_type == "face_gesture":
-        from supervisor_v2.devices.expressions import GESTURE_TO_FACE_ID, normalize_face_gesture_name
+        from supervisor_v2.devices.expressions import (
+            GESTURE_TO_FACE_ID,
+            normalize_face_gesture_name,
+        )
 
         gesture_id = msg.get("gesture_id")
         if not isinstance(gesture_id, int):
