@@ -55,7 +55,6 @@ class WsProtocolManager {
   private disposed = false
 
   connect(): void {
-    if (this.disposed) return
     this.disposed = false
     this.cleanup()
 
