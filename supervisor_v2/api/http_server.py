@@ -16,6 +16,7 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -115,9 +116,14 @@ def create_app(
     workers: WorkerManager,
     capture: ProtocolCapture | None = None,
 ) -> FastAPI:
+    import psutil
+
     app = FastAPI(title="Robot Buddy Supervisor v2", version="2.0.0")
     app.add_middleware(NoCacheIndexMiddleware)
     install_log_handler()
+
+    # Prime psutil CPU measurement (first call always returns 0.0)
+    psutil.cpu_percent(interval=None)
 
     # -- WebSocket logs ------------------------------------------------------
 
@@ -189,6 +195,41 @@ def create_app(
                     "drift_us_per_s": tick.robot.face_clock.drift_us_per_s,
                     "samples": tick.robot.face_clock.samples,
                 },
+            }
+        )
+
+    @app.get("/debug/system")
+    async def get_system_debug():
+        import time
+
+        cpu_temp = None
+        try:
+            temps = psutil.sensors_temperatures()
+            if "cpu_thermal" in temps:
+                cpu_temp = temps["cpu_thermal"][0].current
+            elif temps:
+                first = next(iter(temps.values()))
+                cpu_temp = first[0].current if first else None
+        except Exception:
+            pass
+
+        vm = psutil.virtual_memory()
+        disk = psutil.disk_usage("/")
+        freq = psutil.cpu_freq()
+        return JSONResponse(
+            {
+                "cpu_percent": psutil.cpu_percent(interval=None),
+                "cpu_count": psutil.cpu_count(),
+                "cpu_freq_mhz": round(freq.current) if freq else None,
+                "cpu_temp_c": round(cpu_temp, 1) if cpu_temp is not None else None,
+                "mem_total_mb": round(vm.total / 1048576),
+                "mem_used_mb": round(vm.used / 1048576),
+                "mem_percent": vm.percent,
+                "disk_total_gb": round(disk.total / 1073741824, 1),
+                "disk_used_gb": round(disk.used / 1073741824, 1),
+                "disk_percent": disk.percent,
+                "load_avg": list(psutil.getloadavg()),
+                "uptime_s": round(time.monotonic()),
             }
         )
 

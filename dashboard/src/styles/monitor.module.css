@@ -1,0 +1,168 @@
+/* Diagnostic tree */
+.treeContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+button.treeRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 13px;
+  user-select: none;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  color: var(--text);
+}
+
+button.treeRow:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.treeToggle {
+  width: 14px;
+  font-size: 10px;
+  color: var(--text-dim);
+  flex-shrink: 0;
+  text-align: center;
+}
+
+.treeLabel {
+  flex: 1;
+}
+
+.treeSummary {
+  color: var(--text-dim);
+  font-size: 11px;
+  font-family: var(--font-mono);
+}
+
+/* Status dots */
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.dotOk {
+  background: var(--green);
+}
+.dotWarn {
+  background: var(--yellow);
+}
+.dotError {
+  background: var(--red);
+}
+.dotStale {
+  background: #666;
+}
+
+/* Progress bars (CPU, memory, disk) */
+.progressTrack {
+  background: var(--bg);
+  border-radius: 3px;
+  height: 8px;
+  flex: 1;
+  overflow: hidden;
+  min-width: 60px;
+}
+
+.progressFill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+/* Metric rows */
+.metricRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+}
+
+.metricLabel {
+  color: var(--text-dim);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.metricValue {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Fault grid */
+.faultGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+
+.faultItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+}
+
+.faultDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* Section title */
+.sectionTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+
+/* Worker row */
+.workerRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+  font-size: 12px;
+  font-family: var(--font-mono);
+}
+
+.workerName {
+  width: 60px;
+  color: var(--text-dim);
+}
+
+/* Caps list */
+.capItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+  font-size: 12px;
+  font-family: var(--font-mono);
+}
+
+.capScale {
+  color: var(--yellow);
+  font-weight: 600;
+  width: 40px;
+}
+
+.capReason {
+  color: var(--text-dim);
+}

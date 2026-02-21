@@ -176,4 +176,4 @@ Add dashboard panel per device:
 - [ ] Log raw packets with `t_pi_rx_ns`
 - [ ] Add `frame_seq`, `t_cam_ns`, `t_det_done_ns`
 - [ ] Add `cmd_seq` to motion commands
-- [ ] Add telemetry health dashboard
+- [x] Add telemetry health dashboard (Monitor tab: diagnostic tree, Pi resources, comms, power, sensors, faults, workers)

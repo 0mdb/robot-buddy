@@ -12,9 +12,14 @@ dependencies = [
     "pyyaml>=6.0",
     "opencv-python-headless>=4.8",
     "numpy>=1.24",
+    "psutil>=5.9",
 ]
 
 [project.optional-dependencies]
+ear = [
+    "openwakeword>=0.6",
+    "onnxruntime>=1.16",
+]
 rpi = [
     "picamera2>=0.3.17",
 ]

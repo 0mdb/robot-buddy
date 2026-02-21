@@ -205,6 +205,34 @@ export interface ClocksDebug {
   face: ClockSyncInfo
 }
 
+// ---- System resources from /debug/system ----
+
+export interface SystemDebug {
+  cpu_percent: number
+  cpu_count: number
+  cpu_freq_mhz: number | null
+  cpu_temp_c: number | null
+  mem_total_mb: number
+  mem_used_mb: number
+  mem_percent: number
+  disk_total_gb: number
+  disk_used_gb: number
+  disk_percent: number
+  load_avg: [number, number, number]
+  uptime_s: number
+}
+
+// ---- Worker debug from /debug/workers ----
+
+export interface WorkerDebugEntry {
+  alive: boolean
+  restart_count: number
+  last_seq: number
+  pid: number | null
+}
+
+export type WorkersDebug = Record<string, WorkerDebugEntry>
+
 // ---- Log entry from WS /ws/logs ----
 
 export interface LogEntry {
@@ -225,3 +253,4 @@ export type TabId =
   | 'calibration'
   | 'params'
   | 'face'
+  | 'monitor'

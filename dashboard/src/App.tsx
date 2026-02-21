@@ -11,6 +11,7 @@ import DevicesTab from './tabs/DevicesTab'
 import DriveTab from './tabs/DriveTab'
 import FaceTab from './tabs/FaceTab'
 import LogsTab from './tabs/LogsTab'
+import MonitorTab from './tabs/MonitorTab'
 import ParamsTab from './tabs/ParamsTab'
 import ProtocolTab from './tabs/ProtocolTab'
 import TelemetryTab from './tabs/TelemetryTab'
@@ -45,6 +46,8 @@ function TabContent() {
       return <ParamsTab />
     case 'face':
       return <FaceTab />
+    case 'monitor':
+      return <MonitorTab />
     default:
       return <DriveTab />
   }

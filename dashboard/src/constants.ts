@@ -93,6 +93,7 @@ export const TABS: { id: TabId; label: string }[] = [
   { id: 'calibration', label: 'Calibration' },
   { id: 'params', label: 'Parameters' },
   { id: 'face', label: 'Face' },
+  { id: 'monitor', label: 'Monitor' },
 ]
 
 // ---- Telemetry ring buffer metrics ----
