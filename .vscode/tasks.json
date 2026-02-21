@@ -1,0 +1,166 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Test: Supervisor",
+            "type": "shell",
+            "command": "just test-supervisor",
+            "group": "test",
+            "problemMatcher": [],
+            "presentation": { "reveal": "always", "panel": "shared" }
+        },
+        {
+            "label": "Test: Server",
+            "type": "shell",
+            "command": "just test-server",
+            "group": "test",
+            "problemMatcher": [],
+            "presentation": { "reveal": "always", "panel": "shared" }
+        },
+        {
+            "label": "Test: Supervisor V2",
+            "type": "shell",
+            "command": "just test-sv2",
+            "group": "test",
+            "problemMatcher": [],
+            "presentation": { "reveal": "always", "panel": "shared" }
+        },
+        {
+            "label": "Test: All",
+            "type": "shell",
+            "command": "just test-all",
+            "group": {
+                "kind": "test",
+                "isDefault": true
+            },
+            "problemMatcher": [],
+            "presentation": { "reveal": "always", "panel": "shared" }
+        },
+        {
+            "label": "Lint: All",
+            "type": "shell",
+            "command": "just lint",
+            "group": "test",
+            "problemMatcher": [
+                "$eslint-compact",
+                {
+                    "owner": "ruff",
+                    "fileLocation": "absolute",
+                    "pattern": {
+                        "regexp": "^(.+):(\\d+):(\\d+): (\\w+) (.+)$",
+                        "file": 1, "line": 2, "column": 3, "code": 4, "message": 5
+                    }
+                }
+            ],
+            "presentation": { "reveal": "always", "panel": "shared" }
+        },
+        {
+            "label": "Lint: Fix All",
+            "type": "shell",
+            "command": "just lint-fix",
+            "problemMatcher": [],
+            "presentation": { "reveal": "always", "panel": "shared" }
+        },
+        {
+            "label": "Preflight",
+            "type": "shell",
+            "command": "just preflight",
+            "group": "test",
+            "problemMatcher": [],
+            "presentation": { "reveal": "always", "panel": "shared" }
+        },
+        {
+            "label": "Build: Reflex Firmware",
+            "type": "shell",
+            "command": "source ~/esp/esp-idf/export.sh && just build-reflex",
+            "group": "build",
+            "problemMatcher": "$gcc",
+            "presentation": { "reveal": "always", "panel": "shared" }
+        },
+        {
+            "label": "Build: Face Firmware",
+            "type": "shell",
+            "command": "source ~/esp/esp-idf/export.sh && just build-face",
+            "group": "build",
+            "problemMatcher": "$gcc",
+            "presentation": { "reveal": "always", "panel": "shared" }
+        },
+        {
+            "label": "Flash: Reflex",
+            "type": "shell",
+            "command": "source ~/esp/esp-idf/export.sh && just flash-reflex",
+            "problemMatcher": [],
+            "presentation": { "reveal": "always", "panel": "shared" }
+        },
+        {
+            "label": "Flash: Face",
+            "type": "shell",
+            "command": "source ~/esp/esp-idf/export.sh && just flash-face",
+            "problemMatcher": [],
+            "presentation": { "reveal": "always", "panel": "shared" }
+        },
+        {
+            "label": "Run: Supervisor (mock)",
+            "type": "shell",
+            "command": "just run-mock",
+            "isBackground": true,
+            "problemMatcher": [],
+            "presentation": { "reveal": "always", "panel": "dedicated" }
+        },
+        {
+            "label": "Run: Supervisor V2 (mock)",
+            "type": "shell",
+            "command": "just run-v2-mock",
+            "isBackground": true,
+            "problemMatcher": [],
+            "presentation": { "reveal": "always", "panel": "dedicated" }
+        },
+        {
+            "label": "Run: Planner Server",
+            "type": "shell",
+            "command": "just run-server",
+            "isBackground": true,
+            "problemMatcher": [],
+            "presentation": { "reveal": "always", "panel": "dedicated" }
+        },
+        {
+            "label": "Test: Dashboard",
+            "type": "shell",
+            "command": "just test-dashboard",
+            "group": "test",
+            "problemMatcher": [],
+            "presentation": { "reveal": "always", "panel": "shared" }
+        },
+        {
+            "label": "Lint: Dashboard",
+            "type": "shell",
+            "command": "just lint-dashboard",
+            "group": "test",
+            "problemMatcher": [],
+            "presentation": { "reveal": "always", "panel": "shared" }
+        },
+        {
+            "label": "Lint: Dashboard Fix",
+            "type": "shell",
+            "command": "just lint-dashboard-fix",
+            "problemMatcher": [],
+            "presentation": { "reveal": "always", "panel": "shared" }
+        },
+        {
+            "label": "Run: Dashboard Dev",
+            "type": "shell",
+            "command": "just run-dashboard",
+            "isBackground": true,
+            "problemMatcher": [],
+            "presentation": { "reveal": "always", "panel": "dedicated" }
+        },
+        {
+            "label": "Build: Dashboard",
+            "type": "shell",
+            "command": "just build-dashboard",
+            "group": "build",
+            "problemMatcher": "$tsc",
+            "presentation": { "reveal": "always", "panel": "shared" }
+        }
+    ]
+}

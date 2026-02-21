@@ -1,83 +1,62 @@
 ---
 name: lint
-description: Run linting, formatting, and static analysis checks across Python and C/C++ code. Use when the user asks to lint, check code quality, format code, run type checking, or verify code before committing.
-argument-hint: "[python|cpp|all] [--fix]"
-allowed-tools: Bash(ruff:*), Bash(ruff check:*), Bash(ruff format:*), Bash(pyright:*), Bash(clang-format:*), Bash(cppcheck:*), Read, Grep, Glob
+description: Run linting, formatting, and static analysis checks across Python, C/C++, and TypeScript/React code. Use when the user asks to lint, check code quality, format code, run type checking, or verify code before committing.
+argument-hint: "[python|cpp|dashboard|all] [--fix]"
+allowed-tools: Bash(just:*), Bash(ruff:*), Bash(ruff check:*), Bash(ruff format:*), Bash(clang-format:*), Bash(cppcheck:*), Bash(npx:*), Read, Grep, Glob
 ---
 
 Run linting and static analysis. Parse `$ARGUMENTS` to determine scope and mode.
 
 ## Argument parsing
 
-- No arguments or `all` → run everything (Python + C++)
-- `python` → Python checks only (ruff + pyright)
-- `cpp` or `c++` or `firmware` → C/C++ checks only (clang-format + cppcheck)
+- No arguments or `all` → run everything (Python + C++ + Dashboard)
+- `python` → Python checks only
+- `cpp` or `c++` or `firmware` → C/C++ checks only
+- `dashboard` or `web` or `ui` or `ts` or `react` → Dashboard checks only (Biome + TypeScript)
 - `--fix` anywhere in args → auto-fix where possible
 - A specific directory or file → lint only that target
 
-## Python checks (in order)
+## Commands
 
-### 1. Ruff format check
+### All checks (no fix)
 ```bash
-cd /home/ben/robot-buddy && ruff format --check supervisor/ server/ supervisor_v2/
-```
-With `--fix`:
-```bash
-cd /home/ben/robot-buddy && ruff format supervisor/ server/ supervisor_v2/
+just lint
 ```
 
-### 2. Ruff lint
+### All checks with auto-fix
 ```bash
-cd /home/ben/robot-buddy && ruff check supervisor/ server/ supervisor_v2/
-```
-With `--fix`:
-```bash
-cd /home/ben/robot-buddy && ruff check --fix supervisor/ server/ supervisor_v2/
+just lint-fix
 ```
 
-### 3. Pyright type checking (optional)
+### Python only
 ```bash
-cd /home/ben/robot-buddy && pyright
-```
-Pyright uses `pyrightconfig.json` at the project root. Pylance in VSCode provides the same checks in-editor.
-
-If pyright is not installed, skip and note:
-> Pyright CLI not installed (Pylance handles this in VSCode). Install with: `pip install pyright`
-
-## C/C++ checks (in order)
-
-### 1. clang-format (style check)
-```bash
-cd /home/ben/robot-buddy && clang-format --dry-run -Werror esp32-reflex/main/*.cpp esp32-reflex/main/*.h esp32-face-v2/main/*.cpp esp32-face-v2/main/*.h
-```
-With `--fix`:
-```bash
-cd /home/ben/robot-buddy && clang-format -i esp32-reflex/main/*.cpp esp32-reflex/main/*.h esp32-face-v2/main/*.cpp esp32-face-v2/main/*.h
+just lint-python       # check
+just lint-python-fix   # fix
 ```
 
-### 2. cppcheck (static analysis)
-No compilation database needed — works directly on source files.
-
+### C++ only
 ```bash
-cd /home/ben/robot-buddy && cppcheck --language=c++ --enable=warning,performance,portability --suppress=missingIncludeSystem --inline-suppr --error-exitcode=1 -I esp32-reflex/main esp32-reflex/main/*.cpp esp32-reflex/main/*.h
+just lint-cpp          # check (clang-format + cppcheck)
+just lint-cpp-fix      # fix (clang-format -i)
 ```
 
+### Dashboard only
 ```bash
-cd /home/ben/robot-buddy && cppcheck --language=c++ --enable=warning,performance,portability --suppress=missingIncludeSystem --inline-suppr --error-exitcode=1 -I esp32-face-v2/main esp32-face-v2/main/*.cpp esp32-face-v2/main/*.h
+just lint-dashboard       # check (biome + tsc)
+just lint-dashboard-fix   # fix (biome --fix)
 ```
 
-Key flags:
-- `--language=c++` — .h files are C++, not C
-- `--enable=warning,performance,portability` — useful checks without excessive noise
-- `--suppress=missingIncludeSystem` — suppress ESP-IDF system header warnings
-- `--error-exitcode=1` — fail on warnings for CI
-
-If cppcheck is not installed, warn the user:
-> cppcheck not installed. Install with: `sudo apt install cppcheck`
+### Specific file (bypass just)
+For a single file, run the tool directly:
+```bash
+ruff check --fix path/to/file.py
+clang-format -i path/to/file.cpp
+npx --prefix dashboard biome check --fix path/to/file.tsx
+```
 
 ## Rules
 
-1. Run checks in the order listed — formatting first, then lint, then static analysis.
+1. Run checks in order — formatting first, then lint, then static analysis.
 2. Report results per tool: pass/fail + issue count.
 3. For failures, show the specific issues and suggest fixes.
 4. If `--fix` was requested, report what was auto-fixed and what still needs manual attention.
