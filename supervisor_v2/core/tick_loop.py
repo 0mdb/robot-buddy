@@ -49,7 +49,6 @@ from supervisor_v2.devices.protocol import (
 from supervisor_v2.devices.reflex_client import ReflexClient
 from supervisor_v2.messages.envelope import Envelope
 from supervisor_v2.messages.types import (
-    AI_CMD_CANCEL,
     AI_CMD_END_CONVERSATION,
     AI_CMD_START_CONVERSATION,
     AI_CONVERSATION_EMOTION,
@@ -128,6 +127,7 @@ class TickLoop:
 
         # Face flags sent on reconnect
         self._face_flags_sent = False
+        self._last_face_system_mode: int | None = None
 
         # Wire MCU callbacks
         if self._reflex:
@@ -280,6 +280,7 @@ class TickLoop:
             self._face_flags_sent = True
             # Send default flags on reconnect
             from supervisor_v2.devices.protocol import FACE_FLAGS_ALL
+
             self._face.send_flags(FACE_FLAGS_ALL)
 
         tel = self._face.telemetry
@@ -303,7 +304,9 @@ class TickLoop:
         self._event_bus.on_face_button(evt)
 
         # PTT toggle
-        if evt.button_id == int(FaceButtonId.PTT) and evt.event_type == int(FaceButtonEventType.TOGGLE):
+        if evt.button_id == int(FaceButtonId.PTT) and evt.event_type == int(
+            FaceButtonEventType.TOGGLE
+        ):
             ptt_on = bool(evt.state)
             self.world.ptt_active = ptt_on
             if ptt_on:
@@ -312,8 +315,9 @@ class TickLoop:
                 self._end_conversation()
 
         # ACTION click — greet routine
-        if (evt.button_id == int(FaceButtonId.ACTION)
-                and evt.event_type == int(FaceButtonEventType.CLICK)):
+        if evt.button_id == int(FaceButtonId.ACTION) and evt.event_type == int(
+            FaceButtonEventType.CLICK
+        ):
             now_ms = time.monotonic() * 1000.0
             if now_ms - self._last_greet_ms > self._greet_debounce_ms:
                 self._last_greet_ms = now_ms
@@ -342,13 +346,20 @@ class TickLoop:
             self._reflex.send_twist(capped.v_mm_s, capped.w_mrad_s)
 
         if not self._face or not self._face.connected:
+            self._last_face_system_mode = None
             return
 
-        # Face system mode overlay — only override for critical states
-        if self.robot.mode == Mode.BOOT:
-            self._face.send_system_mode(FaceSystemMode.BOOTING, 0)
-        elif self.robot.mode == Mode.ERROR:
-            self._face.send_system_mode(FaceSystemMode.ERROR_DISPLAY, 0)
+        # Face system mode overlay — send only on change, skip when manual lock
+        if not self.robot.face_manual_lock:
+            if self.robot.mode == Mode.BOOT:
+                desired_sys = int(FaceSystemMode.BOOTING)
+            elif self.robot.mode == Mode.ERROR:
+                desired_sys = int(FaceSystemMode.ERROR_DISPLAY)
+            else:
+                desired_sys = int(FaceSystemMode.NONE)
+            if desired_sys != self._last_face_system_mode:
+                self._face.send_system_mode(desired_sys, 0)
+                self._last_face_system_mode = desired_sys
 
         # Talking layer — driven by TTS energy
         if self.world.speaking:
@@ -381,11 +392,19 @@ class TickLoop:
                     self._face.send_gesture(gid, 500)
         self._conversation_gestures = []
 
-    async def _emit_worker_actions(self, now_ms: float, recent: list[PlannerEvent]) -> None:
+    async def _emit_worker_actions(
+        self, now_ms: float, recent: list[PlannerEvent]
+    ) -> None:
         """Send actions to workers: speech, plan execution."""
         # Execute due planner actions
-        face_locked = self.robot.face_talking or self.robot.face_listening or self.robot.face_manual_lock
-        due = self._scheduler.pop_due_actions(now_mono_ms=now_ms, face_locked=face_locked)
+        face_locked = (
+            self.robot.face_talking
+            or self.robot.face_listening
+            or self.robot.face_manual_lock
+        )
+        due = self._scheduler.pop_due_actions(
+            now_mono_ms=now_ms, face_locked=face_locked
+        )
 
         for action in due:
             action_type = action.get("action", "")
@@ -400,26 +419,37 @@ class TickLoop:
 
         # Speech policy (deterministic, idle-priority speech)
         intents, drops = self._speech_policy.generate(
-            state=self.robot, events=recent, now_mono_ms=now_ms,
+            state=self.robot,
+            events=recent,
+            now_mono_ms=now_ms,
         )
         for intent in intents:
             await self._enqueue_say(intent.text, source="speech_policy", priority=3)
 
         # Periodic plan requests
-        if (self.world.planner_enabled
-                and self.world.planner_connected
-                and now_ms - self._last_plan_request_ms > _PLAN_PERIOD_S * 1000):
+        if (
+            self.world.planner_enabled
+            and self.world.planner_connected
+            and now_ms - self._last_plan_request_ms > _PLAN_PERIOD_S * 1000
+        ):
             self._last_plan_request_ms = now_ms
             await self._request_plan(now_ms)
 
-    async def _enqueue_say(self, text: str, source: str = "planner", priority: int = 2) -> None:
+    async def _enqueue_say(
+        self, text: str, source: str = "planner", priority: int = 2
+    ) -> None:
         """Send speech to TTS worker via speech arbitration (§8.1)."""
         self.world.say_requested += 1
 
         # Speech arbitration: check if current speech has higher priority
         if self.world.speaking and priority >= self.world.speech_priority:
-            self.world.say_dropped_reason[f"preempted_by_p{self.world.speech_priority}"] = (
-                self.world.say_dropped_reason.get(f"preempted_by_p{self.world.speech_priority}", 0) + 1
+            self.world.say_dropped_reason[
+                f"preempted_by_p{self.world.speech_priority}"
+            ] = (
+                self.world.say_dropped_reason.get(
+                    f"preempted_by_p{self.world.speech_priority}", 0
+                )
+                + 1
             )
             return
 
@@ -427,12 +457,16 @@ class TickLoop:
         if self.world.speaking and priority < self.world.speech_priority:
             await self._workers.send_to("tts", TTS_CMD_CANCEL)
 
-        sent = await self._workers.send_to("tts", TTS_CMD_SPEAK, {
-            "text": text,
-            "emotion": "neutral",
-            "source": source,
-            "priority": priority,
-        })
+        sent = await self._workers.send_to(
+            "tts",
+            TTS_CMD_SPEAK,
+            {
+                "text": text,
+                "emotion": "neutral",
+                "source": source,
+                "priority": priority,
+            },
+        )
         if sent:
             self.world.say_enqueued += 1
             self.world.speech_source = source
@@ -481,30 +515,35 @@ class TickLoop:
             return
 
         import uuid
+
         self.world.session_id = f"sess-{uuid.uuid4().hex[:12]}"
         self.world.turn_id = 1
 
         # Fire-and-forget async sends
         asyncio.ensure_future(
-            self._workers.send_to("ai", AI_CMD_START_CONVERSATION, {
-                "session_id": self.world.session_id,
-                "turn_id": self.world.turn_id,
-            })
+            self._workers.send_to(
+                "ai",
+                AI_CMD_START_CONVERSATION,
+                {
+                    "session_id": self.world.session_id,
+                    "turn_id": self.world.turn_id,
+                },
+            )
         )
-        asyncio.ensure_future(
-            self._workers.send_to("tts", TTS_CMD_START_MIC)
-        )
+        asyncio.ensure_future(self._workers.send_to("tts", TTS_CMD_START_MIC))
         self.robot.face_listening = True
 
     def _end_conversation(self) -> None:
         """End a PTT conversation."""
+        asyncio.ensure_future(self._workers.send_to("tts", TTS_CMD_STOP_MIC))
         asyncio.ensure_future(
-            self._workers.send_to("tts", TTS_CMD_STOP_MIC)
-        )
-        asyncio.ensure_future(
-            self._workers.send_to("ai", AI_CMD_END_CONVERSATION, {
-                "session_id": self.world.session_id,
-            })
+            self._workers.send_to(
+                "ai",
+                AI_CMD_END_CONVERSATION,
+                {
+                    "session_id": self.world.session_id,
+                },
+            )
         )
         self.robot.face_listening = False
         self.world.session_id = ""
@@ -513,6 +552,7 @@ class TickLoop:
     async def _request_plan(self, now_ms: float) -> None:
         """Send plan request to AI worker."""
         from supervisor_v2.messages.types import AI_CMD_REQUEST_PLAN
+
         world_dict = {
             "robot_id": self._robot_id,
             "mode": self.robot.mode.value,
@@ -531,7 +571,9 @@ class TickLoop:
             "face_talking": self.robot.face_talking,
             "face_listening": self.robot.face_listening,
         }
-        await self._workers.send_to("ai", AI_CMD_REQUEST_PLAN, {"world_state": world_dict})
+        await self._workers.send_to(
+            "ai", AI_CMD_REQUEST_PLAN, {"world_state": world_dict}
+        )
 
     # ── Telemetry ────────────────────────────────────────────────
 
