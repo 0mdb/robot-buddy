@@ -8,13 +8,9 @@ Robot Buddy is a kid-safe, expressive robot platform combining real-time motor c
 
 ```
 robot-buddy/
-├── supervisor/          # Python supervisor (Raspberry Pi 5)
-│   ├── supervisor/      # Main package
+├── supervisor_v2/       # Python supervisor (Raspberry Pi 5, process-isolated workers)
+│   ├── supervisor_v2/   # Main package
 │   ├── tests/           # pytest test suite
-│   └── pyproject.toml
-├── supervisor_v2/       # Supervisor v2 (process-isolated workers)
-│   ├── supervisor_v2/
-│   ├── tests/
 │   └── pyproject.toml
 ├── esp32-face-v2/       # Face MCU firmware (ESP32-S3, C/C++)
 │   └── main/            # ILI9341 display, LVGL, touch, LED
@@ -50,7 +46,7 @@ robot-buddy/
 All commands are available via `just` (see `justfile` for full list):
 
 ```bash
-just test-all              # run all tests (supervisor, server, sv2, dashboard)
+just test-all              # run all tests (supervisor, server, dashboard)
 just test-supervisor       # supervisor tests only
 just test-server           # server tests only
 just test-dashboard        # dashboard tests only (Vitest)
@@ -64,7 +60,7 @@ just run-dashboard         # run dashboard dev server (Vite)
 just build-dashboard       # build dashboard → supervisor_v2/static/
 just build-reflex          # build reflex firmware (needs ESP-IDF env)
 just flash-reflex          # build + flash reflex
-just deploy-v2             # update + restart on Pi
+just deploy                # update + restart on Pi
 ```
 
 ## Code Conventions
@@ -102,10 +98,10 @@ just deploy-v2             # update + restart on Pi
 
 ## Testing
 
-- Python tests: `supervisor/tests/`, `server/tests/`, `supervisor_v2/tests/`
+- Python tests: `supervisor_v2/tests/`, `server/tests/`
 - Dashboard tests: `dashboard/src/**/*.test.{ts,tsx}` (Vitest + Testing Library)
 - Use `pytest-asyncio` for async tests
-- Mock Reflex MCU (`supervisor/mock/mock_reflex.py`) — PTY-based fake serial
+- Mock Reflex MCU (`supervisor_v2/mock/mock_reflex.py`) — PTY-based fake serial
 - Run the full test suite before submitting changes
 
 ## Skills

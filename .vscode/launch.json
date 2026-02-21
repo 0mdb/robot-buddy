@@ -2,37 +2,7 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Supervisor (mock, no hardware)",
-            "type": "debugpy",
-            "request": "launch",
-            "module": "supervisor",
-            "args": ["--mock", "--no-face", "--no-vision", "--log-level", "DEBUG"],
-            "cwd": "${workspaceFolder}/supervisor",
-            "console": "integratedTerminal",
-            "justMyCode": true
-        },
-        {
-            "name": "Supervisor (mock + vision)",
-            "type": "debugpy",
-            "request": "launch",
-            "module": "supervisor",
-            "args": ["--mock", "--no-face", "--log-level", "DEBUG"],
-            "cwd": "${workspaceFolder}/supervisor",
-            "console": "integratedTerminal",
-            "justMyCode": true
-        },
-        {
-            "name": "Supervisor (real hardware)",
-            "type": "debugpy",
-            "request": "launch",
-            "module": "supervisor",
-            "args": ["--log-level", "DEBUG"],
-            "cwd": "${workspaceFolder}/supervisor",
-            "console": "integratedTerminal",
-            "justMyCode": true
-        },
-        {
-            "name": "Supervisor V2 (mock)",
+            "name": "Supervisor (mock)",
             "type": "debugpy",
             "request": "launch",
             "module": "supervisor_v2",
@@ -49,16 +19,6 @@
             "cwd": "${workspaceFolder}/server",
             "console": "integratedTerminal",
             "justMyCode": true
-        },
-        {
-            "name": "Test: Supervisor",
-            "type": "debugpy",
-            "request": "launch",
-            "module": "pytest",
-            "args": ["tests/", "-v", "--tb=short"],
-            "cwd": "${workspaceFolder}/supervisor",
-            "console": "integratedTerminal",
-            "justMyCode": false
         },
         {
             "name": "Test: Current File",

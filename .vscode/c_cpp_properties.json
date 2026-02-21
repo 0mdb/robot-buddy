@@ -1,0 +1,15 @@
+{
+    "configurations": [
+        {
+            "name": "ESP32-S3 Reflex",
+            "compileCommands": "${workspaceFolder}/esp32-reflex/build/compile_commands.json",
+            "compilerPath": "/home/ben/.espressif/tools/xtensa-esp-elf/esp-14.2.0_20241119/xtensa-esp-elf/bin/xtensa-esp32s3-elf-gcc"
+        },
+        {
+            "name": "ESP32-S3 Face",
+            "compileCommands": "${workspaceFolder}/esp32-face-v2/build/compile_commands.json",
+            "compilerPath": "/home/ben/.espressif/tools/xtensa-esp-elf/esp-14.2.0_20241119/xtensa-esp-elf/bin/xtensa-esp32s3-elf-gcc"
+        }
+    ],
+    "version": 4
+}
