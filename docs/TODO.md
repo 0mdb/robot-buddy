@@ -5,7 +5,7 @@
 - Add trigger word so conversations flow more naturally. Wait for silence. Remove need to press button.
 - Upgrade the camera and adjust settings.
 - Add camera calibration/mask/cv settings in supervisor dash.
-- Fix server issue when trying to run better TTS model.
+- ~~Fix server issue when trying to run better TTS model.~~ Fixed — persistent event loop for Orpheus vLLM engine + proper GPU memory cleanup on reset.
 - Don't send planner updates so often.
 - Add LLM history so conversations feel more natural.
 - TTS from non-button press (deterministic sources) either cut off or not firing at all.

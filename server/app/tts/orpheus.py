@@ -155,7 +155,9 @@ class OrpheusTTS:
         self._active_lock = threading.Lock()
         self._orpheus_allowed = bool(settings.performance_mode)
         self._orpheus_policy_reason = (
-            "performance_mode_enabled" if settings.performance_mode else "performance_mode_disabled"
+            "performance_mode_enabled"
+            if settings.performance_mode
+            else "performance_mode_disabled"
         )
 
     @property
@@ -180,7 +182,10 @@ class OrpheusTTS:
         self._orpheus_policy_reason = reason or (
             "performance_mode_enabled" if allowed else "performance_mode_disabled"
         )
-        if not self._orpheus_allowed and self._backend in {"orpheus_speech", "orpheus_tts"}:
+        if not self._orpheus_allowed and self._backend in {
+            "orpheus_speech",
+            "orpheus_tts",
+        }:
             self._reset_orpheus_backend()
 
     async def warmup(self) -> None:
@@ -225,7 +230,9 @@ class OrpheusTTS:
             return
 
         if self._backend_pref not in {"auto", "orpheus"}:
-            log.warning("Unknown TTS_BACKEND=%r; defaulting to auto", self._backend_pref)
+            log.warning(
+                "Unknown TTS_BACKEND=%r; defaulting to auto", self._backend_pref
+            )
             self._backend_pref = "auto"
 
         if not self._orpheus_allowed:
@@ -244,7 +251,9 @@ class OrpheusTTS:
             )
             return
 
-        log.info("Loading Orpheus TTS model %s on %s...", self._model_name, self._device)
+        log.info(
+            "Loading Orpheus TTS model %s on %s...", self._model_name, self._device
+        )
 
         # Backend A: legacy runtime exposing `orpheus_speech.generate_speech`.
         try:
@@ -261,9 +270,28 @@ class OrpheusTTS:
         # Backend B: current PyPI package exposing `orpheus_tts.OrpheusModel`.
         try:
             from orpheus_tts import OrpheusModel  # type: ignore[import-not-found]
-            from vllm import AsyncEngineArgs, AsyncLLMEngine  # type: ignore[import-not-found]
+            from vllm import AsyncEngineArgs, AsyncLLMEngine, SamplingParams  # type: ignore[import-not-found]
 
             class _TunedOrpheusModel(OrpheusModel):
+                """OrpheusModel with a persistent event loop for vLLM.
+
+                The upstream generate_tokens_sync() calls asyncio.run() per
+                invocation, destroying the event loop each time.  vLLM's
+                AsyncLLMEngine starts persistent background tasks on that
+                loop, so destroying it kills the engine.  We maintain a
+                single persistent loop on a dedicated daemon thread.
+                """
+
+                def __init__(self, model_name):
+                    self._persistent_loop = asyncio.new_event_loop()
+                    self._loop_thread = threading.Thread(
+                        target=self._persistent_loop.run_forever,
+                        daemon=True,
+                        name="orpheus-vllm-loop",
+                    )
+                    self._loop_thread.start()
+                    super().__init__(model_name)
+
                 def _setup_engine(self):
                     engine_args = AsyncEngineArgs(
                         model=self.model_name,
@@ -273,7 +301,104 @@ class OrpheusTTS:
                         max_num_seqs=settings.orpheus_max_num_seqs,
                         max_num_batched_tokens=settings.orpheus_max_num_batched_tokens,
                     )
+                    future = asyncio.run_coroutine_threadsafe(
+                        self._create_engine_async(engine_args),
+                        self._persistent_loop,
+                    )
+                    return future.result(timeout=120)
+
+                @staticmethod
+                async def _create_engine_async(engine_args):
                     return AsyncLLMEngine.from_engine_args(engine_args)
+
+                def generate_tokens_sync(
+                    self,
+                    prompt,
+                    voice=None,
+                    request_id="req-001",
+                    temperature=0.6,
+                    top_p=0.8,
+                    max_tokens=1200,
+                    stop_token_ids=[49158],
+                    repetition_penalty=1.3,
+                ):
+                    """Use persistent event loop instead of asyncio.run()."""
+                    prompt_string = self._format_prompt(prompt, voice)
+                    sampling_params = SamplingParams(
+                        temperature=temperature,
+                        top_p=top_p,
+                        max_tokens=max_tokens,
+                        stop_token_ids=stop_token_ids,
+                        repetition_penalty=repetition_penalty,
+                    )
+
+                    token_queue: queue.Queue[str | Exception | None] = queue.Queue()
+
+                    async def async_producer():
+                        try:
+                            async for result in self.engine.generate(
+                                prompt=prompt_string,
+                                sampling_params=sampling_params,
+                                request_id=request_id,
+                            ):
+                                token_queue.put(result.outputs[0].text)
+                        except Exception as exc:
+                            token_queue.put(exc)
+                            return
+                        token_queue.put(None)
+
+                    future = asyncio.run_coroutine_threadsafe(
+                        async_producer(), self._persistent_loop
+                    )
+
+                    while True:
+                        item = token_queue.get()
+                        if item is None:
+                            break
+                        if isinstance(item, Exception):
+                            raise item
+                        yield item
+
+                    future.result(timeout=5)
+
+                def generate_speech(self, **kwargs):
+                    from orpheus_tts.decoder import tokens_decoder_sync
+
+                    return tokens_decoder_sync(self.generate_tokens_sync(**kwargs))
+
+                def shutdown(self):
+                    """Shutdown the vLLM engine and stop the persistent loop."""
+                    engine = getattr(self, "engine", None)
+                    if engine is not None:
+                        shutdown_fn = getattr(engine, "shutdown", None)
+                        if callable(shutdown_fn):
+                            if self._persistent_loop.is_running():
+                                fut = asyncio.run_coroutine_threadsafe(
+                                    self._call_shutdown(shutdown_fn),
+                                    self._persistent_loop,
+                                )
+                                try:
+                                    fut.result(timeout=10)
+                                except Exception:
+                                    log.debug(
+                                        "Orpheus engine shutdown raised", exc_info=True
+                                    )
+                        self.engine = None
+
+                    loop = getattr(self, "_persistent_loop", None)
+                    thread = getattr(self, "_loop_thread", None)
+                    if loop is not None and loop.is_running():
+                        loop.call_soon_threadsafe(loop.stop)
+                    if thread is not None:
+                        thread.join(timeout=5)
+
+                @staticmethod
+                async def _call_shutdown(shutdown_fn):
+                    import inspect
+
+                    result = shutdown_fn()
+                    if inspect.isawaitable(result):
+                        await result
 
             model_candidates = [
                 self._model_name,
@@ -301,7 +426,9 @@ class OrpheusTTS:
                         settings.orpheus_max_num_batched_tokens,
                     )
                     return
-                except Exception as exc:  # pragma: no cover - hardware/runtime dependent
+                except (
+                    Exception
+                ) as exc:  # pragma: no cover - hardware/runtime dependent
                     last_err = exc
                     log.warning("Orpheus model init failed for %s: %s", name, exc)
             if last_err is not None:
@@ -323,12 +450,45 @@ class OrpheusTTS:
         self._loaded = True
 
     def _reset_orpheus_backend(self) -> None:
-        """Drop backend state so a dead engine can be recreated."""
+        """Drop backend state so a dead engine can be recreated.
+
+        Explicitly shuts down the vLLM engine subprocess and frees GPU
+        memory so a fresh engine can allocate its full VRAM budget.
+        """
+        model = self._model
         self._loaded = False
         self._backend = None
         self._legacy_generate_speech = None
         self._model = None
         self._init_error = None
+
+        if model is not None:
+            shutdown = getattr(model, "shutdown", None)
+            if callable(shutdown):
+                try:
+                    shutdown()
+                except Exception:
+                    log.debug("Orpheus engine shutdown raised", exc_info=True)
+            del model
+
+        try:
+            import gc
+
+            gc.collect()
+        except Exception:
+            pass
+        try:
+            import torch
+
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except Exception:
+            pass
+
+    def close(self) -> None:
+        """Shutdown the TTS engine and free GPU memory."""
+        if self._backend in {"orpheus_speech", "orpheus_tts"}:
+            self._reset_orpheus_backend()
 
     def _collect_chunks_with_timeout(self, gen: Iterator[bytes]) -> bytes:
         """Drain an Orpheus generator safely with idle/total timeouts."""
@@ -483,14 +643,19 @@ class OrpheusTTS:
 
         for attempt in (1, 2):
             try:
-                if self._backend == "orpheus_speech" and self._legacy_generate_speech is not None:
+                if (
+                    self._backend == "orpheus_speech"
+                    and self._legacy_generate_speech is not None
+                ):
                     audio_float32 = self._legacy_generate_speech(tagged_text)
                     return pcm_float32_to_int16(audio_float32, src_rate=24000)
 
                 if self._backend == "orpheus_tts" and self._model is not None:
                     # orpheus_tts currently yields int16 PCM chunks at 24 kHz.
-                    req_id = f"req-{int(time.time()*1000)}-{uuid.uuid4().hex[:8]}"
-                    gen = self._model.generate_speech(prompt=tagged_text, request_id=req_id)
+                    req_id = f"req-{int(time.time() * 1000)}-{uuid.uuid4().hex[:8]}"
+                    gen = self._model.generate_speech(
+                        prompt=tagged_text, request_id=req_id
+                    )
                     audio_int16_24k = self._collect_chunks_with_timeout(gen)
                     if not audio_int16_24k:
                         return b""
@@ -507,7 +672,10 @@ class OrpheusTTS:
                 return b""
             except Exception as exc:
                 if self._backend == "orpheus_tts" and attempt == 1:
-                    log.warning("Orpheus synthesis failed; resetting engine and retrying once: %s", exc)
+                    log.warning(
+                        "Orpheus synthesis failed; resetting engine and retrying once: %s",
+                        exc,
+                    )
                     self._reset_orpheus_backend()
                     self._ensure_model()
                     continue

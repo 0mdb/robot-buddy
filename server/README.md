@@ -181,12 +181,12 @@ Returns `503` when the selected LLM backend is not reachable.
 
 - Orpheus model repos are gated on Hugging Face. Account access + auth are required.
 - First TTS request can be significantly slower than warm-path requests because model load/compile happens lazily.
-- Current behavior: conversational TTS can work end-to-end but has high first-audio latency and occasional `EngineDeadError`/timeout events on some warm turns.
-- If logs show `CUDA out of memory ... warming up sampler with 128 dummy requests`, lower:
+- The Orpheus backend uses a persistent event loop thread to keep the vLLM engine alive between requests. On failure, the engine is explicitly shut down and GPU memory is freed before retrying.
+- If logs show `CUDA out of memory`, lower:
   - `ORPHEUS_GPU_MEMORY_UTILIZATION`
   - `ORPHEUS_MAX_NUM_SEQS`
   - `ORPHEUS_MAX_NUM_BATCHED_TOKENS`
-- If logs show `orpheus stream idle ...` or `EngineDeadError`, raise:
+- If logs show `orpheus stream idle ...` timeouts, raise:
   - `ORPHEUS_IDLE_TIMEOUT_S`
   - `ORPHEUS_TOTAL_TIMEOUT_S`
 

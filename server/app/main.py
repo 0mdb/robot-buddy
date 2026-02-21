@@ -115,7 +115,9 @@ async def lifespan(app: FastAPI):
         app.state.orpheus_vram_free_gb = free_vram_gb
         if free_vram_gb is None:
             tts.set_orpheus_allowed(False, "unknown_free_vram")
-            log.warning("Performance mode requested but free VRAM is unknown; Orpheus disabled")
+            log.warning(
+                "Performance mode requested but free VRAM is unknown; Orpheus disabled"
+            )
         elif free_vram_gb < settings.orpheus_min_free_vram_gb:
             tts.set_orpheus_allowed(False, "low_free_vram")
             log.warning(
@@ -132,6 +134,7 @@ async def lifespan(app: FastAPI):
 
     yield
 
+    tts.close()
     await llm.close()
 
 
@@ -205,7 +208,13 @@ async def health():
             "converse_sessions": (
                 converse_registry.snapshot()
                 if converse_registry is not None
-                else {"active_sessions": 0, "registered": 0, "preempted": 0, "unregistered": 0, "robots": []}
+                else {
+                    "active_sessions": 0,
+                    "registered": 0,
+                    "preempted": 0,
+                    "unregistered": 0,
+                    "robots": [],
+                }
             ),
             "ai": ai_debug_snapshot(),
             "llm": llm_snapshot,
