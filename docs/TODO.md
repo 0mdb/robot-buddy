@@ -11,6 +11,7 @@
 - TTS from non-button press (deterministic sources) either cut off or not firing at all.
 - Face stops talking before speech stops playing, needs better sync.
 - Should play a sound when listening for command is active (either by button press or keyword).
+- Face stuck displaying "booting" system mode — can't override expression from dashboard panel even though telemetry shows face MCU is connected.
 
 ---
 
