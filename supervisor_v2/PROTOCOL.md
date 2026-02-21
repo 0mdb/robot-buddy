@@ -164,10 +164,10 @@ UNSYNCED ─────────
 | State | Entry Condition | Meaning |
 |-------|----------------|---------|
 | `unsynced` | Initial state, or v1 device | No usable offset. Features report "unavailable." |
-| `synced` | ≥ 5 samples collected AND min RTT < 3 ms (USB threshold) | Offset is trustworthy for diagnostics and causality tracing. |
-| `degraded` | No accepted sample in last 5 seconds, OR min RTT > 3 ms for 10 consecutive pings | Offset may be stale or noisy. Logged as warning. |
+| `synced` | ≥ 5 samples collected AND min RTT < 10 ms (USB threshold) | Offset is trustworthy for diagnostics and causality tracing. |
+| `degraded` | No accepted sample in last 5 seconds, OR min RTT > 10 ms for 10 consecutive pings | Offset may be stale or noisy. Logged as warning. |
 
-**RTT threshold:** The 3 ms USB threshold filters out pings that hit USB scheduling jitter. Samples with `rtt_ns > 3_000_000` are recorded in the window but not used for the offset estimate. If all 16 window samples exceed the threshold, state transitions to `degraded`.
+**RTT threshold:** The 10 ms USB threshold filters out pings that hit anomalous USB scheduling jitter. ESP32-S3 uses Full-Speed USB (12 Mbit/s) with a 1 ms host poll interval, giving typical RTTs of 2–5 ms. Samples with `rtt_ns > 10_000_000` are recorded in the window but not used for the offset estimate. If all 16 window samples exceed the threshold, state transitions to `degraded`.
 
 **Stale timeout:** If `time.monotonic_ns() - t_last_sync_ns > 5_000_000_000` (5 seconds), state transitions to `degraded` regardless of sample quality.
 

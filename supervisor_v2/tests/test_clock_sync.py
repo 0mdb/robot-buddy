@@ -123,7 +123,7 @@ class TestClockSyncEngine:
         engine, transport, clock = self._make()
         # Send all samples with RTT above the 3ms threshold
         for _ in range(6):
-            _send_and_respond(engine, transport, rtt_ns=4_000_000)
+            _send_and_respond(engine, transport, rtt_ns=15_000_000)
         # Even with 6 samples (> min required), state stays unsynced
         # because no good-RTT samples exist
         assert clock.state == "unsynced"
@@ -133,7 +133,7 @@ class TestClockSyncEngine:
         engine, transport, clock = self._make()
         # 3 bad + 5 good = should sync (5 good samples, good RTT exists)
         for _ in range(3):
-            _send_and_respond(engine, transport, rtt_ns=4_000_000)
+            _send_and_respond(engine, transport, rtt_ns=15_000_000)
         for _ in range(5):
             _send_and_respond(engine, transport, rtt_ns=500_000)
         assert clock.state == "synced"
