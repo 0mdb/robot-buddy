@@ -6,6 +6,7 @@ import argparse
 import asyncio
 import logging
 import os
+from pathlib import Path
 
 log = logging.getLogger(__name__)
 
@@ -119,6 +120,7 @@ async def async_main(args: argparse.Namespace) -> None:
             workers.register("vision", "supervisor_v2.workers.vision_worker")
 
         if planner_enabled:
+            workers.register("ear", "supervisor_v2.workers.ear_worker")
             workers.register("tts", "supervisor_v2.workers.tts_worker")
             workers.register("ai", "supervisor_v2.workers.ai_worker")
 
@@ -156,12 +158,22 @@ async def async_main(args: argparse.Namespace) -> None:
             )
 
         if planner_enabled:
+            ear_init = {
+                "mic_device": args.usb_mic_device,
+                "mic_socket_path": workers.mic_socket_path,
+                "wakeword_model_path": str(
+                    Path(__file__).parent / "models" / "hey_buddy.onnx"
+                ),
+                "wakeword_threshold": 0.5,
+                "vad_silence_ms": 1200,
+                "vad_min_speech_ms": 300,
+            }
+            await workers.send_to("ear", "ear.config.init", ear_init)
+
             tts_init = {
                 "audio_mode": cfg.workers.audio_mode,
-                "mic_socket_path": workers.mic_socket_path,
                 "spk_socket_path": workers.spk_socket_path,
                 "speaker_device": args.usb_speaker_device,
-                "mic_device": args.usb_mic_device,
                 "tts_endpoint": args.planner_api + "/tts" if args.planner_api else "",
             }
             await workers.send_to("tts", "tts.config.init", tts_init)

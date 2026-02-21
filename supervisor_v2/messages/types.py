@@ -95,6 +95,21 @@ TTS_EVENT_AUDIO_CHUNK = "tts.event.audio_chunk"
 AI_CMD_SEND_AUDIO = "ai.cmd.send_audio"
 AI_CONVERSATION_AUDIO = "ai.conversation.audio"
 TTS_CMD_PLAY_AUDIO = "tts.cmd.play_audio"
+TTS_CMD_PLAY_CHIME = "tts.cmd.play_chime"
+
+# ── Ear — wake word + VAD (§4.9) ─────────────────────────────────
+
+EAR_CONFIG_INIT = "ear.config.init"
+EAR_CMD_START_LISTENING = "ear.cmd.start_listening"
+EAR_CMD_STOP_LISTENING = "ear.cmd.stop_listening"
+EAR_CMD_PAUSE_VAD = "ear.cmd.pause_vad"
+EAR_CMD_RESUME_VAD = "ear.cmd.resume_vad"
+EAR_EVENT_WAKE_WORD = "ear.event.wake_word"
+EAR_EVENT_END_OF_UTTERANCE = "ear.event.end_of_utterance"
+EAR_STATUS_HEALTH = "ear.status.health"
+EAR_LIFECYCLE_STARTED = "ear.lifecycle.started"
+EAR_LIFECYCLE_STOPPED = "ear.lifecycle.stopped"
+EAR_LIFECYCLE_ERROR = "ear.lifecycle.error"
 
 # ── Source IDs ───────────────────────────────────────────────────
 
@@ -102,4 +117,5 @@ SRC_CORE = "core"
 SRC_VISION = "vision"
 SRC_TTS = "tts"
 SRC_AI = "ai"
+SRC_EAR = "ear"
 SRC_DASHBOARD = "dashboard"

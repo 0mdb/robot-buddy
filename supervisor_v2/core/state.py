@@ -231,6 +231,7 @@ class WorldState:
     session_id: str = ""
     turn_id: int = 0
     ai_state: str = "idle"
+    conversation_trigger: str = ""  # "ptt" | "wake_word" | ""
 
     # MJPEG frame buffer (latest base64-encoded JPEG from vision worker)
     latest_jpeg_b64: str = ""

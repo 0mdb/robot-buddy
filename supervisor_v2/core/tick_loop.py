@@ -50,14 +50,23 @@ from supervisor_v2.devices.reflex_client import ReflexClient
 from supervisor_v2.messages.envelope import Envelope
 from supervisor_v2.messages.types import (
     AI_CMD_END_CONVERSATION,
+    AI_CMD_END_UTTERANCE,
     AI_CMD_START_CONVERSATION,
+    AI_CONVERSATION_DONE,
     AI_CONVERSATION_EMOTION,
     AI_CONVERSATION_GESTURE,
-    AI_CONVERSATION_DONE,
+    EAR_CMD_PAUSE_VAD,
+    EAR_CMD_RESUME_VAD,
+    EAR_CMD_START_LISTENING,
+    EAR_CMD_STOP_LISTENING,
+    EAR_EVENT_END_OF_UTTERANCE,
+    EAR_EVENT_WAKE_WORD,
     TTS_CMD_CANCEL,
+    TTS_CMD_PLAY_CHIME,
     TTS_CMD_SPEAK,
-    TTS_CMD_START_MIC,
-    TTS_CMD_STOP_MIC,
+    TTS_EVENT_CANCELLED,
+    TTS_EVENT_FINISHED,
+    TTS_EVENT_STARTED,
 )
 
 log = logging.getLogger(__name__)
@@ -314,7 +323,7 @@ class TickLoop:
             ptt_on = bool(evt.state)
             self.world.ptt_active = ptt_on
             if ptt_on:
-                self._start_conversation()
+                self._start_conversation("ptt")
             else:
                 self._end_conversation()
 
@@ -330,7 +339,7 @@ class TickLoop:
     # ── Face composition (§8.2) ──────────────────────────────────
 
     def _handle_face_events(self, env: Envelope) -> None:
-        """Buffer conversation emotion/gesture for face composition."""
+        """Buffer conversation emotion/gesture and handle ear/TTS events."""
         if env.type == AI_CONVERSATION_EMOTION:
             self._conversation_emotion = str(env.payload.get("emotion", ""))
             self._conversation_intensity = float(env.payload.get("intensity", 0.7))
@@ -340,6 +349,37 @@ class TickLoop:
             self._conversation_emotion = ""
             self._conversation_intensity = 0.0
             self._conversation_gestures = []
+            # If wake-word conversation, clean up session after response
+            if self.world.conversation_trigger == "wake_word" and self.world.session_id:
+                self._finish_session()
+
+        # Ear worker events
+        elif env.type == EAR_EVENT_WAKE_WORD:
+            if not self.world.session_id and not self.world.speaking:
+                self._start_conversation("wake_word")
+
+        elif env.type == EAR_EVENT_END_OF_UTTERANCE:
+            if self.world.session_id and self.world.conversation_trigger == "wake_word":
+                # Signal end of speech, then wait for AI_CONVERSATION_DONE
+                asyncio.ensure_future(
+                    self._workers.send_to(
+                        "ai",
+                        AI_CMD_END_UTTERANCE,
+                        {
+                            "session_id": self.world.session_id,
+                        },
+                    )
+                )
+                asyncio.ensure_future(
+                    self._workers.send_to("ear", EAR_CMD_STOP_LISTENING)
+                )
+                self.robot.face_listening = False
+
+        # VAD suppression during TTS playback
+        elif env.type == TTS_EVENT_STARTED:
+            asyncio.ensure_future(self._workers.send_to("ear", EAR_CMD_PAUSE_VAD))
+        elif env.type in (TTS_EVENT_FINISHED, TTS_EVENT_CANCELLED):
+            asyncio.ensure_future(self._workers.send_to("ear", EAR_CMD_RESUME_VAD))
 
     # ── Output emission ──────────────────────────────────────────
 
@@ -512,18 +552,23 @@ class TickLoop:
 
     # ── Conversation control ─────────────────────────────────────
 
-    def _start_conversation(self) -> None:
-        """Start a PTT conversation."""
+    def _start_conversation(self, trigger: str = "ptt") -> None:
+        """Start a conversation (PTT button or wake word)."""
         if not self.world.both_audio_links_up:
             log.warning("cannot start conversation: audio links not up")
+            return
+
+        # Prevent double-start
+        if self.world.session_id:
             return
 
         import uuid
 
         self.world.session_id = f"sess-{uuid.uuid4().hex[:12]}"
         self.world.turn_id = 1
+        self.world.conversation_trigger = trigger
 
-        # Fire-and-forget async sends
+        # Tell AI worker to open WebSocket
         asyncio.ensure_future(
             self._workers.send_to(
                 "ai",
@@ -534,12 +579,21 @@ class TickLoop:
                 },
             )
         )
-        asyncio.ensure_future(self._workers.send_to("tts", TTS_CMD_START_MIC))
+
+        # Tell ear worker to start forwarding mic audio + VAD
+        asyncio.ensure_future(self._workers.send_to("ear", EAR_CMD_START_LISTENING))
+
+        # Play acknowledgment chime for wake word
+        if trigger == "wake_word":
+            asyncio.ensure_future(
+                self._workers.send_to("tts", TTS_CMD_PLAY_CHIME, {"chime": "listening"})
+            )
+
         self.robot.face_listening = True
 
     def _end_conversation(self) -> None:
-        """End a PTT conversation."""
-        asyncio.ensure_future(self._workers.send_to("tts", TTS_CMD_STOP_MIC))
+        """End a PTT conversation (immediate teardown)."""
+        asyncio.ensure_future(self._workers.send_to("ear", EAR_CMD_STOP_LISTENING))
         asyncio.ensure_future(
             self._workers.send_to(
                 "ai",
@@ -550,8 +604,13 @@ class TickLoop:
             )
         )
         self.robot.face_listening = False
+        self._finish_session()
+
+    def _finish_session(self) -> None:
+        """Clean up conversation state (shared by PTT and wake word paths)."""
         self.world.session_id = ""
         self.world.turn_id = 0
+        self.world.conversation_trigger = ""
 
     async def _request_plan(self, now_ms: float) -> None:
         """Send plan request to AI worker."""

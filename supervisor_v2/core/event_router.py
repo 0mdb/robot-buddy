@@ -10,7 +10,10 @@ import logging
 import time
 from collections import OrderedDict
 
-from supervisor_v2.core.action_scheduler import ActionScheduler, PlanValidator, ValidatedPlan
+from supervisor_v2.core.action_scheduler import (
+    ActionScheduler,
+    PlanValidator,
+)
 from supervisor_v2.core.state import WorldState
 from supervisor_v2.messages.envelope import Envelope
 from supervisor_v2.messages.types import (
@@ -23,6 +26,9 @@ from supervisor_v2.messages.types import (
     AI_PLAN_RECEIVED,
     AI_STATE_CHANGED,
     AI_STATUS_HEALTH,
+    EAR_EVENT_END_OF_UTTERANCE,
+    EAR_EVENT_WAKE_WORD,
+    EAR_STATUS_HEALTH,
     SYSTEM_AUDIO_LINK_DOWN,
     SYSTEM_AUDIO_LINK_UP,
     TTS_EVENT_CANCELLED,
@@ -140,6 +146,17 @@ class EventRouter:
         elif t == AI_LIFECYCLE_ERROR:
             self._world.planner_connected = False
 
+        # ── Ear (wake word + VAD) ─────────────────────────────────
+        elif t == EAR_EVENT_WAKE_WORD:
+            pass  # handled by tick_loop
+
+        elif t == EAR_EVENT_END_OF_UTTERANCE:
+            pass  # handled by tick_loop
+
+        elif t == EAR_STATUS_HEALTH:
+            self._world.worker_last_heartbeat_ms["ear"] = now_ms
+            self._world.worker_alive["ear"] = True
+
         # ── System audio link ────────────────────────────────────
         elif t == SYSTEM_AUDIO_LINK_UP:
             socket = str(p.get("socket", ""))
@@ -155,8 +172,12 @@ class EventRouter:
                 self._world.mic_link_up = False
             elif socket == "spk":
                 self._world.spk_link_up = False
-            log.warning("audio link down: %s (from %s, reason=%s)",
-                        socket, worker_name, p.get("reason", "unknown"))
+            log.warning(
+                "audio link down: %s (from %s, reason=%s)",
+                socket,
+                worker_name,
+                p.get("reason", "unknown"),
+            )
 
     def _handle_plan(self, env: Envelope, now_ms: float) -> None:
         """Core-authoritative plan acceptance (§7.3.4)."""

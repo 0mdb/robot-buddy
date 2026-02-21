@@ -1,10 +1,11 @@
-"""TTS worker — pure audio I/O (speech playback + mic capture).
+"""TTS worker — speech playback and audio output.
 
 Absorbs v1 audio_orchestrator.py + lip_sync.py.  Never calls face_client —
 reports energy to Core, which sends face commands.
 
-Mode A (direct): Mic PCM → rb-mic socket, TTS PCM ← rb-spk socket.
-Mode B (relay):  Mic PCM → NDJSON events, TTS PCM ← NDJSON actions.
+Mic capture has moved to the ear worker (ear_worker.py).
+Mode A (direct): TTS PCM ← rb-spk socket.
+Mode B (relay):  TTS PCM ← NDJSON actions.
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ import math
 import socket
 import struct
 import time
+from pathlib import Path
 from typing import Any
 
 from supervisor_v2.messages.envelope import Envelope
@@ -23,16 +25,14 @@ from supervisor_v2.messages.types import (
     SYSTEM_AUDIO_LINK_DOWN,
     SYSTEM_AUDIO_LINK_UP,
     TTS_CMD_CANCEL,
-    TTS_CMD_SPEAK,
-    TTS_CMD_START_MIC,
-    TTS_CMD_STOP_MIC,
     TTS_CMD_PLAY_AUDIO,
+    TTS_CMD_PLAY_CHIME,
+    TTS_CMD_SPEAK,
     TTS_CONFIG_INIT,
     TTS_EVENT_CANCELLED,
     TTS_EVENT_ENERGY,
     TTS_EVENT_ERROR,
     TTS_EVENT_FINISHED,
-    TTS_EVENT_MIC_DROPPED,
     TTS_EVENT_STARTED,
 )
 from supervisor_v2.workers.base import BaseWorker, worker_main
@@ -48,12 +48,12 @@ CHUNK_BYTES = 320  # 10ms
 # Energy emission rate limit
 _ENERGY_MIN_INTERVAL_S = 1.0 / 20  # 20 Hz max
 
-# Mic ring buffer size (200ms)
-_MIC_RING_FRAMES = int(0.2 * SAMPLE_RATE / (CHUNK_BYTES // SAMPLE_WIDTH))
-
 # Socket connect retry
 _SOCKET_RETRY_INTERVAL_S = 0.1
 _SOCKET_RETRY_TIMEOUT_S = 30.0
+
+# Chime assets directory
+_CHIME_DIR = Path(__file__).parent.parent / "assets" / "chimes"
 
 
 def compute_rms_energy(pcm_chunk: bytes, *, gain: float = 220.0) -> int:
@@ -61,13 +61,14 @@ def compute_rms_energy(pcm_chunk: bytes, *, gain: float = 220.0) -> int:
     if len(pcm_chunk) < 2:
         return 0
     n_samples = len(pcm_chunk) // 2
-    samples = struct.unpack(f"<{n_samples}h", pcm_chunk[:n_samples * 2])
+    samples = struct.unpack(f"<{n_samples}h", pcm_chunk[: n_samples * 2])
     rms = math.sqrt(sum(s * s for s in samples) / n_samples) if n_samples else 0
     return min(255, int(rms / 32768.0 * gain))
 
 
 class LipSyncTracker:
     """Asymmetric exponential smoothing for lip sync energy."""
+
     __slots__ = ("_energy", "_attack", "_release")
 
     def __init__(self, attack: float = 0.55, release: float = 0.25) -> None:
@@ -92,15 +93,12 @@ class TTSWorker(BaseWorker):
         super().__init__()
         # Config (from tts.config.init)
         self._audio_mode = "direct"
-        self._mic_socket_path = ""
         self._spk_socket_path = ""
         self._speaker_device = "default"
-        self._mic_device = "default"
         self._tts_endpoint = ""
 
         # State
         self._speaking = False
-        self._mic_active = False
         self._cancel_event = asyncio.Event()
         self._lip_sync = LipSyncTracker()
         self._last_energy_t = 0.0
@@ -109,17 +107,14 @@ class TTSWorker(BaseWorker):
         # Speech queue
         self._speech_queue: asyncio.Queue[dict | None] = asyncio.Queue(maxsize=5)
 
-        # Socket connections (Mode A)
-        self._mic_sock: socket.socket | None = None
+        # Socket connection (Mode A — speaker only)
         self._spk_sock: socket.socket | None = None
 
         # Playback process
         self._aplay_proc: asyncio.subprocess.Process | None = None
-        self._arecord_proc: asyncio.subprocess.Process | None = None
 
         # Stats
         self._chunks_played = 0
-        self._mic_dropped = 0
 
     async def on_message(self, envelope: Envelope) -> None:
         t = envelope.type
@@ -127,10 +122,8 @@ class TTSWorker(BaseWorker):
 
         if t == TTS_CONFIG_INIT:
             self._audio_mode = str(p.get("audio_mode", "direct"))
-            self._mic_socket_path = str(p.get("mic_socket_path", ""))
             self._spk_socket_path = str(p.get("spk_socket_path", ""))
             self._speaker_device = str(p.get("speaker_device", "default"))
-            self._mic_device = str(p.get("mic_device", "default"))
             self._tts_endpoint = str(p.get("tts_endpoint", ""))
             log.info("configured: mode=%s", self._audio_mode)
             self._configured.set()
@@ -151,14 +144,9 @@ class TTSWorker(BaseWorker):
                 self._speaking = False
                 self.send(TTS_EVENT_CANCELLED)
 
-        elif t == TTS_CMD_START_MIC:
-            if not self._mic_active:
-                self._mic_active = True
-                asyncio.create_task(self._mic_capture_loop())
-
-        elif t == TTS_CMD_STOP_MIC:
-            self._mic_active = False
-            await self._kill_arecord()
+        elif t == TTS_CMD_PLAY_CHIME:
+            chime_name = str(p.get("chime", "listening"))
+            asyncio.create_task(self._play_chime(chime_name))
 
         elif t == TTS_CMD_PLAY_AUDIO:
             # Mode B: audio relay from Core
@@ -171,7 +159,6 @@ class TTSWorker(BaseWorker):
     def health_payload(self) -> dict[str, Any]:
         return {
             "speaking": self._speaking,
-            "mic_active": self._mic_active,
             "queue_depth": self._speech_queue.qsize(),
             "audio_mode": self._audio_mode,
         }
@@ -185,10 +172,9 @@ class TTSWorker(BaseWorker):
             log.error("no config received within 10s")
             return
 
-        # Connect audio sockets (Mode A)
+        # Connect speaker socket (Mode A)
         if self._audio_mode == "direct":
-            asyncio.create_task(self._connect_socket("mic", self._mic_socket_path))
-            asyncio.create_task(self._connect_socket("spk", self._spk_socket_path))
+            asyncio.create_task(self._connect_spk_socket())
 
         # Speech playback loop
         while self.running:
@@ -233,9 +219,13 @@ class TTSWorker(BaseWorker):
                     "robot_id": "",
                     "seq": ref_seq,
                 }
-                async with client.stream("POST", self._tts_endpoint, json=payload) as resp:
+                async with client.stream(
+                    "POST", self._tts_endpoint, json=payload
+                ) as resp:
                     if resp.status_code != 200:
-                        self.send(TTS_EVENT_ERROR, {"error": f"TTS HTTP {resp.status_code}"})
+                        self.send(
+                            TTS_EVENT_ERROR, {"error": f"TTS HTTP {resp.status_code}"}
+                        )
                         self._speaking = False
                         return
 
@@ -259,7 +249,6 @@ class TTSWorker(BaseWorker):
 
                     # Wait for aplay to finish
                     await self._drain_aplay()
-                    duration_ms = int((time.monotonic() - t0) * 1000)
 
         except asyncio.CancelledError:
             pass
@@ -270,19 +259,59 @@ class TTSWorker(BaseWorker):
             self._speaking = False
             await self._kill_aplay()
             if not self._cancel_event.is_set():
-                self.send(TTS_EVENT_FINISHED, {
-                    "ref_seq": ref_seq,
-                    "duration_ms": int((time.monotonic() - t0) * 1000) if 't0' in dir() else 0,
-                    "chunks_played": self._chunks_played,
-                })
+                self.send(
+                    TTS_EVENT_FINISHED,
+                    {
+                        "ref_seq": ref_seq,
+                        "duration_ms": int((time.monotonic() - t0) * 1000)
+                        if "t0" in dir()
+                        else 0,
+                        "chunks_played": self._chunks_played,
+                    },
+                )
+
+    # ── Chime playback ────────────────────────────────────────────
+
+    async def _play_chime(self, name: str) -> None:
+        """Play a short chime WAV file via aplay."""
+        chime_path = _CHIME_DIR / f"{name}.wav"
+        if not chime_path.exists():
+            log.warning("chime not found: %s", chime_path)
+            return
+
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "aplay",
+                "-D",
+                self._speaker_device,
+                "-q",
+                str(chime_path),
+                stdin=asyncio.subprocess.DEVNULL,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            await proc.wait()
+        except Exception:
+            log.exception("chime playback error")
+
+    # ── aplay lifecycle ───────────────────────────────────────────
 
     async def _start_aplay(self) -> None:
         """Start aplay subprocess for audio playback."""
         await self._kill_aplay()
         self._aplay_proc = await asyncio.create_subprocess_exec(
-            "aplay", "-D", self._speaker_device,
-            "-r", str(SAMPLE_RATE), "-f", "S16_LE", "-c", str(CHANNELS),
-            "-t", "raw", "-q",
+            "aplay",
+            "-D",
+            self._speaker_device,
+            "-r",
+            str(SAMPLE_RATE),
+            "-f",
+            "S16_LE",
+            "-c",
+            str(CHANNELS),
+            "-t",
+            "raw",
+            "-q",
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.DEVNULL,
@@ -315,57 +344,11 @@ class TTSWorker(BaseWorker):
                 pass
             self._aplay_proc = None
 
-    # ── Mic capture ──────────────────────────────────────────────
+    # ── Speaker socket (Mode A) ───────────────────────────────────
 
-    async def _mic_capture_loop(self) -> None:
-        """Capture mic audio via arecord and forward to AI worker."""
-        self._arecord_proc = await asyncio.create_subprocess_exec(
-            "arecord", "-D", self._mic_device,
-            "-r", str(SAMPLE_RATE), "-f", "S16_LE", "-c", str(CHANNELS),
-            "-t", "raw", "-q",
-            stdin=asyncio.subprocess.DEVNULL,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.DEVNULL,
-        )
-
-        try:
-            while self._mic_active and self._arecord_proc.stdout:
-                data = await self._arecord_proc.stdout.read(CHUNK_BYTES)
-                if not data:
-                    break
-
-                if self._audio_mode == "direct" and self._mic_sock:
-                    try:
-                        # Binary framed PCM: [chunk_len:u16-LE][pcm_data]
-                        frame = struct.pack("<H", len(data)) + data
-                        self._mic_sock.sendall(frame)
-                    except (BrokenPipeError, OSError):
-                        self._mic_dropped += 1
-                        if self._mic_dropped % 100 == 1:
-                            self.send(TTS_EVENT_MIC_DROPPED, {"count": self._mic_dropped})
-                elif self._audio_mode == "relay":
-                    # Mode B: send via NDJSON
-                    self.send("tts.event.audio_chunk", {
-                        "data_b64": base64.b64encode(data).decode(),
-                    })
-        except asyncio.CancelledError:
-            pass
-        finally:
-            await self._kill_arecord()
-
-    async def _kill_arecord(self) -> None:
-        if self._arecord_proc:
-            try:
-                self._arecord_proc.kill()
-                await self._arecord_proc.wait()
-            except Exception:
-                pass
-            self._arecord_proc = None
-
-    # ── Socket connection (Mode A) ───────────────────────────────
-
-    async def _connect_socket(self, name: str, path: str) -> None:
-        """Connect to an audio unix domain socket (client role)."""
+    async def _connect_spk_socket(self) -> None:
+        """Connect to the rb-spk Unix domain socket (retry loop)."""
+        path = self._spk_socket_path
         if not path:
             return
 
@@ -375,21 +358,15 @@ class TTSWorker(BaseWorker):
                 sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
                 sock.connect(path)
                 sock.setblocking(False)
-                if name == "mic":
-                    self._mic_sock = sock
-                elif name == "spk":
-                    self._spk_sock = sock
-                self.send(SYSTEM_AUDIO_LINK_UP, {"socket": name})
-                log.info("connected to %s socket: %s", name, path)
-
-                # For speaker socket, start reading loop
-                if name == "spk":
-                    asyncio.create_task(self._spk_read_loop())
+                self._spk_sock = sock
+                self.send(SYSTEM_AUDIO_LINK_UP, {"socket": "spk"})
+                log.info("connected to spk socket: %s", path)
+                asyncio.create_task(self._spk_read_loop())
                 return
-            except (ConnectionRefusedError, FileNotFoundError, OSError) as e:
+            except (ConnectionRefusedError, FileNotFoundError, OSError):
                 await asyncio.sleep(_SOCKET_RETRY_INTERVAL_S)
 
-        log.error("failed to connect %s socket after %.0fs", name, _SOCKET_RETRY_TIMEOUT_S)
+        log.error("failed to connect spk socket after %.0fs", _SOCKET_RETRY_TIMEOUT_S)
 
     async def _spk_read_loop(self) -> None:
         """Read TTS audio from speaker socket and play via aplay."""
