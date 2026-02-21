@@ -50,7 +50,9 @@ async def async_main(args: argparse.Namespace) -> None:
     from supervisor_v2.config import load_config
     from supervisor_v2.core.tick_loop import TickLoop
     from supervisor_v2.core.worker_manager import WorkerManager
-    from supervisor_v2.devices.clock_sync import ClockSyncEngine
+    from supervisor_v2.devices.clock_sync import (
+        ClockSyncEngine,
+    )
     from supervisor_v2.devices.face_client import FaceClient
     from supervisor_v2.devices.reflex_client import ReflexClient
     from supervisor_v2.io.serial_transport import SerialTransport
@@ -212,10 +214,13 @@ async def async_main(args: argparse.Namespace) -> None:
 
         face_sync: ClockSyncEngine | None = None
         if face:
+            from supervisor_v2.devices.clock_sync import _RTT_THRESHOLD_FACE_NS
+
             face_sync = ClockSyncEngine(
                 transport=face_transport,
                 clock_state=tick.robot.face_clock,
                 label="face",
+                rtt_threshold_ns=_RTT_THRESHOLD_FACE_NS,
             )
 
         log.info(

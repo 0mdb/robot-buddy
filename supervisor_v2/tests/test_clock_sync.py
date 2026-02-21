@@ -214,3 +214,21 @@ class TestClockSyncEngine:
             _send_and_respond(engine, transport)
         # After multiple samples, drift should be calculated (near 0 for aligned clocks)
         assert isinstance(clock.drift_us_per_s, float)
+
+    def test_custom_rtt_threshold(self) -> None:
+        """Face MCU uses a higher RTT threshold due to TinyUSB + LVGL jitter."""
+        transport = FakeTransport()
+        clock = ClockSync()
+        # 50ms threshold (face-like)
+        engine = ClockSyncEngine(transport, clock, "face", rtt_threshold_ns=50_000_000)
+        # Send samples with RTT=20ms — bad for default 10ms, good for 50ms
+        for _ in range(_MIN_SAMPLES_FOR_SYNCED):
+            _send_and_respond(engine, transport, rtt_ns=20_000_000)
+        assert clock.state == "synced"
+
+    def test_default_threshold_rejects_20ms_rtt(self) -> None:
+        """Default 10ms threshold correctly rejects 20ms RTT samples."""
+        engine, transport, clock = self._make()
+        for _ in range(6):
+            _send_and_respond(engine, transport, rtt_ns=20_000_000)
+        assert clock.state == "unsynced"

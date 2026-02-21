@@ -38,7 +38,10 @@ _INITIAL_HZ = 5.0
 _STEADY_HZ = 2.0
 _INITIAL_SAMPLE_COUNT = 20
 _PING_TIMEOUT_S = 0.5
-_RTT_THRESHOLD_NS = 10_000_000  # 10 ms — ESP32-S3 Full-Speed USB typical RTT is 2-5 ms
+_RTT_THRESHOLD_NS = 10_000_000  # 10 ms — ESP32-S3 USB Serial/JTAG typical RTT is 2-5 ms
+_RTT_THRESHOLD_FACE_NS = (
+    50_000_000  # 50 ms — TinyUSB CDC + LVGL rendering adds 10-30 ms jitter
+)
 _STALE_TIMEOUT_NS = 5_000_000_000  # 5 seconds
 _MIN_SAMPLES_FOR_SYNCED = 5
 _CONSECUTIVE_BAD_RTT_FOR_DEGRADED = 10
@@ -61,10 +64,13 @@ class ClockSyncEngine:
         transport: SerialTransport,
         clock_state: ClockSync,
         label: str,
+        *,
+        rtt_threshold_ns: int = _RTT_THRESHOLD_NS,
     ) -> None:
         self._transport = transport
         self._clock = clock_state
         self._label = label
+        self._rtt_threshold_ns = rtt_threshold_ns
 
         self._ping_seq: int = 0
         self._pending_ping_seq: int | None = None
@@ -141,7 +147,7 @@ class ClockSyncEngine:
         self._window.append(sample)
         self._total_samples += 1
 
-        if rtt_ns > _RTT_THRESHOLD_NS:
+        if rtt_ns > self._rtt_threshold_ns:
             self._consecutive_bad_rtt += 1
         else:
             self._consecutive_bad_rtt = 0
@@ -161,7 +167,7 @@ class ClockSyncEngine:
     def _min_rtt_sample(self) -> _SyncSample | None:
         best: _SyncSample | None = None
         for s in self._window:
-            if s.rtt_ns <= _RTT_THRESHOLD_NS:
+            if s.rtt_ns <= self._rtt_threshold_ns:
                 if best is None or s.rtt_ns < best.rtt_ns:
                     best = s
         return best
