@@ -28,6 +28,7 @@ CommandBuffer         g_cmd;
 RangeBuffer           g_range;
 TelemetryState        g_telemetry;
 std::atomic<uint16_t> g_fault_flags{0};
+std::atomic<uint32_t> g_cmd_seq_last{0};
 
 // ============================================================
 // Bring-up test: open-loop motor ramp + encoder readback.

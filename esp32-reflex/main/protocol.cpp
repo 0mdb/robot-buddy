@@ -1,6 +1,10 @@
 #include "protocol.h"
 #include <cstring>
 
+// ---- Protocol version state ----
+std::atomic<uint8_t>  g_protocol_version{1};
+std::atomic<uint32_t> g_tx_seq{0};
+
 // ---- COBS encode ----
 // Reference: https://en.wikipedia.org/wiki/Consistent_Overhead_Byte_Stuffing
 
@@ -77,37 +81,75 @@ uint16_t crc16(const uint8_t* data, size_t len)
 
 // ---- Packet build (MCU → host) ----
 
-size_t packet_build(uint8_t type, uint8_t seq, const uint8_t* payload, size_t payload_len, uint8_t* out, size_t out_cap)
+size_t packet_build(uint8_t type, uint8_t seq,
+                    const uint8_t* payload, size_t payload_len,
+                    uint8_t* out, size_t out_cap)
 {
-    // Assemble raw frame: [type][seq][payload...][crc16-LE]
-    const size_t raw_len = 2 + payload_len + 2; // type + seq + data + crc
-    if (raw_len > 256) return 0;                // sanity
+    // Cap packet size for command/telemetry payloads.
+    constexpr size_t MAX_RAW_PACKET_LEN = 768;
+    const size_t raw_len = 2 + payload_len + 2;
+    if (raw_len > MAX_RAW_PACKET_LEN) return 0;
 
-    uint8_t raw[256];
+    uint8_t raw[MAX_RAW_PACKET_LEN];
     raw[0] = type;
     raw[1] = seq;
     if (payload_len > 0) {
         memcpy(&raw[2], payload, payload_len);
     }
 
-    // CRC over type + seq + payload
     uint16_t c = crc16(raw, 2 + payload_len);
-    raw[2 + payload_len] = static_cast<uint8_t>(c & 0xFF);            // low byte
-    raw[2 + payload_len + 1] = static_cast<uint8_t>((c >> 8) & 0xFF); // high byte
+    raw[2 + payload_len]     = static_cast<uint8_t>(c & 0xFF);
+    raw[2 + payload_len + 1] = static_cast<uint8_t>((c >> 8) & 0xFF);
 
-    // COBS encode
-    // Max COBS overhead: ceil(raw_len/254) + 1
     const size_t max_cobs = raw_len + (raw_len / 254) + 2;
-    if (out_cap < max_cobs + 1) return 0; // +1 for delimiter
+    if (out_cap < max_cobs + 1) return 0;
 
     size_t encoded_len = cobs_encode(raw, raw_len, out);
-    out[encoded_len] = 0x00; // delimiter
+    out[encoded_len] = 0x00;
+    return encoded_len + 1;
+}
+
+// ---- Packet build v2 (MCU → host) ----
+// Uses v2 envelope when g_protocol_version==2, else falls back to v1.
+
+size_t packet_build_v2(uint8_t type, uint32_t seq, uint64_t t_src_us,
+                       const uint8_t* payload, size_t payload_len,
+                       uint8_t* out, size_t out_cap)
+{
+    if (g_protocol_version.load(std::memory_order_acquire) == 1) {
+        return packet_build(type, static_cast<uint8_t>(seq), payload, payload_len, out, out_cap);
+    }
+
+    // v2 envelope: [type:u8][seq:u32-LE][t_src_us:u64-LE][data:N][crc16:u16-LE]
+    constexpr size_t V2_HEADER = 1 + 4 + 8;  // 13 bytes
+    constexpr size_t MAX_RAW_PACKET_LEN = 768;
+    const size_t raw_len = V2_HEADER + payload_len + 2;
+    if (raw_len > MAX_RAW_PACKET_LEN) return 0;
+
+    uint8_t raw[MAX_RAW_PACKET_LEN];
+    raw[0] = type;
+    memcpy(&raw[1], &seq, 4);
+    memcpy(&raw[5], &t_src_us, 8);
+    if (payload_len > 0) {
+        memcpy(&raw[V2_HEADER], payload, payload_len);
+    }
+
+    uint16_t c = crc16(raw, V2_HEADER + payload_len);
+    raw[V2_HEADER + payload_len]     = static_cast<uint8_t>(c & 0xFF);
+    raw[V2_HEADER + payload_len + 1] = static_cast<uint8_t>((c >> 8) & 0xFF);
+
+    const size_t max_cobs = raw_len + (raw_len / 254) + 2;
+    if (out_cap < max_cobs + 1) return 0;
+
+    size_t encoded_len = cobs_encode(raw, raw_len, out);
+    out[encoded_len] = 0x00;
     return encoded_len + 1;
 }
 
 // ---- Packet parse (host → MCU) ----
 
-ParsedPacket packet_parse(const uint8_t* frame, size_t frame_len, uint8_t* decode_buf, size_t decode_buf_len)
+ParsedPacket packet_parse(const uint8_t* frame, size_t frame_len,
+                          uint8_t* decode_buf, size_t decode_buf_len)
 {
     ParsedPacket pkt = {};
     pkt.valid = false;
@@ -116,21 +158,34 @@ ParsedPacket packet_parse(const uint8_t* frame, size_t frame_len, uint8_t* decod
 
     size_t decoded_len = cobs_decode(frame, frame_len, decode_buf);
 
-    // Minimum: type(1) + seq(1) + crc(2) = 4
     if (decoded_len < 4) return pkt;
 
-    // Verify CRC
-    size_t   crc_offset = decoded_len - 2;
-    uint16_t received_crc =
-        static_cast<uint16_t>(decode_buf[crc_offset]) | (static_cast<uint16_t>(decode_buf[crc_offset + 1]) << 8);
+    size_t crc_offset = decoded_len - 2;
+    uint16_t received_crc = static_cast<uint16_t>(decode_buf[crc_offset])
+                          | (static_cast<uint16_t>(decode_buf[crc_offset + 1]) << 8);
     uint16_t computed_crc = crc16(decode_buf, crc_offset);
 
     if (received_crc != computed_crc) return pkt;
 
-    pkt.type = decode_buf[0];
-    pkt.seq = decode_buf[1];
-    pkt.data = &decode_buf[2];
-    pkt.data_len = crc_offset - 2;
+    const uint8_t version = g_protocol_version.load(std::memory_order_acquire);
+
+    if (version == 2 && decoded_len >= 15) {
+        // v2 envelope: [type:u8][seq:u32-LE][t_src_us:u64-LE][data:N][crc16:u16-LE]
+        constexpr size_t V2_HEADER = 1 + 4 + 8;  // 13 bytes
+        pkt.type = decode_buf[0];
+        memcpy(&pkt.seq, &decode_buf[1], 4);
+        memcpy(&pkt.t_src_us, &decode_buf[5], 8);
+        pkt.data     = &decode_buf[V2_HEADER];
+        pkt.data_len = crc_offset - V2_HEADER;
+    } else {
+        // v1 envelope: [type:u8][seq:u8][data:N][crc16:u16-LE]
+        pkt.type     = decode_buf[0];
+        pkt.seq      = decode_buf[1];
+        pkt.t_src_us = 0;
+        pkt.data     = &decode_buf[2];
+        pkt.data_len = crc_offset - 2;
+    }
+
     pkt.valid = true;
     return pkt;
 }

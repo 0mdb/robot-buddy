@@ -69,8 +69,9 @@ struct ImuBuffer {
 // Writer: usb_rx_task (APP core). Reader: control_task (PRO core).
 
 struct Command {
-    int16_t v_mm_s = 0;
-    int16_t w_mrad_s = 0;
+    int16_t  v_mm_s = 0;
+    int16_t  w_mrad_s = 0;
+    uint32_t cmd_seq = 0;  // v2: sequence number from command packet
 };
 
 struct CommandBuffer {
@@ -109,6 +110,9 @@ struct TelemetryState {
     uint16_t battery_mv = 0;
     uint16_t fault_flags = 0;
     uint32_t timestamp_us = 0;
+    // v2 command causality
+    uint32_t cmd_seq_last_applied = 0;
+    uint32_t t_cmd_applied_us = 0;
 
     // Seqlock: writer increments to odd before write, even after.
     // Reader spins if odd or if seq changed during read.
@@ -160,3 +164,4 @@ extern CommandBuffer         g_cmd;
 extern RangeBuffer           g_range;
 extern TelemetryState        g_telemetry;
 extern std::atomic<uint16_t> g_fault_flags;
+extern std::atomic<uint32_t> g_cmd_seq_last; // last received cmd seq (v2 causality)

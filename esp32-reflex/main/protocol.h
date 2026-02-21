@@ -1,20 +1,34 @@
 #pragma once
-// On-wire protocol: COBS framing + CRC16 integrity.
+// Reflex MCU protocol: COBS framing + CRC16 integrity.
+// Wire format identical to esp32-face-v2 (shared transport layer).
 //
-// Packet format on the wire:
+// Packet on the wire:
 //   [COBS-encoded payload] [0x00 delimiter]
 //
-// Payload (before COBS encoding):
-//   [type:u8] [seq:u8] [data:N bytes] [crc16:u16-LE]
-//
-// CRC16 covers: type + seq + data (everything except the CRC itself).
+// Payload (before COBS):
+//   v1: [type:u8] [seq:u8]                        [data:N bytes] [crc16:u16-LE]
+//   v2: [type:u8] [seq:u32-LE] [t_src_us:u64-LE]  [data:N bytes] [crc16:u16-LE]
 
-#include <cstdint>
+#include <atomic>
 #include <cstddef>
+#include <cstdint>
 
 // ---- Packet type IDs ----
-// Commands (host → MCU): 0x10–0x1F
-// Telemetry (MCU → host): 0x80+
+// Common commands (host -> MCU): 0x00-0x0F
+// Common telemetry (MCU -> host): 0x80-0x8F
+// Reflex commands (host -> MCU): 0x10-0x1F
+// Reflex telemetry (MCU -> host): 0x80+
+
+// Protocol handshake / time sync (shared with esp32-face-v2)
+enum class CommonCmdId : uint8_t {
+    TIME_SYNC_REQ        = 0x06,  // Pi -> MCU: {ping_seq:u32, reserved:u32}
+    SET_PROTOCOL_VERSION = 0x07,  // Pi -> MCU: {version:u8}
+};
+
+enum class CommonTelId : uint8_t {
+    TIME_SYNC_RESP       = 0x86,  // MCU -> Pi: {ping_seq:u32, t_src_us:u64}
+    PROTOCOL_VERSION_ACK = 0x87,  // MCU -> Pi: {version:u8}
+};
 
 enum class CmdId : uint8_t {
     SET_TWIST = 0x10,
@@ -59,44 +73,71 @@ struct __attribute__((packed)) StatePayload {
     uint8_t  range_status;
 };
 
+// ---- v2 extended payloads ----
+
+struct __attribute__((packed)) StatePayloadV2 {
+    // Original fields (13 bytes)
+    int16_t  speed_l_mm_s;
+    int16_t  speed_r_mm_s;
+    int16_t  gyro_z_mrad_s;
+    uint16_t battery_mv;
+    uint16_t fault_flags;
+    uint16_t range_mm;
+    uint8_t  range_status;
+    // v2 additions (8 bytes)
+    uint32_t cmd_seq_last_applied;     // echo of last command seq applied
+    uint32_t t_cmd_applied_us;         // when motor output was committed
+};
+
+struct __attribute__((packed)) TimeSyncRespPayload {
+    uint32_t ping_seq;
+    uint64_t t_src_us;
+};
+
+struct __attribute__((packed)) ProtocolVersionPayload {
+    uint8_t version;
+};
+
 // ---- COBS encode/decode ----
 
-// COBS encode `src` (len bytes) into `dst`.
-// `dst` must have room for at least len + ceil(len/254) + 1 bytes.
-// Returns number of bytes written to dst (does NOT include the trailing 0x00 delimiter).
 size_t cobs_encode(const uint8_t* src, size_t len, uint8_t* dst);
-
-// COBS decode `src` (len bytes, NOT including the 0x00 delimiter) into `dst`.
-// `dst` must have room for at least len bytes.
-// Returns decoded length, or 0 on error.
 size_t cobs_decode(const uint8_t* src, size_t len, uint8_t* dst);
 
-// ---- CRC16 (CRC-CCITT / X.25, poly 0x1021, init 0xFFFF) ----
+// ---- CRC16 (CRC-CCITT, poly 0x1021, init 0xFFFF) ----
 
 uint16_t crc16(const uint8_t* data, size_t len);
 
-// ---- Packet building (MCU → host) ----
+// ---- Protocol version negotiation ----
 
-// Build a complete wire-ready packet (COBS-encoded + 0x00 delimiter).
-// `type` is the TelId, `seq` is the sequence counter, `payload`/`payload_len`
-// is the raw data. Output written to `out`, returns total bytes including delimiter.
-// `out` must have room for: (2 + payload_len + 2) * COBS overhead + 1.
-// Safe buffer size: payload_len + 8.
-size_t packet_build(uint8_t type, uint8_t seq, const uint8_t* payload, size_t payload_len, uint8_t* out,
-                    size_t out_cap);
+extern std::atomic<uint8_t>  g_protocol_version;  // 1 or 2, default 1
+extern std::atomic<uint32_t> g_tx_seq;             // global monotonic TX seq
 
-// ---- Packet parsing (host → MCU) ----
+inline uint32_t next_seq() {
+    return g_tx_seq.fetch_add(1, std::memory_order_relaxed);
+}
+
+// ---- Packet building (MCU -> host) ----
+
+// v1 builder (legacy — kept for backward compat)
+size_t packet_build(uint8_t type, uint8_t seq,
+                    const uint8_t* payload, size_t payload_len,
+                    uint8_t* out, size_t out_cap);
+
+// v2 builder (uses v2 envelope when g_protocol_version==2, else falls back to v1)
+size_t packet_build_v2(uint8_t type, uint32_t seq, uint64_t t_src_us,
+                       const uint8_t* payload, size_t payload_len,
+                       uint8_t* out, size_t out_cap);
+
+// ---- Packet parsing (host -> MCU) ----
 
 struct ParsedPacket {
-    uint8_t        type;
-    uint8_t        seq;
-    const uint8_t* data; // points into caller's decode buffer
-    size_t         data_len;
-    bool           valid; // CRC passed and structure is sane
+    uint8_t  type;
+    uint32_t seq;          // u32 in v2, zero-extended u8 in v1
+    uint64_t t_src_us;     // 0 in v1
+    const uint8_t* data;
+    size_t   data_len;
+    bool     valid;
 };
 
-// Parse a COBS-decoded frame. `frame`/`frame_len` is the raw bytes between
-// 0x00 delimiters (before COBS decode). Uses `decode_buf` as scratch space
-// (must be at least `frame_len` bytes).
-// Returns ParsedPacket with valid=true on success.
-ParsedPacket packet_parse(const uint8_t* frame, size_t frame_len, uint8_t* decode_buf, size_t decode_buf_len);
+ParsedPacket packet_parse(const uint8_t* frame, size_t frame_len,
+                          uint8_t* decode_buf, size_t decode_buf_len);
