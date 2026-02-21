@@ -180,6 +180,10 @@ class TickLoop:
         )
 
     def clear_error(self) -> tuple[bool, str]:
+        # Send CLEAR_FAULTS to MCU to actually clear hardware fault flags
+        if self._reflex and self._reflex.connected:
+            self._reflex.send_clear_faults()
+
         return self._sm.clear_error(
             self.robot.reflex_connected,
             self.robot.fault_flags,
