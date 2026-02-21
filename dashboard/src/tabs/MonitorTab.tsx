@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Sparkline } from '../components/Sparkline'
 import { TimeSeriesChart } from '../components/TimeSeriesChart'
-import { FAULT_NAMES } from '../constants'
+import { FAULT_NAMES, RANGE_STATUS } from '../constants'
 import { useClocks } from '../hooks/useClocks'
 import { useDevices } from '../hooks/useDevices'
 import { useSystem } from '../hooks/useSystem'
@@ -98,26 +98,20 @@ function computeWorkersLevel(workers: WorkersDebug | undefined): DiagLevel {
 
 function buildTree(
   sys: SystemDebug | undefined,
-  tel: Pick<
-    TelemetryPayload,
-    | 'reflex_connected'
-    | 'face_connected'
-    | 'fault_flags'
-    | 'battery_mv'
-    | 'vision_fps'
-    | 'vision_age_ms'
-  >,
+  reflexConnected: boolean,
+  faceConnected: boolean,
+  faultFlags: number,
   devices: DeviceDebug | undefined,
   clocks: ClocksDebug | undefined,
   workers: WorkersDebug | undefined,
 ): DiagNode {
   const piLevel = computePiLevel(sys)
   const reflexLevel = computeReflexLevel(
-    tel.reflex_connected,
-    tel.fault_flags,
+    reflexConnected,
+    faultFlags,
     devices?.reflex.last_state_age_ms,
   )
-  const faceLevel = computeFaceLevel(tel.face_connected, devices?.face.last_status_age_ms)
+  const faceLevel = computeFaceLevel(faceConnected, devices?.face.last_status_age_ms)
   const workersLevel = computeWorkersLevel(workers)
 
   // Clock sub-levels
@@ -139,10 +133,10 @@ function buildTree(
   const piSummary = sys
     ? `CPU ${sys.cpu_percent}% | ${sys.cpu_temp_c ?? '--'}C | Mem ${sys.mem_percent}%`
     : 'unavailable'
-  const reflexSummary = tel.reflex_connected
+  const reflexSummary = reflexConnected
     ? `age ${devices?.reflex.last_state_age_ms ?? '--'}ms | clk ${clocks?.reflex.state ?? '--'}`
     : 'disconnected'
-  const faceSummary = tel.face_connected
+  const faceSummary = faceConnected
     ? `age ${devices?.face.last_status_age_ms ?? '--'}ms | clk ${clocks?.face.state ?? '--'}`
     : 'disconnected'
   const workersSummary = workers
@@ -486,9 +480,14 @@ function SensorHealthPanel({
   const imuFail = !!(faultFlags & (1 << 4))
   const imuLevel: DiagLevel = imuFail ? 'error' : 'ok'
 
-  // range_status: 0=OK in protocol (based on the supervisor mapping)
   const rangeLevel: DiagLevel =
-    rangeStatus === 0 ? 'ok' : rangeStatus === 1 ? 'warn' : rangeStatus === 2 ? 'ok' : 'stale'
+    rangeStatus === RANGE_STATUS.OK
+      ? 'ok'
+      : rangeStatus === RANGE_STATUS.TIMEOUT
+        ? 'warn'
+        : rangeStatus === RANGE_STATUS.OUT_OF_RANGE
+          ? 'ok'
+          : 'stale'
 
   const visionLevel: DiagLevel =
     visionAgeMs > 5000
@@ -632,33 +631,37 @@ export default function MonitorTab() {
   const { data: clocks } = useClocks()
   const { data: workers } = useWorkers()
 
-  const tel = useTelemetry(
-    (s) => ({
-      reflex_connected: (s.snapshot as TelemetryPayload).reflex_connected ?? false,
-      face_connected: (s.snapshot as TelemetryPayload).face_connected ?? false,
-      fault_flags: (s.snapshot as TelemetryPayload).fault_flags ?? 0,
-      battery_mv: (s.snapshot as TelemetryPayload).battery_mv ?? 0,
-      range_mm: (s.snapshot as TelemetryPayload).range_mm ?? 0,
-      range_status: (s.snapshot as TelemetryPayload).range_status ?? 0,
-      vision_fps: (s.snapshot as TelemetryPayload).vision_fps ?? 0,
-      vision_age_ms: (s.snapshot as TelemetryPayload).vision_age_ms ?? 0,
-      speed_caps: ((s.snapshot as TelemetryPayload).speed_caps ?? []) as {
+  const reflexConnected = useTelemetry(
+    (s) => (s.snapshot as TelemetryPayload).reflex_connected ?? false,
+    200,
+  )
+  const faceConnected = useTelemetry(
+    (s) => (s.snapshot as TelemetryPayload).face_connected ?? false,
+    200,
+  )
+  const faultFlags = useTelemetry((s) => (s.snapshot as TelemetryPayload).fault_flags ?? 0, 200)
+  const batteryMv = useTelemetry((s) => (s.snapshot as TelemetryPayload).battery_mv ?? 0, 200)
+  const rangeMm = useTelemetry((s) => (s.snapshot as TelemetryPayload).range_mm ?? 0, 200)
+  const rangeStatus = useTelemetry((s) => (s.snapshot as TelemetryPayload).range_status ?? 0, 200)
+  const visionFps = useTelemetry((s) => (s.snapshot as TelemetryPayload).vision_fps ?? 0, 200)
+  const visionAgeMs = useTelemetry((s) => (s.snapshot as TelemetryPayload).vision_age_ms ?? 0, 200)
+  const speedCaps = useTelemetry(
+    (s) =>
+      ((s.snapshot as TelemetryPayload).speed_caps ?? []) as {
         scale: number
         reason: string
       }[],
-      worker_alive: ((s.snapshot as TelemetryPayload).worker_alive ?? {}) as Record<
-        string,
-        boolean
-      >,
-    }),
     200,
   )
-
+  const workerAlive = useTelemetry(
+    (s) => ((s.snapshot as TelemetryPayload).worker_alive ?? {}) as Record<string, boolean>,
+    200,
+  )
   const seqGaps = useTelemetry((s) => s.meta.seqGaps, 500)
 
   const tree = useMemo(
-    () => buildTree(sys, tel, devices, clocks, workers),
-    [sys, tel, devices, clocks, workers],
+    () => buildTree(sys, reflexConnected, faceConnected, faultFlags, devices, clocks, workers),
+    [sys, reflexConnected, faceConnected, faultFlags, devices, clocks, workers],
   )
 
   return (
@@ -675,21 +678,21 @@ export default function MonitorTab() {
       </div>
 
       {/* Power chart */}
-      <PowerPanel batteryMv={tel.battery_mv} />
+      <PowerPanel batteryMv={batteryMv} />
 
       {/* Sensor health */}
       <SensorHealthPanel
-        faultFlags={tel.fault_flags}
-        rangeStatus={tel.range_status}
-        rangeMm={tel.range_mm}
-        visionFps={tel.vision_fps}
-        visionAgeMs={tel.vision_age_ms}
-        workerAlive={tel.worker_alive}
+        faultFlags={faultFlags}
+        rangeStatus={rangeStatus}
+        rangeMm={rangeMm}
+        visionFps={visionFps}
+        visionAgeMs={visionAgeMs}
+        workerAlive={workerAlive}
       />
 
       {/* Drive health + Workers */}
       <div className={styles.grid2}>
-        <DriveHealthPanel faultFlags={tel.fault_flags} speedCaps={tel.speed_caps} />
+        <DriveHealthPanel faultFlags={faultFlags} speedCaps={speedCaps} />
         <WorkerHealthPanel workers={workers} />
       </div>
     </div>

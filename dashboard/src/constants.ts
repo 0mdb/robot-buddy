@@ -20,6 +20,15 @@ export function decodeFaults(flags: number): string[] {
   return active
 }
 
+// ---- Range status (mirrors supervisor_v2/devices/protocol.py RangeStatus) ----
+
+export const RANGE_STATUS = {
+  OK: 0,
+  TIMEOUT: 1,
+  OUT_OF_RANGE: 2,
+  NOT_READY: 3,
+} as const
+
 // ---- Face moods ----
 
 export const MOODS = [
