@@ -243,11 +243,11 @@ async def _handle_ws_cmd(msg: dict, tick: TickLoop) -> None:
             return
         if tick._face and tick._face.connected:
             tick._face.send_state(
-                mood_id=int(mood_id),
-                intensity=int(float(msg.get("intensity", 1.0)) * 255),
-                gaze_x=int(float(msg.get("gaze_x", 0.0)) * 127),
-                gaze_y=int(float(msg.get("gaze_y", 0.0)) * 127),
-                brightness=int(float(msg.get("brightness", 1.0)) * 255),
+                emotion_id=int(mood_id),
+                intensity=float(msg.get("intensity", 1.0)),
+                gaze_x=float(msg.get("gaze_x", 0.0)),
+                gaze_y=float(msg.get("gaze_y", 0.0)),
+                brightness=float(msg.get("brightness", 1.0)),
             )
     elif msg_type == "face_gesture":
         from supervisor_v2.devices.expressions import GESTURE_TO_FACE_ID, normalize_face_gesture_name

@@ -344,13 +344,11 @@ class TickLoop:
         if not self._face or not self._face.connected:
             return
 
-        # Face system mode overlay (highest priority)
+        # Face system mode overlay — only override for critical states
         if self.robot.mode == Mode.BOOT:
             self._face.send_system_mode(FaceSystemMode.BOOTING, 0)
         elif self.robot.mode == Mode.ERROR:
             self._face.send_system_mode(FaceSystemMode.ERROR_DISPLAY, 0)
-        else:
-            self._face.send_system_mode(FaceSystemMode.NONE, 0)
 
         # Talking layer — driven by TTS energy
         if self.world.speaking:
@@ -362,14 +360,18 @@ class TickLoop:
             self.robot.face_talking = False
             self.robot.face_talking_energy = 0
 
+        # Skip auto-emotion when manual lock is on (dashboard control)
+        if self.robot.face_manual_lock:
+            self._conversation_gestures = []
+            return
+
         # Conversation layer — emotion and gesture from AI worker
         if self._conversation_emotion:
             norm = normalize_emotion_name(self._conversation_emotion)
             if norm:
                 mood_id = EMOTION_TO_FACE_MOOD.get(norm)
                 if mood_id is not None:
-                    intensity = int(self._conversation_intensity * 255)
-                    self._face.send_state(mood_id, intensity, 0, 0, 255)
+                    self._face.send_state(mood_id, self._conversation_intensity)
 
         for g in self._conversation_gestures:
             norm_g = normalize_face_gesture_name(g)
@@ -446,8 +448,8 @@ class TickLoop:
         mood_id = EMOTION_TO_FACE_MOOD.get(name)
         if mood_id is None:
             return
-        intensity = int(float(action.get("intensity", 0.7)) * 255)
-        self._face.send_state(mood_id, intensity, 0, 0, 255)
+        intensity = float(action.get("intensity", 0.7))
+        self._face.send_state(mood_id, intensity)
 
     def _apply_gesture(self, action: dict) -> None:
         """Apply a planner gesture action to the face."""
@@ -466,7 +468,7 @@ class TickLoop:
         self._scheduler.active_skill = "greet_on_button"
         if self._face and self._face.connected:
             mood_id = EMOTION_TO_FACE_MOOD.get("excited", 2)
-            self._face.send_state(mood_id, 200, 0, 0, 255)
+            self._face.send_state(mood_id, 0.8)
             gid = GESTURE_TO_FACE_ID.get("nod", 10)
             self._face.send_gesture(gid, 500)
 
