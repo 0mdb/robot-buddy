@@ -20,9 +20,9 @@ static constexpr TickType_t SAFETY_PERIOD = pdMS_TO_TICKS(20);
 // soft_stop_ramp_ms, then brake and disable motors.
 
 enum class StopState {
-    RUNNING,       // normal operation
-    RAMPING_DOWN,  // soft stop in progress
-    STOPPED,       // motors disabled, waiting for fault clear
+    RUNNING,      // normal operation
+    RAMPING_DOWN, // soft stop in progress
+    STOPPED,      // motors disabled, waiting for fault clear
 };
 
 static StopState s_stop_state = StopState::RUNNING;
@@ -63,8 +63,7 @@ static void begin_soft_stop()
     if (s_stop_state == StopState::RUNNING) {
         s_stop_state = StopState::RAMPING_DOWN;
         s_ramp_start_us = now_us();
-        ESP_LOGI(TAG, "soft stop: ramping down over %lu ms",
-                 (unsigned long)g_cfg.soft_stop_ramp_ms);
+        ESP_LOGI(TAG, "soft stop: ramping down over %lu ms", (unsigned long)g_cfg.soft_stop_ramp_ms);
     }
 }
 
@@ -82,8 +81,7 @@ static void check_cmd_timeout(uint32_t now)
     if (age_ms > g_cfg.cmd_timeout_ms) {
         uint16_t flags = g_fault_flags.load(std::memory_order_relaxed);
         if (!(flags & Fault::CMD_TIMEOUT)) {
-            g_fault_flags.fetch_or(static_cast<uint16_t>(Fault::CMD_TIMEOUT),
-                                   std::memory_order_relaxed);
+            g_fault_flags.fetch_or(static_cast<uint16_t>(Fault::CMD_TIMEOUT), std::memory_order_relaxed);
             ESP_LOGW(TAG, "command timeout (%lu ms)", (unsigned long)age_ms);
             begin_soft_stop();
         }
@@ -113,7 +111,7 @@ static void check_tilt(uint32_t now)
     float az = imu->accel_z_g;
     float a_mag = std::sqrt(ax * ax + ay * ay + az * az);
 
-    if (a_mag < 0.1f) return;  // no valid reading (freefall or IMU dead)
+    if (a_mag < 0.1f) return; // no valid reading (freefall or IMU dead)
 
     float cos_tilt = std::fabs(az) / a_mag;
     float tilt_deg = std::acos(cos_tilt) * (180.0f / M_PI);
@@ -125,10 +123,8 @@ static void check_tilt(uint32_t now)
         } else if (elapsed_ms(s_tilt_since_us, now) > g_cfg.tilt_hold_ms) {
             uint16_t flags = g_fault_flags.load(std::memory_order_relaxed);
             if (!(flags & Fault::TILT)) {
-                g_fault_flags.fetch_or(static_cast<uint16_t>(Fault::TILT),
-                                       std::memory_order_relaxed);
-                ESP_LOGW(TAG, "TILT fault (%.1f deg for %lu ms)",
-                         tilt_deg, (unsigned long)g_cfg.tilt_hold_ms);
+                g_fault_flags.fetch_or(static_cast<uint16_t>(Fault::TILT), std::memory_order_relaxed);
+                ESP_LOGW(TAG, "TILT fault (%.1f deg for %lu ms)", tilt_deg, (unsigned long)g_cfg.tilt_hold_ms);
                 do_hard_stop();
             }
         }
@@ -143,15 +139,15 @@ static void check_stall(uint32_t now)
     // Use a relaxed read since we're on the same core.
     int16_t speed_l = g_telemetry.speed_l_mm_s;
     int16_t speed_r = g_telemetry.speed_r_mm_s;
-    float avg_speed = (std::abs(speed_l) + std::abs(speed_r)) / 2.0f;
+    float   avg_speed = (std::abs(speed_l) + std::abs(speed_r)) / 2.0f;
 
     // Read commanded target
     const Command* cmd = g_cmd.read();
-    float cmd_speed = std::fabs(static_cast<float>(cmd->v_mm_s));
+    float          cmd_speed = std::fabs(static_cast<float>(cmd->v_mm_s));
 
     // Stall: commanding significant speed but wheels aren't moving
-    bool stalled = (cmd_speed > static_cast<float>(g_cfg.stall_speed_thresh) * 2.0f)
-                && (avg_speed < static_cast<float>(g_cfg.stall_speed_thresh));
+    bool stalled = (cmd_speed > static_cast<float>(g_cfg.stall_speed_thresh) * 2.0f) &&
+                   (avg_speed < static_cast<float>(g_cfg.stall_speed_thresh));
 
     if (stalled) {
         if (!s_stall_active) {
@@ -160,10 +156,9 @@ static void check_stall(uint32_t now)
         } else if (elapsed_ms(s_stall_since_us, now) > g_cfg.stall_thresh_ms) {
             uint16_t flags = g_fault_flags.load(std::memory_order_relaxed);
             if (!(flags & Fault::STALL)) {
-                g_fault_flags.fetch_or(static_cast<uint16_t>(Fault::STALL),
-                                       std::memory_order_relaxed);
-                ESP_LOGW(TAG, "STALL fault (cmd=%.0f mm/s, meas=%.0f mm/s for %lu ms)",
-                         cmd_speed, avg_speed, (unsigned long)g_cfg.stall_thresh_ms);
+                g_fault_flags.fetch_or(static_cast<uint16_t>(Fault::STALL), std::memory_order_relaxed);
+                ESP_LOGW(TAG, "STALL fault (cmd=%.0f mm/s, meas=%.0f mm/s for %lu ms)", cmd_speed, avg_speed,
+                         (unsigned long)g_cfg.stall_thresh_ms);
                 do_hard_stop();
             }
         }
@@ -185,10 +180,8 @@ static void check_obstacle()
             s_obstacle_active = true;
             uint16_t flags = g_fault_flags.load(std::memory_order_relaxed);
             if (!(flags & Fault::OBSTACLE)) {
-                g_fault_flags.fetch_or(static_cast<uint16_t>(Fault::OBSTACLE),
-                                       std::memory_order_relaxed);
-                ESP_LOGW(TAG, "OBSTACLE fault (%u mm < %u mm threshold)",
-                         range->range_mm, g_cfg.range_stop_mm);
+                g_fault_flags.fetch_or(static_cast<uint16_t>(Fault::OBSTACLE), std::memory_order_relaxed);
+                ESP_LOGW(TAG, "OBSTACLE fault (%u mm < %u mm threshold)", range->range_mm, g_cfg.range_stop_mm);
                 begin_soft_stop();
             }
         }
@@ -196,11 +189,8 @@ static void check_obstacle()
         // Currently stopped — release only when obstacle is far enough (hysteresis)
         if (range->range_mm > g_cfg.range_release_mm) {
             s_obstacle_active = false;
-            g_fault_flags.fetch_and(
-                ~static_cast<uint16_t>(Fault::OBSTACLE),
-                std::memory_order_relaxed);
-            ESP_LOGI(TAG, "obstacle cleared (%u mm > %u mm release)",
-                     range->range_mm, g_cfg.range_release_mm);
+            g_fault_flags.fetch_and(~static_cast<uint16_t>(Fault::OBSTACLE), std::memory_order_relaxed);
+            ESP_LOGI(TAG, "obstacle cleared (%u mm > %u mm release)", range->range_mm, g_cfg.range_release_mm);
         }
     }
 }

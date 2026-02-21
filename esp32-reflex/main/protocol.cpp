@@ -6,9 +6,9 @@
 
 size_t cobs_encode(const uint8_t* src, size_t len, uint8_t* dst)
 {
-    size_t read_idx = 0;
-    size_t write_idx = 1;  // skip code byte, fill it in later
-    size_t code_idx = 0;
+    size_t  read_idx = 0;
+    size_t  write_idx = 1; // skip code byte, fill it in later
+    size_t  code_idx = 0;
     uint8_t code = 1;
 
     while (read_idx < len) {
@@ -42,10 +42,10 @@ size_t cobs_decode(const uint8_t* src, size_t len, uint8_t* dst)
 
     while (read_idx < len) {
         uint8_t code = src[read_idx++];
-        if (code == 0) return 0;  // invalid: zero in COBS stream
+        if (code == 0) return 0; // invalid: zero in COBS stream
 
         for (uint8_t i = 1; i < code; i++) {
-            if (read_idx >= len) return 0;  // truncated
+            if (read_idx >= len) return 0; // truncated
             dst[write_idx++] = src[read_idx++];
         }
 
@@ -77,13 +77,11 @@ uint16_t crc16(const uint8_t* data, size_t len)
 
 // ---- Packet build (MCU → host) ----
 
-size_t packet_build(uint8_t type, uint8_t seq,
-                    const uint8_t* payload, size_t payload_len,
-                    uint8_t* out, size_t out_cap)
+size_t packet_build(uint8_t type, uint8_t seq, const uint8_t* payload, size_t payload_len, uint8_t* out, size_t out_cap)
 {
     // Assemble raw frame: [type][seq][payload...][crc16-LE]
-    const size_t raw_len = 2 + payload_len + 2;  // type + seq + data + crc
-    if (raw_len > 256) return 0;  // sanity
+    const size_t raw_len = 2 + payload_len + 2; // type + seq + data + crc
+    if (raw_len > 256) return 0;                // sanity
 
     uint8_t raw[256];
     raw[0] = type;
@@ -94,23 +92,22 @@ size_t packet_build(uint8_t type, uint8_t seq,
 
     // CRC over type + seq + payload
     uint16_t c = crc16(raw, 2 + payload_len);
-    raw[2 + payload_len]     = static_cast<uint8_t>(c & 0xFF);        // low byte
+    raw[2 + payload_len] = static_cast<uint8_t>(c & 0xFF);            // low byte
     raw[2 + payload_len + 1] = static_cast<uint8_t>((c >> 8) & 0xFF); // high byte
 
     // COBS encode
     // Max COBS overhead: ceil(raw_len/254) + 1
     const size_t max_cobs = raw_len + (raw_len / 254) + 2;
-    if (out_cap < max_cobs + 1) return 0;  // +1 for delimiter
+    if (out_cap < max_cobs + 1) return 0; // +1 for delimiter
 
     size_t encoded_len = cobs_encode(raw, raw_len, out);
-    out[encoded_len] = 0x00;  // delimiter
+    out[encoded_len] = 0x00; // delimiter
     return encoded_len + 1;
 }
 
 // ---- Packet parse (host → MCU) ----
 
-ParsedPacket packet_parse(const uint8_t* frame, size_t frame_len,
-                          uint8_t* decode_buf, size_t decode_buf_len)
+ParsedPacket packet_parse(const uint8_t* frame, size_t frame_len, uint8_t* decode_buf, size_t decode_buf_len)
 {
     ParsedPacket pkt = {};
     pkt.valid = false;
@@ -123,17 +120,17 @@ ParsedPacket packet_parse(const uint8_t* frame, size_t frame_len,
     if (decoded_len < 4) return pkt;
 
     // Verify CRC
-    size_t crc_offset = decoded_len - 2;
-    uint16_t received_crc = static_cast<uint16_t>(decode_buf[crc_offset])
-                          | (static_cast<uint16_t>(decode_buf[crc_offset + 1]) << 8);
+    size_t   crc_offset = decoded_len - 2;
+    uint16_t received_crc =
+        static_cast<uint16_t>(decode_buf[crc_offset]) | (static_cast<uint16_t>(decode_buf[crc_offset + 1]) << 8);
     uint16_t computed_crc = crc16(decode_buf, crc_offset);
 
     if (received_crc != computed_crc) return pkt;
 
-    pkt.type     = decode_buf[0];
-    pkt.seq      = decode_buf[1];
-    pkt.data     = &decode_buf[2];
+    pkt.type = decode_buf[0];
+    pkt.seq = decode_buf[1];
+    pkt.data = &decode_buf[2];
     pkt.data_len = crc_offset - 2;
-    pkt.valid    = true;
+    pkt.valid = true;
     return pkt;
 }

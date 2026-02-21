@@ -7,7 +7,7 @@
 
 #include <atomic>
 
-static const char* TAG = "usb_composite";
+static const char*           TAG = "usb_composite";
 static std::atomic<uint32_t> g_tx_calls{0};
 static std::atomic<uint32_t> g_tx_bytes_requested{0};
 static std::atomic<uint32_t> g_tx_bytes_queued{0};
@@ -20,8 +20,8 @@ static std::atomic<uint32_t> g_rx_calls{0};
 static std::atomic<uint32_t> g_rx_bytes{0};
 static std::atomic<uint32_t> g_rx_errors{0};
 static std::atomic<uint32_t> g_line_state_events{0};
-static std::atomic<uint8_t> g_line_dtr{0};
-static std::atomic<uint8_t> g_line_rts{0};
+static std::atomic<uint8_t>  g_line_dtr{0};
+static std::atomic<uint8_t>  g_line_rts{0};
 
 static void record_flush_result(esp_err_t flush_ret)
 {
@@ -59,13 +59,13 @@ void usb_composite_init(void)
     ESP_LOGI(TAG, "initializing TinyUSB composite device");
 
     const tinyusb_config_t tusb_cfg = {
-        .device_descriptor = nullptr,         // use default
-        .string_descriptor = nullptr,         // use default
+        .device_descriptor = nullptr, // use default
+        .string_descriptor = nullptr, // use default
         .string_descriptor_count = 0,
         .external_phy = false,
-        .configuration_descriptor = nullptr,  // use default
+        .configuration_descriptor = nullptr, // use default
         .self_powered = false,
-        .vbus_monitor_io = 0,  // boot button pin doubles as VBUS sense on this board
+        .vbus_monitor_io = 0, // boot button pin doubles as VBUS sense on this board
     };
     ESP_ERROR_CHECK(tinyusb_driver_install(&tusb_cfg));
 
@@ -89,23 +89,21 @@ void usb_cdc_write(const uint8_t* data, size_t len)
     if (len == 0) return;
 
     static constexpr uint32_t FLUSH_TIMEOUT_TICKS = 2;
-    static constexpr int MAX_WRITE_ATTEMPTS = 6;
+    static constexpr int      MAX_WRITE_ATTEMPTS = 6;
 
     g_tx_calls.fetch_add(1, std::memory_order_relaxed);
     g_tx_bytes_requested.fetch_add(static_cast<uint32_t>(len), std::memory_order_relaxed);
 
     size_t written = 0;
     for (int attempt = 0; attempt < MAX_WRITE_ATTEMPTS && written < len; ++attempt) {
-        const size_t queued = tinyusb_cdcacm_write_queue(
-            TINYUSB_CDC_ACM_0, data + written, len - written);
+        const size_t queued = tinyusb_cdcacm_write_queue(TINYUSB_CDC_ACM_0, data + written, len - written);
         g_tx_bytes_queued.fetch_add(static_cast<uint32_t>(queued), std::memory_order_relaxed);
         if (queued < (len - written)) {
             g_tx_short_writes.fetch_add(1, std::memory_order_relaxed);
         }
         written += queued;
 
-        const esp_err_t flush_ret =
-            tinyusb_cdcacm_write_flush(TINYUSB_CDC_ACM_0, FLUSH_TIMEOUT_TICKS);
+        const esp_err_t flush_ret = tinyusb_cdcacm_write_flush(TINYUSB_CDC_ACM_0, FLUSH_TIMEOUT_TICKS);
         record_flush_result(flush_ret);
 
         if (written >= len || flush_ret == ESP_OK) {
@@ -128,7 +126,7 @@ int usb_cdc_read(uint8_t* buf, size_t max_len, uint32_t timeout_ms)
     (void)timeout_ms;
     g_rx_calls.fetch_add(1, std::memory_order_relaxed);
 
-    size_t rx_size = 0;
+    size_t    rx_size = 0;
     esp_err_t ret = tinyusb_cdcacm_read(TINYUSB_CDC_ACM_0, buf, max_len, &rx_size);
     if (ret != ESP_OK) {
         g_rx_errors.fetch_add(1, std::memory_order_relaxed);

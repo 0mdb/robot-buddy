@@ -24,12 +24,12 @@ void usb_rx_task(void* arg)
     size_t  frame_pos = 0;
     bool    discard = false;
 
-    uint8_t decode_buf[MAX_FRAME];
+    uint8_t          decode_buf[MAX_FRAME];
     const TickType_t idle_delay_ticks = (pdMS_TO_TICKS(1) > 0) ? pdMS_TO_TICKS(1) : 1;
 
     while (true) {
         uint8_t rx_buf[64];
-        int n = usb_cdc_read(rx_buf, sizeof(rx_buf), 50);
+        int     n = usb_cdc_read(rx_buf, sizeof(rx_buf), 50);
         if (n <= 0) {
             // Prevent starvation on low tick-rate configs (e.g. 100 Hz where 1 ms -> 0 ticks).
             vTaskDelay(idle_delay_ticks);
@@ -41,8 +41,7 @@ void usb_rx_task(void* arg)
 
             if (rx_byte == 0x00) {
                 if (frame_pos > 0 && !discard) {
-                    ParsedPacket pkt = packet_parse(frame_buf, frame_pos,
-                                                    decode_buf, sizeof(decode_buf));
+                    ParsedPacket pkt = packet_parse(frame_buf, frame_pos, decode_buf, sizeof(decode_buf));
                     if (pkt.valid) {
                         handle_packet(pkt);
                     } else {
@@ -75,25 +74,21 @@ static void handle_common_cmd(const ParsedPacket& pkt)
     case CommonCmdId::SET_PROTOCOL_VERSION: {
         if (pkt.data_len >= 1 && pkt.data[0] == 2) {
             g_protocol_version.store(2, std::memory_order_release);
-            ProtocolVersionPayload ack = { .version = 2 };
-            const uint64_t now_us = static_cast<uint64_t>(esp_timer_get_time());
-            const size_t len = packet_build_v2(
-                static_cast<uint8_t>(CommonTelId::PROTOCOL_VERSION_ACK),
-                next_seq(), now_us,
-                reinterpret_cast<const uint8_t*>(&ack), sizeof(ack),
-                tx_buf, sizeof(tx_buf));
+            ProtocolVersionPayload ack = {.version = 2};
+            const uint64_t         now_us = static_cast<uint64_t>(esp_timer_get_time());
+            const size_t           len =
+                packet_build_v2(static_cast<uint8_t>(CommonTelId::PROTOCOL_VERSION_ACK), next_seq(), now_us,
+                                reinterpret_cast<const uint8_t*>(&ack), sizeof(ack), tx_buf, sizeof(tx_buf));
             if (len > 0) {
                 usb_cdc_write(tx_buf, len);
             }
             ESP_LOGI(TAG, "protocol version set to 2");
         } else if (pkt.data_len >= 1 && pkt.data[0] == 1) {
             g_protocol_version.store(1, std::memory_order_release);
-            ProtocolVersionPayload ack = { .version = 1 };
-            const size_t len = packet_build(
-                static_cast<uint8_t>(CommonTelId::PROTOCOL_VERSION_ACK),
-                static_cast<uint8_t>(next_seq()),
-                reinterpret_cast<const uint8_t*>(&ack), sizeof(ack),
-                tx_buf, sizeof(tx_buf));
+            ProtocolVersionPayload ack = {.version = 1};
+            const size_t           len =
+                packet_build(static_cast<uint8_t>(CommonTelId::PROTOCOL_VERSION_ACK), static_cast<uint8_t>(next_seq()),
+                             reinterpret_cast<const uint8_t*>(&ack), sizeof(ack), tx_buf, sizeof(tx_buf));
             if (len > 0) {
                 usb_cdc_write(tx_buf, len);
             }
@@ -107,15 +102,13 @@ static void handle_common_cmd(const ParsedPacket& pkt)
             uint32_t ping_seq;
             memcpy(&ping_seq, pkt.data, 4);
             // Respond immediately — minimize latency (per PROTOCOL.md §2.6)
-            const uint64_t now_us = static_cast<uint64_t>(esp_timer_get_time());
+            const uint64_t      now_us = static_cast<uint64_t>(esp_timer_get_time());
             TimeSyncRespPayload resp;
             resp.ping_seq = ping_seq;
             resp.t_src_us = now_us;
-            const size_t len = packet_build_v2(
-                static_cast<uint8_t>(CommonTelId::TIME_SYNC_RESP),
-                next_seq(), now_us,
-                reinterpret_cast<const uint8_t*>(&resp), sizeof(resp),
-                tx_buf, sizeof(tx_buf));
+            const size_t len =
+                packet_build_v2(static_cast<uint8_t>(CommonTelId::TIME_SYNC_RESP), next_seq(), now_us,
+                                reinterpret_cast<const uint8_t*>(&resp), sizeof(resp), tx_buf, sizeof(tx_buf));
             if (len > 0) {
                 usb_cdc_write(tx_buf, len);
             }

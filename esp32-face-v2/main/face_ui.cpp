@@ -20,35 +20,34 @@
 #include <cstdlib>
 #include <cstring>
 
-static const char* TAG = "face_ui";
+static const char*        TAG = "face_ui";
 static constexpr uint32_t TALKING_CMD_TIMEOUT_MS = 450;
-static constexpr uint8_t BG_R = 0;
-static constexpr uint8_t BG_G = 0;
-static constexpr uint8_t BG_B = 0;
+static constexpr uint8_t  BG_R = 0;
+static constexpr uint8_t  BG_G = 0;
+static constexpr uint8_t  BG_B = 0;
 // Keep canvas format explicit to avoid lv_color_t/native-depth stride mismatch.
 static constexpr lv_color_format_t CANVAS_COLOR_FORMAT = LV_COLOR_FORMAT_RGB888;
-static constexpr std::size_t CANVAS_BYTES =
-    SCREEN_W * SCREEN_H * LV_COLOR_FORMAT_GET_SIZE(CANVAS_COLOR_FORMAT);
+static constexpr std::size_t       CANVAS_BYTES = SCREEN_W * SCREEN_H * LV_COLOR_FORMAT_GET_SIZE(CANVAS_COLOR_FORMAT);
 
 static float now_s();
 static float clampf(float v, float lo, float hi);
 
 // ---- LVGL objects ----
-static lv_obj_t* canvas_obj = nullptr;
+static lv_obj_t*   canvas_obj = nullptr;
 static lv_color_t* canvas_buf = nullptr;
 static lv_color_t* afterglow_buf = nullptr;
-static lv_obj_t* ptt_btn = nullptr;
-static lv_obj_t* ptt_label = nullptr;
-static lv_obj_t* action_btn = nullptr;
-static lv_obj_t* calib_header_bg = nullptr;
-static lv_obj_t* calib_label_touch = nullptr;
-static lv_obj_t* calib_label_tf = nullptr;
-static lv_obj_t* calib_label_flags = nullptr;
+static lv_obj_t*   ptt_btn = nullptr;
+static lv_obj_t*   ptt_label = nullptr;
+static lv_obj_t*   action_btn = nullptr;
+static lv_obj_t*   calib_header_bg = nullptr;
+static lv_obj_t*   calib_label_touch = nullptr;
+static lv_obj_t*   calib_label_tf = nullptr;
+static lv_obj_t*   calib_label_flags = nullptr;
 
-static int s_last_touch_x = SCREEN_W / 2;
-static int s_last_touch_y = SCREEN_H / 2;
+static int     s_last_touch_x = SCREEN_W / 2;
+static int     s_last_touch_y = SCREEN_H / 2;
 static uint8_t s_last_touch_evt = 0xFF;
-static bool s_last_touch_active = false;
+static bool    s_last_touch_active = false;
 
 static void publish_touch_sample(uint8_t event_type, int x, int y);
 static void publish_button_event(FaceButtonId button_id, FaceButtonEventType event_type, uint8_t state);
@@ -80,14 +79,12 @@ static bool color_eq(const lv_color_t& a, const lv_color_t& b)
 
 static lv_color_t scale_color(const lv_color_t& c, uint8_t num, uint8_t den)
 {
-    return rgb_to_color(
-        static_cast<uint8_t>((static_cast<uint16_t>(c.red) * num) / den),
-        static_cast<uint8_t>((static_cast<uint16_t>(c.green) * num) / den),
-        static_cast<uint8_t>((static_cast<uint16_t>(c.blue) * num) / den));
+    return rgb_to_color(static_cast<uint8_t>((static_cast<uint16_t>(c.red) * num) / den),
+                        static_cast<uint8_t>((static_cast<uint16_t>(c.green) * num) / den),
+                        static_cast<uint8_t>((static_cast<uint16_t>(c.blue) * num) / den));
 }
 
-static void draw_filled_rect(lv_color_t* buf, int x, int y, int w, int h,
-                             lv_color_t color)
+static void draw_filled_rect(lv_color_t* buf, int x, int y, int w, int h, lv_color_t color)
 {
     for (int dy = 0; dy < h; dy++) {
         int py = y + dy;
@@ -119,8 +116,7 @@ static bool point_in_rect(int x, int y, int rx, int ry, int rw, int rh)
     return (x >= rx && x < (rx + rw) && y >= ry && y < (ry + rh));
 }
 
-static void draw_filled_rounded_rect(lv_color_t* buf, int x, int y, int w, int h,
-                                     int radius, lv_color_t color)
+static void draw_filled_rounded_rect(lv_color_t* buf, int x, int y, int w, int h, int radius, lv_color_t color)
 {
     // Simple rounded rect: draw main body + corners with distance check
     for (int dy = 0; dy < h; dy++) {
@@ -134,8 +130,7 @@ static void draw_filled_rounded_rect(lv_color_t* buf, int x, int y, int w, int h
             // Check corners
             if (dx < radius && dy < radius) {
                 // Top-left
-                float dist = sqrtf((float)(radius - dx) * (radius - dx) +
-                                   (float)(radius - dy) * (radius - dy));
+                float dist = sqrtf((float)(radius - dx) * (radius - dx) + (float)(radius - dy) * (radius - dy));
                 if (dist > radius) inside = false;
             } else if (dx >= w - radius && dy < radius) {
                 // Top-right
@@ -161,8 +156,7 @@ static void draw_filled_rounded_rect(lv_color_t* buf, int x, int y, int w, int h
     }
 }
 
-static void draw_filled_circle(lv_color_t* buf, int cx, int cy, int radius,
-                               lv_color_t color)
+static void draw_filled_circle(lv_color_t* buf, int cx, int cy, int radius, lv_color_t color)
 {
     int r2 = radius * radius;
     for (int dy = -radius; dy <= radius; dy++) {
@@ -215,8 +209,8 @@ static void draw_x_shape(lv_color_t* buf, int cx, int cy, int size, int thick, l
     }
 }
 
-static void render_eye(lv_color_t* buf, const EyeState& eye, const FaceState& fs,
-                       bool is_left, float center_x, float center_y)
+static void render_eye(lv_color_t* buf, const EyeState& eye, const FaceState& fs, bool is_left, float center_x,
+                       float center_y)
 {
     uint8_t r, g, b;
     face_get_emotion_color(fs, r, g, b);
@@ -232,7 +226,7 @@ static void render_eye(lv_color_t* buf, const EyeState& eye, const FaceState& fs
 
     const float ex = center_x + eye.gaze_x * GAZE_EYE_SHIFT - ew / 2.0f;
     const float ey = center_y + eye.gaze_y * GAZE_EYE_SHIFT - eh / 2.0f;
-    const int corner = static_cast<int>(EYE_CORNER_R * fminf(eye.width_scale, eye.height_scale));
+    const int   corner = static_cast<int>(EYE_CORNER_R * fminf(eye.width_scale, eye.height_scale));
 
     if (fs.solid_eye && fs.anim.heart) {
         draw_heart_shape(buf, static_cast<int>(center_x), static_cast<int>(center_y),
@@ -243,12 +237,11 @@ static void render_eye(lv_color_t* buf, const EyeState& eye, const FaceState& fs
     } else {
         if (fs.fx.edge_glow) {
             const lv_color_t glow = scale_color(eye_color, 2, 5);
-            draw_filled_rounded_rect(buf, static_cast<int>(ex) - 2, static_cast<int>(ey) - 2,
-                                     static_cast<int>(ew) + 4, static_cast<int>(eh) + 4,
-                                     corner + 2, glow);
+            draw_filled_rounded_rect(buf, static_cast<int>(ex) - 2, static_cast<int>(ey) - 2, static_cast<int>(ew) + 4,
+                                     static_cast<int>(eh) + 4, corner + 2, glow);
         }
-        draw_filled_rounded_rect(buf, static_cast<int>(ex), static_cast<int>(ey),
-                                 static_cast<int>(ew), static_cast<int>(eh), corner, eye_color);
+        draw_filled_rounded_rect(buf, static_cast<int>(ex), static_cast<int>(ey), static_cast<int>(ew),
+                                 static_cast<int>(eh), corner, eye_color);
     }
 
     if (!fs.solid_eye) {
@@ -256,7 +249,7 @@ static void render_eye(lv_color_t* buf, const EyeState& eye, const FaceState& fs
         const float max_offset_y = fmaxf(0.0f, eh * 0.5f - PUPIL_R - 5.0f);
         const float px = center_x + clampf(eye.gaze_x * GAZE_PUPIL_SHIFT, -max_offset_x, max_offset_x);
         const float py = center_y + clampf(eye.gaze_y * GAZE_PUPIL_SHIFT, -max_offset_y, max_offset_y);
-        const int pr = static_cast<int>(PUPIL_R * fmaxf(0.4f, eye.openness));
+        const int   pr = static_cast<int>(PUPIL_R * fmaxf(0.4f, eye.openness));
         if (fs.anim.heart) {
             draw_heart_shape(buf, static_cast<int>(px), static_cast<int>(py), pr, rgb_to_color(10, 15, 30));
         } else if (fs.anim.x_eyes) {
@@ -270,10 +263,10 @@ static void render_eye(lv_color_t* buf, const EyeState& eye, const FaceState& fs
     const float lid_top = is_left ? fs.eyelids.top_l : fs.eyelids.top_r;
     const float lid_bot = is_left ? fs.eyelids.bottom_l : fs.eyelids.bottom_r;
     const float slope = fs.eyelids.slope;
-    const int x0 = static_cast<int>(ex);
-    const int x1 = static_cast<int>(ex + ew);
-    const int y0 = static_cast<int>(ey);
-    const int y1 = static_cast<int>(ey + eh);
+    const int   x0 = static_cast<int>(ex);
+    const int   x1 = static_cast<int>(ex + ew);
+    const int   y0 = static_cast<int>(ey);
+    const int   y1 = static_cast<int>(ey + eh);
 
     for (int x = x0; x < x1; x++) {
         if (x < 0 || x >= SCREEN_W) continue;
@@ -282,8 +275,8 @@ static void render_eye(lv_color_t* buf, const EyeState& eye, const FaceState& fs
             nx = -nx;
         }
         const float slope_off = slope * 20.0f * nx;
-        const int top_limit = static_cast<int>((ey - 0.5f) + eh * 2.0f * lid_top + slope_off);
-        const int bot_limit = static_cast<int>((ey + eh) - eh * 2.0f * lid_bot);
+        const int   top_limit = static_cast<int>((ey - 0.5f) + eh * 2.0f * lid_top + slope_off);
+        const int   bot_limit = static_cast<int>((ey + eh) - eh * 2.0f * lid_bot);
 
         if (top_limit > y0) {
             draw_vline(buf, x, y0, top_limit, black);
@@ -311,7 +304,7 @@ static void render_mouth(lv_color_t* buf, const FaceState& fs)
 
     int num_points = static_cast<int>(hw * 2);
     for (int i = 0; i < num_points; i++) {
-        float t = static_cast<float>(i) / static_cast<float>(num_points - 1);  // 0..1
+        float t = static_cast<float>(i) / static_cast<float>(num_points - 1); // 0..1
         float x_off = -hw + 2.0f * hw * t;
         float parabola = 1.0f - 4.0f * (t - 0.5f) * (t - 0.5f);
         float y_off = curve * parabola;
@@ -343,10 +336,14 @@ static void render_fire_effect(lv_color_t* buf, const FaceState& fs)
         int y = static_cast<int>(px.y);
         if (x < 0 || x >= SCREEN_W || y < 0 || y >= SCREEN_H) continue;
         lv_color_t c;
-        if (px.heat > 0.85f) c = rgb_to_color(255, 220, 120);
-        else if (px.heat > 0.65f) c = rgb_to_color(255, 140, 20);
-        else if (px.heat > 0.40f) c = rgb_to_color(220, 50, 0);
-        else c = rgb_to_color(130, 20, 0);
+        if (px.heat > 0.85f)
+            c = rgb_to_color(255, 220, 120);
+        else if (px.heat > 0.65f)
+            c = rgb_to_color(255, 140, 20);
+        else if (px.heat > 0.40f)
+            c = rgb_to_color(220, 50, 0);
+        else
+            c = rgb_to_color(130, 20, 0);
         draw_filled_rect(buf, x - 1, y - 1, 3, 3, c);
     }
 }
@@ -442,53 +439,32 @@ static void update_calibration_labels(uint32_t now_ms, uint32_t next_switch_ms)
         return;
     }
 
-    const std::size_t idx = touch_transform_preset_index();
-    const std::size_t total = touch_transform_preset_count();
+    const std::size_t           idx = touch_transform_preset_index();
+    const std::size_t           total = touch_transform_preset_count();
     const TouchTransformPreset* tf = touch_transform_preset_get(idx);
 
-    char line_touch[128];
-    char line_tf[128];
-    char line_flags[128];
-    char line_cycle[32];
+    char     line_touch[128];
+    char     line_tf[128];
+    char     line_flags[128];
+    char     line_cycle[32];
     uint32_t secs_left = 0;
     if (next_switch_ms > now_ms) {
         secs_left = (next_switch_ms - now_ms + 999U) / 1000U;
     }
 
-    snprintf(
-        line_touch,
-        sizeof(line_touch),
-        "touch x=%3d y=%3d evt=%u active=%u",
-        s_last_touch_x,
-        s_last_touch_y,
-        static_cast<unsigned>(s_last_touch_evt),
-        s_last_touch_active ? 1U : 0U
-    );
+    snprintf(line_touch, sizeof(line_touch), "touch x=%3d y=%3d evt=%u active=%u", s_last_touch_x, s_last_touch_y,
+             static_cast<unsigned>(s_last_touch_evt), s_last_touch_active ? 1U : 0U);
     if (CALIB_TOUCH_AUTOCYCLE_MS > 0) {
         snprintf(line_cycle, sizeof(line_cycle), "next %us", static_cast<unsigned>(secs_left));
     } else {
         snprintf(line_cycle, sizeof(line_cycle), "locked");
     }
 
-    snprintf(
-        line_tf,
-        sizeof(line_tf),
-        "tf[%u/%u] %s (%s)",
-        static_cast<unsigned>(idx),
-        static_cast<unsigned>(total ? (total - 1) : 0),
-        (tf && tf->name) ? tf->name : "none",
-        line_cycle
-    );
-    snprintf(
-        line_flags,
-        sizeof(line_flags),
-        "xmax=%u ymax=%u swap=%u mx=%u my=%u",
-        tf ? static_cast<unsigned>(tf->x_max) : 0U,
-        tf ? static_cast<unsigned>(tf->y_max) : 0U,
-        tf ? (tf->swap_xy ? 1U : 0U) : 0U,
-        tf ? (tf->mirror_x ? 1U : 0U) : 0U,
-        tf ? (tf->mirror_y ? 1U : 0U) : 0U
-    );
+    snprintf(line_tf, sizeof(line_tf), "tf[%u/%u] %s (%s)", static_cast<unsigned>(idx),
+             static_cast<unsigned>(total ? (total - 1) : 0), (tf && tf->name) ? tf->name : "none", line_cycle);
+    snprintf(line_flags, sizeof(line_flags), "xmax=%u ymax=%u swap=%u mx=%u my=%u",
+             tf ? static_cast<unsigned>(tf->x_max) : 0U, tf ? static_cast<unsigned>(tf->y_max) : 0U,
+             tf ? (tf->swap_xy ? 1U : 0U) : 0U, tf ? (tf->mirror_x ? 1U : 0U) : 0U, tf ? (tf->mirror_y ? 1U : 0U) : 0U);
 
     lv_label_set_text(calib_label_touch, line_touch);
     lv_label_set_text(calib_label_tf, line_tf);
@@ -579,9 +555,11 @@ static void ptt_button_event_cb(lv_event_t* e)
 
     const lv_event_code_t code = lv_event_get_code(e);
     if (code == LV_EVENT_PRESSED) {
-        publish_button_event(FaceButtonId::PTT, FaceButtonEventType::PRESS, g_ptt_listening.load(std::memory_order_relaxed) ? 1 : 0);
+        publish_button_event(FaceButtonId::PTT, FaceButtonEventType::PRESS,
+                             g_ptt_listening.load(std::memory_order_relaxed) ? 1 : 0);
     } else if (code == LV_EVENT_RELEASED) {
-        publish_button_event(FaceButtonId::PTT, FaceButtonEventType::RELEASE, g_ptt_listening.load(std::memory_order_relaxed) ? 1 : 0);
+        publish_button_event(FaceButtonId::PTT, FaceButtonEventType::RELEASE,
+                             g_ptt_listening.load(std::memory_order_relaxed) ? 1 : 0);
     } else if (code == LV_EVENT_CLICKED) {
         const bool listening = !g_ptt_listening.load(std::memory_order_relaxed);
         g_ptt_listening.store(listening, std::memory_order_relaxed);
@@ -611,14 +589,12 @@ static void action_button_event_cb(lv_event_t* e)
 void face_ui_create(lv_obj_t* parent)
 {
     // Allocate canvas buffer in PSRAM
-    canvas_buf = static_cast<lv_color_t*>(
-        heap_caps_malloc(CANVAS_BYTES, MALLOC_CAP_SPIRAM));
+    canvas_buf = static_cast<lv_color_t*>(heap_caps_malloc(CANVAS_BYTES, MALLOC_CAP_SPIRAM));
     if (!canvas_buf) {
         ESP_LOGE(TAG, "failed to allocate canvas buffer in PSRAM!");
         return;
     }
-    afterglow_buf = static_cast<lv_color_t*>(
-        heap_caps_malloc(CANVAS_BYTES, MALLOC_CAP_SPIRAM));
+    afterglow_buf = static_cast<lv_color_t*>(heap_caps_malloc(CANVAS_BYTES, MALLOC_CAP_SPIRAM));
     if (!afterglow_buf) {
         ESP_LOGW(TAG, "failed to allocate afterglow buffer; disabling afterglow effect");
     } else {
@@ -645,16 +621,12 @@ void face_ui_create(lv_obj_t* parent)
     lv_obj_set_style_radius(ptt_btn, UI_ICON_HITBOX / 2, LV_PART_MAIN);
     lv_obj_set_style_border_width(ptt_btn, 1, LV_PART_MAIN);
     lv_obj_set_style_border_color(ptt_btn, lv_color_hex(0x54C896), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(
-        ptt_btn,
-        UI_ICON_IDLE_OPA,
-        static_cast<lv_style_selector_t>(LV_PART_MAIN) |
-            static_cast<lv_style_selector_t>(LV_STATE_DEFAULT));
-    lv_obj_set_style_bg_opa(
-        ptt_btn,
-        UI_ICON_PRESSED_OPA,
-        static_cast<lv_style_selector_t>(LV_PART_MAIN) |
-            static_cast<lv_style_selector_t>(LV_STATE_PRESSED));
+    lv_obj_set_style_bg_opa(ptt_btn, UI_ICON_IDLE_OPA,
+                            static_cast<lv_style_selector_t>(LV_PART_MAIN) |
+                                static_cast<lv_style_selector_t>(LV_STATE_DEFAULT));
+    lv_obj_set_style_bg_opa(ptt_btn, UI_ICON_PRESSED_OPA,
+                            static_cast<lv_style_selector_t>(LV_PART_MAIN) |
+                                static_cast<lv_style_selector_t>(LV_STATE_PRESSED));
     lv_obj_add_event_cb(ptt_btn, ptt_button_event_cb, LV_EVENT_ALL, nullptr);
     ptt_label = lv_label_create(ptt_btn);
     lv_obj_set_style_text_color(ptt_label, lv_color_hex(0xF4FFFF), LV_PART_MAIN);
@@ -666,16 +638,12 @@ void face_ui_create(lv_obj_t* parent)
     lv_obj_set_style_radius(action_btn, UI_ICON_HITBOX / 2, LV_PART_MAIN);
     lv_obj_set_style_border_width(action_btn, 1, LV_PART_MAIN);
     lv_obj_set_style_border_color(action_btn, lv_color_hex(0xFFBE8B), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(
-        action_btn,
-        UI_ICON_IDLE_OPA,
-        static_cast<lv_style_selector_t>(LV_PART_MAIN) |
-            static_cast<lv_style_selector_t>(LV_STATE_DEFAULT));
-    lv_obj_set_style_bg_opa(
-        action_btn,
-        UI_ICON_PRESSED_OPA,
-        static_cast<lv_style_selector_t>(LV_PART_MAIN) |
-            static_cast<lv_style_selector_t>(LV_STATE_PRESSED));
+    lv_obj_set_style_bg_opa(action_btn, UI_ICON_IDLE_OPA,
+                            static_cast<lv_style_selector_t>(LV_PART_MAIN) |
+                                static_cast<lv_style_selector_t>(LV_STATE_DEFAULT));
+    lv_obj_set_style_bg_opa(action_btn, UI_ICON_PRESSED_OPA,
+                            static_cast<lv_style_selector_t>(LV_PART_MAIN) |
+                                static_cast<lv_style_selector_t>(LV_STATE_PRESSED));
     lv_obj_set_style_bg_color(action_btn, lv_color_hex(0xB66A3A), LV_PART_MAIN);
     lv_obj_add_event_cb(action_btn, action_button_event_cb, LV_EVENT_ALL, nullptr);
     lv_obj_t* action_label = lv_label_create(action_btn);
@@ -762,34 +730,34 @@ static void apply_face_flags(FaceState& fs, uint8_t flags)
 // ---- FreeRTOS task ----
 
 // Global state instances
-std::atomic<uint8_t> g_cmd_state_mood{0};
-std::atomic<uint8_t> g_cmd_state_intensity{255};
-std::atomic<int8_t>  g_cmd_state_gaze_x{0};
-std::atomic<int8_t>  g_cmd_state_gaze_y{0};
-std::atomic<uint8_t> g_cmd_state_brightness{DEFAULT_BRIGHTNESS};
+std::atomic<uint8_t>  g_cmd_state_mood{0};
+std::atomic<uint8_t>  g_cmd_state_intensity{255};
+std::atomic<int8_t>   g_cmd_state_gaze_x{0};
+std::atomic<int8_t>   g_cmd_state_gaze_y{0};
+std::atomic<uint8_t>  g_cmd_state_brightness{DEFAULT_BRIGHTNESS};
 std::atomic<uint32_t> g_cmd_state_us{0};
 
-std::atomic<uint8_t> g_cmd_system_mode{static_cast<uint8_t>(SystemMode::NONE)};
-std::atomic<uint8_t> g_cmd_system_param{0};
+std::atomic<uint8_t>  g_cmd_system_mode{static_cast<uint8_t>(SystemMode::NONE)};
+std::atomic<uint8_t>  g_cmd_system_param{0};
 std::atomic<uint32_t> g_cmd_system_us{0};
 
-std::atomic<uint8_t> g_cmd_talking{0};
-std::atomic<uint8_t> g_cmd_talking_energy{0};
+std::atomic<uint8_t>  g_cmd_talking{0};
+std::atomic<uint8_t>  g_cmd_talking_energy{0};
 std::atomic<uint32_t> g_cmd_talking_us{0};
 
-std::atomic<uint8_t> g_cmd_flags{FACE_FLAGS_ALL};
+std::atomic<uint8_t>  g_cmd_flags{FACE_FLAGS_ALL};
 std::atomic<uint32_t> g_cmd_flags_us{0};
 
 GestureQueue g_gesture_queue;
 
-TouchBuffer g_touch;
-ButtonEventBuffer g_button;
-std::atomic<bool> g_touch_active{false};
-std::atomic<bool> g_talking_active{false};
-std::atomic<bool> g_ptt_listening{false};
-std::atomic<uint8_t> g_current_mood{0};
-std::atomic<uint8_t> g_active_gesture{0xFF};
-std::atomic<uint8_t> g_system_mode{0};
+TouchBuffer           g_touch;
+ButtonEventBuffer     g_button;
+std::atomic<bool>     g_touch_active{false};
+std::atomic<bool>     g_talking_active{false};
+std::atomic<bool>     g_ptt_listening{false};
+std::atomic<uint8_t>  g_current_mood{0};
+std::atomic<uint8_t>  g_active_gesture{0xFF};
+std::atomic<uint8_t>  g_system_mode{0};
 std::atomic<uint32_t> g_cmd_seq_last{0};
 std::atomic<uint32_t> g_cmd_applied_us{0};
 
@@ -798,17 +766,17 @@ void face_ui_task(void* arg)
     ESP_LOGI(TAG, "face_ui_task started (%d FPS)", ANIM_FPS);
 
     FaceState fs;
-    uint32_t last_state_cmd_us = 0;
-    uint32_t last_system_cmd_us = 0;
-    uint32_t last_talking_cmd_us = 0;
-    uint32_t last_flags_cmd_us = 0;
-    bool last_led_talking = false;
-    bool last_led_listening = false;
-    uint32_t next_touch_cycle_ms = 0;
-    uint32_t next_frame_log_ms = static_cast<uint32_t>(esp_timer_get_time() / 1000ULL) + FRAME_TIME_LOG_INTERVAL_MS;
-    uint32_t frame_count = 0;
-    uint64_t frame_accum_us = 0;
-    uint32_t frame_max_us = 0;
+    uint32_t  last_state_cmd_us = 0;
+    uint32_t  last_system_cmd_us = 0;
+    uint32_t  last_talking_cmd_us = 0;
+    uint32_t  last_flags_cmd_us = 0;
+    bool      last_led_talking = false;
+    bool      last_led_listening = false;
+    uint32_t  next_touch_cycle_ms = 0;
+    uint32_t  next_frame_log_ms = static_cast<uint32_t>(esp_timer_get_time() / 1000ULL) + FRAME_TIME_LOG_INTERVAL_MS;
+    uint32_t  frame_count = 0;
+    uint64_t  frame_accum_us = 0;
+    uint32_t  frame_max_us = 0;
 
     apply_face_flags(fs, g_cmd_flags.load(std::memory_order_relaxed));
     if (!afterglow_buf) {
@@ -820,20 +788,13 @@ void face_ui_task(void* arg)
     if (FACE_CALIBRATION_MODE) {
         touch_transform_apply(CALIB_TOUCH_DEFAULT_INDEX);
         if (CALIB_TOUCH_AUTOCYCLE_MS > 0) {
-            next_touch_cycle_ms =
-                static_cast<uint32_t>(esp_timer_get_time() / 1000ULL) + CALIB_TOUCH_AUTOCYCLE_MS;
-            ESP_LOGI(
-                TAG,
-                "calibration mode enabled; cycling touch transform every %u ms",
-                static_cast<unsigned>(CALIB_TOUCH_AUTOCYCLE_MS)
-            );
+            next_touch_cycle_ms = static_cast<uint32_t>(esp_timer_get_time() / 1000ULL) + CALIB_TOUCH_AUTOCYCLE_MS;
+            ESP_LOGI(TAG, "calibration mode enabled; cycling touch transform every %u ms",
+                     static_cast<unsigned>(CALIB_TOUCH_AUTOCYCLE_MS));
         } else {
             next_touch_cycle_ms = 0;
-            ESP_LOGI(
-                TAG,
-                "calibration mode enabled; touch transform locked at preset %u",
-                static_cast<unsigned>(CALIB_TOUCH_DEFAULT_INDEX)
-            );
+            ESP_LOGI(TAG, "calibration mode enabled; touch transform locked at preset %u",
+                     static_cast<unsigned>(CALIB_TOUCH_DEFAULT_INDEX));
         }
     }
 
@@ -847,8 +808,8 @@ void face_ui_task(void* arg)
             last_state_cmd_us = state_cmd_us;
             const uint8_t mood_id = g_cmd_state_mood.load(std::memory_order_relaxed);
             const uint8_t intensity_u8 = g_cmd_state_intensity.load(std::memory_order_relaxed);
-            const int8_t gaze_x_i8 = g_cmd_state_gaze_x.load(std::memory_order_relaxed);
-            const int8_t gaze_y_i8 = g_cmd_state_gaze_y.load(std::memory_order_relaxed);
+            const int8_t  gaze_x_i8 = g_cmd_state_gaze_x.load(std::memory_order_relaxed);
+            const int8_t  gaze_y_i8 = g_cmd_state_gaze_y.load(std::memory_order_relaxed);
             const uint8_t brightness_u8 = g_cmd_state_brightness.load(std::memory_order_relaxed);
 
             if (mood_id <= static_cast<uint8_t>(Mood::THINKING)) {
@@ -888,8 +849,7 @@ void face_ui_task(void* arg)
         if (talking_cmd_us != 0 && talking_cmd_us != last_talking_cmd_us) {
             last_talking_cmd_us = talking_cmd_us;
             fs.talking = g_cmd_talking.load(std::memory_order_relaxed) != 0;
-            fs.talking_energy =
-                static_cast<float>(g_cmd_talking_energy.load(std::memory_order_relaxed)) / 255.0f;
+            fs.talking_energy = static_cast<float>(g_cmd_talking_energy.load(std::memory_order_relaxed)) / 255.0f;
             if (!fs.talking) {
                 fs.talking_energy = 0.0f;
             }
@@ -919,8 +879,7 @@ void face_ui_task(void* arg)
             if (delta_ms >= 0) {
                 const std::size_t count = touch_transform_preset_count();
                 if (count > 0) {
-                    const std::size_t next =
-                        (touch_transform_preset_index() + 1) % count;
+                    const std::size_t next = (touch_transform_preset_index() + 1) % count;
                     touch_transform_apply(next);
                 }
                 next_touch_cycle_ms = now_ms + CALIB_TOUCH_AUTOCYCLE_MS;
@@ -939,11 +898,11 @@ void face_ui_task(void* arg)
         const bool listening = g_ptt_listening.load(std::memory_order_relaxed);
         if (fs.talking != last_led_talking || listening != last_led_listening) {
             if (fs.talking) {
-                led_set_rgb(180, 80, 0);      // talking
+                led_set_rgb(180, 80, 0); // talking
             } else if (listening) {
-                led_set_rgb(0, 90, 180);      // ready to listen
+                led_set_rgb(0, 90, 180); // ready to listen
             } else {
-                led_set_rgb(0, 40, 0);        // idle/connected
+                led_set_rgb(0, 40, 0); // idle/connected
             }
             last_led_talking = fs.talking;
             last_led_listening = listening;
@@ -958,30 +917,20 @@ void face_ui_task(void* arg)
             lvgl_port_unlock();
 
             // v2: record when display buffer was committed (render completion)
-            g_cmd_applied_us.store(
-                static_cast<uint32_t>(esp_timer_get_time()),
-                std::memory_order_release);
+            g_cmd_applied_us.store(static_cast<uint32_t>(esp_timer_get_time()), std::memory_order_release);
         }
 
-        const uint32_t frame_us =
-            static_cast<uint32_t>(static_cast<uint64_t>(esp_timer_get_time()) - frame_start_us);
+        const uint32_t frame_us = static_cast<uint32_t>(static_cast<uint64_t>(esp_timer_get_time()) - frame_start_us);
         frame_accum_us += frame_us;
         frame_count++;
         if (frame_us > frame_max_us) {
             frame_max_us = frame_us;
         }
-        if (FRAME_TIME_LOG_INTERVAL_MS > 0 &&
-            static_cast<int32_t>(now_ms - next_frame_log_ms) >= 0) {
-            const uint32_t avg_us =
-                (frame_count > 0) ? static_cast<uint32_t>(frame_accum_us / frame_count) : 0U;
-            const float fps = (avg_us > 0U) ? (1'000'000.0f / static_cast<float>(avg_us)) : 0.0f;
-            ESP_LOGI(
-                TAG,
-                "frame stats avg=%u us max=%u us fps=%.1f system=%u",
-                static_cast<unsigned>(avg_us),
-                static_cast<unsigned>(frame_max_us),
-                fps,
-                static_cast<unsigned>(fs.system.mode));
+        if (FRAME_TIME_LOG_INTERVAL_MS > 0 && static_cast<int32_t>(now_ms - next_frame_log_ms) >= 0) {
+            const uint32_t avg_us = (frame_count > 0) ? static_cast<uint32_t>(frame_accum_us / frame_count) : 0U;
+            const float    fps = (avg_us > 0U) ? (1'000'000.0f / static_cast<float>(avg_us)) : 0.0f;
+            ESP_LOGI(TAG, "frame stats avg=%u us max=%u us fps=%.1f system=%u", static_cast<unsigned>(avg_us),
+                     static_cast<unsigned>(frame_max_us), fps, static_cast<unsigned>(fs.system.mode));
             frame_count = 0;
             frame_accum_us = 0;
             frame_max_us = 0;

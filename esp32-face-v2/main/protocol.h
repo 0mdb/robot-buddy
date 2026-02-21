@@ -21,66 +21,66 @@
 
 // Protocol handshake / time sync (shared with esp32-reflex)
 enum class CommonCmdId : uint8_t {
-    TIME_SYNC_REQ        = 0x06,  // Pi -> MCU: {ping_seq:u32, reserved:u32}
-    SET_PROTOCOL_VERSION = 0x07,  // Pi -> MCU: {version:u8}
+    TIME_SYNC_REQ = 0x06,        // Pi -> MCU: {ping_seq:u32, reserved:u32}
+    SET_PROTOCOL_VERSION = 0x07, // Pi -> MCU: {version:u8}
 };
 
 enum class CommonTelId : uint8_t {
-    TIME_SYNC_RESP       = 0x86,  // MCU -> Pi: {ping_seq:u32, t_src_us:u64}
-    PROTOCOL_VERSION_ACK = 0x87,  // MCU -> Pi: {version:u8}
+    TIME_SYNC_RESP = 0x86,       // MCU -> Pi: {ping_seq:u32, t_src_us:u64}
+    PROTOCOL_VERSION_ACK = 0x87, // MCU -> Pi: {version:u8}
 };
 
 enum class FaceCmdId : uint8_t {
-    SET_STATE   = 0x20,   // mood + gaze + brightness
-    GESTURE     = 0x21,   // trigger one-shot gesture
-    SET_SYSTEM  = 0x22,   // system mode overlay
-    SET_TALKING = 0x23,   // speaking animation state + energy
-    SET_FLAGS   = 0x24,   // renderer/animation feature toggles
+    SET_STATE = 0x20,   // mood + gaze + brightness
+    GESTURE = 0x21,     // trigger one-shot gesture
+    SET_SYSTEM = 0x22,  // system mode overlay
+    SET_TALKING = 0x23, // speaking animation state + energy
+    SET_FLAGS = 0x24,   // renderer/animation feature toggles
 };
 
 enum class FaceTelId : uint8_t {
-    FACE_STATUS  = 0x90,  // current mood/gesture/system/flags
-    TOUCH_EVENT  = 0x91,  // raw touch press/release/drag
-    BUTTON_EVENT = 0x92,  // bottom control buttons (PTT/ACTION)
-    HEARTBEAT    = 0x93,  // periodic liveness + telemetry counters
+    FACE_STATUS = 0x90,  // current mood/gesture/system/flags
+    TOUCH_EVENT = 0x91,  // raw touch press/release/drag
+    BUTTON_EVENT = 0x92, // bottom control buttons (PTT/ACTION)
+    HEARTBEAT = 0x93,    // periodic liveness + telemetry counters
 };
 
 enum class FaceButtonId : uint8_t {
-    PTT    = 0,
+    PTT = 0,
     ACTION = 1,
 };
 
 enum class FaceButtonEventType : uint8_t {
-    PRESS   = 0,
+    PRESS = 0,
     RELEASE = 1,
-    TOGGLE  = 2,
-    CLICK   = 3,
+    TOGGLE = 2,
+    CLICK = 3,
 };
 
 // ---- Payload structs (packed, little-endian) ----
 
 struct __attribute__((packed)) FaceSetStatePayload {
-    uint8_t mood_id;       // Mood enum (0-11, see face_state.h)
-    uint8_t intensity;     // 0-255
-    int8_t  gaze_x;        // -128..+127, scaled to +-MAX_GAZE
-    int8_t  gaze_y;        // -128..+127, scaled to +-MAX_GAZE
-    uint8_t brightness;    // 0-255 backlight
+    uint8_t mood_id;    // Mood enum (0-11, see face_state.h)
+    uint8_t intensity;  // 0-255
+    int8_t  gaze_x;     // -128..+127, scaled to +-MAX_GAZE
+    int8_t  gaze_y;     // -128..+127, scaled to +-MAX_GAZE
+    uint8_t brightness; // 0-255 backlight
 };
 
 struct __attribute__((packed)) FaceGesturePayload {
-    uint8_t  gesture_id;   // GestureId enum
-    uint16_t duration_ms;  // 0 = use default
+    uint8_t  gesture_id;  // GestureId enum
+    uint16_t duration_ms; // 0 = use default
 };
 
 struct __attribute__((packed)) FaceSetSystemPayload {
-    uint8_t mode;          // SystemMode enum
-    uint8_t phase;         // reserved
-    uint8_t param;         // mode-specific (e.g. battery level 0-255)
+    uint8_t mode;  // SystemMode enum
+    uint8_t phase; // reserved
+    uint8_t param; // mode-specific (e.g. battery level 0-255)
 };
 
 struct __attribute__((packed)) FaceSetTalkingPayload {
-    uint8_t talking;       // 0=stopped, 1=speaking
-    uint8_t energy;        // 0-255, energy level for mouth/eye animation
+    uint8_t talking; // 0=stopped, 1=speaking
+    uint8_t energy;  // 0-255, energy level for mouth/eye animation
 };
 
 // Face render/runtime feature flags used by SET_FLAGS.
@@ -91,36 +91,31 @@ constexpr uint8_t FACE_FLAG_SHOW_MOUTH = 1u << 3;
 constexpr uint8_t FACE_FLAG_EDGE_GLOW = 1u << 4;
 constexpr uint8_t FACE_FLAG_SPARKLE = 1u << 5;
 constexpr uint8_t FACE_FLAG_AFTERGLOW = 1u << 6;
-constexpr uint8_t FACE_FLAGS_ALL = static_cast<uint8_t>(
-    FACE_FLAG_IDLE_WANDER |
-    FACE_FLAG_AUTOBLINK |
-    FACE_FLAG_SOLID_EYE |
-    FACE_FLAG_SHOW_MOUTH |
-    FACE_FLAG_EDGE_GLOW |
-    FACE_FLAG_SPARKLE |
-    FACE_FLAG_AFTERGLOW);
+constexpr uint8_t FACE_FLAGS_ALL =
+    static_cast<uint8_t>(FACE_FLAG_IDLE_WANDER | FACE_FLAG_AUTOBLINK | FACE_FLAG_SOLID_EYE | FACE_FLAG_SHOW_MOUTH |
+                         FACE_FLAG_EDGE_GLOW | FACE_FLAG_SPARKLE | FACE_FLAG_AFTERGLOW);
 
 struct __attribute__((packed)) FaceSetFlagsPayload {
-    uint8_t flags;         // bitfield, see FACE_FLAG_* constants
+    uint8_t flags; // bitfield, see FACE_FLAG_* constants
 };
 
 struct __attribute__((packed)) FaceStatusPayload {
     uint8_t mood_id;
-    uint8_t active_gesture;  // 0xFF = none
+    uint8_t active_gesture; // 0xFF = none
     uint8_t system_mode;
-    uint8_t flags;           // bit0: touch_active, bit1: talking, bit2: ptt_listening
+    uint8_t flags; // bit0: touch_active, bit1: talking, bit2: ptt_listening
 };
 
 struct __attribute__((packed)) TouchEventPayload {
-    uint8_t  event_type;   // 0=press, 1=release, 2=drag
+    uint8_t  event_type; // 0=press, 1=release, 2=drag
     uint16_t x;
     uint16_t y;
 };
 
 struct __attribute__((packed)) FaceButtonEventPayload {
-    uint8_t button_id;     // FaceButtonId
-    uint8_t event_type;    // FaceButtonEventType
-    uint8_t state;         // 0/1 toggle state (for PTT), else 0
+    uint8_t button_id;  // FaceButtonId
+    uint8_t event_type; // FaceButtonEventType
+    uint8_t state;      // 0/1 toggle state (for PTT), else 0
     uint8_t reserved;
 };
 
@@ -157,7 +152,7 @@ struct __attribute__((packed)) FaceStatusPayloadV2 {
     uint8_t flags;
     // v2 additions (8 bytes)
     uint32_t cmd_seq_last_applied;
-    uint32_t t_state_applied_us;   // when display buffer was committed
+    uint32_t t_state_applied_us; // when display buffer was committed
 };
 
 struct __attribute__((packed)) TimeSyncRespPayload {
@@ -180,35 +175,33 @@ uint16_t crc16(const uint8_t* data, size_t len);
 
 // ---- Protocol version negotiation ----
 
-extern std::atomic<uint8_t>  g_protocol_version;  // 1 or 2, default 1
-extern std::atomic<uint32_t> g_tx_seq;             // global monotonic TX seq
+extern std::atomic<uint8_t>  g_protocol_version; // 1 or 2, default 1
+extern std::atomic<uint32_t> g_tx_seq;           // global monotonic TX seq
 
-inline uint32_t next_seq() {
+inline uint32_t next_seq()
+{
     return g_tx_seq.fetch_add(1, std::memory_order_relaxed);
 }
 
 // ---- Packet building (MCU -> host) ----
 
 // v1 builder (legacy — kept for backward compat)
-size_t packet_build(uint8_t type, uint8_t seq,
-                    const uint8_t* payload, size_t payload_len,
-                    uint8_t* out, size_t out_cap);
+size_t packet_build(uint8_t type, uint8_t seq, const uint8_t* payload, size_t payload_len, uint8_t* out,
+                    size_t out_cap);
 
 // v2 builder (uses v2 envelope when g_protocol_version==2, else falls back to v1)
-size_t packet_build_v2(uint8_t type, uint32_t seq, uint64_t t_src_us,
-                       const uint8_t* payload, size_t payload_len,
+size_t packet_build_v2(uint8_t type, uint32_t seq, uint64_t t_src_us, const uint8_t* payload, size_t payload_len,
                        uint8_t* out, size_t out_cap);
 
 // ---- Packet parsing (host -> MCU) ----
 
 struct ParsedPacket {
-    uint8_t  type;
-    uint32_t seq;          // u32 in v2, zero-extended u8 in v1
-    uint64_t t_src_us;     // 0 in v1
+    uint8_t        type;
+    uint32_t       seq;      // u32 in v2, zero-extended u8 in v1
+    uint64_t       t_src_us; // 0 in v1
     const uint8_t* data;
-    size_t   data_len;
-    bool     valid;
+    size_t         data_len;
+    bool           valid;
 };
 
-ParsedPacket packet_parse(const uint8_t* frame, size_t frame_len,
-                          uint8_t* decode_buf, size_t decode_buf_len);
+ParsedPacket packet_parse(const uint8_t* frame, size_t frame_len, uint8_t* decode_buf, size_t decode_buf_len);

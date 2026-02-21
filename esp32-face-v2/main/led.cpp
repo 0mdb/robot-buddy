@@ -4,7 +4,7 @@
 #include "led_strip.h"
 #include "esp_log.h"
 
-static const char* TAG = "led";
+static const char*        TAG = "led";
 static led_strip_handle_t strip = nullptr;
 
 void led_init(void)
@@ -14,14 +14,14 @@ void led_init(void)
         .max_leds = 1,
         .led_pixel_format = LED_PIXEL_FORMAT_GRB,
         .led_model = LED_MODEL_WS2812,
-        .flags = { .invert_out = false },
+        .flags = {.invert_out = false},
     };
 
     led_strip_rmt_config_t rmt_cfg = {
         .clk_src = RMT_CLK_SRC_DEFAULT,
-        .resolution_hz = 10'000'000,  // 10 MHz
+        .resolution_hz = 10'000'000, // 10 MHz
         .mem_block_symbols = 64,
-        .flags = { .with_dma = false },
+        .flags = {.with_dma = false},
     };
 
     ESP_ERROR_CHECK(led_strip_new_rmt_device(&strip_cfg, &rmt_cfg, &strip));

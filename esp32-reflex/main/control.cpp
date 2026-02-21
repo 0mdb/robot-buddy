@@ -18,9 +18,10 @@ static const char* TAG = "control";
 
 struct WheelPI {
     float integral = 0.0f;
-    float prev_target = 0.0f;   // for rate limiting (mm/s)
+    float prev_target = 0.0f; // for rate limiting (mm/s)
 
-    void reset() {
+    void reset()
+    {
         integral = 0.0f;
         prev_target = 0.0f;
     }
@@ -116,18 +117,17 @@ static int16_t clamp_i16(float v)
 // Write telemetry using seqlock pattern.
 // acquire fence after first increment prevents data writes from reordering before it.
 // release fence on second increment prevents data writes from reordering after it.
-static void publish_telemetry(float speed_l, float speed_r,
-                              float gyro_z_mrad, uint32_t now_us)
+static void publish_telemetry(float speed_l, float speed_r, float gyro_z_mrad, uint32_t now_us)
 {
     // Increment to odd (writing) — acquire prevents subsequent stores
     // from being reordered before this point.
     g_telemetry.seq.fetch_add(1, std::memory_order_acquire);
 
-    g_telemetry.speed_l_mm_s  = clamp_i16(speed_l);
-    g_telemetry.speed_r_mm_s  = clamp_i16(speed_r);
+    g_telemetry.speed_l_mm_s = clamp_i16(speed_l);
+    g_telemetry.speed_r_mm_s = clamp_i16(speed_r);
     g_telemetry.gyro_z_mrad_s = clamp_i16(gyro_z_mrad);
-    g_telemetry.fault_flags   = g_fault_flags.load(std::memory_order_relaxed);
-    g_telemetry.timestamp_us  = now_us;
+    g_telemetry.fault_flags = g_fault_flags.load(std::memory_order_relaxed);
+    g_telemetry.timestamp_us = now_us;
 
     // Increment to even (done) — release prevents preceding stores
     // from being reordered after this point.
@@ -144,7 +144,7 @@ void control_task(void* arg)
     ESP_ERROR_CHECK(esp_task_wdt_add(nullptr));
 
     const TickType_t period = pdMS_TO_TICKS(1000 / g_cfg.control_hz);
-    const float dt = 1.0f / static_cast<float>(g_cfg.control_hz);
+    const float      dt = 1.0f / static_cast<float>(g_cfg.control_hz);
 
     WheelPI pi_left;
     WheelPI pi_right;
@@ -166,8 +166,8 @@ void control_task(void* arg)
 
         uint32_t now_us = static_cast<uint32_t>(esp_timer_get_time());
         uint32_t dt_us = now_us - prev_time_us;
-        float dt_actual = static_cast<float>(dt_us) / 1'000'000.0f;
-        if (dt_actual <= 0.0f) dt_actual = dt;  // guard against timer wrap edge
+        float    dt_actual = static_cast<float>(dt_us) / 1'000'000.0f;
+        if (dt_actual <= 0.0f) dt_actual = dt; // guard against timer wrap edge
         prev_time_us = now_us;
 
         // ---- 1. Encoder snapshot → wheel speeds ----
@@ -184,8 +184,8 @@ void control_task(void* arg)
 
         // ---- 2. Read latest command ----
         const Command* cmd = g_cmd.read();
-        float v_cmd = static_cast<float>(cmd->v_mm_s);
-        float w_cmd = static_cast<float>(cmd->w_mrad_s) / 1000.0f;  // mrad/s → rad/s
+        float          v_cmd = static_cast<float>(cmd->v_mm_s);
+        float          w_cmd = static_cast<float>(cmd->w_mrad_s) / 1000.0f; // mrad/s → rad/s
 
         // ---- 3. Differential drive: twist → per-wheel targets ----
         float half_wb = g_cfg.wheelbase_mm / 2.0f;
@@ -204,7 +204,7 @@ void control_task(void* arg)
 
         // ---- 5. Yaw damping (gyro correction) ----
         const ImuSample* imu = g_imu.read();
-        float gyro_z = imu->gyro_z_rad_s;
+        float            gyro_z = imu->gyro_z_rad_s;
 
         float w_error = w_cmd - gyro_z;
         float delta_v = g_cfg.K_yaw * w_error;
@@ -212,7 +212,7 @@ void control_task(void* arg)
         float rl_r = rl_target_r + delta_v;
 
         // ---- 6. FF + PI per wheel ----
-        float u_l = ff_pi(pi_left,  rl_l, v_meas_l, dt_actual);
+        float u_l = ff_pi(pi_left, rl_l, v_meas_l, dt_actual);
         float u_r = ff_pi(pi_right, rl_r, v_meas_r, dt_actual);
 
         // ---- 7. Deadband compensation ----
@@ -232,12 +232,12 @@ void control_task(void* arg)
         }
 
         // ---- 9. Apply to motors ----
-        apply_motor(MotorSide::LEFT,  u_l);
+        apply_motor(MotorSide::LEFT, u_l);
         apply_motor(MotorSide::RIGHT, u_r);
 
         // ---- 10. Publish telemetry ----
         publish_telemetry(v_meas_l, v_meas_r,
-                          gyro_z * 1000.0f,  // rad/s → mrad/s
+                          gyro_z * 1000.0f, // rad/s → mrad/s
                           now_us);
     }
 }

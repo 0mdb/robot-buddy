@@ -16,22 +16,22 @@ static const char* TAG = "display";
 static void backlight_init(void)
 {
     ledc_timer_config_t timer_cfg = {
-        .speed_mode      = LEDC_LOW_SPEED_MODE,
+        .speed_mode = LEDC_LOW_SPEED_MODE,
         .duty_resolution = LEDC_TIMER_8_BIT,
-        .timer_num       = LEDC_TIMER_0,
-        .freq_hz         = 5000,
-        .clk_cfg         = LEDC_AUTO_CLK,
+        .timer_num = LEDC_TIMER_0,
+        .freq_hz = 5000,
+        .clk_cfg = LEDC_AUTO_CLK,
     };
     ESP_ERROR_CHECK(ledc_timer_config(&timer_cfg));
 
     ledc_channel_config_t ch_cfg = {
-        .gpio_num   = PIN_TFT_BL,
+        .gpio_num = PIN_TFT_BL,
         .speed_mode = LEDC_LOW_SPEED_MODE,
-        .channel    = LEDC_CHANNEL_0,
-        .intr_type  = LEDC_INTR_DISABLE,
-        .timer_sel  = LEDC_TIMER_0,
-        .duty       = DEFAULT_BRIGHTNESS,
-        .hpoint     = 0,
+        .channel = LEDC_CHANNEL_0,
+        .intr_type = LEDC_INTR_DISABLE,
+        .timer_sel = LEDC_TIMER_0,
+        .duty = DEFAULT_BRIGHTNESS,
+        .hpoint = 0,
     };
     ESP_ERROR_CHECK(ledc_channel_config(&ch_cfg));
 }
@@ -56,11 +56,11 @@ lv_display_t* display_init(void)
     bus_cfg.sclk_io_num = PIN_TFT_SCLK;
     bus_cfg.quadwp_io_num = -1;
     bus_cfg.quadhd_io_num = -1;
-    bus_cfg.max_transfer_sz = SCREEN_W * 80 * 2;  // DMA-friendly chunk
+    bus_cfg.max_transfer_sz = SCREEN_W * 80 * 2; // DMA-friendly chunk
     ESP_ERROR_CHECK(spi_bus_initialize(SPI2_HOST, &bus_cfg, SPI_DMA_CH_AUTO));
 
     // 3. LCD panel IO (SPI)
-    esp_lcd_panel_io_handle_t io_handle = nullptr;
+    esp_lcd_panel_io_handle_t     io_handle = nullptr;
     esp_lcd_panel_io_spi_config_t io_cfg = {};
     io_cfg.dc_gpio_num = PIN_TFT_DC;
     io_cfg.cs_gpio_num = PIN_TFT_CS;
@@ -72,9 +72,9 @@ lv_display_t* display_init(void)
     ESP_ERROR_CHECK(esp_lcd_new_panel_io_spi(SPI2_HOST, &io_cfg, &io_handle));
 
     // 4. LCD panel (ILI9341)
-    esp_lcd_panel_handle_t panel_handle = nullptr;
+    esp_lcd_panel_handle_t     panel_handle = nullptr;
     esp_lcd_panel_dev_config_t panel_cfg = {};
-    panel_cfg.reset_gpio_num = -1;  // RST tied to board reset
+    panel_cfg.reset_gpio_num = -1; // RST tied to board reset
     panel_cfg.rgb_ele_order = LCD_RGB_ELEMENT_ORDER_BGR;
     panel_cfg.bits_per_pixel = 16;
     ESP_ERROR_CHECK(esp_lcd_new_panel_ili9341(io_handle, &panel_cfg, &panel_handle));
@@ -86,7 +86,7 @@ lv_display_t* display_init(void)
 
     // 5. LVGL port
     lvgl_port_cfg_t lvgl_cfg = ESP_LVGL_PORT_INIT_CONFIG();
-    lvgl_cfg.task_affinity = 0;  // keep LVGL engine with UI rendering on core 0
+    lvgl_cfg.task_affinity = 0; // keep LVGL engine with UI rendering on core 0
     ESP_ERROR_CHECK(lvgl_port_init(&lvgl_cfg));
 
     // 6. Add display to LVGL
@@ -100,21 +100,23 @@ lv_display_t* display_init(void)
         .hres = SCREEN_W,
         .vres = SCREEN_H,
         .monochrome = false,
-        .rotation = {
-            .swap_xy = true,
-            .mirror_x = false,
-            .mirror_y = false,
-        },
+        .rotation =
+            {
+                .swap_xy = true,
+                .mirror_x = false,
+                .mirror_y = false,
+            },
         .rounder_cb = nullptr,
         .color_format = LV_COLOR_FORMAT_RGB565,
-        .flags = {
-            .buff_dma = true,
-            .buff_spiram = false,
-            .sw_rotate = false,
-            .swap_bytes = true,
-            .full_refresh = false,
-            .direct_mode = false,
-        },
+        .flags =
+            {
+                .buff_dma = true,
+                .buff_spiram = false,
+                .sw_rotate = false,
+                .swap_bytes = true,
+                .full_refresh = false,
+                .direct_mode = false,
+            },
     };
     lv_display_t* disp = lvgl_port_add_disp(&disp_cfg);
 

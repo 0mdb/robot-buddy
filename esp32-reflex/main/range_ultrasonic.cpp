@@ -29,9 +29,8 @@ static constexpr float US_PER_MM_ROUNDTRIP = 5.83f;
 
 // ---- RMT receive-done callback ----
 
-static bool IRAM_ATTR rmt_rx_done_cb(rmt_channel_handle_t channel,
-                                      const rmt_rx_done_event_data_t* edata,
-                                      void* user_ctx)
+static bool IRAM_ATTR rmt_rx_done_cb(rmt_channel_handle_t channel, const rmt_rx_done_event_data_t* edata,
+                                     void* user_ctx)
 {
     BaseType_t wake = pdFALSE;
     // Send the received symbol count to the task queue
@@ -80,8 +79,7 @@ bool range_init()
     // Enable the channel
     rmt_enable(s_rx_chan);
 
-    ESP_LOGI(TAG, "range sensor initialized (TRIG=GPIO%d, ECHO=GPIO%d)",
-             PIN_RANGE_TRIG, PIN_RANGE_ECHO);
+    ESP_LOGI(TAG, "range sensor initialized (TRIG=GPIO%d, ECHO=GPIO%d)", PIN_RANGE_TRIG, PIN_RANGE_ECHO);
     return true;
 }
 
@@ -93,11 +91,10 @@ static void do_measurement(uint32_t timeout_us)
 
     // Start RMT receive (arms the capture before we trigger)
     rmt_receive_config_t rx_cfg = {};
-    rx_cfg.signal_range_min_ns = 1000;          // ignore pulses < 1 µs (noise)
+    rx_cfg.signal_range_min_ns = 1000;              // ignore pulses < 1 µs (noise)
     rx_cfg.signal_range_max_ns = timeout_us * 1000; // max echo duration
 
-    esp_err_t err = rmt_receive(s_rx_chan, s_rx_symbols,
-                                 sizeof(s_rx_symbols), &rx_cfg);
+    esp_err_t err = rmt_receive(s_rx_chan, s_rx_symbols, sizeof(s_rx_symbols), &rx_cfg);
     if (err != ESP_OK) {
         RangeSample* ws = g_range.write_slot();
         ws->range_mm = 0;
@@ -114,7 +111,7 @@ static void do_measurement(uint32_t timeout_us)
 
     // Wait for RMT capture to complete (with timeout)
     rmt_rx_done_event_data_t rx_data;
-    TickType_t wait_ticks = pdMS_TO_TICKS(timeout_us / 1000 + 10);
+    TickType_t               wait_ticks = pdMS_TO_TICKS(timeout_us / 1000 + 10);
     if (wait_ticks < 2) wait_ticks = 2;
 
     RangeSample* ws = g_range.write_slot();

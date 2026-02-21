@@ -321,7 +321,7 @@ void face_state_update(FaceState& fs)
     }
 
     const float intensity = clampf(fs.expression_intensity, 0.0f, 1.0f);
-    auto blend_target = [intensity](float neutral_value, float target_value) -> float {
+    auto        blend_target = [intensity](float neutral_value, float target_value) -> float {
         return neutral_value + (target_value - neutral_value) * intensity;
     };
     t_curve = blend_target(0.1f, t_curve);
@@ -604,32 +604,86 @@ void face_get_emotion_color(const FaceState& fs, uint8_t& r, uint8_t& g, uint8_t
     int bb = 255;
 
     if (fs.anim.rage) {
-        rr = 255; gg = 30; bb = 0;
+        rr = 255;
+        gg = 30;
+        bb = 0;
     } else if (fs.anim.heart) {
-        rr = 255; gg = 105; bb = 180;
+        rr = 255;
+        gg = 105;
+        bb = 180;
     } else if (fs.anim.x_eyes) {
-        rr = 200; gg = 40; bb = 40;
+        rr = 200;
+        gg = 40;
+        bb = 40;
     } else {
         switch (fs.mood) {
-        case Mood::HAPPY:     rr = 0;   gg = 255; bb = 200; break;
-        case Mood::EXCITED:   rr = 100; gg = 255; bb = 100; break;
-        case Mood::CURIOUS:   rr = 255; gg = 180; bb = 50;  break;
-        case Mood::SAD:       rr = 50;  gg = 80;  bb = 200; break;
-        case Mood::SCARED:    rr = 180; gg = 50;  bb = 255; break;
-        case Mood::ANGRY:     rr = 255; gg = 0;   bb = 0;   break;
-        case Mood::SURPRISED: rr = 255; gg = 255; bb = 200; break;
-        case Mood::SLEEPY:    rr = 40;  gg = 60;  bb = 100; break;
-        case Mood::LOVE:      rr = 255; gg = 100; bb = 150; break;
-        case Mood::SILLY:     rr = 200; gg = 255; bb = 50;  break;
-        case Mood::THINKING:  rr = 80;  gg = 135; bb = 220; break;
-        default:              rr = 50;  gg = 150; bb = 255; break;
+        case Mood::HAPPY:
+            rr = 0;
+            gg = 255;
+            bb = 200;
+            break;
+        case Mood::EXCITED:
+            rr = 100;
+            gg = 255;
+            bb = 100;
+            break;
+        case Mood::CURIOUS:
+            rr = 255;
+            gg = 180;
+            bb = 50;
+            break;
+        case Mood::SAD:
+            rr = 50;
+            gg = 80;
+            bb = 200;
+            break;
+        case Mood::SCARED:
+            rr = 180;
+            gg = 50;
+            bb = 255;
+            break;
+        case Mood::ANGRY:
+            rr = 255;
+            gg = 0;
+            bb = 0;
+            break;
+        case Mood::SURPRISED:
+            rr = 255;
+            gg = 255;
+            bb = 200;
+            break;
+        case Mood::SLEEPY:
+            rr = 40;
+            gg = 60;
+            bb = 100;
+            break;
+        case Mood::LOVE:
+            rr = 255;
+            gg = 100;
+            bb = 150;
+            break;
+        case Mood::SILLY:
+            rr = 200;
+            gg = 255;
+            bb = 50;
+            break;
+        case Mood::THINKING:
+            rr = 80;
+            gg = 135;
+            bb = 220;
+            break;
+        default:
+            rr = 50;
+            gg = 150;
+            bb = 255;
+            break;
         }
     }
 
     const float intensity = clampf(fs.expression_intensity, 0.0f, 1.0f);
-    const int nr = 50;
-    const int ng = 150;
-    const int nb = 255;
+    const int   nr = 50;
+    const int   ng = 150;
+    const int   nb = 255;
 
     rr = static_cast<int>(nr + (rr - nr) * intensity);
     gg = static_cast<int>(ng + (gg - ng) * intensity);
@@ -688,7 +742,7 @@ void face_set_expression_intensity(FaceState& fs, float intensity)
 void face_trigger_gesture(FaceState& fs, GestureId gesture, uint16_t duration_ms)
 {
     const float now = now_s();
-    auto dur_s = [duration_ms](float fallback) -> float {
+    auto        dur_s = [duration_ms](float fallback) -> float {
         if (duration_ms == 0) {
             return fallback;
         }

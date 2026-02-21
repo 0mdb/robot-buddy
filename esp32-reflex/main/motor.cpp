@@ -9,18 +9,18 @@
 static const char* TAG = "motor";
 
 // LEDC channel mapping
-static constexpr ledc_channel_t CH_LEFT  = LEDC_CHANNEL_0;
+static constexpr ledc_channel_t CH_LEFT = LEDC_CHANNEL_0;
 static constexpr ledc_channel_t CH_RIGHT = LEDC_CHANNEL_1;
 static constexpr ledc_timer_t   PWM_TIMER = LEDC_TIMER_0;
-static constexpr ledc_mode_t    PWM_MODE  = LEDC_LOW_SPEED_MODE;
+static constexpr ledc_mode_t    PWM_MODE = LEDC_LOW_SPEED_MODE;
 
 // Direction pin pairs [side][0=fwd, 1=rev]
 static constexpr gpio_num_t DIR_PINS[2][2] = {
-    {PIN_AIN1, PIN_AIN2},  // LEFT
-    {PIN_BIN1, PIN_BIN2},  // RIGHT
+    {PIN_AIN1, PIN_AIN2}, // LEFT
+    {PIN_BIN1, PIN_BIN2}, // RIGHT
 };
 
-static constexpr gpio_num_t PWM_PINS[2] = {PIN_PWMA, PIN_PWMB};
+static constexpr gpio_num_t     PWM_PINS[2] = {PIN_PWMA, PIN_PWMB};
 static constexpr ledc_channel_t PWM_CHS[2] = {CH_LEFT, CH_RIGHT};
 
 static void init_direction_gpios()
@@ -59,8 +59,7 @@ static void init_pwm()
         ch_cfg.hpoint = 0;
         ESP_ERROR_CHECK(ledc_channel_config(&ch_cfg));
     }
-    ESP_LOGI(TAG, "LEDC PWM initialized @ %u Hz, %u-bit",
-             g_cfg.pwm_freq_hz, PWM_RESOLUTION_BITS);
+    ESP_LOGI(TAG, "LEDC PWM initialized @ %u Hz, %u-bit", g_cfg.pwm_freq_hz, PWM_RESOLUTION_BITS);
 }
 
 void motor_init()

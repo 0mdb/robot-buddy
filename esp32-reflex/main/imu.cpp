@@ -18,26 +18,26 @@
 static const char* TAG = "imu";
 
 // ---- BMI270 register map ----
-static constexpr uint8_t BMI270_ADDR          = 0x68;  // SDO/SA0 to GND (0x69 if SDO→VDDIO)
-static constexpr uint8_t REG_CHIP_ID          = 0x00;
-static constexpr uint8_t BMI270_CHIP_ID_VAL   = 0x24;
+static constexpr uint8_t BMI270_ADDR = 0x68; // SDO/SA0 to GND (0x69 if SDO→VDDIO)
+static constexpr uint8_t REG_CHIP_ID = 0x00;
+static constexpr uint8_t BMI270_CHIP_ID_VAL = 0x24;
 
-static constexpr uint8_t REG_STATUS           = 0x03;
-static constexpr uint8_t REG_ACC_DATA_X_LSB   = 0x0C;  // accel data: 6 bytes (0x0C–0x11)
-static constexpr uint8_t REG_GYR_DATA_X_LSB   = 0x12;  // gyro data:  6 bytes (0x12–0x17)
-static constexpr uint8_t REG_INTERNAL_STATUS  = 0x21;
+static constexpr uint8_t REG_STATUS = 0x03;
+static constexpr uint8_t REG_ACC_DATA_X_LSB = 0x0C; // accel data: 6 bytes (0x0C–0x11)
+static constexpr uint8_t REG_GYR_DATA_X_LSB = 0x12; // gyro data:  6 bytes (0x12–0x17)
+static constexpr uint8_t REG_INTERNAL_STATUS = 0x21;
 
-static constexpr uint8_t REG_ACC_CONF         = 0x40;
-static constexpr uint8_t REG_ACC_RANGE        = 0x41;
-static constexpr uint8_t REG_GYR_CONF         = 0x42;
-static constexpr uint8_t REG_GYR_RANGE        = 0x43;
+static constexpr uint8_t REG_ACC_CONF = 0x40;
+static constexpr uint8_t REG_ACC_RANGE = 0x41;
+static constexpr uint8_t REG_GYR_CONF = 0x42;
+static constexpr uint8_t REG_GYR_RANGE = 0x43;
 
-static constexpr uint8_t REG_INIT_CTRL        = 0x59;
-static constexpr uint8_t REG_INIT_DATA        = 0x5E;
+static constexpr uint8_t REG_INIT_CTRL = 0x59;
+static constexpr uint8_t REG_INIT_DATA = 0x5E;
 
-static constexpr uint8_t REG_PWR_CONF         = 0x7C;
-static constexpr uint8_t REG_PWR_CTRL         = 0x7D;
-static constexpr uint8_t REG_CMD              = 0x7E;
+static constexpr uint8_t REG_PWR_CONF = 0x7C;
+static constexpr uint8_t REG_PWR_CTRL = 0x7D;
+static constexpr uint8_t REG_CMD = 0x7E;
 
 // ---- ACC_CONF register: [7] acc_filter_perf | [6:4] acc_bwp | [3:0] acc_odr ----
 // ODR encoding (acc_odr field):
@@ -45,38 +45,38 @@ static constexpr uint8_t REG_CMD              = 0x7E;
 //   0x09=200Hz, 0x0A=400Hz, 0x0B=800Hz, 0x0C=1600Hz
 // BWP: 0x02=normal, 0x01=OSR2, 0x00=OSR4
 // filter_perf: 1=high perf (recommended when ODR>=100Hz)
-static constexpr uint8_t ACC_ODR_200HZ  = 0x09;
-static constexpr uint8_t ACC_ODR_400HZ  = 0x0A;
-static constexpr uint8_t ACC_ODR_800HZ  = 0x0B;
-static constexpr uint8_t ACC_BWP_NORM   = 0x02;
-static constexpr uint8_t ACC_FILTER_HP  = 0x01;  // bit 7
+static constexpr uint8_t ACC_ODR_200HZ = 0x09;
+static constexpr uint8_t ACC_ODR_400HZ = 0x0A;
+static constexpr uint8_t ACC_ODR_800HZ = 0x0B;
+static constexpr uint8_t ACC_BWP_NORM = 0x02;
+static constexpr uint8_t ACC_FILTER_HP = 0x01; // bit 7
 
 // ---- ACC_RANGE register [1:0] ----
-static constexpr uint8_t ACC_RANGE_2G   = 0x00;
-static constexpr uint8_t ACC_RANGE_4G   = 0x01;
-static constexpr uint8_t ACC_RANGE_8G   = 0x02;
-static constexpr uint8_t ACC_RANGE_16G  = 0x03;
+static constexpr uint8_t ACC_RANGE_2G = 0x00;
+static constexpr uint8_t ACC_RANGE_4G = 0x01;
+static constexpr uint8_t ACC_RANGE_8G = 0x02;
+static constexpr uint8_t ACC_RANGE_16G = 0x03;
 
 // ---- GYR_CONF register: [7] gyr_filter_perf | [6] gyr_noise_perf | [5:4] gyr_bwp | [3:0] gyr_odr ----
 // ODR encoding (same as accel): 0x09=200Hz, 0x0A=400Hz, 0x0B=800Hz, ...
-static constexpr uint8_t GYR_ODR_200HZ  = 0x09;
-static constexpr uint8_t GYR_ODR_400HZ  = 0x0A;
-static constexpr uint8_t GYR_ODR_800HZ  = 0x0B;
-static constexpr uint8_t GYR_BWP_NORM   = 0x02;
-static constexpr uint8_t GYR_NOISE_HP   = 0x01;  // bit 6
-static constexpr uint8_t GYR_FILTER_HP  = 0x01;  // bit 7
+static constexpr uint8_t GYR_ODR_200HZ = 0x09;
+static constexpr uint8_t GYR_ODR_400HZ = 0x0A;
+static constexpr uint8_t GYR_ODR_800HZ = 0x0B;
+static constexpr uint8_t GYR_BWP_NORM = 0x02;
+static constexpr uint8_t GYR_NOISE_HP = 0x01;  // bit 6
+static constexpr uint8_t GYR_FILTER_HP = 0x01; // bit 7
 
 // ---- GYR_RANGE register [2:0] ----
-static constexpr uint8_t GYR_RANGE_2000 = 0x00;  // ±2000 dps
-static constexpr uint8_t GYR_RANGE_1000 = 0x01;  // ±1000 dps
-static constexpr uint8_t GYR_RANGE_500  = 0x02;  // ±500 dps
-static constexpr uint8_t GYR_RANGE_250  = 0x03;  // ±250 dps
-static constexpr uint8_t GYR_RANGE_125  = 0x04;  // ±125 dps
+static constexpr uint8_t GYR_RANGE_2000 = 0x00; // ±2000 dps
+static constexpr uint8_t GYR_RANGE_1000 = 0x01; // ±1000 dps
+static constexpr uint8_t GYR_RANGE_500 = 0x02;  // ±500 dps
+static constexpr uint8_t GYR_RANGE_250 = 0x03;  // ±250 dps
+static constexpr uint8_t GYR_RANGE_125 = 0x04;  // ±125 dps
 
 // ---- PWR_CTRL bits ----
-static constexpr uint8_t PWR_CTRL_AUX_EN  = 0x01;
-static constexpr uint8_t PWR_CTRL_GYR_EN  = 0x02;
-static constexpr uint8_t PWR_CTRL_ACC_EN  = 0x04;
+static constexpr uint8_t PWR_CTRL_AUX_EN = 0x01;
+static constexpr uint8_t PWR_CTRL_GYR_EN = 0x02;
+static constexpr uint8_t PWR_CTRL_ACC_EN = 0x04;
 static constexpr uint8_t PWR_CTRL_TEMP_EN = 0x08;
 
 // ---- Sensitivity lookup tables (LSB/unit) ----
@@ -86,10 +86,10 @@ static constexpr float ACCEL_SENS_TABLE[] = {
     // ACC_RANGE_4G  → 8192  LSB/g  → 0.000122  g/LSB
     // ACC_RANGE_8G  → 4096  LSB/g  → 0.000244  g/LSB
     // ACC_RANGE_16G → 2048  LSB/g  → 0.000488  g/LSB
-    1.0f / 16384.0f,  // ±2g
-    1.0f / 8192.0f,   // ±4g
-    1.0f / 4096.0f,   // ±8g
-    1.0f / 2048.0f,   // ±16g
+    1.0f / 16384.0f, // ±2g
+    1.0f / 8192.0f,  // ±4g
+    1.0f / 4096.0f,  // ±8g
+    1.0f / 2048.0f,  // ±16g
 };
 
 // Gyroscope: (dps/LSB) for each range setting
@@ -99,15 +99,15 @@ static constexpr float GYRO_SENS_DPS_TABLE[] = {
     // GYR_RANGE_500  → 65.5 LSB/dps  → 0.015267 dps/LSB
     // GYR_RANGE_250  → 131.1 LSB/dps → 0.007630 dps/LSB
     // GYR_RANGE_125  → 262.1 LSB/dps → 0.003815 dps/LSB
-    1.0f / 16.4f,    // ±2000 dps
-    1.0f / 32.8f,    // ±1000 dps
-    1.0f / 65.5f,    // ±500 dps
-    1.0f / 131.1f,   // ±250 dps
-    1.0f / 262.1f,   // ±125 dps
+    1.0f / 16.4f,  // ±2000 dps
+    1.0f / 32.8f,  // ±1000 dps
+    1.0f / 65.5f,  // ±500 dps
+    1.0f / 131.1f, // ±250 dps
+    1.0f / 262.1f, // ±125 dps
 };
 
 // Runtime sensitivity values — set during configure() from g_cfg range selections
-static float s_accel_sens_g  = ACCEL_SENS_TABLE[ACC_RANGE_2G];
+static float s_accel_sens_g = ACCEL_SENS_TABLE[ACC_RANGE_2G];
 static float s_gyro_sens_rad = GYRO_SENS_DPS_TABLE[GYR_RANGE_500] * (M_PI / 180.0f);
 
 // ---- I²C driver state ----
@@ -118,8 +118,8 @@ static i2c_master_dev_handle_t s_dev = nullptr;
 // If SDA is stuck low (slave holding it), bit-bang SCL to clock out the
 // stuck slave, then issue a STOP condition, then re-init the driver.
 
-static constexpr int RECOVERY_CLK_PULSES    = 9;
-static constexpr int RECOVERY_HALF_PERIOD_US = 5;  // ~100 kHz
+static constexpr int RECOVERY_CLK_PULSES = 9;
+static constexpr int RECOVERY_HALF_PERIOD_US = 5; // ~100 kHz
 
 static void i2c_bus_recover()
 {
@@ -195,7 +195,7 @@ static bool i2c_driver_init()
     i2c_device_config_t dev_cfg = {};
     dev_cfg.dev_addr_length = I2C_ADDR_BIT_LEN_7;
     dev_cfg.device_address = BMI270_ADDR;
-    dev_cfg.scl_speed_hz = 400000;  // 400 kHz fast mode
+    dev_cfg.scl_speed_hz = 400000; // 400 kHz fast mode
 
     err = i2c_master_bus_add_device(s_bus, &dev_cfg, &s_dev);
     if (err != ESP_OK) {
@@ -247,12 +247,12 @@ static esp_err_t burst_write(uint8_t reg, const uint8_t* data, size_t len)
 static uint8_t imu_odr_to_reg(uint16_t odr_hz)
 {
     if (odr_hz >= 1600) return 0x0C;
-    if (odr_hz >= 800)  return 0x0B;
-    if (odr_hz >= 400)  return 0x0A;
-    if (odr_hz >= 200)  return 0x09;
-    if (odr_hz >= 100)  return 0x08;
-    if (odr_hz >= 50)   return 0x07;
-    return 0x06;  // 25 Hz
+    if (odr_hz >= 800) return 0x0B;
+    if (odr_hz >= 400) return 0x0A;
+    if (odr_hz >= 200) return 0x09;
+    if (odr_hz >= 100) return 0x08;
+    if (odr_hz >= 50) return 0x07;
+    return 0x06; // 25 Hz
 }
 
 // Map config gyro range enum to GYR_RANGE register value
@@ -260,8 +260,8 @@ static uint8_t gyro_range_dps_to_reg(uint16_t range_dps)
 {
     if (range_dps >= 2000) return GYR_RANGE_2000;
     if (range_dps >= 1000) return GYR_RANGE_1000;
-    if (range_dps >= 500)  return GYR_RANGE_500;
-    if (range_dps >= 250)  return GYR_RANGE_250;
+    if (range_dps >= 500) return GYR_RANGE_500;
+    if (range_dps >= 250) return GYR_RANGE_250;
     return GYR_RANGE_125;
 }
 
@@ -269,8 +269,8 @@ static uint8_t gyro_range_dps_to_reg(uint16_t range_dps)
 static uint8_t accel_range_g_to_reg(uint8_t range_g)
 {
     if (range_g >= 16) return ACC_RANGE_16G;
-    if (range_g >= 8)  return ACC_RANGE_8G;
-    if (range_g >= 4)  return ACC_RANGE_4G;
+    if (range_g >= 8) return ACC_RANGE_8G;
+    if (range_g >= 4) return ACC_RANGE_4G;
     return ACC_RANGE_2G;
 }
 
@@ -287,7 +287,7 @@ static bool bmi270_configure()
     // Step 2: Soft reset
     esp_err_t err = reg_write(REG_CMD, 0xB6);
     if (err != ESP_OK) return false;
-    vTaskDelay(pdMS_TO_TICKS(2));  // BMI270 needs ~2 ms after soft reset
+    vTaskDelay(pdMS_TO_TICKS(2)); // BMI270 needs ~2 ms after soft reset
 
     // Re-verify chip ID after reset
     if (reg_read(REG_CHIP_ID, &chip_id, 1) != ESP_OK || chip_id != BMI270_CHIP_ID_VAL) {
@@ -298,7 +298,7 @@ static bool bmi270_configure()
     // Step 3: Disable advanced power save for config load
     err = reg_write(REG_PWR_CONF, 0x00);
     if (err != ESP_OK) return false;
-    ets_delay_us(450);  // datasheet: wait ≥450 µs
+    ets_delay_us(450); // datasheet: wait ≥450 µs
 
     // Step 4: Prepare config load
     err = reg_write(REG_INIT_CTRL, 0x00);
@@ -326,7 +326,7 @@ static bool bmi270_configure()
 
     // Step 8: Configure accelerometer
     uint8_t acc_range_reg = accel_range_g_to_reg(g_cfg.imu_accel_range_g);
-    uint8_t acc_odr_reg   = imu_odr_to_reg(g_cfg.imu_odr_hz);
+    uint8_t acc_odr_reg = imu_odr_to_reg(g_cfg.imu_odr_hz);
     uint8_t acc_conf = (ACC_FILTER_HP << 7) | (ACC_BWP_NORM << 4) | acc_odr_reg;
 
     err = reg_write(REG_ACC_CONF, acc_conf);
@@ -336,7 +336,7 @@ static bool bmi270_configure()
 
     // Step 9: Configure gyroscope
     uint8_t gyr_range_reg = gyro_range_dps_to_reg(g_cfg.imu_gyro_range_dps);
-    uint8_t gyr_odr_reg   = imu_odr_to_reg(g_cfg.imu_odr_hz);
+    uint8_t gyr_odr_reg = imu_odr_to_reg(g_cfg.imu_odr_hz);
     uint8_t gyr_conf = (GYR_FILTER_HP << 7) | (GYR_NOISE_HP << 6) | (GYR_BWP_NORM << 4) | gyr_odr_reg;
 
     err = reg_write(REG_GYR_CONF, gyr_conf);
@@ -349,17 +349,16 @@ static bool bmi270_configure()
     if (err != ESP_OK) return false;
 
     // Step 11: Set power mode — disable adv_power_save for continuous operation
-    err = reg_write(REG_PWR_CONF, 0x02);  // fifo_self_wake=1, adv_power_save=0
+    err = reg_write(REG_PWR_CONF, 0x02); // fifo_self_wake=1, adv_power_save=0
     if (err != ESP_OK) return false;
 
     // Compute runtime sensitivity values from selected ranges
-    s_accel_sens_g  = ACCEL_SENS_TABLE[acc_range_reg];
+    s_accel_sens_g = ACCEL_SENS_TABLE[acc_range_reg];
     s_gyro_sens_rad = GYRO_SENS_DPS_TABLE[gyr_range_reg] * (M_PI / 180.0f);
 
-    ESP_LOGI(TAG, "BMI270 configured: ODR %u Hz, gyro ±%u dps, accel ±%u g",
-             g_cfg.imu_odr_hz, g_cfg.imu_gyro_range_dps, g_cfg.imu_accel_range_g);
-    ESP_LOGI(TAG, "  accel sens: %.6f g/LSB, gyro sens: %.6f rad/s/LSB",
-             s_accel_sens_g, s_gyro_sens_rad);
+    ESP_LOGI(TAG, "BMI270 configured: ODR %u Hz, gyro ±%u dps, accel ±%u g", g_cfg.imu_odr_hz, g_cfg.imu_gyro_range_dps,
+             g_cfg.imu_accel_range_g);
+    ESP_LOGI(TAG, "  accel sens: %.6f g/LSB, gyro sens: %.6f rad/s/LSB", s_accel_sens_g, s_gyro_sens_rad);
 
     return true;
 }
@@ -389,9 +388,9 @@ void imu_task(void* arg)
 {
     // Task period derived from configured ODR.
     // Run slightly faster than ODR to avoid missing samples.
-    const uint32_t period_ms = (g_cfg.imu_odr_hz >= 400) ? 2 : 4;
-    const TickType_t period = pdMS_TO_TICKS(period_ms);
-    int consecutive_errors = 0;
+    const uint32_t       period_ms = (g_cfg.imu_odr_hz >= 400) ? 2 : 4;
+    const TickType_t     period = pdMS_TO_TICKS(period_ms);
+    int                  consecutive_errors = 0;
     static constexpr int MAX_ERRORS_BEFORE_RECOVERY = 10;
 
     ESP_LOGI(TAG, "imu_task started (period=%lu ms)", (unsigned long)period_ms);
@@ -403,16 +402,14 @@ void imu_task(void* arg)
 
         // BMI270 data registers: accel at 0x0C (6 bytes), gyro at 0x12 (6 bytes).
         // They are contiguous (0x0C–0x17 = 12 bytes), so read in one burst.
-        uint8_t raw[12];
+        uint8_t   raw[12];
         esp_err_t err = reg_read(REG_ACC_DATA_X_LSB, raw, 12);
 
         if (err != ESP_OK) {
             consecutive_errors++;
             if (consecutive_errors >= MAX_ERRORS_BEFORE_RECOVERY) {
-                ESP_LOGW(TAG, "I²C errors (%d consecutive), attempting recovery",
-                         consecutive_errors);
-                g_fault_flags.fetch_or(static_cast<uint16_t>(Fault::IMU_FAIL),
-                                       std::memory_order_relaxed);
+                ESP_LOGW(TAG, "I²C errors (%d consecutive), attempting recovery", consecutive_errors);
+                g_fault_flags.fetch_or(static_cast<uint16_t>(Fault::IMU_FAIL), std::memory_order_relaxed);
                 i2c_bus_recover();
                 if (i2c_driver_init() && bmi270_configure()) {
                     ESP_LOGI(TAG, "I²C recovery + reinit succeeded");
@@ -427,24 +424,23 @@ void imu_task(void* arg)
         // Successful read — clear error count and IMU_FAIL fault
         if (consecutive_errors > 0) {
             consecutive_errors = 0;
-            g_fault_flags.fetch_and(~static_cast<uint16_t>(Fault::IMU_FAIL),
-                                    std::memory_order_relaxed);
+            g_fault_flags.fetch_and(~static_cast<uint16_t>(Fault::IMU_FAIL), std::memory_order_relaxed);
         }
 
         // Parse raw data (little-endian 16-bit two's complement)
         // Accel: raw[0..5] → ax, ay, az
         // Gyro:  raw[6..11] → gx, gy, gz
-        int16_t ax = static_cast<int16_t>(raw[0]  | (raw[1]  << 8));
-        int16_t ay = static_cast<int16_t>(raw[2]  | (raw[3]  << 8));
-        int16_t az = static_cast<int16_t>(raw[4]  | (raw[5]  << 8));
+        int16_t ax = static_cast<int16_t>(raw[0] | (raw[1] << 8));
+        int16_t ay = static_cast<int16_t>(raw[2] | (raw[3] << 8));
+        int16_t az = static_cast<int16_t>(raw[4] | (raw[5] << 8));
         int16_t gz = static_cast<int16_t>(raw[10] | (raw[11] << 8));
 
         // Convert and publish
         ImuSample* slot = g_imu.write_slot();
         slot->gyro_z_rad_s = static_cast<float>(gz) * s_gyro_sens_rad;
-        slot->accel_x_g    = static_cast<float>(ax) * s_accel_sens_g;
-        slot->accel_y_g    = static_cast<float>(ay) * s_accel_sens_g;
-        slot->accel_z_g    = static_cast<float>(az) * s_accel_sens_g;
+        slot->accel_x_g = static_cast<float>(ax) * s_accel_sens_g;
+        slot->accel_y_g = static_cast<float>(ay) * s_accel_sens_g;
+        slot->accel_z_g = static_cast<float>(az) * s_accel_sens_g;
         slot->timestamp_us = static_cast<uint32_t>(esp_timer_get_time());
         g_imu.publish();
     }

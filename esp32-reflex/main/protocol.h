@@ -17,12 +17,12 @@
 // Telemetry (MCU → host): 0x80+
 
 enum class CmdId : uint8_t {
-    SET_TWIST    = 0x10,
-    STOP         = 0x11,
-    ESTOP        = 0x12,
-    SET_LIMITS   = 0x13,
+    SET_TWIST = 0x10,
+    STOP = 0x11,
+    ESTOP = 0x12,
+    SET_LIMITS = 0x13,
     CLEAR_FAULTS = 0x14,
-    SET_CONFIG   = 0x15,
+    SET_CONFIG = 0x15,
 };
 
 enum class TelId : uint8_t {
@@ -46,7 +46,7 @@ struct __attribute__((packed)) ClearFaultsPayload {
 
 struct __attribute__((packed)) SetConfigPayload {
     uint8_t param_id;
-    uint8_t value[4];   // little-endian float, u32, or i32 depending on param
+    uint8_t value[4]; // little-endian float, u32, or i32 depending on param
 };
 
 struct __attribute__((packed)) StatePayload {
@@ -82,23 +82,21 @@ uint16_t crc16(const uint8_t* data, size_t len);
 // is the raw data. Output written to `out`, returns total bytes including delimiter.
 // `out` must have room for: (2 + payload_len + 2) * COBS overhead + 1.
 // Safe buffer size: payload_len + 8.
-size_t packet_build(uint8_t type, uint8_t seq,
-                    const uint8_t* payload, size_t payload_len,
-                    uint8_t* out, size_t out_cap);
+size_t packet_build(uint8_t type, uint8_t seq, const uint8_t* payload, size_t payload_len, uint8_t* out,
+                    size_t out_cap);
 
 // ---- Packet parsing (host → MCU) ----
 
 struct ParsedPacket {
-    uint8_t  type;
-    uint8_t  seq;
-    const uint8_t* data;    // points into caller's decode buffer
-    size_t   data_len;
-    bool     valid;         // CRC passed and structure is sane
+    uint8_t        type;
+    uint8_t        seq;
+    const uint8_t* data; // points into caller's decode buffer
+    size_t         data_len;
+    bool           valid; // CRC passed and structure is sane
 };
 
 // Parse a COBS-decoded frame. `frame`/`frame_len` is the raw bytes between
 // 0x00 delimiters (before COBS decode). Uses `decode_buf` as scratch space
 // (must be at least `frame_len` bytes).
 // Returns ParsedPacket with valid=true on success.
-ParsedPacket packet_parse(const uint8_t* frame, size_t frame_len,
-                          uint8_t* decode_buf, size_t decode_buf_len);
+ParsedPacket packet_parse(const uint8_t* frame, size_t frame_len, uint8_t* decode_buf, size_t decode_buf_len);

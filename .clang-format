@@ -37,6 +37,7 @@ BinPackArguments: true
 
 # Alignment
 AlignAfterOpenBracket: Align
+AlignConsecutiveDeclarations: Consecutive
 AlignTrailingComments:
   Kind: Always
   OverEmptyLines: 0

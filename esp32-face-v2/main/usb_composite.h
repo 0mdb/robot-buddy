@@ -17,8 +17,8 @@ struct UsbCdcDiagSnapshot {
     uint32_t rx_bytes;
     uint32_t rx_errors;
     uint32_t line_state_events;
-    uint8_t dtr;
-    uint8_t rts;
+    uint8_t  dtr;
+    uint8_t  rts;
 };
 
 // Initialize TinyUSB CDC device.

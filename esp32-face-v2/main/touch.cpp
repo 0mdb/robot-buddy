@@ -14,20 +14,15 @@
 static const char* TAG = "touch";
 
 static i2c_master_bus_handle_t i2c_bus = nullptr;
-static esp_lcd_touch_handle_t s_touch_handle = nullptr;
-static std::size_t s_transform_index = 0;
+static esp_lcd_touch_handle_t  s_touch_handle = nullptr;
+static std::size_t             s_transform_index = 0;
 
 static constexpr TouchTransformPreset kTransformPresets[] = {
-    {"v2_current", 320, 240, true,  true,  false},
-    {"portrait_raw", 240, 320, false, false, false},
-    {"portrait_swap", 240, 320, true,  false, false},
-    {"portrait_swap_mx", 240, 320, true,  true,  false},
-    {"portrait_swap_my", 240, 320, true,  false, true},
-    {"portrait_swap_mxy", 240, 320, true,  true,  true},
-    {"landscape_raw", 320, 240, false, false, false},
-    {"landscape_swap", 320, 240, true,  false, false},
-    {"landscape_swap_my", 320, 240, true,  false, true},
-    {"landscape_swap_mxy", 320, 240, true,  true,  true},
+    {"v2_current", 320, 240, true, true, false},        {"portrait_raw", 240, 320, false, false, false},
+    {"portrait_swap", 240, 320, true, false, false},    {"portrait_swap_mx", 240, 320, true, true, false},
+    {"portrait_swap_my", 240, 320, true, false, true},  {"portrait_swap_mxy", 240, 320, true, true, true},
+    {"landscape_raw", 320, 240, false, false, false},   {"landscape_swap", 320, 240, true, false, false},
+    {"landscape_swap_my", 320, 240, true, false, true}, {"landscape_swap_mxy", 320, 240, true, true, true},
 };
 
 std::size_t touch_transform_preset_count()
@@ -76,17 +71,10 @@ bool touch_transform_apply(std::size_t index)
         ESP_LOGW(TAG, "set_mirror_y failed: %s", esp_err_to_name(err));
     }
 
-    ESP_LOGI(
-        TAG,
-        "touch transform[%u] %s: x_max=%u y_max=%u swap=%d mx=%d my=%d",
-        static_cast<unsigned>(s_transform_index),
-        preset->name,
-        static_cast<unsigned>(preset->x_max),
-        static_cast<unsigned>(preset->y_max),
-        preset->swap_xy ? 1 : 0,
-        preset->mirror_x ? 1 : 0,
-        preset->mirror_y ? 1 : 0
-    );
+    ESP_LOGI(TAG, "touch transform[%u] %s: x_max=%u y_max=%u swap=%d mx=%d my=%d",
+             static_cast<unsigned>(s_transform_index), preset->name, static_cast<unsigned>(preset->x_max),
+             static_cast<unsigned>(preset->y_max), preset->swap_xy ? 1 : 0, preset->mirror_x ? 1 : 0,
+             preset->mirror_y ? 1 : 0);
     return true;
 }
 
@@ -105,14 +93,13 @@ void touch_init(lv_display_t* disp)
     ESP_ERROR_CHECK(i2c_new_master_bus(&bus_cfg, &i2c_bus));
 
     // 2. Touch panel IO
-    esp_lcd_panel_io_handle_t tp_io_handle = nullptr;
-    esp_lcd_panel_io_i2c_config_t tp_io_cfg =
-        ESP_LCD_TOUCH_IO_I2C_FT5x06_CONFIG();
-    tp_io_cfg.scl_speed_hz = 400000;  // Required by new i2c_master API (must be > 0)
+    esp_lcd_panel_io_handle_t     tp_io_handle = nullptr;
+    esp_lcd_panel_io_i2c_config_t tp_io_cfg = ESP_LCD_TOUCH_IO_I2C_FT5x06_CONFIG();
+    tp_io_cfg.scl_speed_hz = 400000; // Required by new i2c_master API (must be > 0)
     ESP_ERROR_CHECK(esp_lcd_new_panel_io_i2c(i2c_bus, &tp_io_cfg, &tp_io_handle));
 
     // 3. Touch controller
-    esp_lcd_touch_handle_t touch_handle = nullptr;
+    esp_lcd_touch_handle_t      touch_handle = nullptr;
     const TouchTransformPreset* initial = touch_transform_preset_get(CALIB_TOUCH_DEFAULT_INDEX);
     if (!initial) {
         ESP_LOGE(TAG, "no touch transform presets configured");
@@ -123,15 +110,17 @@ void touch_init(lv_display_t* disp)
         .y_max = initial->y_max,
         .rst_gpio_num = PIN_TOUCH_RST,
         .int_gpio_num = PIN_TOUCH_INT,
-        .levels = {
-            .reset = 0,
-            .interrupt = 0,
-        },
-        .flags = {
-            .swap_xy = initial->swap_xy,
-            .mirror_x = initial->mirror_x,
-            .mirror_y = initial->mirror_y,
-        },
+        .levels =
+            {
+                .reset = 0,
+                .interrupt = 0,
+            },
+        .flags =
+            {
+                .swap_xy = initial->swap_xy,
+                .mirror_x = initial->mirror_x,
+                .mirror_y = initial->mirror_y,
+            },
     };
     ESP_ERROR_CHECK(esp_lcd_touch_new_i2c_ft5x06(tp_io_handle, &tp_cfg, &touch_handle));
     s_touch_handle = touch_handle;

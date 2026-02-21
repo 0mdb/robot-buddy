@@ -25,30 +25,30 @@ static void init_one(EncoderSide side, gpio_num_t pin_a, gpio_num_t pin_b)
 
     pcnt_unit_config_t unit_cfg = {};
     unit_cfg.high_limit = INT16_MAX;
-    unit_cfg.low_limit  = INT16_MIN;
+    unit_cfg.low_limit = INT16_MIN;
     ESP_ERROR_CHECK(pcnt_new_unit(&unit_cfg, &s_units[idx]));
 
     // Channel A: counts on A edges, direction from B level
     pcnt_chan_config_t chan_a_cfg = {};
-    chan_a_cfg.edge_gpio_num  = pin_a;
+    chan_a_cfg.edge_gpio_num = pin_a;
     chan_a_cfg.level_gpio_num = pin_b;
     pcnt_channel_handle_t chan_a = nullptr;
     ESP_ERROR_CHECK(pcnt_new_channel(s_units[idx], &chan_a_cfg, &chan_a));
-    ESP_ERROR_CHECK(pcnt_channel_set_edge_action(chan_a,
-        PCNT_CHANNEL_EDGE_ACTION_DECREASE, PCNT_CHANNEL_EDGE_ACTION_INCREASE));
-    ESP_ERROR_CHECK(pcnt_channel_set_level_action(chan_a,
-        PCNT_CHANNEL_LEVEL_ACTION_KEEP, PCNT_CHANNEL_LEVEL_ACTION_INVERSE));
+    ESP_ERROR_CHECK(
+        pcnt_channel_set_edge_action(chan_a, PCNT_CHANNEL_EDGE_ACTION_DECREASE, PCNT_CHANNEL_EDGE_ACTION_INCREASE));
+    ESP_ERROR_CHECK(
+        pcnt_channel_set_level_action(chan_a, PCNT_CHANNEL_LEVEL_ACTION_KEEP, PCNT_CHANNEL_LEVEL_ACTION_INVERSE));
 
     // Channel B: counts on B edges, direction from A level (full quadrature)
     pcnt_chan_config_t chan_b_cfg = {};
-    chan_b_cfg.edge_gpio_num  = pin_b;
+    chan_b_cfg.edge_gpio_num = pin_b;
     chan_b_cfg.level_gpio_num = pin_a;
     pcnt_channel_handle_t chan_b = nullptr;
     ESP_ERROR_CHECK(pcnt_new_channel(s_units[idx], &chan_b_cfg, &chan_b));
-    ESP_ERROR_CHECK(pcnt_channel_set_edge_action(chan_b,
-        PCNT_CHANNEL_EDGE_ACTION_INCREASE, PCNT_CHANNEL_EDGE_ACTION_DECREASE));
-    ESP_ERROR_CHECK(pcnt_channel_set_level_action(chan_b,
-        PCNT_CHANNEL_LEVEL_ACTION_KEEP, PCNT_CHANNEL_LEVEL_ACTION_INVERSE));
+    ESP_ERROR_CHECK(
+        pcnt_channel_set_edge_action(chan_b, PCNT_CHANNEL_EDGE_ACTION_INCREASE, PCNT_CHANNEL_EDGE_ACTION_DECREASE));
+    ESP_ERROR_CHECK(
+        pcnt_channel_set_level_action(chan_b, PCNT_CHANNEL_LEVEL_ACTION_KEEP, PCNT_CHANNEL_LEVEL_ACTION_INVERSE));
 
     // Glitch filter: reject pulses shorter than 1 µs
     pcnt_glitch_filter_config_t filt = {};
@@ -59,14 +59,13 @@ static void init_one(EncoderSide side, gpio_num_t pin_a, gpio_num_t pin_b)
     ESP_ERROR_CHECK(pcnt_unit_clear_count(s_units[idx]));
     ESP_ERROR_CHECK(pcnt_unit_start(s_units[idx]));
 
-    ESP_LOGI(TAG, "%s encoder initialized (A=%d, B=%d)",
-             side == EncoderSide::LEFT ? "LEFT" : "RIGHT",
+    ESP_LOGI(TAG, "%s encoder initialized (A=%d, B=%d)", side == EncoderSide::LEFT ? "LEFT" : "RIGHT",
              static_cast<int>(pin_a), static_cast<int>(pin_b));
 }
 
 void encoder_init()
 {
-    init_one(EncoderSide::LEFT,  PIN_ENC_L_A, PIN_ENC_L_B);
+    init_one(EncoderSide::LEFT, PIN_ENC_L_A, PIN_ENC_L_B);
     init_one(EncoderSide::RIGHT, PIN_ENC_R_A, PIN_ENC_R_B);
 }
 
@@ -84,7 +83,7 @@ void encoder_snapshot(int32_t* out_left, int32_t* out_right)
     int l = 0, r = 0;
     pcnt_unit_get_count(s_units[0], &l);
     pcnt_unit_get_count(s_units[1], &r);
-    *out_left  = static_cast<int32_t>(l);
+    *out_left = static_cast<int32_t>(l);
     *out_right = static_cast<int32_t>(r);
 }
 

@@ -5,7 +5,8 @@
 #include <cmath>
 #include <cstdint>
 
-namespace {
+namespace
+{
 
 constexpr float PI = 3.14159265358979323846f;
 
@@ -43,10 +44,8 @@ static float smoothstep(float edge0, float edge1, float x)
 
 static lv_color_t rgb_to_color(const Rgb& c)
 {
-    return lv_color_make(
-        static_cast<uint8_t>(clampi(c.r, 0, 255)),
-        static_cast<uint8_t>(clampi(c.g, 0, 255)),
-        static_cast<uint8_t>(clampi(c.b, 0, 255)));
+    return lv_color_make(static_cast<uint8_t>(clampi(c.r, 0, 255)), static_cast<uint8_t>(clampi(c.g, 0, 255)),
+                         static_cast<uint8_t>(clampi(c.b, 0, 255)));
 }
 
 static void fill_screen(lv_color_t* buf, const Rgb& c)
@@ -67,20 +66,15 @@ static void set_px_blend(lv_color_t* buf, int idx, const Rgb& c, float alpha)
     const int tg = clampi(c.g, 0, 255);
     const int tb = clampi(c.b, 0, 255);
     if (alpha >= 0.999f) {
-        buf[idx] = lv_color_make(
-            static_cast<uint8_t>(tr),
-            static_cast<uint8_t>(tg),
-            static_cast<uint8_t>(tb));
+        buf[idx] = lv_color_make(static_cast<uint8_t>(tr), static_cast<uint8_t>(tg), static_cast<uint8_t>(tb));
         return;
     }
     const lv_color_t bg = buf[idx];
-    const int r = static_cast<int>(bg.red + (tr - bg.red) * alpha);
-    const int g = static_cast<int>(bg.green + (tg - bg.green) * alpha);
-    const int b = static_cast<int>(bg.blue + (tb - bg.blue) * alpha);
-    buf[idx] = lv_color_make(
-        static_cast<uint8_t>(clampi(r, 0, 255)),
-        static_cast<uint8_t>(clampi(g, 0, 255)),
-        static_cast<uint8_t>(clampi(b, 0, 255)));
+    const int        r = static_cast<int>(bg.red + (tr - bg.red) * alpha);
+    const int        g = static_cast<int>(bg.green + (tg - bg.green) * alpha);
+    const int        b = static_cast<int>(bg.blue + (tb - bg.blue) * alpha);
+    buf[idx] = lv_color_make(static_cast<uint8_t>(clampi(r, 0, 255)), static_cast<uint8_t>(clampi(g, 0, 255)),
+                             static_cast<uint8_t>(clampi(b, 0, 255)));
 }
 
 static float sd_rounded_box(float px, float py, float cx, float cy, float hw, float hh, float r)
@@ -103,7 +97,7 @@ static float sd_equilateral_triangle(float px, float py, float cx, float cy, flo
 {
     px -= cx;
     py -= cy;
-    constexpr float k = 1.7320508075688772f;  // sqrt(3)
+    constexpr float k = 1.7320508075688772f; // sqrt(3)
     px = fabsf(px) - r;
     py = py + r / k;
     if (px + k * py > 0.0f) {
@@ -132,8 +126,8 @@ static float noise01(int x, int y, int t)
 static void render_booting(lv_color_t* buf, float elapsed)
 {
     fill_screen(buf, BG);
-    const int cx = SCREEN_W / 2;
-    const int cy = SCREEN_H / 2;
+    const int   cx = SCREEN_W / 2;
+    const int   cy = SCREEN_H / 2;
     const float angle = fmodf(elapsed * 3.0f, 2.0f * PI);
     const float radar_r = 90.0f;
 
@@ -167,7 +161,7 @@ static void render_booting(lv_color_t* buf, float elapsed)
 
             if (dist < radar_r) {
                 const float pixel_angle = atan2f(dy, dx);
-                float diff = fmodf((pixel_angle - angle + PI), 2.0f * PI);
+                float       diff = fmodf((pixel_angle - angle + PI), 2.0f * PI);
                 if (diff < 0.0f) diff += 2.0f * PI;
                 diff -= PI;
                 if (diff < 0.0f) diff += 2.0f * PI;
@@ -184,14 +178,14 @@ static void render_booting(lv_color_t* buf, float elapsed)
         }
     }
 
-    const int bar_w = 200;
-    const int bar_h = 10;
-    const int bar_y = cy + 60;
-    const int bar_x0 = cx - bar_w / 2;
-    const int bar_x1 = bar_x0 + bar_w - 1;
-    const int bar_y1 = bar_y + bar_h - 1;
+    const int   bar_w = 200;
+    const int   bar_h = 10;
+    const int   bar_y = cy + 60;
+    const int   bar_x0 = cx - bar_w / 2;
+    const int   bar_x1 = bar_x0 + bar_w - 1;
+    const int   bar_y1 = bar_y + bar_h - 1;
     const float prog = fminf(1.0f, elapsed / 3.0f);
-    const int fill_x = bar_x0 + static_cast<int>(bar_w * prog);
+    const int   fill_x = bar_x0 + static_cast<int>(bar_w * prog);
     for (int y = bar_y; y <= bar_y1; y++) {
         if (y < 0 || y >= SCREEN_H) continue;
         const int row = y * SCREEN_W;
@@ -209,19 +203,20 @@ static void render_booting(lv_color_t* buf, float elapsed)
 
 static void render_error(lv_color_t* buf, float elapsed)
 {
-    const int cx = SCREEN_W / 2;
-    const int cy = SCREEN_H / 2;
+    const int   cx = SCREEN_W / 2;
+    const int   cy = SCREEN_H / 2;
     const float tri_r = 70.0f;
     const float pulse = (sinf(elapsed * 8.0f) + 1.0f) * 0.5f;
-    const Rgb bg{static_cast<int>(40.0f * pulse), 0, 0};
-    const int tick = static_cast<int>(elapsed * 60.0f);
+    const Rgb   bg{static_cast<int>(40.0f * pulse), 0, 0};
+    const int   tick = static_cast<int>(elapsed * 60.0f);
 
     auto alpha_pair = [cx, cy, tri_r](float sx, float sy, float* ay, float* am) {
         const float d_tri = sd_equilateral_triangle(sx, sy, static_cast<float>(cx), static_cast<float>(cy), tri_r);
-        const float d_in = sd_equilateral_triangle(sx, sy, static_cast<float>(cx), static_cast<float>(cy + 5), tri_r - 15.0f);
-        const float d_mark = fminf(
-            sd_rounded_box(sx, sy, static_cast<float>(cx), static_cast<float>(cy - 10), 6.0f, 20.0f, 2.0f),
-            sd_circle(sx, sy, static_cast<float>(cx), static_cast<float>(cy + 25), 6.0f));
+        const float d_in =
+            sd_equilateral_triangle(sx, sy, static_cast<float>(cx), static_cast<float>(cy + 5), tri_r - 15.0f);
+        const float d_mark =
+            fminf(sd_rounded_box(sx, sy, static_cast<float>(cx), static_cast<float>(cy - 10), 6.0f, 20.0f, 2.0f),
+                  sd_circle(sx, sy, static_cast<float>(cx), static_cast<float>(cy + 25), 6.0f));
         *ay = 1.0f - smoothstep(0.0f, 2.0f, fminf(d_tri, -d_in));
         *am = 1.0f - smoothstep(0.0f, 2.0f, d_mark);
     };
@@ -229,8 +224,8 @@ static void render_error(lv_color_t* buf, float elapsed)
     for (int y = 0; y < SCREEN_H; y++) {
         const int row = y * SCREEN_W;
         const int off_x = (SYSTEM_FX_GLITCH && noise01(17, y, tick) < 0.05f)
-            ? static_cast<int>(noise01(23, y, tick) * 21.0f) - 10
-            : 0;
+                              ? static_cast<int>(noise01(23, y, tick) * 21.0f) - 10
+                              : 0;
         for (int x = 0; x < SCREEN_W; x++) {
             float ay_r = 0.0f, am_r = 0.0f;
             float ay_g = 0.0f, am_g = 0.0f;
@@ -248,10 +243,9 @@ static void render_error(lv_color_t* buf, float elapsed)
             if (am_g > 0.0f) g = 0;
             if (ay_b > 0.0f) b = 0;
             if (am_b > 0.0f) b = 0;
-            buf[row + x] = lv_color_make(
-                static_cast<uint8_t>(clampi(r, 0, 255)),
-                static_cast<uint8_t>(clampi(g, 0, 255)),
-                static_cast<uint8_t>(clampi(b, 0, 255)));
+            buf[row + x] =
+                lv_color_make(static_cast<uint8_t>(clampi(r, 0, 255)), static_cast<uint8_t>(clampi(g, 0, 255)),
+                              static_cast<uint8_t>(clampi(b, 0, 255)));
         }
     }
 }
@@ -260,10 +254,10 @@ static void render_battery(lv_color_t* buf, const FaceState& fs, float elapsed)
 {
     fill_screen(buf, BG);
     const float lvl = clampf(fs.system.param, 0.0f, 1.0f);
-    const int cx = SCREEN_W / 2;
-    const int cy = SCREEN_H / 2;
-    const int bw = 80;
-    const int bh = 40;
+    const int   cx = SCREEN_W / 2;
+    const int   cy = SCREEN_H / 2;
+    const int   bw = 80;
+    const int   bh = 40;
 
     Rgb col{};
     if (lvl > 0.5f) {
@@ -285,9 +279,12 @@ static void render_battery(lv_color_t* buf, const FaceState& fs, float elapsed)
             const float px = static_cast<float>(x) + 0.5f;
             const float py = static_cast<float>(y) + 0.5f;
 
-            const float d_out = sd_rounded_box(px, py, static_cast<float>(cx), static_cast<float>(cy), static_cast<float>(bw), static_cast<float>(bh), 6.0f);
-            const float d_in = sd_rounded_box(px, py, static_cast<float>(cx), static_cast<float>(cy), static_cast<float>(bw - 4), static_cast<float>(bh - 4), 4.0f);
-            const float d_tip = sd_rounded_box(px, py, static_cast<float>(cx + bw + 8), static_cast<float>(cy), 6.0f, 15.0f, 2.0f);
+            const float d_out = sd_rounded_box(px, py, static_cast<float>(cx), static_cast<float>(cy),
+                                               static_cast<float>(bw), static_cast<float>(bh), 6.0f);
+            const float d_in = sd_rounded_box(px, py, static_cast<float>(cx), static_cast<float>(cy),
+                                              static_cast<float>(bw - 4), static_cast<float>(bh - 4), 4.0f);
+            const float d_tip =
+                sd_rounded_box(px, py, static_cast<float>(cx + bw + 8), static_cast<float>(cy), 6.0f, 15.0f, 2.0f);
             const float d_shell = fminf(fmaxf(d_out, -d_in), d_tip);
             const float alpha_shell = 1.0f - smoothstep(-1.0f, 1.0f, d_shell);
             if (alpha_shell > 0.0f) {
@@ -299,20 +296,21 @@ static void render_battery(lv_color_t* buf, const FaceState& fs, float elapsed)
                 const float wave = sinf(static_cast<float>(x) * 0.1f + elapsed * 5.0f) * 3.0f;
                 if (px < fill_max + wave) {
                     const float gloss = (py - static_cast<float>(cy - bh)) / static_cast<float>(2 * bh);
-                    int r = static_cast<int>(col.r * (0.8f + 0.4f * gloss));
-                    int g = static_cast<int>(col.g * (0.8f + 0.4f * gloss));
-                    int b = static_cast<int>(col.b * (0.8f + 0.4f * gloss));
+                    int         r = static_cast<int>(col.r * (0.8f + 0.4f * gloss));
+                    int         g = static_cast<int>(col.g * (0.8f + 0.4f * gloss));
+                    int         b = static_cast<int>(col.b * (0.8f + 0.4f * gloss));
                     if (((x / 20) * (y / 20) + static_cast<int>(elapsed * 2.0f)) % 13 == 0 &&
                         noise01(x, y, static_cast<int>(elapsed * 100.0f)) < 0.20f) {
-                        r = 255; g = 255; b = 255;
+                        r = 255;
+                        g = 255;
+                        b = 255;
                     }
                     set_px_blend(buf, row + x, Rgb{r, g, b}, 1.0f);
                 }
             }
 
             if (lvl < 0.2f && ((static_cast<int>(elapsed * 4.0f) % 2) == 0)) {
-                if (fabsf(px - static_cast<float>(cx)) < 10.0f &&
-                    fabsf(py - static_cast<float>(cy)) < 20.0f &&
+                if (fabsf(px - static_cast<float>(cx)) < 10.0f && fabsf(py - static_cast<float>(cy)) < 20.0f &&
                     fabsf((px - static_cast<float>(cx)) + (py - static_cast<float>(cy)) * 0.4f) < 4.0f) {
                     set_px_blend(buf, row + x, Rgb{255, 255, 255}, 1.0f);
                 }
@@ -350,7 +348,10 @@ static void render_updating(lv_color_t* buf, float elapsed)
             }
 
             const float pulse_r = 8.0f + sinf(elapsed * 10.0f) * 2.0f;
-            const float alpha_dot = 1.0f - smoothstep(-1.0f, 1.0f, sd_circle(static_cast<float>(x) + 0.5f, static_cast<float>(y) + 0.5f, static_cast<float>(cx), static_cast<float>(cy), pulse_r));
+            const float alpha_dot =
+                1.0f - smoothstep(-1.0f, 1.0f,
+                                  sd_circle(static_cast<float>(x) + 0.5f, static_cast<float>(y) + 0.5f,
+                                            static_cast<float>(cx), static_cast<float>(cy), pulse_r));
             if (alpha_dot > 0.0f) {
                 set_px_blend(buf, row + x, Rgb{255, 255, 255}, alpha_dot);
             }
@@ -382,18 +383,18 @@ static void render_shutdown(lv_color_t* buf, float elapsed)
 
     const int cx = SCREEN_W / 2;
     const int cy = SCREEN_H / 2;
-    int bw = static_cast<int>(SCREEN_W * hs);
-    int bh = static_cast<int>(SCREEN_H * vs);
+    int       bw = static_cast<int>(SCREEN_W * hs);
+    int       bh = static_cast<int>(SCREEN_H * vs);
     if (bw < 1) bw = 1;
     if (bh < 1) bh = 1;
     const int r = static_cast<int>(255.0f * fminf(1.0f, br));
     const int g = static_cast<int>(255.0f * fminf(1.0f, br));
     const Rgb col{r, g, 255};
 
-    const int x0 = clampi(cx - bw / 2, 0, SCREEN_W - 1);
-    const int x1 = clampi(cx + bw / 2, 0, SCREEN_W - 1);
-    const int y0 = clampi(cy - bh / 2, 0, SCREEN_H - 1);
-    const int y1 = clampi(cy + bh / 2, 0, SCREEN_H - 1);
+    const int        x0 = clampi(cx - bw / 2, 0, SCREEN_W - 1);
+    const int        x1 = clampi(cx + bw / 2, 0, SCREEN_W - 1);
+    const int        y0 = clampi(cy - bh / 2, 0, SCREEN_H - 1);
+    const int        y1 = clampi(cy + bh / 2, 0, SCREEN_H - 1);
     const lv_color_t pixel = rgb_to_color(col);
     for (int y = y0; y <= y1; y++) {
         const int row = y * SCREEN_W;
@@ -435,7 +436,7 @@ static void apply_vignette(lv_color_t* buf)
             const float dy = static_cast<float>(y) - cy;
             const float dist = sqrtf(dx * dx + dy * dy);
             const float v = 1.0f - smoothstep(max_dist * 0.5f, max_dist, dist);
-            lv_color_t px = buf[row + x];
+            lv_color_t  px = buf[row + x];
             px.red = static_cast<uint8_t>(clampi(static_cast<int>(px.red * v), 0, 255));
             px.green = static_cast<uint8_t>(clampi(static_cast<int>(px.green * v), 0, 255));
             px.blue = static_cast<uint8_t>(clampi(static_cast<int>(px.blue * v), 0, 255));
@@ -444,7 +445,7 @@ static void apply_vignette(lv_color_t* buf)
     }
 }
 
-}  // namespace
+} // namespace
 
 void render_system_overlay_v2(lv_color_t* buf, const FaceState& fs, float now_seconds)
 {

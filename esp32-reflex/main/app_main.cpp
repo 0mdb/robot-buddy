@@ -49,7 +49,7 @@ static void open_loop_test_task(void* arg)
     motor_enable();
 
     const uint16_t test_duty = g_cfg.max_pwm / 4;
-    const uint32_t hold_ms   = 1500;
+    const uint32_t hold_ms = 1500;
     const uint32_t sample_interval_ms = 100;
 
     auto run_phase = [&](const char* label, MotorSide side, bool forward) {
@@ -66,9 +66,8 @@ static void open_loop_test_task(void* arg)
 
             int32_t cur_l, cur_r;
             encoder_snapshot(&cur_l, &cur_r);
-            ESP_LOGI(TAG, "  enc L=%ld  R=%ld  (dL=%ld dR=%ld)",
-                     (long)cur_l, (long)cur_r,
-                     (long)(cur_l - start_l), (long)(cur_r - start_r));
+            ESP_LOGI(TAG, "  enc L=%ld  R=%ld  (dL=%ld dR=%ld)", (long)cur_l, (long)cur_r, (long)(cur_l - start_l),
+                     (long)(cur_r - start_r));
         }
 
         motor_set_output(side, 0, true);
@@ -76,8 +75,8 @@ static void open_loop_test_task(void* arg)
         vTaskDelay(pdMS_TO_TICKS(500));
     };
 
-    run_phase("LEFT FORWARD",  MotorSide::LEFT,  true);
-    run_phase("LEFT REVERSE",  MotorSide::LEFT,  false);
+    run_phase("LEFT FORWARD", MotorSide::LEFT, true);
+    run_phase("LEFT REVERSE", MotorSide::LEFT, false);
     run_phase("RIGHT FORWARD", MotorSide::RIGHT, true);
     run_phase("RIGHT REVERSE", MotorSide::RIGHT, false);
 
@@ -89,7 +88,7 @@ static void open_loop_test_task(void* arg)
     vTaskDelete(nullptr);
 }
 
-#endif  // BRINGUP_OPEN_LOOP_TEST
+#endif // BRINGUP_OPEN_LOOP_TEST
 
 extern "C" void app_main()
 {
@@ -102,12 +101,10 @@ extern "C" void app_main()
     if (imu_init()) {
         ESP_LOGI(TAG, "IMU initialized OK");
         // imu_task on PRO core (core 0), below control_task priority
-        xTaskCreatePinnedToCore(imu_task, "imu", 4096,
-                                nullptr, 8, nullptr, 0);
+        xTaskCreatePinnedToCore(imu_task, "imu", 4096, nullptr, 8, nullptr, 0);
     } else {
         ESP_LOGE(TAG, "IMU init FAILED — continuing without gyro");
-        g_fault_flags.store(static_cast<uint16_t>(Fault::IMU_FAIL),
-                            std::memory_order_relaxed);
+        g_fault_flags.store(static_cast<uint16_t>(Fault::IMU_FAIL), std::memory_order_relaxed);
     }
 
     if (range_init()) {
@@ -125,25 +122,19 @@ extern "C" void app_main()
     ESP_LOGI(TAG, "Hardware init complete.");
 
     // ---- Phase 2: APP core tasks (USB protocol + telemetry + range) ----
-    xTaskCreatePinnedToCore(usb_rx_task, "usb_rx", 4096,
-                            nullptr, 5, nullptr, 1);   // APP core, normal priority
-    xTaskCreatePinnedToCore(telemetry_task, "telem", 4096,
-                            nullptr, 3, nullptr, 1);   // APP core, below-normal
-    xTaskCreatePinnedToCore(range_task, "range", 3072,
-                            nullptr, 4, nullptr, 1);   // APP core, between usb_rx and telem
+    xTaskCreatePinnedToCore(usb_rx_task, "usb_rx", 4096, nullptr, 5, nullptr, 1);   // APP core, normal priority
+    xTaskCreatePinnedToCore(telemetry_task, "telem", 4096, nullptr, 3, nullptr, 1); // APP core, below-normal
+    xTaskCreatePinnedToCore(range_task, "range", 3072, nullptr, 4, nullptr, 1); // APP core, between usb_rx and telem
 
 #if BRINGUP_OPEN_LOOP_TEST
-    xTaskCreatePinnedToCore(open_loop_test_task, "ol_test", 4096,
-                            nullptr, 5, nullptr, 1);
+    xTaskCreatePinnedToCore(open_loop_test_task, "ol_test", 4096, nullptr, 5, nullptr, 1);
 #else
     // ---- Phase 3: PRO core tasks (control + safety) ----
     // Enable motors — safety_task will gate them on faults.
     motor_enable();
 
-    xTaskCreatePinnedToCore(control_task, "control", 4096,
-                            nullptr, 10, nullptr, 0);  // PRO core, highest
-    xTaskCreatePinnedToCore(safety_task, "safety", 4096,
-                            nullptr, 6, nullptr, 0);   // PRO core, above-normal
+    xTaskCreatePinnedToCore(control_task, "control", 4096, nullptr, 10, nullptr, 0); // PRO core, highest
+    xTaskCreatePinnedToCore(safety_task, "safety", 4096, nullptr, 6, nullptr, 0);    // PRO core, above-normal
 #endif
 
     ESP_LOGI(TAG, "All tasks started.");

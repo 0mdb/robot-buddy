@@ -30,21 +30,20 @@ void usb_rx_task(void* arg)
 
     uint8_t frame_buf[MAX_FRAME];
     size_t  frame_pos = 0;
-    bool    discard = false;  // true = skip bytes until next 0x00 delimiter
+    bool    discard = false; // true = skip bytes until next 0x00 delimiter
 
     uint8_t decode_buf[MAX_FRAME];
 
     while (true) {
         // Read available bytes (block up to 50ms if nothing available)
         uint8_t rx_byte;
-        int n = usb_serial_jtag_read_bytes(&rx_byte, 1, pdMS_TO_TICKS(50));
+        int     n = usb_serial_jtag_read_bytes(&rx_byte, 1, pdMS_TO_TICKS(50));
         if (n <= 0) continue;
 
         if (rx_byte == 0x00) {
             // End of COBS frame
             if (frame_pos > 0 && !discard) {
-                ParsedPacket pkt = packet_parse(frame_buf, frame_pos,
-                                                decode_buf, sizeof(decode_buf));
+                ParsedPacket pkt = packet_parse(frame_buf, frame_pos, decode_buf, sizeof(decode_buf));
                 if (pkt.valid) {
                     handle_packet(pkt);
                 } else {
@@ -77,7 +76,7 @@ static void handle_packet(const ParsedPacket& pkt)
         memcpy(&tw, pkt.data, sizeof(tw));
 
         Command* slot = g_cmd.write_slot();
-        slot->v_mm_s   = tw.v_mm_s;
+        slot->v_mm_s = tw.v_mm_s;
         slot->w_mrad_s = tw.w_mrad_s;
         g_cmd.publish(static_cast<uint32_t>(esp_timer_get_time()));
         break;
@@ -86,7 +85,7 @@ static void handle_packet(const ParsedPacket& pkt)
     case CmdId::STOP: {
         // Soft stop: zero the command
         Command* slot = g_cmd.write_slot();
-        slot->v_mm_s   = 0;
+        slot->v_mm_s = 0;
         slot->w_mrad_s = 0;
         g_cmd.publish(static_cast<uint32_t>(esp_timer_get_time()));
         break;
@@ -94,8 +93,7 @@ static void handle_packet(const ParsedPacket& pkt)
 
     case CmdId::ESTOP: {
         // Hard stop: set fault flag, safety_task will handle the kill
-        g_fault_flags.fetch_or(static_cast<uint16_t>(Fault::ESTOP),
-                               std::memory_order_relaxed);
+        g_fault_flags.fetch_or(static_cast<uint16_t>(Fault::ESTOP), std::memory_order_relaxed);
         break;
     }
 

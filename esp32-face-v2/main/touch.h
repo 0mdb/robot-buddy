@@ -10,14 +10,14 @@ void touch_init(lv_display_t* disp);
 
 struct TouchTransformPreset {
     const char* name;
-    uint16_t x_max;
-    uint16_t y_max;
-    bool swap_xy;
-    bool mirror_x;
-    bool mirror_y;
+    uint16_t    x_max;
+    uint16_t    y_max;
+    bool        swap_xy;
+    bool        mirror_x;
+    bool        mirror_y;
 };
 
-std::size_t touch_transform_preset_count();
+std::size_t                 touch_transform_preset_count();
 const TouchTransformPreset* touch_transform_preset_get(std::size_t index);
-std::size_t touch_transform_preset_index();
-bool touch_transform_apply(std::size_t index);
+std::size_t                 touch_transform_preset_index();
+bool                        touch_transform_apply(std::size_t index);
