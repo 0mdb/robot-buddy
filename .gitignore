@@ -1,11 +1,33 @@
+# OS
 .DS_Store
+
+# Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
-.env
+*.egg-info/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
 .venv/
+
+# Environment / secrets
+.env
+
+# IDE / editor
+.vscode/cmake-kits.json
+.idea/
+
+# Claude Code
+.claude/
+SKILL.md
+
+# Build artifacts
 build/
 dist/
+node_modules/
+
+# ESP-IDF
 sdkconfig
-*.lock
+sdkconfig.old
