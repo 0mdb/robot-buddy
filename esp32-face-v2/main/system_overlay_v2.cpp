@@ -42,39 +42,28 @@ static float smoothstep(float edge0, float edge1, float x)
     return t * t * (3.0f - 2.0f * t);
 }
 
-static lv_color_t rgb_to_color(const Rgb& c)
+static pixel_t rgb_to_color(const Rgb& c)
 {
-    return lv_color_make(static_cast<uint8_t>(clampi(c.r, 0, 255)), static_cast<uint8_t>(clampi(c.g, 0, 255)),
-                         static_cast<uint8_t>(clampi(c.b, 0, 255)));
+    return px_rgb(static_cast<uint8_t>(clampi(c.r, 0, 255)), static_cast<uint8_t>(clampi(c.g, 0, 255)),
+                  static_cast<uint8_t>(clampi(c.b, 0, 255)));
 }
 
-static void fill_screen(lv_color_t* buf, const Rgb& c)
+static void fill_screen(pixel_t* buf, const Rgb& c)
 {
-    const lv_color_t color = rgb_to_color(c);
+    const pixel_t color = rgb_to_color(c);
     for (int i = 0; i < SCREEN_W * SCREEN_H; i++) {
         buf[i] = color;
     }
 }
 
-static void set_px_blend(lv_color_t* buf, int idx, const Rgb& c, float alpha)
+static void set_px_blend(pixel_t* buf, int idx, const Rgb& c, float alpha)
 {
     if (!buf || idx < 0 || idx >= (SCREEN_W * SCREEN_H) || alpha <= 0.0f) {
         return;
     }
     alpha = clampf(alpha, 0.0f, 1.0f);
-    const int tr = clampi(c.r, 0, 255);
-    const int tg = clampi(c.g, 0, 255);
-    const int tb = clampi(c.b, 0, 255);
-    if (alpha >= 0.999f) {
-        buf[idx] = lv_color_make(static_cast<uint8_t>(tr), static_cast<uint8_t>(tg), static_cast<uint8_t>(tb));
-        return;
-    }
-    const lv_color_t bg = buf[idx];
-    const int        r = static_cast<int>(bg.red + (tr - bg.red) * alpha);
-    const int        g = static_cast<int>(bg.green + (tg - bg.green) * alpha);
-    const int        b = static_cast<int>(bg.blue + (tb - bg.blue) * alpha);
-    buf[idx] = lv_color_make(static_cast<uint8_t>(clampi(r, 0, 255)), static_cast<uint8_t>(clampi(g, 0, 255)),
-                             static_cast<uint8_t>(clampi(b, 0, 255)));
+    buf[idx] = px_blend(buf[idx], static_cast<uint8_t>(clampi(c.r, 0, 255)), static_cast<uint8_t>(clampi(c.g, 0, 255)),
+                        static_cast<uint8_t>(clampi(c.b, 0, 255)), alpha);
 }
 
 static float sd_rounded_box(float px, float py, float cx, float cy, float hw, float hh, float r)
@@ -123,7 +112,7 @@ static float noise01(int x, int y, int t)
     return static_cast<float>(h & 0xFFFFU) / 65535.0f;
 }
 
-static void render_booting(lv_color_t* buf, float elapsed)
+static void render_booting(pixel_t* buf, float elapsed)
 {
     fill_screen(buf, BG);
     const int   cx = SCREEN_W / 2;
@@ -201,7 +190,7 @@ static void render_booting(lv_color_t* buf, float elapsed)
     }
 }
 
-static void render_error(lv_color_t* buf, float elapsed)
+static void render_error(pixel_t* buf, float elapsed)
 {
     const int   cx = SCREEN_W / 2;
     const int   cy = SCREEN_H / 2;
@@ -243,14 +232,13 @@ static void render_error(lv_color_t* buf, float elapsed)
             if (am_g > 0.0f) g = 0;
             if (ay_b > 0.0f) b = 0;
             if (am_b > 0.0f) b = 0;
-            buf[row + x] =
-                lv_color_make(static_cast<uint8_t>(clampi(r, 0, 255)), static_cast<uint8_t>(clampi(g, 0, 255)),
-                              static_cast<uint8_t>(clampi(b, 0, 255)));
+            buf[row + x] = px_rgb(static_cast<uint8_t>(clampi(r, 0, 255)), static_cast<uint8_t>(clampi(g, 0, 255)),
+                                  static_cast<uint8_t>(clampi(b, 0, 255)));
         }
     }
 }
 
-static void render_battery(lv_color_t* buf, const FaceState& fs, float elapsed)
+static void render_battery(pixel_t* buf, const FaceState& fs, float elapsed)
 {
     fill_screen(buf, BG);
     const float lvl = clampf(fs.system.param, 0.0f, 1.0f);
@@ -319,7 +307,7 @@ static void render_battery(lv_color_t* buf, const FaceState& fs, float elapsed)
     }
 }
 
-static void render_updating(lv_color_t* buf, float elapsed)
+static void render_updating(pixel_t* buf, float elapsed)
 {
     fill_screen(buf, BG);
     const int cx = SCREEN_W / 2;
@@ -359,7 +347,7 @@ static void render_updating(lv_color_t* buf, float elapsed)
     }
 }
 
-static void render_shutdown(lv_color_t* buf, float elapsed)
+static void render_shutdown(pixel_t* buf, float elapsed)
 {
     fill_screen(buf, Rgb{0, 0, 0});
     float vs = 0.0f;
@@ -391,11 +379,11 @@ static void render_shutdown(lv_color_t* buf, float elapsed)
     const int g = static_cast<int>(255.0f * fminf(1.0f, br));
     const Rgb col{r, g, 255};
 
-    const int        x0 = clampi(cx - bw / 2, 0, SCREEN_W - 1);
-    const int        x1 = clampi(cx + bw / 2, 0, SCREEN_W - 1);
-    const int        y0 = clampi(cy - bh / 2, 0, SCREEN_H - 1);
-    const int        y1 = clampi(cy + bh / 2, 0, SCREEN_H - 1);
-    const lv_color_t pixel = rgb_to_color(col);
+    const int     x0 = clampi(cx - bw / 2, 0, SCREEN_W - 1);
+    const int     x1 = clampi(cx + bw / 2, 0, SCREEN_W - 1);
+    const int     y0 = clampi(cy - bh / 2, 0, SCREEN_H - 1);
+    const int     y1 = clampi(cy + bh / 2, 0, SCREEN_H - 1);
+    const pixel_t pixel = rgb_to_color(col);
     for (int y = y0; y <= y1; y++) {
         const int row = y * SCREEN_W;
         for (int x = x0; x <= x1; x++) {
@@ -404,7 +392,7 @@ static void render_shutdown(lv_color_t* buf, float elapsed)
     }
 }
 
-static void apply_scanlines(lv_color_t* buf)
+static void apply_scanlines(pixel_t* buf)
 {
     if (!SYSTEM_FX_SCANLINES) {
         return;
@@ -412,16 +400,12 @@ static void apply_scanlines(lv_color_t* buf)
     for (int y = 0; y < SCREEN_H; y += 2) {
         const int row = y * SCREEN_W;
         for (int x = 0; x < SCREEN_W; x++) {
-            lv_color_t px = buf[row + x];
-            px.red = static_cast<uint8_t>((static_cast<uint16_t>(px.red) * 4U) / 5U);
-            px.green = static_cast<uint8_t>((static_cast<uint16_t>(px.green) * 4U) / 5U);
-            px.blue = static_cast<uint8_t>((static_cast<uint16_t>(px.blue) * 4U) / 5U);
-            buf[row + x] = px;
+            buf[row + x] = px_scale(buf[row + x], 4, 5);
         }
     }
 }
 
-static void apply_vignette(lv_color_t* buf)
+static void apply_vignette(pixel_t* buf)
 {
     if (!SYSTEM_FX_VIGNETTE) {
         return;
@@ -432,22 +416,21 @@ static void apply_vignette(lv_color_t* buf)
     for (int y = 0; y < SCREEN_H; y++) {
         const int row = y * SCREEN_W;
         for (int x = 0; x < SCREEN_W; x++) {
-            const float dx = static_cast<float>(x) - cx;
-            const float dy = static_cast<float>(y) - cy;
-            const float dist = sqrtf(dx * dx + dy * dy);
-            const float v = 1.0f - smoothstep(max_dist * 0.5f, max_dist, dist);
-            lv_color_t  px = buf[row + x];
-            px.red = static_cast<uint8_t>(clampi(static_cast<int>(px.red * v), 0, 255));
-            px.green = static_cast<uint8_t>(clampi(static_cast<int>(px.green * v), 0, 255));
-            px.blue = static_cast<uint8_t>(clampi(static_cast<int>(px.blue * v), 0, 255));
-            buf[row + x] = px;
+            const float   dx = static_cast<float>(x) - cx;
+            const float   dy = static_cast<float>(y) - cy;
+            const float   dist = sqrtf(dx * dx + dy * dy);
+            const float   v = 1.0f - smoothstep(max_dist * 0.5f, max_dist, dist);
+            const pixel_t p = buf[row + x];
+            buf[row + x] = px_rgb(static_cast<uint8_t>(clampi(static_cast<int>(px_r(p) * v), 0, 255)),
+                                  static_cast<uint8_t>(clampi(static_cast<int>(px_g(p) * v), 0, 255)),
+                                  static_cast<uint8_t>(clampi(static_cast<int>(px_b(p) * v), 0, 255)));
         }
     }
 }
 
 } // namespace
 
-void render_system_overlay_v2(lv_color_t* buf, const FaceState& fs, float now_seconds)
+void render_system_overlay_v2(pixel_t* buf, const FaceState& fs, float now_seconds)
 {
     if (!buf || fs.system.mode == SystemMode::NONE) {
         return;

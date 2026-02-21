@@ -6,6 +6,7 @@
 #include "protocol.h"
 #include "touch.h"
 #include "system_overlay_v2.h"
+#include "pixel.h"
 
 #include "esp_lvgl_port.h"
 #include "esp_log.h"
@@ -25,24 +26,24 @@ static constexpr uint32_t TALKING_CMD_TIMEOUT_MS = 450;
 static constexpr uint8_t  BG_R = 0;
 static constexpr uint8_t  BG_G = 0;
 static constexpr uint8_t  BG_B = 0;
-// Keep canvas format explicit to avoid lv_color_t/native-depth stride mismatch.
-static constexpr lv_color_format_t CANVAS_COLOR_FORMAT = LV_COLOR_FORMAT_RGB888;
-static constexpr std::size_t       CANVAS_BYTES = SCREEN_W * SCREEN_H * LV_COLOR_FORMAT_GET_SIZE(CANVAS_COLOR_FORMAT);
+// Canvas uses RGB565 to match the ILI9341 display format (no conversion needed).
+static constexpr lv_color_format_t CANVAS_COLOR_FORMAT = LV_COLOR_FORMAT_RGB565;
+static constexpr std::size_t       CANVAS_BYTES = SCREEN_W * SCREEN_H * sizeof(pixel_t);
 
 static float now_s();
 static float clampf(float v, float lo, float hi);
 
 // ---- LVGL objects ----
-static lv_obj_t*   canvas_obj = nullptr;
-static lv_color_t* canvas_buf = nullptr;
-static lv_color_t* afterglow_buf = nullptr;
-static lv_obj_t*   ptt_btn = nullptr;
-static lv_obj_t*   ptt_label = nullptr;
-static lv_obj_t*   action_btn = nullptr;
-static lv_obj_t*   calib_header_bg = nullptr;
-static lv_obj_t*   calib_label_touch = nullptr;
-static lv_obj_t*   calib_label_tf = nullptr;
-static lv_obj_t*   calib_label_flags = nullptr;
+static lv_obj_t* canvas_obj = nullptr;
+static pixel_t*  canvas_buf = nullptr;
+static pixel_t*  afterglow_buf = nullptr;
+static lv_obj_t* ptt_btn = nullptr;
+static lv_obj_t* ptt_label = nullptr;
+static lv_obj_t* action_btn = nullptr;
+static lv_obj_t* calib_header_bg = nullptr;
+static lv_obj_t* calib_label_touch = nullptr;
+static lv_obj_t* calib_label_tf = nullptr;
+static lv_obj_t* calib_label_flags = nullptr;
 
 static int     s_last_touch_x = SCREEN_W / 2;
 static int     s_last_touch_y = SCREEN_H / 2;
@@ -55,7 +56,7 @@ static void update_ptt_button_visual(bool listening);
 static void root_touch_event_cb(lv_event_t* e);
 static void ptt_button_event_cb(lv_event_t* e);
 static void action_button_event_cb(lv_event_t* e);
-static void render_calibration(lv_color_t* buf);
+static void render_calibration(pixel_t* buf);
 static void update_calibration_labels(uint32_t now_ms, uint32_t next_switch_ms);
 
 static float clampf(float v, float lo, float hi)
@@ -65,26 +66,19 @@ static float clampf(float v, float lo, float hi)
     return v;
 }
 
-// ---- Drawing helpers ----
+// ---- Drawing helpers (RGB565 pixel_t) ----
 
-static lv_color_t rgb_to_color(uint8_t r, uint8_t g, uint8_t b)
+static pixel_t rgb_to_color(uint8_t r, uint8_t g, uint8_t b)
 {
-    return lv_color_make(r, g, b);
+    return px_rgb(r, g, b);
 }
 
-static bool color_eq(const lv_color_t& a, const lv_color_t& b)
+static pixel_t scale_color(pixel_t c, uint8_t num, uint8_t den)
 {
-    return a.red == b.red && a.green == b.green && a.blue == b.blue;
+    return px_scale(c, num, den);
 }
 
-static lv_color_t scale_color(const lv_color_t& c, uint8_t num, uint8_t den)
-{
-    return rgb_to_color(static_cast<uint8_t>((static_cast<uint16_t>(c.red) * num) / den),
-                        static_cast<uint8_t>((static_cast<uint16_t>(c.green) * num) / den),
-                        static_cast<uint8_t>((static_cast<uint16_t>(c.blue) * num) / den));
-}
-
-static void draw_filled_rect(lv_color_t* buf, int x, int y, int w, int h, lv_color_t color)
+static void draw_filled_rect(pixel_t* buf, int x, int y, int w, int h, pixel_t color)
 {
     for (int dy = 0; dy < h; dy++) {
         int py = y + dy;
@@ -97,14 +91,14 @@ static void draw_filled_rect(lv_color_t* buf, int x, int y, int w, int h, lv_col
     }
 }
 
-static void draw_hline(lv_color_t* buf, int x0, int x1, int y, lv_color_t color)
+static void draw_hline(pixel_t* buf, int x0, int x1, int y, pixel_t color)
 {
     const int x_lo = (x0 < x1) ? x0 : x1;
     const int x_hi = (x0 < x1) ? x1 : x0;
     draw_filled_rect(buf, x_lo, y, x_hi - x_lo + 1, 1, color);
 }
 
-static void draw_vline(lv_color_t* buf, int x, int y0, int y1, lv_color_t color)
+static void draw_vline(pixel_t* buf, int x, int y0, int y1, pixel_t color)
 {
     const int y_lo = (y0 < y1) ? y0 : y1;
     const int y_hi = (y0 < y1) ? y1 : y0;
@@ -116,9 +110,9 @@ static bool point_in_rect(int x, int y, int rx, int ry, int rw, int rh)
     return (x >= rx && x < (rx + rw) && y >= ry && y < (ry + rh));
 }
 
-static void draw_filled_rounded_rect(lv_color_t* buf, int x, int y, int w, int h, int radius, lv_color_t color)
+static void draw_filled_rounded_rect(pixel_t* buf, int x, int y, int w, int h, int radius, pixel_t color)
 {
-    // Simple rounded rect: draw main body + corners with distance check
+    const int r2 = radius * radius;
     for (int dy = 0; dy < h; dy++) {
         int py = y + dy;
         if (py < 0 || py >= SCREEN_H) continue;
@@ -127,26 +121,18 @@ static void draw_filled_rounded_rect(lv_color_t* buf, int x, int y, int w, int h
             if (px < 0 || px >= SCREEN_W) continue;
 
             bool inside = true;
-            // Check corners
             if (dx < radius && dy < radius) {
-                // Top-left
-                float dist = sqrtf((float)(radius - dx) * (radius - dx) + (float)(radius - dy) * (radius - dy));
-                if (dist > radius) inside = false;
+                int ddx = radius - dx, ddy = radius - dy;
+                if (ddx * ddx + ddy * ddy > r2) inside = false;
             } else if (dx >= w - radius && dy < radius) {
-                // Top-right
-                float dist = sqrtf((float)(dx - (w - radius - 1)) * (dx - (w - radius - 1)) +
-                                   (float)(radius - dy) * (radius - dy));
-                if (dist > radius) inside = false;
+                int ddx = dx - (w - radius - 1), ddy = radius - dy;
+                if (ddx * ddx + ddy * ddy > r2) inside = false;
             } else if (dx < radius && dy >= h - radius) {
-                // Bottom-left
-                float dist = sqrtf((float)(radius - dx) * (radius - dx) +
-                                   (float)(dy - (h - radius - 1)) * (dy - (h - radius - 1)));
-                if (dist > radius) inside = false;
+                int ddx = radius - dx, ddy = dy - (h - radius - 1);
+                if (ddx * ddx + ddy * ddy > r2) inside = false;
             } else if (dx >= w - radius && dy >= h - radius) {
-                // Bottom-right
-                float dist = sqrtf((float)(dx - (w - radius - 1)) * (dx - (w - radius - 1)) +
-                                   (float)(dy - (h - radius - 1)) * (dy - (h - radius - 1)));
-                if (dist > radius) inside = false;
+                int ddx = dx - (w - radius - 1), ddy = dy - (h - radius - 1);
+                if (ddx * ddx + ddy * ddy > r2) inside = false;
             }
 
             if (inside) {
@@ -156,7 +142,7 @@ static void draw_filled_rounded_rect(lv_color_t* buf, int x, int y, int w, int h
     }
 }
 
-static void draw_filled_circle(lv_color_t* buf, int cx, int cy, int radius, lv_color_t color)
+static void draw_filled_circle(pixel_t* buf, int cx, int cy, int radius, pixel_t color)
 {
     int r2 = radius * radius;
     for (int dy = -radius; dy <= radius; dy++) {
@@ -174,7 +160,7 @@ static void draw_filled_circle(lv_color_t* buf, int cx, int cy, int radius, lv_c
 
 // ---- Face rendering ----
 
-static void draw_heart_shape(lv_color_t* buf, int cx, int cy, int size, lv_color_t color)
+static void draw_heart_shape(pixel_t* buf, int cx, int cy, int size, pixel_t color)
 {
     if (size < 1) {
         return;
@@ -194,7 +180,7 @@ static void draw_heart_shape(lv_color_t* buf, int cx, int cy, int size, lv_color
     }
 }
 
-static void draw_x_shape(lv_color_t* buf, int cx, int cy, int size, int thick, lv_color_t color)
+static void draw_x_shape(pixel_t* buf, int cx, int cy, int size, int thick, pixel_t color)
 {
     for (int y = cy - size; y <= cy + size; y++) {
         if (y < 0 || y >= SCREEN_H) continue;
@@ -209,13 +195,13 @@ static void draw_x_shape(lv_color_t* buf, int cx, int cy, int size, int thick, l
     }
 }
 
-static void render_eye(lv_color_t* buf, const EyeState& eye, const FaceState& fs, bool is_left, float center_x,
+static void render_eye(pixel_t* buf, const EyeState& eye, const FaceState& fs, bool is_left, float center_x,
                        float center_y)
 {
     uint8_t r, g, b;
     face_get_emotion_color(fs, r, g, b);
-    lv_color_t eye_color = rgb_to_color(r, g, b);
-    lv_color_t black = rgb_to_color(0, 0, 0);
+    pixel_t eye_color = rgb_to_color(r, g, b);
+    pixel_t black = rgb_to_color(0, 0, 0);
 
     const float breath = face_get_breath_scale(fs);
     const float ew = EYE_WIDTH * eye.width_scale * breath;
@@ -236,7 +222,7 @@ static void render_eye(lv_color_t* buf, const EyeState& eye, const FaceState& fs
                      static_cast<int>(fminf(ew, eh) * 0.33f), 3, eye_color);
     } else {
         if (fs.fx.edge_glow) {
-            const lv_color_t glow = scale_color(eye_color, 2, 5);
+            const pixel_t glow = scale_color(eye_color, 2, 5);
             draw_filled_rounded_rect(buf, static_cast<int>(ex) - 2, static_cast<int>(ey) - 2, static_cast<int>(ew) + 4,
                                      static_cast<int>(eh) + 4, corner + 2, glow);
         }
@@ -287,13 +273,13 @@ static void render_eye(lv_color_t* buf, const EyeState& eye, const FaceState& fs
     }
 }
 
-static void render_mouth(lv_color_t* buf, const FaceState& fs)
+static void render_mouth(pixel_t* buf, const FaceState& fs)
 {
     if (!fs.show_mouth) return;
 
     uint8_t r, g, b;
     face_get_emotion_color(fs, r, g, b);
-    lv_color_t color = rgb_to_color(r, g, b);
+    pixel_t color = rgb_to_color(r, g, b);
 
     float cx = MOUTH_CX + fs.mouth_offset_x * 10.0f;
     float cy = MOUTH_CY;
@@ -328,14 +314,14 @@ static void render_mouth(lv_color_t* buf, const FaceState& fs)
     }
 }
 
-static void render_fire_effect(lv_color_t* buf, const FaceState& fs)
+static void render_fire_effect(pixel_t* buf, const FaceState& fs)
 {
     for (const auto& px : fs.fx.fire_pixels) {
         if (!px.active || px.life <= 0.0f) continue;
         int x = static_cast<int>(px.x);
         int y = static_cast<int>(px.y);
         if (x < 0 || x >= SCREEN_W || y < 0 || y >= SCREEN_H) continue;
-        lv_color_t c;
+        pixel_t c;
         if (px.heat > 0.85f)
             c = rgb_to_color(255, 220, 120);
         else if (px.heat > 0.65f)
@@ -348,7 +334,7 @@ static void render_fire_effect(lv_color_t* buf, const FaceState& fs)
     }
 }
 
-static void render_sparkles(lv_color_t* buf, const FaceState& fs)
+static void render_sparkles(pixel_t* buf, const FaceState& fs)
 {
     for (const auto& sp : fs.fx.sparkle_pixels) {
         if (!sp.active || sp.life == 0) continue;
@@ -357,32 +343,31 @@ static void render_sparkles(lv_color_t* buf, const FaceState& fs)
     }
 }
 
-static void apply_afterglow(lv_color_t* buf, const FaceState& fs)
+static void apply_afterglow(pixel_t* buf, const FaceState& fs)
 {
     if (!fs.fx.afterglow || !afterglow_buf) {
         return;
     }
-    const lv_color_t bg = rgb_to_color(BG_R, BG_G, BG_B);
+    const pixel_t bg = rgb_to_color(BG_R, BG_G, BG_B);
     for (int i = 0; i < SCREEN_W * SCREEN_H; i++) {
-        if (color_eq(buf[i], bg) && !color_eq(afterglow_buf[i], bg)) {
-            const lv_color_t faded = scale_color(afterglow_buf[i], 2, 5);
-            buf[i] = faded;
+        if (buf[i] == bg && afterglow_buf[i] != bg) {
+            buf[i] = scale_color(afterglow_buf[i], 2, 5);
         }
     }
     memcpy(afterglow_buf, buf, CANVAS_BYTES);
 }
 
-static void render_calibration(lv_color_t* buf)
+static void render_calibration(pixel_t* buf)
 {
-    const lv_color_t bg = rgb_to_color(8, 8, 10);
-    const lv_color_t grid = rgb_to_color(34, 34, 38);
-    const lv_color_t axis = rgb_to_color(74, 74, 84);
-    const lv_color_t ptt_outline = rgb_to_color(34, 180, 102);
-    const lv_color_t action_outline = rgb_to_color(190, 98, 54);
-    const lv_color_t ptt_fill = rgb_to_color(20, 96, 64);
-    const lv_color_t action_fill = rgb_to_color(148, 78, 42);
-    const lv_color_t touch = rgb_to_color(255, 228, 128);
-    const lv_color_t cross = rgb_to_color(240, 250, 255);
+    const pixel_t bg = rgb_to_color(8, 8, 10);
+    const pixel_t grid = rgb_to_color(34, 34, 38);
+    const pixel_t axis = rgb_to_color(74, 74, 84);
+    const pixel_t ptt_outline = rgb_to_color(34, 180, 102);
+    const pixel_t action_outline = rgb_to_color(190, 98, 54);
+    const pixel_t ptt_fill = rgb_to_color(20, 96, 64);
+    const pixel_t action_fill = rgb_to_color(148, 78, 42);
+    const pixel_t touch = rgb_to_color(255, 228, 128);
+    const pixel_t cross = rgb_to_color(240, 250, 255);
 
     draw_filled_rect(buf, 0, 0, SCREEN_W, SCREEN_H, bg);
 
@@ -589,12 +574,12 @@ static void action_button_event_cb(lv_event_t* e)
 void face_ui_create(lv_obj_t* parent)
 {
     // Allocate canvas buffer in PSRAM
-    canvas_buf = static_cast<lv_color_t*>(heap_caps_malloc(CANVAS_BYTES, MALLOC_CAP_SPIRAM));
+    canvas_buf = static_cast<pixel_t*>(heap_caps_malloc(CANVAS_BYTES, MALLOC_CAP_SPIRAM));
     if (!canvas_buf) {
         ESP_LOGE(TAG, "failed to allocate canvas buffer in PSRAM!");
         return;
     }
-    afterglow_buf = static_cast<lv_color_t*>(heap_caps_malloc(CANVAS_BYTES, MALLOC_CAP_SPIRAM));
+    afterglow_buf = static_cast<pixel_t*>(heap_caps_malloc(CANVAS_BYTES, MALLOC_CAP_SPIRAM));
     if (!afterglow_buf) {
         ESP_LOGW(TAG, "failed to allocate afterglow buffer; disabling afterglow effect");
     } else {
@@ -745,7 +730,7 @@ std::atomic<uint8_t>  g_cmd_talking{0};
 std::atomic<uint8_t>  g_cmd_talking_energy{0};
 std::atomic<uint32_t> g_cmd_talking_us{0};
 
-std::atomic<uint8_t>  g_cmd_flags{FACE_FLAGS_ALL};
+std::atomic<uint8_t>  g_cmd_flags{static_cast<uint8_t>(FACE_FLAGS_ALL & ~FACE_FLAG_AFTERGLOW)};
 std::atomic<uint32_t> g_cmd_flags_us{0};
 
 GestureQueue g_gesture_queue;
