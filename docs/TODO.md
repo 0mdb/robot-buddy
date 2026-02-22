@@ -233,3 +233,45 @@ First pass trained (v1, 2025-02-21). Metrics on synthetic test set:
 
 - Investigate voice ID / speaker identification — know which kid said 'hey buddy' so the robot can personalize the conversation and response (e.g. per-child voice embeddings, speaker diarization on wake word audio).
 - Home Assistant light control via conversation — kid says "turn off my light" and Buddy does it. Extend conversation JSON schema with `home_actions`, add server-side HA REST client, YAML device whitelist. Lights only to start. See [docs/home-assistant-integration.md](home-assistant-integration.md) for full plan.
+
+---
+
+## Personality Engine (Complete — Ready for Stage 3)
+
+Principled personality system driving the robot's emotions. Research complete, spec written, alignment review done. Ready for Stage 3 implementation.
+
+### Research & Decisions — Complete
+
+**Phase 1 — Ideal System** (Buckets 0–4):
+- [x] Bucket 0: Safety psychology — `docs/research/bucket-0-safety-psychology.md`
+- [x] Bucket 1: Temperament & personality models — `docs/research/bucket-1-temperament-models.md`
+- [x] Bucket 2: Emotional memory & affect dynamics — `docs/research/bucket-2-memory-affect.md`
+- [x] Bucket 3: Child-robot relationship development — `docs/research/bucket-3-relationships.md`
+- [x] Bucket 4: Proactive vs reactive behavior — `docs/research/bucket-4-proactive-reactive.md`
+- [x] Decision points PE-1 through PE-5 (recorded in Stage 1 spec §E)
+
+**Phase 2 — Technology** (Buckets 5–7):
+- [x] Bucket 5: LLM model selection → Qwen3-8B-AWQ — `docs/research/bucket-5-llm-model-selection.md`
+- [x] Bucket 6: Prompt engineering for personality — `docs/research/bucket-6-prompt-engineering.md`
+- [x] Bucket 7: Device/server split — `docs/research/bucket-7-device-server-split.md`
+- [x] Decision points PE-6 through PE-10 (recorded in Stage 1 spec §E)
+
+**Specs**:
+- [x] PE Stage 1: Research & decisions — `docs/personality-engine-spec-stage1.md`
+- [x] PE Stage 2: Full implementation-ready spec — `docs/personality-engine-spec-stage2.md` (~1340 lines, 14 sections + appendix)
+- ~~Pi 5 inference spike~~ N/A — PE-7 = Option C (rules only, no on-device LLM)
+
+### Alignment Review — Complete
+
+- [x] Alignment review: reconcile PE spec with face communication spec → `docs/pe-face-comm-alignment.md`
+  - 5 conflicts resolved: guardrail enforcement (tiered model), SURPRISED reclassification, mood transition ownership, CONFUSED mood addition, suppress-then-read model
+  - Both specs amended in place, alignment report written
+
+### Architecture
+
+- **PersonalityWorker** (dedicated BaseWorker on Pi 5) — 1 Hz tick + event-triggered fast path
+- **Continuous affect vector** (valence, arousal) with decaying integrator, 20 axis-derived parameters
+- **13 mood anchors** in VA space with asymmetric hysteresis projection
+- **Layer 0** (deterministic rules, no server) + **Layer 1** (LLM-enhanced, Qwen3-8B)
+- **Single source of emotional truth** — personality worker is final authority on face + TTS prosody
+- **Memory system** — local-only JSON, 5 decay tiers, COPPA compliant
