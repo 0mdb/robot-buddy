@@ -166,7 +166,14 @@ MOOD_TARGETS: dict[Mood, tuple[float, float, float, float, float, float]] = {
     Mood.NEUTRAL: (0.1, 1.0, 0.0, 0.0, 0.0, 0.0),
     Mood.HAPPY: (0.8, 1.1, 0.0, 0.0, 0.0, 0.4),
     Mood.EXCITED: (0.9, 1.2, 0.2, 0.0, 0.0, 0.3),
-    Mood.CURIOUS: (0.0, 0.9, 0.0, -0.3, 0.0, 0.0),
+    Mood.CURIOUS: (
+        0.0,
+        0.9,
+        0.1,
+        -0.5,
+        0.0,
+        0.0,
+    ),  # Stronger outer lift + slight mouth open
     Mood.SAD: (-0.5, 1.0, 0.0, -0.6, 0.3, 0.0),
     Mood.SCARED: (-0.3, 0.8, 0.3, 0.0, 0.0, 0.0),
     Mood.ANGRY: (-0.6, 1.0, 0.0, 0.8, 0.4, 0.0),
@@ -175,7 +182,14 @@ MOOD_TARGETS: dict[Mood, tuple[float, float, float, float, float, float]] = {
     Mood.LOVE: (0.6, 1.0, 0.0, 0.0, 0.0, 0.3),
     Mood.SILLY: (0.5, 1.1, 0.0, 0.0, 0.0, 0.0),
     Mood.THINKING: (-0.1, 1.0, 0.0, 0.4, 0.2, 0.0),
-    Mood.CONFUSED: (-0.2, 1.0, 0.0, -0.15, 0.1, 0.0),  # Provisional
+    Mood.CONFUSED: (
+        -0.2,
+        1.0,
+        0.0,
+        0.2,
+        0.1,
+        0.0,
+    ),  # Inner furrow (was -0.15 outer droop)
 }
 
 # Per-mood face colors at full intensity
@@ -210,12 +224,12 @@ MOOD_EYE_SCALE: dict[Mood, tuple[float, float]] = {
     Mood.CURIOUS: (1.05, 1.15),  # Taller (attentive)
     Mood.SAD: (0.95, 0.85),  # Smaller, deflated
     Mood.SCARED: (0.9, 1.15),  # Narrow-tall (tense, frozen)
-    Mood.ANGRY: (1.1, 0.75),  # Wide, squished (glare)
+    Mood.ANGRY: (1.1, 0.65),  # Wide, compressed slit (glare)
     Mood.SURPRISED: (1.2, 1.2),  # Biggest (matches MCU)
     Mood.SLEEPY: (0.95, 0.7),  # Narrow slits
     Mood.LOVE: (1.05, 1.05),  # Slightly enlarged (soft)
     Mood.SILLY: (1.1, 1.0),  # Wider (goofy)
-    Mood.THINKING: (0.95, 1.0),  # Slightly narrower (focused)
+    Mood.THINKING: (1.0, 1.0),  # Neutral size (gaze aversion carries distinctiveness)
     Mood.CONFUSED: (1.0, 1.05),  # Slightly taller (puzzled)
 }
 
@@ -223,6 +237,15 @@ MOOD_EYE_SCALE: dict[Mood, tuple[float, float]] = {
 THINKING_GAZE_X = 6.0
 THINKING_GAZE_Y = -4.0
 THINKING_MOUTH_OFFSET_X = 1.5
+
+# Confused-mood persistent mouth offset (asymmetric mouth sells "puzzled")
+CONFUSED_MOOD_MOUTH_OFFSET_X = 2.0
+
+# Love-mood pupil convergence + stillness
+LOVE_CONVERGENCE_X = 2.5  # Per-eye inward gaze offset (mild soft focus)
+LOVE_IDLE_HOLD_MIN = 2.5  # Longer hold between wanders (vs 1.0 normal)
+LOVE_IDLE_HOLD_RANGE = 3.0  # Total range 2.5-5.5s (vs 1.0-3.0 normal)
+LOVE_IDLE_AMPLITUDE = 0.4  # 40% of normal wander range (stillness)
 
 # Silly-mood cross-eye gaze targets
 SILLY_CROSS_EYE_A = (8.0, -8.0)  # (left_gaze_x, right_gaze_x)

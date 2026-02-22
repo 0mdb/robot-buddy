@@ -165,18 +165,18 @@ Naming follows **viewer perspective** throughout.
 
 **VA**: (+0.40, +0.45) — mild positive, moderate arousal
 **Intent**: "Hmm, that's interesting. Tell me more."
-**Overall read**: Alert, wide-eyed, leaning in. Head slightly tilted feeling from asymmetric eyelid slope.
+**Overall read**: Alert, wide-eyed, leaning in. Strong outer lid lift creates a "raised brow" look. Slightly open mouth hints at engagement.
 
 | Channel | Description |
 |---------|---|
 | Eyes | Taller than wide — open, attentive look. Pupils engaged. |
-| Eyelids | Inner corners raised (lid_slope -0.3) — creates a "lifted brow" look. |
-| Mouth | Neutral (curve 0.0), slightly narrower (width 0.9). Closed. Understated. |
+| Eyelids | Strong outer lift (lid_slope **-0.5**) — clear "raised brow" look. Open and receptive. |
+| Mouth | Neutral curve (0.0), slightly narrower (width 0.9). **Slightly open (0.1)** — a hint of "oh?" Understated. |
 | Color | Warm amber-orange (255, 180, 50). Warm curiosity glow. |
 | Gaze | May track slightly toward stimulus. |
 
 **Eye scale**: **(1.05, 1.15)** — taller, slightly wider. Vertically open reads as "alert/interested" **[Provisional]**
-**Distinguish from**: CONFUSED (similar lid slope direction but less extreme; amber-brown vs amber-orange). SURPRISED (much more extreme, with O-mouth).
+**Distinguish from**: CONFUSED (**opposite** slope direction — CURIOUS lifts outer brow, CONFUSED furrows inner brow). SURPRISED (much more extreme, with O-mouth).
 
 ---
 
@@ -234,9 +234,9 @@ Naming follows **viewer perspective** throughout.
 | Color | Red (255, 0, 0). Unmistakable. |
 | Gaze | Direct and still. No wander. |
 
-**Eye scale**: **(1.1, 0.75)** — wide and squished. Creates a narrow-slit glare **[Provisional]**
+**Eye scale**: **(1.1, 0.65)** — wide and heavily squished. Creates a compressed horizontal slit — "compressed energy." **[Provisional]**
 **Guardrail**: Max 2.0s, intensity cap 0.5, conversation context only.
-**Distinguish from**: SAD (droopy not glaring, blue not red). THINKING (furrowed but mild, not squinted). SCARED (tall-narrow, not wide-squished).
+**Distinguish from**: SAD (droopy not glaring, blue not red). THINKING (neutral-sized eyes + moderate furrow vs compressed slit + extreme furrow). SCARED (tall-narrow, not wide-squished).
 
 ---
 
@@ -283,7 +283,7 @@ Naming follows **viewer perspective** throughout.
 
 **VA**: (+0.80, +0.15) — highest positive valence, low arousal
 **Intent**: "I really care about you."
-**Overall read**: Soft, warm, gentle. Slightly enlarged eyes with a warm smile. The calmest positive emotion.
+**Overall read**: Soft, warm, gentle. Slightly enlarged eyes with a warm smile. The calmest positive emotion. Distinguished from HAPPY by **stillness** and **soft pupil convergence** — the eyes "look at you" rather than wandering.
 
 | Channel | Description |
 |---------|---|
@@ -291,10 +291,10 @@ Naming follows **viewer perspective** throughout.
 | Eyelids | Bottom lid slightly raised (lid_bot 0.3) — soft, gentle squint. |
 | Mouth | Warm smile (curve 0.6). Default width. Closed. |
 | Color | Warm pink (255, 100, 150). Affectionate. |
-| Gaze | Steady, warm, directed at child. |
+| Gaze | **Still, centered, with mild pupil convergence** — a "soft focus on you" look. Idle wander reduced (longer hold times). |
 
 **Eye scale**: **(1.05, 1.05)** — slightly enlarged in both dimensions, soft and open **[Provisional]**
-**Distinguish from**: HAPPY (more squinty, teal, more energetic). EXCITED (bigger, green, more intense).
+**Distinguish from**: HAPPY (more squinty (0.9 height), teal, **dynamic wander**). EXCITED (bigger, green, more intense). Key differentiator from HAPPY: LOVE is still and converged, HAPPY is dynamic and wandering.
 
 ---
 
@@ -331,8 +331,8 @@ Naming follows **viewer perspective** throughout.
 | Color | Cool blue (80, 135, 220). Cerebral, calm. |
 | Gaze | **Aversion to up-right** — deliberate "looking away to think" cue (spec §4.2.2). |
 
-**Eye scale**: **(0.95, 1.0)** — slightly narrower. Focused squint without vertical change **[Provisional]**
-**Distinguish from**: ANGRY (much more extreme slope + squint, red). CONFUSED (softer, less focused, amber). NEUTRAL (no slope, no gaze aversion).
+**Eye scale**: **(1.0, 1.0)** — neutral geometry. Distinctiveness comes from gaze aversion + moderate furrow, not eye scale. **[Provisional]**
+**Distinguish from**: ANGRY (compressed slit + extreme furrow vs neutral size + moderate furrow + gaze aversion). CONFUSED (inner furrow + mouth offset + amber vs moderate furrow + gaze aversion + blue). NEUTRAL (no slope, no gaze aversion).
 
 ---
 
@@ -340,18 +340,66 @@ Naming follows **viewer perspective** throughout.
 
 **VA**: (-0.20, +0.30) — mild negative, mild arousal
 **Intent**: "Hmm, I'm not sure about that..."
-**Overall read**: Slightly puzzled. Less extreme than CURIOUS, with a mild uncertainty. The face reads as "uncertain" rather than "interested."
+**Overall read**: Slightly puzzled. Inner brow furrow + off-center mouth create a visually distinct "uncertain" face that separates clearly from CURIOUS's open receptiveness.
 
 | Channel | Description |
 |---------|---|
 | Eyes | Slightly taller — open, uncertain look. |
-| Eyelids | Mild inner lift (lid_slope -0.15). Upper lid slightly raised (lid_top 0.1). Milder than CURIOUS. |
-| Mouth | Slight frown (curve -0.2). Closed. |
+| Eyelids | **Inner brow furrow (lid_slope +0.2)**. Upper lid slightly raised (lid_top 0.1). Opposite direction from CURIOUS. |
+| Mouth | Slight frown (curve -0.2). Closed. **Offset slightly to one side (mouth_offset_x)** — an asymmetric "hmm" smirk. |
 | Color | Warm amber-brown (200, 160, 80). Earthy uncertainty. |
 | Gaze | May drift slightly, less deliberate than THINKING aversion. |
 
 **Eye scale**: **(1.0, 1.05)** — slightly taller. Mild puzzlement, not full alertness **[Provisional]**
-**Distinguish from**: CURIOUS (more extreme lid slope, brighter amber-orange, no frown). THINKING (furrowed inward not lifted, blue not amber). SAD (droopy not lifted, deeper frown, blue).
+**Distinguish from**: CURIOUS (**opposite** slope direction — CONFUSED furrows inward, CURIOUS lifts outward). THINKING (more extreme furrow + gaze aversion + blue, vs mild furrow + mouth offset + amber).
+
+---
+
+### Silhouette Distinctiveness Matrix
+
+Every mood must be identifiable through at least **two distinct channels** at silhouette scale (black outline at 50px height, no color). If two moods share primary + secondary geometry, they **must** differ in motion or gaze.
+
+| Mood | Primary Geometry | Secondary Geometry | Motion | Gaze | Winning Channels |
+|---|---|---|---|---|---|
+| NEUTRAL | baseline (1.0, 1.0) | flat lids, mild smile | still + wander | idle wander | — (baseline) |
+| HAPPY | wide + squished (1.05, 0.9) | bottom squeeze, big smile | dynamic wander | idle wander | geometry + mouth |
+| EXCITED | big + wide (1.15, 1.1) | open mouth, slight smile | energetic | idle wander | geometry + mouth |
+| CURIOUS | taller (1.05, 1.15) | strong outer lift (-0.5), mouth hint open | still-ish | idle wander | geometry + slope |
+| SAD | smaller (0.95, 0.85) | strong outer droop (-0.6), frown | still, heavy | may drift down | geometry + slope + mouth |
+| SCARED | narrow + tall (0.9, 1.15) | open mouth, no slope | still, tense | idle wander | geometry + mouth |
+| ANGRY | wide + slit (1.1, 0.65) | deep furrow (0.8), lid drop, frown | still, locked | direct, still | geometry + slope + mouth |
+| SURPRISED | biggest (1.2, 1.2) | O-mouth, narrow width | brief peak | idle wander | geometry + mouth |
+| SLEEPY | narrow slits (0.95, 0.7) | heavy droop (0.6), slight outer sag | slow, sway | slow downward drift | geometry + motion |
+| LOVE | enlarged (1.05, 1.05) | bottom squeeze, smile | **still, locked** | **mild convergence** | mouth + gaze + motion |
+| SILLY | wide (1.1, 1.0) | smile, no slope | dynamic | **cross-eyed** | gaze + mouth |
+| THINKING | neutral (1.0, 1.0) | moderate furrow (0.4), lid drop | still | **averted up-right** | gaze + slope |
+| CONFUSED | slight tall (1.0, 1.05) | inner furrow (+0.2), **mouth offset** | still | idle wander | slope direction + mouth offset |
+
+### Silhouette Clarity Audit
+
+**Test**: Convert each mood to black silhouette at 50px tall. Can you identify it?
+
+**Strong** — clear geometric signature:
+- **SURPRISED**: biggest eyes + O-mouth. Unmistakable.
+- **ANGRY**: wide slit + deep furrow + frown. Reads as compressed energy.
+- **SAD**: small deflated eyes + outer droop + frown. Clearly wilted.
+- **HAPPY**: squished eyes + big smile. Reads as joyful.
+- **EXCITED**: biggest overall + open smile. Clearly energized.
+- **SCARED**: narrow-tall + O-mouth. Distinctive frozen shape.
+- **SLEEPY**: narrowest slits + heavy droop. Clearly heavy-lidded.
+
+**Adequate** — needs context or second channel:
+- **SILLY**: wide eyes + cross-eyed gaze. Gaze carries it.
+- **THINKING**: neutral size + furrow + gaze aversion. Gaze is the tell.
+- **LOVE**: enlarged + smile + pupil convergence + stillness. Motion + gaze differentiate from HAPPY.
+
+**At-risk pairs** (resolved by design):
+
+**CURIOUS vs CONFUSED**: Previously shared "slight vertical expansion + mild slope + warm color." Resolved: CURIOUS has **outer lid lift** (slope -0.5, open/receptive) + **slightly open mouth** (0.1). CONFUSED has **inner lid furrow** (slope +0.2, puzzled/tense) + **mouth offset** (off-center). Opposite slope directions create clearly different silhouettes.
+
+**LOVE vs HAPPY**: Previously shared "smile + enlarged eyes + warm color." Resolved: LOVE has **pupil convergence** (soft focus) + **stillness** (reduced wander). HAPPY has **squished eyes** (0.9 height vs 1.05) + **dynamic wander**. The squint-vs-open eye shape survives grayscale; motion channel adds redundancy.
+
+**THINKING vs ANGRY**: Shared brow furrow direction but at different magnitudes. Resolved: ANGRY has **extreme vertical compression** (0.65 height, slit) + **deep furrow** (0.8). THINKING has **neutral geometry** (1.0, 1.0) + **moderate furrow** (0.4) + **gaze aversion**. ANGRY = compressed energy, THINKING = directional energy.
 
 ---
 
@@ -464,12 +512,12 @@ MOOD_EYE_SCALE: dict[Mood, tuple[float, float]] = {
     Mood.CURIOUS:   (1.05, 1.15),  # Taller (attentive)
     Mood.SAD:       (0.95, 0.85),  # Smaller, deflated
     Mood.SCARED:    (0.9,  1.15),  # Narrow-tall (tense, frozen)
-    Mood.ANGRY:     (1.1,  0.75),  # Wide, squished (glare)
+    Mood.ANGRY:     (1.1,  0.65),  # Wide, compressed slit (glare)
     Mood.SURPRISED: (1.2,  1.2),   # Biggest (matches MCU)
     Mood.SLEEPY:    (0.95, 0.7),   # Narrow slits
     Mood.LOVE:      (1.05, 1.05),  # Slightly enlarged (soft)
     Mood.SILLY:     (1.1,  1.0),   # Wider (goofy)
-    Mood.THINKING:  (0.95, 1.0),   # Slightly narrower (focused)
+    Mood.THINKING:  (1.0,  1.0),   # Neutral size (gaze aversion carries distinctiveness)
     Mood.CONFUSED:  (1.0,  1.05),  # Slightly taller (puzzled)
 }
 ```
@@ -479,7 +527,7 @@ MOOD_EYE_SCALE: dict[Mood, tuple[float, float]] = {
 | Mood | Authored (W, H) | Intensity Cap | Effective Max (W, H) |
 |---|---|---|---|
 | SURPRISED | (1.2, 1.2) | 0.8 | (1.16, 1.16) |
-| ANGRY | (1.1, 0.75) | 0.5 | (1.05, 0.875) |
+| ANGRY | (1.1, 0.65) | 0.5 | (1.05, 0.825) |
 | SCARED | (0.9, 1.15) | 0.6 | (0.94, 1.09) |
 | SAD | (0.95, 0.85) | 0.7 | (0.965, 0.895) |
 
@@ -526,5 +574,11 @@ ERROR_AVERSION_GAZE_X = -0.3   # Look-away direction (normalized, multiplied by 
 | ERROR micro-aversion | Not implemented | 200ms gaze offset | Sim-authored; supervisor-side for firmware |
 | SAD color | (50, 80, 200) | (70, 110, 210) | Brightened for TN panel luma floor (§1.3.1); pending firmware port |
 | SLEEPY color | (40, 60, 100) | (70, 90, 140) | Brightened for TN panel luma floor (§1.3.1); pending firmware port |
+| CURIOUS lid_slope | -0.15 | -0.5 | Stronger outer lift for silhouette distinctiveness; pending firmware port |
+| CONFUSED lid_slope | -0.15 | +0.2 | Flipped to inner furrow for silhouette distinctiveness; pending firmware port |
+| CONFUSED mouth_offset | None | 2.0 | Persistent asymmetric mouth; pending firmware port |
+| LOVE convergence | None | ±2.5 gaze_x | Mild pupil convergence + reduced idle wander; pending firmware port |
+| ANGRY eye height | 0.75 | 0.65 | Compressed further for silhouette distinctiveness; pending firmware port |
+| THINKING eye width | 0.95 | 1.0 | Neutralized (gaze aversion carries mood); pending firmware port |
 
 All sim-authored values are ahead of MCU as design iterations. The parity check will flag these divergences until firmware is updated.

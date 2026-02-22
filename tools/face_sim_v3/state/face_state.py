@@ -95,6 +95,11 @@ from tools.face_sim_v3.state.constants import (
     TALKING_OPEN_MOD,
     TALKING_PHASE_SPEED,
     TALKING_WIDTH_MOD,
+    CONFUSED_MOOD_MOUTH_OFFSET_X,
+    LOVE_CONVERGENCE_X,
+    LOVE_IDLE_AMPLITUDE,
+    LOVE_IDLE_HOLD_MIN,
+    LOVE_IDLE_HOLD_RANGE,
     THINKING_GAZE_X,
     THINKING_GAZE_Y,
     THINKING_MOUTH_OFFSET_X,
@@ -344,6 +349,16 @@ def face_state_update(fs: FaceState) -> None:
         fs.eye_r.gaze_x_target = THINKING_GAZE_X
         fs.eye_r.gaze_y_target = THINKING_GAZE_Y
 
+    # Confused: persistent asymmetric mouth (puzzled look)
+    if fs.mood == Mood.CONFUSED:
+        fs.mouth_offset_x_target = CONFUSED_MOOD_MOUTH_OFFSET_X
+
+    # Love: mild pupil convergence (soft focus / adoring gaze)
+    if fs.mood == Mood.LOVE:
+        li = max(0.0, min(1.0, fs.expression_intensity))
+        fs.eye_l.gaze_x_target = LOVE_CONVERGENCE_X * li
+        fs.eye_r.gaze_x_target = -LOVE_CONVERGENCE_X * li
+
     # ── 2. GESTURE OVERRIDES ─────────────────────────────────────
     if fs.anim.surprise:
         elapsed_g = now - fs.anim.surprise_timer
@@ -522,15 +537,27 @@ def face_state_update(fs: FaceState) -> None:
             else:
                 fs.eye_l.gaze_x_target = SILLY_CROSS_EYE_B[0] * si
                 fs.eye_r.gaze_x_target = SILLY_CROSS_EYE_B[1] * si
+        elif fs.mood == Mood.LOVE:
+            # Reduced wander amplitude + convergence maintained (still, adoring)
+            amp = LOVE_IDLE_AMPLITUDE
+            fs.eye_l.gaze_x_target = target_x * amp + LOVE_CONVERGENCE_X
+            fs.eye_r.gaze_x_target = target_x * amp - LOVE_CONVERGENCE_X
         else:
             fs.eye_l.gaze_x_target = target_x
             fs.eye_r.gaze_x_target = target_x
 
-        fs.eye_l.gaze_y_target = target_y
-        fs.eye_r.gaze_y_target = target_y
-        fs.anim.next_idle = (
-            now + IDLE_GAZE_HOLD_MIN + random.random() * IDLE_GAZE_HOLD_RANGE
-        )
+        if fs.mood == Mood.LOVE:
+            fs.eye_l.gaze_y_target = target_y * LOVE_IDLE_AMPLITUDE
+            fs.eye_r.gaze_y_target = target_y * LOVE_IDLE_AMPLITUDE
+            fs.anim.next_idle = (
+                now + LOVE_IDLE_HOLD_MIN + random.random() * LOVE_IDLE_HOLD_RANGE
+            )
+        else:
+            fs.eye_l.gaze_y_target = target_y
+            fs.eye_r.gaze_y_target = target_y
+            fs.anim.next_idle = (
+                now + IDLE_GAZE_HOLD_MIN + random.random() * IDLE_GAZE_HOLD_RANGE
+            )
 
     # Saccade jitter
     if now > fs.anim.next_saccade:
