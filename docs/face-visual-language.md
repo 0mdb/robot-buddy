@@ -1,0 +1,464 @@
+# Face Visual Language
+
+**Companion to**: `face-communication-spec-stage2.md` (the spec), `personality-engine-spec-stage2.md` (PE spec).
+
+**Purpose**: Define the intended visual appearance of every mood, gesture, and conversation state — what each should *look like* to a child, not just what parameter values it uses. This is the design reference for tuning sim constants, evaluating visual quality, and validating on hardware.
+
+**Status**: All values marked **[Provisional]** are authored in the sim as the canonical design surface and pending visual review + T3/T4 child evaluation before firmware port.
+
+---
+
+## 1. Design Principles
+
+### 1.1 Character
+
+The robot is a **caretaker/guide with playful elements** (spec §1). The face should feel calm, warm, and reassuring. Transitions are smooth, never snappy (Energy 0.40). Emotional onset is gradual (Reactivity 0.50). The face at rest should feel alive without being attention-seeking (Initiative 0.30).
+
+### 1.2 Recognition Constraints
+
+Our audience is children ages 4–6. Research constraints:
+
+- **The safe four**: HAPPY, SAD, ANGRY, SCARED must be unambiguous — children reliably label these (Widen & Russell, 2003: >90% accuracy for happiness/sadness on stylized faces).
+- **Moderate tier**: CURIOUS, LOVE, EXCITED, SLEEPY should be recognizable with context.
+- **Subtle tier**: THINKING, CONFUSED, SILLY, SURPRISED can be subtler — context (conversation state, audio) helps disambiguation.
+- **SURPRISED is hardest** to recognize on stylized faces (<70%, Di Dio 2020) — we rely on eye widening + mouth O + color shift as redundant cues.
+
+### 1.3 Hardware Constraints
+
+- **320×240 px, 30 FPS** — expressions must read at low resolution
+- **Rounded-rectangle eyes** — no eyebrows, no eyelashes. Shape variation comes from eye width/height scale, eyelid position, and pupil position.
+- **Parabolic mouth** — curve, width, openness, wave. No teeth, no tongue.
+- **Single face color** — uniform color tinting the eye outline and mouth. The primary mood channel after shape.
+- **Spring-driven gaze** — pupils move with smooth inertia, not instant snaps
+
+### 1.4 Multimodal Redundancy
+
+Each mood is communicated through multiple channels simultaneously:
+
+| Channel | What it does | Example |
+|---------|---|---|
+| **Eye shape** | Width/height scale changes overall eye silhouette | ANGRY = wide + squinted; SCARED = narrow + tall |
+| **Eyelids** | Slope (inner brow angle), top droop, bottom squeeze | ANGRY = steep brow; SAD = droopy outer corners |
+| **Mouth** | Curve (smile/frown), width, openness | HAPPY = wide smile; SURPRISED = small O |
+| **Face color** | Tints eye outlines and mouth | ANGRY = red; SAD = deep blue |
+| **Gaze** | Pupil position (idle wander, lock, aversion) | THINKING = avert up-right |
+
+No single channel carries the full message. A child who can't interpret eyelid slope can still read the mood from mouth shape + color. This is the redundancy principle from Löffler et al. (2018).
+
+---
+
+## 2. Per-Mood Visual Design
+
+### Notation
+
+- **Eye scale** = (width_scale, height_scale). Default = (1.0, 1.0). Blended with intensity.
+- **Mouth/lid params** = values from spec §4.1.2 `MOOD_TARGETS`. Only noted when they need adjustment.
+- **VA** = valence/arousal position from PE spec §4.1. Guides the "energy feel" of the expression.
+
+---
+
+### NEUTRAL — The Resting Face
+
+**VA**: (0.00, 0.00) — origin, zero energy
+**Intent**: "I'm here, I'm calm, nothing is happening."
+**Overall read**: Relaxed, slightly warm. The default face a child sees most of the time.
+
+| Channel | Description |
+|---------|---|
+| Eyes | Default size (1.0, 1.0). Round, open, relaxed. |
+| Eyelids | Centered, no slope. Occasional blink. |
+| Mouth | Very slight smile (curve 0.1). Closed. Not a grin — just content. |
+| Color | Soft cyan-blue (50, 150, 255). Cool, calm. |
+| Gaze | Idle wander — looking around slowly, with spring dynamics. |
+
+**Eye scale**: (1.0, 1.0) — baseline, no change
+**Distinguish from**: THINKING (which adds lid slope + slight frown + gaze aversion)
+
+---
+
+### HAPPY — Warm Delight
+
+**VA**: (+0.70, +0.35) — high positive, moderate arousal
+**Intent**: "I'm delighted! That's wonderful!"
+**Overall read**: Warm, squinty-smiled. The most common positive mood.
+
+| Channel | Description |
+|---------|---|
+| Eyes | Slightly wider, noticeably squinted vertically — the "happy squint." Eyes crinkle up. |
+| Eyelids | Bottom lid pushes up (lid_bot 0.4) creating the squint. No slope change. |
+| Mouth | Big smile (curve 0.8), slightly wider than default (width 1.1). Closed mouth. |
+| Color | Bright teal-cyan (0, 255, 200). Fresh, positive. |
+| Gaze | Normal — follows idle or conversation state. |
+
+**Eye scale**: **(1.05, 0.9)** — slightly wider, squished vertically to reinforce the squint **[Provisional]**
+**Distinguish from**: EXCITED (wider mouth, more open, green instead of teal, bigger eyes). LOVE (less squinty, pink, gentler).
+
+---
+
+### EXCITED — High Energy Joy
+
+**VA**: (+0.65, +0.80) — high positive, high arousal
+**Intent**: "Wow, that's amazing! I'm so into this!"
+**Overall read**: Big-eyed, wide grin, buzzing with energy. Higher intensity than HAPPY.
+
+| Channel | Description |
+|---------|---|
+| Eyes | Noticeably enlarged — wide and tall. Alert, energized look. |
+| Eyelids | Bottom lid slightly pushed up (lid_bot 0.3) but less than HAPPY. |
+| Mouth | Biggest smile (curve 0.9), widest mouth (width 1.2), slightly open (open 0.2). |
+| Color | Bright green (100, 255, 100). Vivid, energetic. |
+| Gaze | Potentially more active saccades during conversation. |
+
+**Eye scale**: **(1.15, 1.1)** — enlarged in both dimensions, reads as "big eyes" **[Provisional]**
+**Distinguish from**: HAPPY (smaller, squintier, teal). SURPRISED (more extreme eye widening, O-mouth, warm white).
+
+---
+
+### CURIOUS — Attentive Interest
+
+**VA**: (+0.40, +0.45) — mild positive, moderate arousal
+**Intent**: "Hmm, that's interesting. Tell me more."
+**Overall read**: Alert, wide-eyed, leaning in. Head slightly tilted feeling from asymmetric eyelid slope.
+
+| Channel | Description |
+|---------|---|
+| Eyes | Taller than wide — open, attentive look. Pupils engaged. |
+| Eyelids | Inner corners raised (lid_slope -0.3) — creates a "lifted brow" look. |
+| Mouth | Neutral (curve 0.0), slightly narrower (width 0.9). Closed. Understated. |
+| Color | Warm amber-orange (255, 180, 50). Warm curiosity glow. |
+| Gaze | May track slightly toward stimulus. |
+
+**Eye scale**: **(1.05, 1.15)** — taller, slightly wider. Vertically open reads as "alert/interested" **[Provisional]**
+**Distinguish from**: CONFUSED (similar lid slope direction but less extreme; amber-brown vs amber-orange). SURPRISED (much more extreme, with O-mouth).
+
+---
+
+### SAD — Empathetic Understanding
+
+**VA**: (-0.60, -0.40) — negative, low arousal
+**Intent**: "I understand that's sad. I feel it too."
+**Overall read**: Droopy, deflated. Eyes and mouth sag. The face looks like it's gently wilting.
+
+| Channel | Description |
+|---------|---|
+| Eyes | Slightly smaller, drooping. Deflated look. |
+| Eyelids | Strong outer droop (lid_slope -0.6). Upper lid partially closed (lid_top 0.3). Eyes look heavy. |
+| Mouth | Noticeable downturn (curve -0.5). Closed. A clear frown. |
+| Color | Deep blue (50, 80, 200). Subdued, muted. |
+| Gaze | May drift slightly downward. |
+
+**Eye scale**: **(0.95, 0.85)** — both smaller, especially shorter. Deflated, droopy **[Provisional]**
+**Guardrail**: Max 4.0s, intensity cap 0.7, conversation context only.
+**Distinguish from**: SLEEPY (less frown, more horizontal lid closure). THINKING (furrowed not droopy). SCARED (opposite arousal — tense not deflated).
+
+---
+
+### SCARED — Mild Concern
+
+**VA**: (-0.70, +0.65) — negative, high arousal
+**Intent**: "That sounds a bit scary. I get it."
+**Overall read**: Tense, wide-eyed vertically, narrowed horizontally. The face looks frozen, alert, bracing. Like an animal that heard a noise.
+
+| Channel | Description |
+|---------|---|
+| Eyes | Narrowed horizontally but tall vertically — stretched, tense look. |
+| Eyelids | Neutral position (no slope). Mouth slightly open. |
+| Mouth | Slight downturn (curve -0.3), narrower (width 0.8), slightly open (open 0.3). Tense. |
+| Color | Purple (180, 50, 255). Unsettling, but not aggressive like red. |
+| Gaze | May widen further from center. Avoidant. |
+
+**Eye scale**: (0.9, 1.15) — narrower horizontally, taller vertically. Frozen-alert shape **[Update from MCU's (0.9, 1.0)]** **[Provisional]**
+**Guardrail**: Max 2.0s, intensity cap 0.6, conversation context only.
+**Distinguish from**: SURPRISED (wider in both dimensions, warm color, no frown). ANGRY (wide-squinted, not tall-narrow). CURIOUS (similar vertical stretch but positive color and no frown).
+
+---
+
+### ANGRY — Firm Displeasure
+
+**VA**: (-0.60, +0.70) — negative, high arousal
+**Intent**: "That's not okay." (Always at reduced intensity — reads as "concerned" not "furious")
+**Overall read**: Glaring, squinted, intense. Brow furrowed deeply. The sternest the face can look, but capped at 50% intensity so it reads as firm concern.
+
+| Channel | Description |
+|---------|---|
+| Eyes | Wide but vertically squished — a glare. The wideness makes them piercing. |
+| Eyelids | Strong inward slope (lid_slope 0.8) — the deepest "furrowed brow." Upper lid drops (lid_top 0.4). |
+| Mouth | Deepest frown (curve -0.6). Closed. Clenched. |
+| Color | Red (255, 0, 0). Unmistakable. |
+| Gaze | Direct and still. No wander. |
+
+**Eye scale**: **(1.1, 0.75)** — wide and squished. Creates a narrow-slit glare **[Provisional]**
+**Guardrail**: Max 2.0s, intensity cap 0.5, conversation context only.
+**Distinguish from**: SAD (droopy not glaring, blue not red). THINKING (furrowed but mild, not squinted). SCARED (tall-narrow, not wide-squished).
+
+---
+
+### SURPRISED — Momentary Startle
+
+**VA**: (+0.15, +0.80) — mild positive, very high arousal
+**Intent**: "Whoa! I didn't expect that!"
+**Overall read**: Big round eyes, O-mouth. Everything opens wide. The most dramatic shape change.
+
+| Channel | Description |
+|---------|---|
+| Eyes | Significantly enlarged in both dimensions. Round, wide-open. |
+| Eyelids | Neutral (no slope, no droop). Everything open. |
+| Mouth | Neutral curve (0.0), narrow width (0.4), wide open (0.6). Classic O-shape. |
+| Color | Warm white-cream (255, 255, 200). Bright, flashy. |
+| Gaze | May snap to center. |
+
+**Eye scale**: (1.2, 1.2) — largest eye scale of any mood. Round, wide-open. (Matches MCU)
+**Guardrail**: Max 3.0s, intensity cap 0.8.
+**Distinguish from**: EXCITED (similar big eyes but with smile, green color). SCARED (tall but narrow, purple, with frown).
+
+---
+
+### SLEEPY — Winding Down
+
+**VA**: (+0.05, -0.80) — near-neutral, very low arousal
+**Intent**: "I'm getting tired... *yawn*"
+**Overall read**: Heavy-lidded, half-closed eyes. The face is shutting down gradually.
+
+| Channel | Description |
+|---------|---|
+| Eyes | Smaller, especially shorter. Narrowed to slits by heavy lids. |
+| Eyelids | Heavy upper lid droop (lid_top 0.6). Slight outer sag (lid_slope -0.2). |
+| Mouth | Neutral curve (0.0). Closed. (Yawning is a gesture, not the sustained mood.) |
+| Color | Dark navy (40, 60, 100). Dim, nighttime feeling. |
+| Gaze | May drift slowly downward. Sluggish wander. |
+
+**Eye scale**: **(0.95, 0.7)** — noticeably shorter, creating heavy-lidded narrow slits **[Provisional]**
+**Distinguish from**: SAD (droopy outer corners + frown vs uniform lid closure + no frown). NEUTRAL (similar shape but with open eyes and bright color).
+
+---
+
+### LOVE — Gentle Affection
+
+**VA**: (+0.80, +0.15) — highest positive valence, low arousal
+**Intent**: "I really care about you."
+**Overall read**: Soft, warm, gentle. Slightly enlarged eyes with a warm smile. The calmest positive emotion.
+
+| Channel | Description |
+|---------|---|
+| Eyes | Slightly enlarged — soft, open, adoring look. |
+| Eyelids | Bottom lid slightly raised (lid_bot 0.3) — soft, gentle squint. |
+| Mouth | Warm smile (curve 0.6). Default width. Closed. |
+| Color | Warm pink (255, 100, 150). Affectionate. |
+| Gaze | Steady, warm, directed at child. |
+
+**Eye scale**: **(1.05, 1.05)** — slightly enlarged in both dimensions, soft and open **[Provisional]**
+**Distinguish from**: HAPPY (more squinty, teal, more energetic). EXCITED (bigger, green, more intense).
+
+---
+
+### SILLY — Playful Goofiness
+
+**VA**: (+0.55, +0.60) — positive, moderately high arousal
+**Intent**: "Hehe, that's funny! Let's be goofy!"
+**Overall read**: Wide, slightly lopsided, goofy grin. Eyes wide and playful. May include cross-eyed gaze.
+
+| Channel | Description |
+|---------|---|
+| Eyes | Wider than normal. Open, bright, playful. |
+| Eyelids | Neutral — no droop, no slope. Wide-open and goofy. |
+| Mouth | Big grin (curve 0.5), slightly wider (width 1.1). Closed. |
+| Color | Lime green-yellow (200, 255, 50). Zany, playful. |
+| Gaze | **Cross-eyed oscillation** — alternates between convergent patterns. Scales with intensity. |
+
+**Eye scale**: **(1.1, 1.0)** — wider, same height. Gives a goofy wide-eyed look **[Provisional]**
+**Distinguish from**: HAPPY (squinted, teal). EXCITED (similar energy but bigger eyes, no cross-eyed gaze, green not lime).
+
+---
+
+### THINKING — Focused Processing
+
+**VA**: (+0.10, +0.20) — near-neutral, mild arousal
+**Intent**: "Hmm, let me think about that..."
+**Overall read**: Slightly furrowed, eyes narrowed in concentration. Gaze averts up-right. A focused, deliberate look.
+
+| Channel | Description |
+|---------|---|
+| Eyes | Slightly narrowed — focused concentration. |
+| Eyelids | Moderate inward slope (lid_slope 0.4) — concentrated brow. Upper lid slightly dropped (lid_top 0.2). |
+| Mouth | Very slight frown (curve -0.1). Closed. Offset slightly to one side (mouth_offset_x). |
+| Color | Cool blue (80, 135, 220). Cerebral, calm. |
+| Gaze | **Aversion to up-right** — deliberate "looking away to think" cue (spec §4.2.2). |
+
+**Eye scale**: **(0.95, 1.0)** — slightly narrower. Focused squint without vertical change **[Provisional]**
+**Distinguish from**: ANGRY (much more extreme slope + squint, red). CONFUSED (softer, less focused, amber). NEUTRAL (no slope, no gaze aversion).
+
+---
+
+### CONFUSED — Uncertain Puzzlement
+
+**VA**: (-0.20, +0.30) — mild negative, mild arousal
+**Intent**: "Hmm, I'm not sure about that..."
+**Overall read**: Slightly puzzled. Less extreme than CURIOUS, with a mild uncertainty. The face reads as "uncertain" rather than "interested."
+
+| Channel | Description |
+|---------|---|
+| Eyes | Slightly taller — open, uncertain look. |
+| Eyelids | Mild inner lift (lid_slope -0.15). Upper lid slightly raised (lid_top 0.1). Milder than CURIOUS. |
+| Mouth | Slight frown (curve -0.2). Closed. |
+| Color | Warm amber-brown (200, 160, 80). Earthy uncertainty. |
+| Gaze | May drift slightly, less deliberate than THINKING aversion. |
+
+**Eye scale**: **(1.0, 1.05)** — slightly taller. Mild puzzlement, not full alertness **[Provisional]**
+**Distinguish from**: CURIOUS (more extreme lid slope, brighter amber-orange, no frown). THINKING (furrowed inward not lifted, blue not amber). SAD (droopy not lifted, deeper frown, blue).
+
+---
+
+## 3. Per-Gesture Visual Design
+
+Gestures are phasic overlays — they temporarily modify the face and expire. They overlay whatever tonic mood is active.
+
+### BLINK (180 ms) — Cosmetic
+**Intent**: Natural rhythm, transition choreography.
+**Motion**: Both eyelids close fully then reopen. Quick, natural.
+
+### WINK_L / WINK_R (200 ms) — Semantic
+**Intent**: Playful acknowledgment, shared secret.
+**Motion**: One eye closes while the other stays open. Slightly slower than blink for legibility.
+
+### NOD (350 ms) — Semantic
+**Intent**: Agreement, understanding, "yes."
+**Motion**: **Vertical gaze oscillation** — pupils dip down then return up, 1–2 cycles. Slight upper lid droop follows the gaze. Reads as a head nod. **[New — replaces V2's mouth-chatter reuse]**
+**Distinguish from**: BLINK (both eyes close vs gaze moves). LAUGH (mouth-driven vs gaze-driven).
+
+### HEADSHAKE (350 ms) — Semantic
+**Intent**: Disagreement, negation, "no."
+**Motion**: **Horizontal gaze oscillation** — pupils sweep left-right-left, 2–3 half-cycles. Slight frown accompanies. Reads as a head shake. **[New — replaces V2's mouth-offset reuse]**
+**Distinguish from**: NOD (vertical vs horizontal). CONFUSED (mouth offset vs gaze motion).
+
+### LAUGH (500 ms) — Semantic
+**Intent**: Joy, humor response, "haha!"
+**Motion**: Mouth opens and closes rapidly (chatter), big smile (curve 1.0). Vertical flicker in eye position. Eyes bounce.
+**Distinguish from**: NOD (smooth gaze vs choppy eye bounce). HAPPY mood (sustained smile vs animated chatter).
+
+### CONFUSED (500 ms) — Semantic
+**Intent**: Uncertainty, "didn't understand that."
+**Motion**: Mouth offsets side-to-side (smirk oscillation). Horizontal eye flicker. The phasic gesture version of the sustained CONFUSED mood.
+**Distinguish from**: HEADSHAKE (deliberate gaze sweep vs mouth-driven smirk). CONFUSED mood (sustained vs brief).
+
+### WIGGLE (600 ms) — Semantic
+**Intent**: Playful energy, excitement burst.
+**Motion**: Combination of horizontal and vertical eye flicker + mouth chatter. Everything wiggles. Pure joy-fizz.
+**Distinguish from**: LAUGH (vertical bounce only). CONFUSED (horizontal only).
+
+### SURPRISE (800 ms) — Semantic
+**Intent**: Startle, amazement.
+**Motion**: Eyes widen rapidly to peak (1.3×, 1.25×) over 150 ms, mouth opens to O-shape, then gradually returns. Brief dramatic widening.
+**Distinguish from**: SURPRISED mood (sustained vs brief peak). EXCITED (sustained large eyes vs dramatic peak-then-return).
+
+### HEART (2.0 s) — Semantic
+**Intent**: Affection, love display.
+**Motion**: Eyes replaced with solid heart shapes. Warm smile. Pink face color override.
+**Distinguish from**: LOVE mood (regular eyes with gentle expression vs heart-shaped eyes).
+
+### X_EYES (2.5 s) — Semantic
+**Intent**: Comedic "dizzy," overload.
+**Motion**: Eyes replaced with X shapes. Slight mouth open. Red-tinted face color.
+**Distinguish from**: ANGRY (normal angry eyes vs X shapes). Used only in clearly comedic context.
+
+### SLEEPY (3.0 s) — Semantic
+**Intent**: Tired, winding down.
+**Motion**: Gradual eyelid droop + downward gaze drift + yawn sequence (mouth opens wide then slowly closes). Sway (gentle horizontal gaze oscillation).
+**Distinguish from**: SLEEPY mood (sustained heavy lids vs the animated droop-and-yawn sequence).
+
+### RAGE (3.0 s) — Semantic
+**Intent**: Comedic anger (fire effect).
+**Motion**: Extreme lid slope (0.9), eye shake (rapid horizontal oscillation), mouth clenched then opens with wave. Fire particles spawn and rise. Comedic, not threatening.
+**Distinguish from**: ANGRY mood (measured displeasure vs cartoon explosion). Used only in clearly comedic context.
+
+---
+
+## 4. Conversation State Visual Summary
+
+Per spec §4.2.2. One-line visual descriptions:
+
+| State | Visual Read | Key Cue |
+|---|---|---|
+| **IDLE** | Robot at rest, eyes wandering | No border, relaxed gaze |
+| **ATTENTION** | "I heard you!" — alert snap | Border flash + gaze snap to center |
+| **LISTENING** | "I'm paying attention" — steady focus | Teal breathing border, eyes locked on child |
+| **PTT** | "Recording" — held state | Amber pulsing border, eyes locked |
+| **THINKING** | "Working on it" — processing | Blue-violet orbit dots, eyes look up-right |
+| **SPEAKING** | "Here's what I think" — engaged delivery | White-teal energy border, talking animation |
+| **ERROR** | "Oops, something went wrong" — brief glitch | Orange flash, quick gaze aversion then return |
+| **DONE** | "Conversation finished" — releasing | Border fades, eyes return to wander |
+
+### Transition Choreography
+
+| Transition | Visual Sequence |
+|---|---|
+| IDLE → ATTENTION | Border sweeps inward + gaze snaps to center (400ms) |
+| ATTENTION → LISTENING | Border blends teal + alpha settles to breathing (200ms) |
+| LISTENING → THINKING | Gaze averts up-right (spring ~300ms) + border shifts to blue-violet + dots start |
+| **THINKING → SPEAKING** | **Anticipation blink (100ms) + gaze returns to center (spring ~300ms) + border shifts** |
+| SPEAKING → DONE | Border fades (500ms) + mood ramps to neutral (500ms) + gaze releases |
+| **Any → ERROR** | **Border flashes orange + gaze micro-aversion left (200ms) then returns to center** |
+
+---
+
+## 5. Parameter Mapping
+
+Concrete values for implementation. All **[Provisional]** values are sim-authored and pending visual review + T3/T4 evaluation.
+
+### 5.1 Eye Scale Per Mood
+
+```python
+MOOD_EYE_SCALE: dict[Mood, tuple[float, float]] = {
+    # (width_scale, height_scale) — 1.0 = default geometry
+    Mood.NEUTRAL:   (1.0,  1.0),   # Baseline
+    Mood.HAPPY:     (1.05, 0.9),   # Wider, squished (happy squint)
+    Mood.EXCITED:   (1.15, 1.1),   # Big wide eyes
+    Mood.CURIOUS:   (1.05, 1.15),  # Taller (attentive)
+    Mood.SAD:       (0.95, 0.85),  # Smaller, deflated
+    Mood.SCARED:    (0.9,  1.15),  # Narrow-tall (tense, frozen)
+    Mood.ANGRY:     (1.1,  0.75),  # Wide, squished (glare)
+    Mood.SURPRISED: (1.2,  1.2),   # Biggest (matches MCU)
+    Mood.SLEEPY:    (0.95, 0.7),   # Narrow slits
+    Mood.LOVE:      (1.05, 1.05),  # Slightly enlarged (soft)
+    Mood.SILLY:     (1.1,  1.0),   # Wider (goofy)
+    Mood.THINKING:  (0.95, 1.0),   # Slightly narrower (focused)
+    Mood.CONFUSED:  (1.0,  1.05),  # Slightly taller (puzzled)
+}
+```
+
+### 5.2 Mood Targets (mouth + eyelids)
+
+Keep existing spec §4.1.2 values — they are MCU-verified and consistent with the visual descriptions above. No changes needed to `MOOD_TARGETS`.
+
+### 5.3 NOD Gesture Constants
+
+```python
+NOD_GAZE_Y_AMP = 4.0        # Vertical gaze displacement (pixels in gaze space)
+NOD_FREQ = 12.0              # rad/s — ~2 nods in 350ms
+NOD_LID_TOP_OFFSET = 0.15   # Slight upper lid follows gaze
+```
+
+### 5.4 HEADSHAKE Gesture Constants
+
+```python
+HEADSHAKE_GAZE_X_AMP = 5.0   # Horizontal gaze displacement
+HEADSHAKE_FREQ = 14.0        # rad/s — ~2.5 sweeps in 350ms
+HEADSHAKE_MOUTH_CURVE = -0.2  # Slight frown during headshake
+```
+
+### 5.5 ERROR Micro-Aversion Constants
+
+```python
+ERROR_AVERSION_DURATION = 0.2   # 200ms gaze micro-aversion
+ERROR_AVERSION_GAZE_X = -0.3   # Look-away direction (normalized, multiplied by MAX_GAZE)
+```
+
+### 5.6 MCU Parity Notes
+
+| Value | MCU Current | V3 Sim | Status |
+|---|---|---|---|
+| SCARED eye_scale | (0.9, 1.0) | (0.9, 1.15) | Sim-authored; height increase pending firmware port |
+| All other eye_scale | (1.0, 1.0) | Per §5.1 table | Sim-authored; new entries pending firmware port |
+| NOD/HEADSHAKE gestures | Reuse laugh/confused | Dedicated gaze anim | Sim-authored; firmware uses MCU's existing anims until port |
+| ERROR micro-aversion | Not implemented | 200ms gaze offset | Sim-authored; supervisor-side for firmware |
+
+All sim-authored values are ahead of MCU as design iterations. The parity check should skip these until firmware is updated.

@@ -27,6 +27,10 @@ from tools.face_sim_v3.state.constants import (
     CONV_FLAGS,
     CONV_GAZE,
     CONV_MOOD_HINTS,
+    ConvState,
+    ERROR_AVERSION_DURATION,
+    ERROR_AVERSION_GAZE_X,
+    MAX_GAZE,
     PIXEL_SCALE,
     SCREEN_H,
     SCREEN_W,
@@ -34,6 +38,7 @@ from tools.face_sim_v3.state.constants import (
 from tools.face_sim_v3.state.conv_state import ConvStateMachine
 from tools.face_sim_v3.state.face_state import (
     FaceState,
+    face_blink,
     face_set_flags,
     face_set_gaze,
     face_state_update,
@@ -172,8 +177,11 @@ def main() -> None:
         border.update(conv_sm.state, conv_sm.timer, dt)
         border.update_state_ref(conv_sm.state, conv_sm.timer)
 
-        # ── 10. Log timeline events ──────────────────────────────
+        # ── 10. Log timeline events + transition choreography ────
         if conv_sm.state != prev_conv:
+            # Task 5: THINKING→SPEAKING anticipation blink (spec §5.1.2)
+            if prev_conv == ConvState.THINKING and conv_sm.state == ConvState.SPEAKING:
+                face_blink(fs)
             timeline.log_conv(conv_sm.state)
             prev_conv = conv_sm.state
         if fs.mood != prev_mood:
@@ -255,6 +263,10 @@ def _apply_conv_effects(
     gaze = CONV_GAZE.get(state)
     if gaze is not None:
         face_set_gaze(fs, gaze[0] * 12.0, gaze[1] * 12.0)
+
+    # Task 6: ERROR micro-aversion (spec §4.2.2) — brief leftward gaze, then return
+    if state == ConvState.ERROR and conv_sm.timer < ERROR_AVERSION_DURATION:
+        face_set_gaze(fs, ERROR_AVERSION_GAZE_X * MAX_GAZE, 0.0)
 
     # Mood hints (only apply if sequencer is idle and mood matches hint source)
     hint = CONV_MOOD_HINTS.get(state)

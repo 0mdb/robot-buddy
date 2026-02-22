@@ -39,6 +39,9 @@ from tools.face_sim_v3.state.constants import (
     GESTURE_COLOR_HEART,
     GESTURE_COLOR_RAGE,
     GESTURE_COLOR_X_EYES,
+    HEADSHAKE_FREQ,
+    HEADSHAKE_GAZE_X_AMP,
+    HEADSHAKE_MOUTH_CURVE,
     HEART_MOUTH_CURVE,
     IDLE_GAZE_HOLD_MIN,
     IDLE_GAZE_HOLD_RANGE,
@@ -51,6 +54,9 @@ from tools.face_sim_v3.state.constants import (
     MOOD_COLORS,
     MOOD_EYE_SCALE,
     MOOD_TARGETS,
+    NOD_FREQ,
+    NOD_GAZE_Y_AMP,
+    NOD_LID_TOP_OFFSET,
     NEUTRAL_COLOR,
     NEUTRAL_LID_BOT,
     NEUTRAL_LID_SLOPE,
@@ -180,6 +186,14 @@ class AnimTimers:
     rage_timer: float = 0.0
     rage_duration: float = 3.00
 
+    nod: bool = False
+    nod_timer: float = 0.0
+    nod_duration: float = 0.35
+
+    headshake: bool = False
+    headshake_timer: float = 0.0
+    headshake_duration: float = 0.35
+
     h_flicker: bool = False
     h_flicker_alt: bool = False
     h_flicker_amp: float = FLICKER_AMP
@@ -299,16 +313,21 @@ def face_state_update(fs: FaceState) -> None:
     t_lid_top = NEUTRAL_LID_TOP + (t_lid_top - NEUTRAL_LID_TOP) * intensity
     t_lid_bot = NEUTRAL_LID_BOT + (t_lid_bot - NEUTRAL_LID_BOT) * intensity
 
-    # Eye scale overrides for specific moods
-    eye_scale = MOOD_EYE_SCALE.get(fs.mood)
-    if eye_scale is not None:
-        ws, hs = eye_scale
-        ws = 1.0 + (ws - 1.0) * intensity
-        hs = 1.0 + (hs - 1.0) * intensity
-        fs.eye_l.width_scale_target = ws
-        fs.eye_r.width_scale_target = ws
-        fs.eye_l.height_scale_target = hs
-        fs.eye_r.height_scale_target = hs
+    # Reset eye scale targets to default each frame (MCU: face_state.cpp:559-560)
+    fs.eye_l.width_scale_target = 1.0
+    fs.eye_l.height_scale_target = 1.0
+    fs.eye_r.width_scale_target = 1.0
+    fs.eye_r.height_scale_target = 1.0
+
+    # Apply per-mood eye scale with intensity blending
+    eye_scale = MOOD_EYE_SCALE.get(fs.mood, (1.0, 1.0))
+    ws, hs = eye_scale
+    ws = 1.0 + (ws - 1.0) * intensity
+    hs = 1.0 + (hs - 1.0) * intensity
+    fs.eye_l.width_scale_target = ws
+    fs.eye_r.width_scale_target = ws
+    fs.eye_l.height_scale_target = hs
+    fs.eye_r.height_scale_target = hs
 
     fs.mouth_curve_target = t_curve
     fs.mouth_width_target = t_width
@@ -400,6 +419,25 @@ def face_state_update(fs: FaceState) -> None:
         fs.mouth_curve_target = CONFUSED_MOUTH_CURVE
         fs.mouth_open_target = 0.0
 
+    if fs.anim.nod:
+        elapsed_g = now - fs.anim.nod_timer
+        # Sinusoidal vertical gaze oscillation
+        gaze_y = NOD_GAZE_Y_AMP * math.sin(elapsed_g * NOD_FREQ)
+        fs.eye_l.gaze_y_target = gaze_y
+        fs.eye_r.gaze_y_target = gaze_y
+        # Slight upper lid follows downward gaze
+        lid_offset = NOD_LID_TOP_OFFSET * max(0.0, math.sin(elapsed_g * NOD_FREQ))
+        t_lid_top = max(t_lid_top, lid_offset)
+
+    if fs.anim.headshake:
+        elapsed_g = now - fs.anim.headshake_timer
+        # Sinusoidal horizontal gaze oscillation
+        gaze_x = HEADSHAKE_GAZE_X_AMP * math.sin(elapsed_g * HEADSHAKE_FREQ)
+        fs.eye_l.gaze_x_target = gaze_x
+        fs.eye_r.gaze_x_target = gaze_x
+        # Slight frown during headshake
+        fs.mouth_curve_target = HEADSHAKE_MOUTH_CURVE
+
     # ── 3. GESTURE TIMEOUTS ──────────────────────────────────────
     if fs.anim.heart and now > fs.anim.heart_timer + fs.anim.heart_duration:
         fs.anim.heart = False
@@ -416,6 +454,12 @@ def face_state_update(fs: FaceState) -> None:
 
     if fs.anim.sleepy and now > fs.anim.sleepy_timer + fs.anim.sleepy_duration:
         fs.anim.sleepy = False
+
+    if fs.anim.nod and now > fs.anim.nod_timer + fs.anim.nod_duration:
+        fs.anim.nod = False
+
+    if fs.anim.headshake and now > fs.anim.headshake_timer + fs.anim.headshake_duration:
+        fs.anim.headshake = False
 
     if fs.anim.confused:
         if fs.anim.confused_toggle:
@@ -477,12 +521,14 @@ def face_state_update(fs: FaceState) -> None:
         target_y = random.uniform(-MAX_GAZE * 0.6, MAX_GAZE * 0.6)
 
         if fs.mood == Mood.SILLY:
+            # Scale cross-eye offset by expression_intensity (spec §4.1.3)
+            si = max(0.0, min(1.0, fs.expression_intensity))
             if random.random() < 0.5:
-                fs.eye_l.gaze_x_target = SILLY_CROSS_EYE_A[0]
-                fs.eye_r.gaze_x_target = SILLY_CROSS_EYE_A[1]
+                fs.eye_l.gaze_x_target = SILLY_CROSS_EYE_A[0] * si
+                fs.eye_r.gaze_x_target = SILLY_CROSS_EYE_A[1] * si
             else:
-                fs.eye_l.gaze_x_target = SILLY_CROSS_EYE_B[0]
-                fs.eye_r.gaze_x_target = SILLY_CROSS_EYE_B[1]
+                fs.eye_l.gaze_x_target = SILLY_CROSS_EYE_B[0] * si
+                fs.eye_r.gaze_x_target = SILLY_CROSS_EYE_B[1] * si
         else:
             fs.eye_l.gaze_x_target = target_x
             fs.eye_r.gaze_x_target = target_x
@@ -704,16 +750,14 @@ def face_trigger_gesture(
         face_wink_right(fs)
         _set_active_gesture(fs, gesture, dur)
     elif gesture == GestureId.NOD:
-        fs.anim.laugh = True
-        fs.anim.laugh_timer = now
-        fs.anim.laugh_toggle = True
-        fs.anim.laugh_duration = dur
+        fs.anim.nod = True
+        fs.anim.nod_timer = now
+        fs.anim.nod_duration = dur
         _set_active_gesture(fs, gesture, dur)
     elif gesture == GestureId.HEADSHAKE:
-        fs.anim.confused = True
-        fs.anim.confused_timer = now
-        fs.anim.confused_toggle = True
-        fs.anim.confused_duration = dur
+        fs.anim.headshake = True
+        fs.anim.headshake_timer = now
+        fs.anim.headshake_duration = dur
         _set_active_gesture(fs, gesture, dur)
     elif gesture == GestureId.WIGGLE:
         wd = dur if duration_ms > 0 else GESTURE_DURATIONS[GestureId.WIGGLE]

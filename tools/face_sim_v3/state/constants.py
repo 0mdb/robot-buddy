@@ -200,11 +200,23 @@ GESTURE_COLOR_RAGE = (255, 30, 0)
 GESTURE_COLOR_HEART = (255, 105, 180)
 GESTURE_COLOR_X_EYES = (200, 40, 40)
 
-# Per-mood eye scale targets — only moods that override default (1.0, 1.0)
+# Per-mood eye scale targets (width_scale, height_scale)
+# See docs/face-visual-language.md §5.1 for design rationale.
+# [Provisional] — sim-authored, pending visual review + T3/T4 evaluation.
 MOOD_EYE_SCALE: dict[Mood, tuple[float, float]] = {
-    # (width_scale, height_scale)
-    Mood.SCARED: (0.9, 1.0),
-    Mood.SURPRISED: (1.2, 1.2),
+    Mood.NEUTRAL: (1.0, 1.0),  # Baseline
+    Mood.HAPPY: (1.05, 0.9),  # Wider, squished (happy squint)
+    Mood.EXCITED: (1.15, 1.1),  # Big wide eyes
+    Mood.CURIOUS: (1.05, 1.15),  # Taller (attentive)
+    Mood.SAD: (0.95, 0.85),  # Smaller, deflated
+    Mood.SCARED: (0.9, 1.15),  # Narrow-tall (tense, frozen)
+    Mood.ANGRY: (1.1, 0.75),  # Wide, squished (glare)
+    Mood.SURPRISED: (1.2, 1.2),  # Biggest (matches MCU)
+    Mood.SLEEPY: (0.95, 0.7),  # Narrow slits
+    Mood.LOVE: (1.05, 1.05),  # Slightly enlarged (soft)
+    Mood.SILLY: (1.1, 1.0),  # Wider (goofy)
+    Mood.THINKING: (0.95, 1.0),  # Slightly narrower (focused)
+    Mood.CONFUSED: (1.0, 1.05),  # Slightly taller (puzzled)
 }
 
 # Thinking-mood gaze and mouth offset
@@ -278,6 +290,12 @@ X_EYES_MOUTH_OPEN = 0.8
 X_EYES_MOUTH_WIDTH = 0.5
 HEART_MOUTH_CURVE = 1.0
 FLICKER_AMP = 1.5
+NOD_GAZE_Y_AMP = 4.0  # Vertical gaze displacement
+NOD_FREQ = 12.0  # rad/s — ~2 nods in 350ms
+NOD_LID_TOP_OFFSET = 0.15  # Slight upper lid follows gaze
+HEADSHAKE_GAZE_X_AMP = 5.0  # Horizontal gaze displacement
+HEADSHAKE_FREQ = 14.0  # rad/s — ~2.5 sweeps in 350ms
+HEADSHAKE_MOUTH_CURVE = -0.2  # Slight frown during headshake
 
 # ══════════════════════════════════════════════════════════════════════
 # CONVERSATION STATES
@@ -378,6 +396,8 @@ SPEAKING_ALPHA_MOD = 0.7  # Multiplied by energy
 ERROR_FLASH_DURATION = 0.1  # 100 ms
 ERROR_DECAY_RATE = 5.0  # Exponential decay constant
 ERROR_TOTAL_DURATION = 0.8  # 800 ms total
+ERROR_AVERSION_DURATION = 0.2  # 200 ms gaze micro-aversion (spec §4.2.2)
+ERROR_AVERSION_GAZE_X = -0.3  # Look-away direction (normalized)
 
 # DONE animation
 DONE_FADE_DURATION = 0.5  # 500 ms

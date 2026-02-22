@@ -173,6 +173,22 @@ tools/face_sim_v3/
 - ~~`just preflight` parity check passes (V3 constants = MCU constants)~~ ✓ 70/70 passed
 - [ ] Developer review: "the face looks alive, intentional, and beautiful" — pending visual review via `just sim`
 
+### Visual Language Remediation — DONE
+
+After Stage 3 baseline, conformance audit found V3's visual parameters were ported from V2 verbatim. 7 gaps addressed:
+
+| # | Gap | Fix |
+|---|-----|-----|
+| G1 | Eye scale identical for 11/13 moods | Expanded `MOOD_EYE_SCALE` to all 13 moods with per-mood (width, height) |
+| G2 | NOD gesture reused LAUGH animation | Dedicated vertical gaze oscillation (`NOD_GAZE_Y_AMP`, `NOD_FREQ`) |
+| G3 | HEADSHAKE gesture reused CONFUSED animation | Dedicated horizontal gaze oscillation (`HEADSHAKE_GAZE_X_AMP`, `HEADSHAKE_FREQ`) |
+| G4 | THINKING→SPEAKING missing anticipation blink | Added blink trigger on conv state transition |
+| G5 | ERROR missing gaze micro-aversion | Added 200ms leftward gaze offset on ERROR entry |
+| G6 | Eye scale targets not reset per frame | Added defensive 1.0 reset matching MCU `face_state.cpp:559-560` |
+| G7 | Silly cross-eye not scaled by intensity | Scaled by `expression_intensity` per §4.1.3 |
+
+Design document: `docs/face-visual-language.md` — defines intended visual appearance of all 13 moods, 13 gestures, and 8 conversation states. All parameter values marked **[Provisional]** pending visual review.
+
 ---
 
 ## Phase 0: Sim/MCU Parity (V3 → MCU Sync)
@@ -388,6 +404,9 @@ Alignment Review (A.1–A.7) ── DONE
 Stage 3: Sim V3 (S3.1–S3.18) ── DONE
     │
     v
+Visual Language Remediation ── DONE (G1–G7: eye scale, gestures, choreography)
+    │
+    v
 Phase 0 (Parity V3→MCU)
     │
     v
@@ -446,6 +465,11 @@ Phases 1–3 can be parallelized to some extent: Phase 1 (supervisor state machi
 | `docs/personality-engine-spec-stage2.md` | Amendments from alignment (if any) |
 | **Stage 3: Sim V3** | |
 | `tools/face_sim_v3/` (new package, ~15 files) | Complete sim rewrite implementing full spec, with PE hooks |
+| **Visual Language Remediation** | |
+| `docs/face-visual-language.md` (new) | Design document defining intended visual appearance of all moods, gestures, conv states |
+| `tools/face_sim_v3/state/constants.py` | Expanded MOOD_EYE_SCALE (13 moods), NOD/HEADSHAKE gesture constants, ERROR aversion constants |
+| `tools/face_sim_v3/state/face_state.py` | Eye scale reset fix, NOD/HEADSHAKE gesture overrides+timeouts, Silly intensity scaling |
+| `tools/face_sim_v3/__main__.py` | THINKING→SPEAKING anticipation blink, ERROR gaze micro-aversion |
 | `tools/check_face_parity.py` (new) | CI parity check, reads from V3 `constants.py` |
 | `justfile` | Add `just sim` for V3 |
 | **Phase 0–5** | |
