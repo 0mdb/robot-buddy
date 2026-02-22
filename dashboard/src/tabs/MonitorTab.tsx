@@ -39,6 +39,13 @@ function levelBadgeClass(level: DiagLevel): string {
   return `${styles.badge} ${level === 'ok' ? styles.badgeGreen : level === 'warn' ? styles.badgeYellow : level === 'error' ? styles.badgeRed : styles.badgeDim}`
 }
 
+function clockLevel(state: string): DiagLevel {
+  if (state === 'synced') return 'ok'
+  if (state === 'unsynced') return 'warn'
+  if (state === 'degraded') return 'error'
+  return 'stale'
+}
+
 /* ---- diagnostic node computation ---- */
 
 interface DiagNode {
@@ -115,20 +122,8 @@ function buildTree(
   const workersLevel = computeWorkersLevel(workers)
 
   // Clock sub-levels
-  const reflexClockLevel: DiagLevel = clocks
-    ? clocks.reflex.state === 'SYNCED'
-      ? 'ok'
-      : clocks.reflex.state === 'CONVERGING'
-        ? 'warn'
-        : 'error'
-    : 'stale'
-  const faceClockLevel: DiagLevel = clocks
-    ? clocks.face.state === 'SYNCED'
-      ? 'ok'
-      : clocks.face.state === 'CONVERGING'
-        ? 'warn'
-        : 'error'
-    : 'stale'
+  const reflexClockLevel: DiagLevel = clocks ? clockLevel(clocks.reflex.state) : 'stale'
+  const faceClockLevel: DiagLevel = clocks ? clockLevel(clocks.face.state) : 'stale'
 
   const piSummary = sys
     ? `CPU ${sys.cpu_percent}% | ${sys.cpu_temp_c ?? '--'}C | Mem ${sys.mem_percent}%`
@@ -378,16 +373,7 @@ function CommunicationPanel({
         label="Reflex clock"
         value={
           clocks ? (
-            <StatusBadge
-              level={
-                clocks.reflex.state === 'SYNCED'
-                  ? 'ok'
-                  : clocks.reflex.state === 'CONVERGING'
-                    ? 'warn'
-                    : 'error'
-              }
-              text={clocks.reflex.state}
-            />
+            <StatusBadge level={clockLevel(clocks.reflex.state)} text={clocks.reflex.state} />
           ) : (
             '--'
           )
@@ -397,16 +383,7 @@ function CommunicationPanel({
         label="Face clock"
         value={
           clocks ? (
-            <StatusBadge
-              level={
-                clocks.face.state === 'SYNCED'
-                  ? 'ok'
-                  : clocks.face.state === 'CONVERGING'
-                    ? 'warn'
-                    : 'error'
-              }
-              text={clocks.face.state}
-            />
+            <StatusBadge level={clockLevel(clocks.face.state)} text={clocks.face.state} />
           ) : (
             '--'
           )
@@ -428,7 +405,24 @@ const BATTERY_THRESHOLDS = [
   { value: 6500, color: '#f44336', label: 'Low' },
 ]
 
-function PowerPanel({ batteryMv }: { batteryMv: number }) {
+function PowerPanel({
+  batteryMv,
+  reflexConnected,
+}: {
+  batteryMv: number
+  reflexConnected: boolean
+}) {
+  if (!reflexConnected && batteryMv === 0) {
+    return (
+      <div className={styles.card}>
+        <h3 className={m.sectionTitle}>Power</h3>
+        <span className={styles.mono} style={{ color: 'var(--text-dim)' }}>
+          No battery data (Reflex disconnected)
+        </span>
+      </div>
+    )
+  }
+
   const level: DiagLevel = batteryMv > 7000 ? 'ok' : batteryMv > 6500 ? 'warn' : 'error'
   return (
     <div className={styles.card}>
@@ -678,7 +672,7 @@ export default function MonitorTab() {
       </div>
 
       {/* Power chart */}
-      <PowerPanel batteryMv={batteryMv} />
+      <PowerPanel batteryMv={batteryMv} reflexConnected={reflexConnected} />
 
       {/* Sensor health */}
       <SensorHealthPanel
