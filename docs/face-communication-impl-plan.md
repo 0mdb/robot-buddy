@@ -103,9 +103,11 @@
 
 ---
 
-## Stage 3: Face Sim V3 (Clean Rewrite)
+## Stage 3: Face Sim V3 (Clean Rewrite) — DONE
 
 **Goal**: Build a new face simulator from scratch using the revised Stage 2 spec as the sole design reference. The sim becomes the **canonical design authoring surface** (per D9:C) — a pixel-accurate 320×240 preview running at 30 FPS for iterating on look, feel, and design language before touching firmware.
+
+**Status**: Complete. 16 modules across 4 subpackages (`state/`, `render/`, `input/`, `debug/`), ~2600 lines. CI parity check passes 70/70 (V3 constants = MCU constants). Run with `just sim`.
 
 ### Why Rewrite vs Iterate on V2
 
@@ -164,12 +166,12 @@ tools/face_sim_v3/
 | S3.18 | Add `just sim` command to run V3 sim | `justfile` | S3.15 |
 
 ### Exit Criteria
-- All 12 moods visually distinct and recognizable
-- Conversation state machine walks through all 8 states with correct border + gaze + mood
-- Mood transitions show visible blink → fade → switch → fade-in
-- Negative mood guardrails fire correctly (auto-recovery, intensity cap, context gate)
-- `just preflight` parity check passes (V3 constants = MCU constants)
-- Developer review: "the face looks alive, intentional, and beautiful"
+- ~~All 12 moods visually distinct and recognizable~~ ✓ 13 moods (including CONFUSED), all with distinct colors verified programmatically
+- ~~Conversation state machine walks through all 8 states with correct border + gaze + mood~~ ✓ ConvStateMachine with auto-transitions, Tab walkthrough
+- ~~Mood transitions show visible blink → fade → switch → fade-in~~ ✓ MoodSequencer: 100ms anticipation → 150ms ramp-down → switch → 200ms ramp-up
+- ~~Negative mood guardrails fire correctly (auto-recovery, intensity cap, context gate)~~ ✓ Context gate, intensity caps, duration caps all verified
+- ~~`just preflight` parity check passes (V3 constants = MCU constants)~~ ✓ 70/70 passed
+- [ ] Developer review: "the face looks alive, intentional, and beautiful" — pending visual review via `just sim`
 
 ---
 
@@ -380,10 +382,10 @@ Spec Revisions (R.1–R.12) ──────── DONE
 PE R&D (PE.1–PE.6) ──────────── DONE (PE.6 N/A — no on-device LLM)
     │
     v
-Alignment Review (A.1–A.7) ── reconcile PE ↔ face comm
+Alignment Review (A.1–A.7) ── DONE
     │
     v
-Stage 3: Sim V3 (S3.1–S3.18) ── design iteration loop (with PE hooks)
+Stage 3: Sim V3 (S3.1–S3.18) ── DONE
     │
     v
 Phase 0 (Parity V3→MCU)

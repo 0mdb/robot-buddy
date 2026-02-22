@@ -15,24 +15,29 @@
 
 ---
 
-## Conversation State Visual System (In Progress)
+## Conversation State Visual System (Sim V3 Complete — Firmware Pending)
 
-Visual feedback for conversation flow — border animations, LED sync, button redesign. Prototyped in Python face sim (`tools/conv_border.py`), not yet ported to firmware.
+Face Sim V3 (`tools/face_sim_v3/`, ~2600 lines, 16 modules) is the canonical design authoring surface. Run with `just sim`. Full spec implementation with command bus protocol, mood sequencer choreography, conversation state machine, negative affect guardrails, and CI parity check (70/70 constants match MCU).
 
-### Completed (sim prototype)
-- [x] ConvBorder state machine — 8 states: idle, attention, listening, PTT, thinking, speaking, error, done
-- [x] Border renderer — 4px frame with 3px glow, SDF-based, smooth color/alpha transitions
-- [x] Per-state animations: attention sweep, listening breath, thinking orbit dots, speaking energy-reactive, error flash+fade
-- [x] LED color sync (simulated WS2812B indicator)
-- [x] Button redesign — PTT (concentric arcs icon), Cancel (X mark), 36px visible / 48px hit target
-- [x] Talking phase-speed coupling: `phase_speed = 12 + 6 * energy` (was fixed 15 rad/s)
-- [x] Sim controls: F7-F12 for conv states, P for PTT toggle, HUD updates
+### Completed — Face Sim V3 (Stage 3)
+- [x] Clean rewrite from spec — modular package replacing V2's 4 monolithic files
+- [x] 13 moods (including CONFUSED) with distinct colors, expression intensity blending
+- [x] Mood transition choreography — blink → 150ms ramp-down → switch → 200ms ramp-up
+- [x] Negative affect guardrails — context gate, intensity caps, duration caps, auto-recovery
+- [x] Conversation state machine — 8 states with auto-transitions, per-state gaze/flag overrides
+- [x] Border renderer — SDF frame + glow, per-state animations (sweep, breathing, orbit dots, energy-reactive, flash, fade)
+- [x] Command bus — all inputs → protocol-equivalent commands (no direct state mutation)
+- [x] LED sync, PTT/Cancel buttons, sparkle/fire/afterglow effects
+- [x] Debug HUD + scrolling timeline of state transitions
+- [x] CI parity check — `tools/check_face_parity.py` (70/70 passed)
 
-### Remaining (pending v3 design review)
-- [ ] Firmware port — protocol command 0x25 SET_CONV_STATE, ESP32 border/button/LED rendering
-- [ ] Supervisor wiring — conv state transitions in tick_loop (wake_word→ATTENTION→LISTENING→THINKING→SPEAKING→DONE)
-- [ ] Dashboard Conversation tab — state timeline, event log, manual controls
-- [ ] Integration test — end-to-end wake word → full visual state flow on hardware
+### Remaining (Phase 0–5)
+- [ ] Phase 0: Sync MCU constants to match V3 sim (the new canonical source)
+- [ ] Phase 1: Supervisor conversation state machine in tick_loop
+- [ ] Phase 2: Firmware border rendering + SET_CONV_STATE (0x25)
+- [ ] Phase 3: Supervisor mood transition sequencer + guardrails
+- [ ] Phase 4: Conversation phase transition choreography
+- [ ] Phase 5: Polish, talking sync fix, dashboard visualization
 
 ---
 

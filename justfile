@@ -80,6 +80,10 @@ run-dashboard:
 build-dashboard:
     cd {{project}}/dashboard && npm run build
 
+# Run face simulator V3
+sim:
+    cd {{project}} && python -m tools.face_sim_v3
+
 # ── ESP32 Firmware ───────────────────────────────────────
 
 # Build reflex firmware
