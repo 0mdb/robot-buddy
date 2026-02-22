@@ -165,18 +165,20 @@ Naming follows **viewer perspective** throughout.
 
 **VA**: (+0.40, +0.45) — mild positive, moderate arousal
 **Intent**: "Hmm, that's interesting. Tell me more."
-**Overall read**: Alert, wide-eyed, leaning in. Strong outer lid lift creates a "raised brow" look. Slightly open mouth hints at engagement.
+**Overall read**: Alert, wide-eyed, leaning in. **Asymmetric eyebrow** — one eye slightly more open than the other — creates the classic "one brow raised" curiosity look. Slightly open mouth hints at engagement.
 
 | Channel | Description |
 |---------|---|
 | Eyes | Taller than wide — open, attentive look. Pupils engaged. |
-| Eyelids | Strong outer lift (lid_slope **-0.5**) — clear "raised brow" look. Open and receptive. |
+| Eyelids | **Asymmetric brow** (right eye slightly hooded, left fully open) — the classic "🤨 one eyebrow raised" look. No lid_slope. |
 | Mouth | Neutral curve (0.0), slightly narrower (width 0.9). **Slightly open (0.1)** — a hint of "oh?" Understated. |
 | Color | Warm amber-orange (255, 180, 50). Warm curiosity glow. |
 | Gaze | May track slightly toward stimulus. |
 
 **Eye scale**: **(1.05, 1.15)** — taller, slightly wider. Vertically open reads as "alert/interested" **[Provisional]**
-**Distinguish from**: CONFUSED (**opposite** slope direction — CURIOUS lifts outer brow, CONFUSED furrows inner brow). SURPRISED (much more extreme, with O-mouth).
+**Distinguish from**: CONFUSED (symmetric eyes + inner furrow + mouth offset vs asymmetric brow). SURPRISED (much more extreme, with O-mouth).
+
+> **Design note**: Lid slope doesn't produce a "raised brow" on a stylized face — it creates a diagonal slash that reads as menacing or scared. Asymmetric per-eye lid offset (`CURIOUS_BROW_OFFSET`) produces the intended "one brow raised" look universally recognized as curiosity/interest.
 
 ---
 
@@ -351,7 +353,7 @@ Naming follows **viewer perspective** throughout.
 | Gaze | May drift slightly, less deliberate than THINKING aversion. |
 
 **Eye scale**: **(1.0, 1.05)** — slightly taller. Mild puzzlement, not full alertness **[Provisional]**
-**Distinguish from**: CURIOUS (**opposite** slope direction — CONFUSED furrows inward, CURIOUS lifts outward). THINKING (more extreme furrow + gaze aversion + blue, vs mild furrow + mouth offset + amber).
+**Distinguish from**: CURIOUS (asymmetric brow vs symmetric furrow — CURIOUS has one eye hooded, CONFUSED has both eyes furrowed inward). THINKING (more extreme furrow + gaze aversion + blue, vs mild furrow + mouth offset + amber).
 
 ---
 
@@ -364,7 +366,7 @@ Every mood must be identifiable through at least **two distinct channels** at si
 | NEUTRAL | baseline (1.0, 1.0) | flat lids, mild smile | still + wander | idle wander | — (baseline) |
 | HAPPY | wide + squished (1.05, 0.9) | bottom squeeze, big smile | dynamic wander | idle wander | geometry + mouth |
 | EXCITED | big + wide (1.15, 1.1) | open mouth, slight smile | energetic | idle wander | geometry + mouth |
-| CURIOUS | taller (1.05, 1.15) | strong outer lift (-0.5), mouth hint open | still-ish | idle wander | geometry + slope |
+| CURIOUS | taller (1.05, 1.15) | **asymmetric brow** (one eye hooded), mouth hint open | still-ish | idle wander | geometry + asymmetry |
 | SAD | smaller (0.95, 0.85) | strong outer droop (-0.6), frown | still, heavy | may drift down | geometry + slope + mouth |
 | SCARED | narrow + tall (0.9, 1.15) | open mouth, no slope | still, tense | idle wander | geometry + mouth |
 | ANGRY | wide + slit (1.1, 0.65) | deep furrow (0.8), lid drop, frown | still, locked | direct, still | geometry + slope + mouth |
@@ -395,7 +397,7 @@ Every mood must be identifiable through at least **two distinct channels** at si
 
 **At-risk pairs** (resolved by design):
 
-**CURIOUS vs CONFUSED**: Previously shared "slight vertical expansion + mild slope + warm color." Resolved: CURIOUS has **outer lid lift** (slope -0.5, open/receptive) + **slightly open mouth** (0.1). CONFUSED has **inner lid furrow** (slope +0.2, puzzled/tense) + **mouth offset** (off-center). Opposite slope directions create clearly different silhouettes.
+**CURIOUS vs CONFUSED**: Previously shared "slight vertical expansion + mild slope + warm color." Resolved: CURIOUS has **asymmetric brow** (one eye hooded, unique among all moods) + **slightly open mouth** (0.1). CONFUSED has **symmetric inner furrow** (slope +0.2, puzzled/tense) + **mouth offset** (off-center). Asymmetric vs symmetric eye shape creates an unmistakable silhouette difference.
 
 **LOVE vs HAPPY**: Previously shared "smile + enlarged eyes + warm color." Resolved: LOVE has **pupil convergence** (soft focus) + **stillness** (reduced wander). HAPPY has **squished eyes** (0.9 height vs 1.05) + **dynamic wander**. The squint-vs-open eye shape survives grayscale; motion channel adds redundancy.
 
@@ -574,7 +576,8 @@ ERROR_AVERSION_GAZE_X = -0.3   # Look-away direction (normalized, multiplied by 
 | ERROR micro-aversion | Not implemented | 200ms gaze offset | Sim-authored; supervisor-side for firmware |
 | SAD color | (50, 80, 200) | (70, 110, 210) | Brightened for TN panel luma floor (§1.3.1); pending firmware port |
 | SLEEPY color | (40, 60, 100) | (70, 90, 140) | Brightened for TN panel luma floor (§1.3.1); pending firmware port |
-| CURIOUS lid_slope | -0.15 | -0.5 | Stronger outer lift for silhouette distinctiveness; pending firmware port |
+| CURIOUS lid_slope | -0.15 | 0.0 | Removed (asymmetric brow replaces slope); pending firmware port |
+| CURIOUS asymmetric brow | None | 0.25 (right eye extra lid_top) | New: one-eyebrow-raised look; pending firmware port |
 | CONFUSED lid_slope | -0.15 | +0.2 | Flipped to inner furrow for silhouette distinctiveness; pending firmware port |
 | CONFUSED mouth_offset | None | 2.0 | Persistent asymmetric mouth; pending firmware port |
 | LOVE convergence | None | ±2.5 gaze_x | Mild pupil convergence + reduced idle wander; pending firmware port |

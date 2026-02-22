@@ -189,20 +189,64 @@ After Stage 3 baseline, conformance audit found V3's visual parameters were port
 
 Design document: `docs/face-visual-language.md` — defines intended visual appearance of all 13 moods, 13 gestures, and 8 conversation states. All parameter values marked **[Provisional]** pending visual review.
 
+### Visual Language Review Cycles — DONE
+
+Three rounds of spec review applied after initial visual language definition:
+
+**Review cycle 1** (R1–R5):
+
+| # | Issue | Fix |
+|---|-------|-----|
+| R1 | SAD/SLEEPY colors below TN panel luma floor | Brightened SAD (70,110,210), SLEEPY (70,90,140); added §1.3.1 luma floor rule (L ≥ 85) |
+| R2 | NOD/HEADSHAKE spring attenuation (60-70% amplitude) | Moved gaze writes from pre-spring targets to post-spring direct overrides |
+| R3 | No coordinate space definition (+X/+Y ambiguous) | Added §1.5 Coordinate Space (screen coords, viewer perspective) |
+| R4 | Intensity cap vs authored eye scale undocumented | Added effective maxima table to §5.1 |
+| R5 | TTS timing unspecified for THINKING→SPEAKING blink | Added TTS onset annotation + supervisor-side timing note |
+
+**Review cycle 2** (silhouette distinctiveness):
+
+| # | Issue | Fix |
+|---|-------|-----|
+| D1 | No silhouette distinctiveness analysis | Added Silhouette Distinctiveness Matrix (13-mood × 4-channel) |
+| D2 | CURIOUS vs CONFUSED collision (shared slope direction) | Flipped CONFUSED slope to +0.2 (inner furrow), added mouth offset |
+| D3 | LOVE vs HAPPY collision (shared smile + enlarged eyes) | Added LOVE pupil convergence (±2.5) + reduced idle wander (40% amplitude, 2.5-5.5s holds) |
+| D4 | THINKING vs ANGRY collision (shared furrow direction) | Compressed ANGRY height 0.75→0.65; neutralized THINKING eye scale to (1.0,1.0) |
+| D5 | CURIOUS slope too strong, reads as menacing | Silhouette Clarity Audit added with strong/adequate/at-risk classifications |
+
+**Review cycle 3** (sim bugs + visual tuning):
+
+| # | Issue | Fix |
+|---|-------|-----|
+| B1 | `_apply_conv_effects` overwrites flags every frame — toggles broken | Apply CONV_FLAGS only on conv state transitions, not per-frame |
+| B2 | Arrow key gaze overridden by conv state gaze every frame | Skip conv gaze override when manual gaze active |
+| B3 | CURIOUS lid_slope -0.5 reads as scared on stylized face | Rethinking raised eyebrow implementation for pixel-art face |
+
 ---
 
 ## Phase 0: Sim/MCU Parity (V3 → MCU Sync)
 
 **Goal**: Sync MCU firmware constants to match V3 sim (the new canonical source). Establish CI-enforced parity.
 
+**Scope** (expanded from original — 17 divergences tracked in Visual Language §5.6):
+- SAD/SLEEPY colors (TN luma floor)
+- CURIOUS/CONFUSED lid_slope (silhouette distinctiveness)
+- CONFUSED mouth_offset (new behavior)
+- LOVE convergence + idle wander (new behavior)
+- ANGRY eye height, THINKING eye width (adjusted)
+- NOD/HEADSHAKE gestures (new dedicated animations)
+- ERROR micro-aversion (new behavior)
+- All other MOOD_EYE_SCALE entries (sim-authored)
+
 ### Tasks
 
 | # | Task | Files | Depends On |
 |---|------|-------|-----------|
 | 0.1 | Diff V3 `constants.py` vs MCU `config.h`/`face_state.cpp` — identify all divergences | `tools/face_sim_v3/state/constants.py`, `esp32-face-v2/main/config.h`, `esp32-face-v2/main/face_state.cpp` | Stage 3 |
-| 0.2 | Update MCU constants to match V3 for all divergences (blink interval, gaze interval, background color, THINKING color, talking phase speed, mood targets, tween speeds, spring constants) | `esp32-face-v2/main/config.h`, `esp32-face-v2/main/face_state.cpp` | 0.1 |
-| 0.3 | CI parity check passes (V3 = MCU within tolerance per eval plan §2.4) | `tools/check_face_parity.py` | 0.1, 0.2 |
-| 0.4 | Add parity check to `just preflight` | `justfile` | 0.3 |
+| 0.2 | Update MCU constants to match V3 for all divergences (mood colors, eye scales, mood targets, gesture constants, new mood-specific behaviors) | `esp32-face-v2/main/config.h`, `esp32-face-v2/main/face_state.cpp` | 0.1 |
+| 0.3 | Port CONFUSED mouth_offset and LOVE convergence behaviors to MCU face_state.cpp | `esp32-face-v2/main/face_state.cpp` | 0.2 |
+| 0.4 | Port NOD/HEADSHAKE dedicated gesture animations (post-spring gaze bypass) to MCU | `esp32-face-v2/main/face_state.cpp` | 0.2 |
+| 0.5 | CI parity check passes (V3 = MCU within tolerance per eval plan §2.4), sim-ahead exclusions removed | `tools/check_face_parity.py` | 0.2–0.4 |
+| 0.6 | Add parity check to `just preflight` | `justfile` | 0.5 |
 
 ### Exit Criteria
 - `just preflight` passes with parity check
@@ -404,10 +448,13 @@ Alignment Review (A.1–A.7) ── DONE
 Stage 3: Sim V3 (S3.1–S3.18) ── DONE
     │
     v
-Visual Language Remediation ── DONE (G1–G7: eye scale, gestures, choreography)
+Visual Language Remediation ── DONE (G1–G7)
     │
     v
-Phase 0 (Parity V3→MCU)
+Visual Language Review ──────── DONE (R1–R5 + D1–D5 + B1–B3)
+    │
+    v
+Phase 0 (Parity V3→MCU) ── 17 divergences to port
     │
     v
 Phase 1 (Conv State Machine) ──────┐
@@ -472,6 +519,12 @@ Phases 1–3 can be parallelized to some extent: Phase 1 (supervisor state machi
 | `tools/face_sim_v3/__main__.py` | THINKING→SPEAKING anticipation blink, ERROR gaze micro-aversion |
 | `tools/check_face_parity.py` (new) | CI parity check, reads from V3 `constants.py` |
 | `justfile` | Add `just sim` for V3 |
+| **Visual Language Review Cycles** | |
+| `docs/face-visual-language.md` | §1.3.1 TN luma floor, §1.5 coordinate space, silhouette distinctiveness matrix + clarity audit, per-mood updates (CURIOUS, CONFUSED, LOVE, ANGRY, THINKING), effective intensity maxima table, TTS timing annotation, expanded §5.6 parity notes |
+| `tools/face_sim_v3/state/constants.py` | SAD/SLEEPY colors brightened, ANGRY/THINKING eye scale adjusted, CURIOUS/CONFUSED MOOD_TARGETS updated, CONFUSED_MOOD_MOUTH_OFFSET_X, LOVE convergence + idle wander constants |
+| `tools/face_sim_v3/state/face_state.py` | Post-spring NOD/HEADSHAKE gaze bypass, CONFUSED persistent mouth offset, LOVE pupil convergence + reduced idle wander |
+| `tools/face_sim_v3/__main__.py` | Fixed: conv state flag/gaze override (apply on transitions only, respect manual gaze) |
+| `tools/check_face_parity.py` | Added sim-ahead exclusion mechanism for known divergences |
 | **Phase 0–5** | |
 | `supervisor_v2/devices/protocol.py` | Add ConvState enum, SET_CONV_STATE command ID (0x25) |
 | `supervisor_v2/devices/face_client.py` | Add `send_conv_state()` method (1-byte payload) |

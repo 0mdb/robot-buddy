@@ -26,7 +26,6 @@ from tools.face_sim_v3.state.constants import (
     BG_COLOR,
     CONV_FLAGS,
     CONV_GAZE,
-    CONV_MOOD_HINTS,
     ConvState,
     ERROR_AVERSION_DURATION,
     ERROR_AVERSION_GAZE_X,
@@ -120,9 +119,10 @@ def main() -> None:
     overlay = DebugOverlay()
     timeline = Timeline()
 
-    # Track previous conv state for timeline logging
+    # Track previous conv state for timeline logging + flag transitions
     prev_conv = conv_sm.state
     prev_mood = fs.mood
+    prev_conv_for_flags = conv_sm.state  # Separate tracker for flag application
 
     running = True
     while running:
@@ -149,7 +149,10 @@ def main() -> None:
         _dispatch_with_sequencer(bus, fs, conv_sm, sequencer)
 
         # ── 4. Apply conversation state effects ──────────────────
-        _apply_conv_effects(conv_sm, fs, border)
+        conv_changed = conv_sm.state != prev_conv_for_flags
+        _apply_conv_effects(conv_sm, fs, border, conv_changed, keyboard.manual_gaze)
+        if conv_changed:
+            prev_conv_for_flags = conv_sm.state
 
         # ── 5. Update conversation state machine ─────────────────
         conv_sm.update(dt)
@@ -254,30 +257,35 @@ def _dispatch_with_sequencer(
 
 
 def _apply_conv_effects(
-    conv_sm: ConvStateMachine, fs: FaceState, border: BorderRenderer
+    conv_sm: ConvStateMachine,
+    fs: FaceState,
+    border: BorderRenderer,
+    conv_changed: bool,
+    manual_gaze: bool,
 ) -> None:
-    """Apply per-state gaze overrides, mood hints, and flag changes."""
+    """Apply per-state gaze overrides, mood hints, and flag changes.
+
+    Flags are only applied on conversation state transitions (not every frame),
+    matching real supervisor behavior where SET_FLAGS is sent once per transition.
+    Gaze overrides yield to manual arrow-key input for sim debugging.
+    """
     state = conv_sm.state
 
-    # Gaze override
-    gaze = CONV_GAZE.get(state)
-    if gaze is not None:
-        face_set_gaze(fs, gaze[0] * 12.0, gaze[1] * 12.0)
+    # Gaze override — skip when user is controlling gaze with arrow keys
+    if not manual_gaze:
+        gaze = CONV_GAZE.get(state)
+        if gaze is not None:
+            face_set_gaze(fs, gaze[0] * 12.0, gaze[1] * 12.0)
 
-    # Task 6: ERROR micro-aversion (spec §4.2.2) — brief leftward gaze, then return
-    if state == ConvState.ERROR and conv_sm.timer < ERROR_AVERSION_DURATION:
-        face_set_gaze(fs, ERROR_AVERSION_GAZE_X * MAX_GAZE, 0.0)
+        # Task 6: ERROR micro-aversion (spec §4.2.2) — brief leftward gaze
+        if state == ConvState.ERROR and conv_sm.timer < ERROR_AVERSION_DURATION:
+            face_set_gaze(fs, ERROR_AVERSION_GAZE_X * MAX_GAZE, 0.0)
 
-    # Mood hints (only apply if sequencer is idle and mood matches hint source)
-    hint = CONV_MOOD_HINTS.get(state)
-    if hint is not None:
-        # Hints are soft — only apply at low intensity, don't override user moods
-        pass  # Handled by conv state transitions via command bus
-
-    # Flag overrides
-    flags = CONV_FLAGS.get(state, -1)
-    if flags != -1:
-        face_set_flags(fs, flags)
+    # Flag overrides — only on state transitions (matches supervisor protocol)
+    if conv_changed:
+        flags = CONV_FLAGS.get(state, -1)
+        if flags != -1:
+            face_set_flags(fs, flags)
 
 
 if __name__ == "__main__":

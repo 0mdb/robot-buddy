@@ -96,6 +96,7 @@ from tools.face_sim_v3.state.constants import (
     TALKING_PHASE_SPEED,
     TALKING_WIDTH_MOD,
     CONFUSED_MOOD_MOUTH_OFFSET_X,
+    CURIOUS_BROW_OFFSET,
     LOVE_CONVERGENCE_X,
     LOVE_IDLE_AMPLITUDE,
     LOVE_IDLE_HOLD_MIN,
@@ -504,6 +505,11 @@ def face_state_update(fs: FaceState) -> None:
     closure_r = 1.0 if not fs.eye_r.is_open else 0.0
     final_top_l = max(t_lid_top, closure_l)
     final_top_r = max(t_lid_top, closure_r)
+
+    # Curious: asymmetric brow — right eye slightly hooded, left appears "raised"
+    if fs.mood == Mood.CURIOUS:
+        ci = max(0.0, min(1.0, fs.expression_intensity))
+        final_top_r = max(final_top_r, CURIOUS_BROW_OFFSET * ci)
 
     speed_l = (
         TWEEN_EYELID_TOP_CLOSING
