@@ -30,6 +30,33 @@ Our audience is children ages 4–6. Research constraints:
 - **Parabolic mouth** — curve, width, openness, wave. No teeth, no tongue.
 - **Single face color** — uniform color tinting the eye outline and mouth. The primary mood channel after shape.
 - **Spring-driven gaze** — pupils move with smooth inertia, not instant snaps
+- **ILI9341 TN panel** — severe gamma shift off-axis (spec §10.1). See §1.3.1.
+
+#### 1.3.1 Hardware Authoring — TN Panel Luma Floor
+
+TN panels crush dark colors to black at off-axis viewing angles. A child looking down at the robot from above (desk) or up from below (floor) hits 30–45° off-axis — exactly where TN gamma shift is worst.
+
+**Minimum luma floor: L ≥ 85** (BT.709 relative luminance: `L = 0.2126*R + 0.7152*G + 0.0722*B`).
+
+All mood colors must meet this floor at their authored RGB values. Intensity blending only moves colors toward NEUTRAL `(50, 150, 255)` L=136, so blended values are always brighter than authored values.
+
+| Mood | RGB | Luma | Status |
+|---|---|---|---|
+| NEUTRAL | (50, 150, 255) | 136 | OK |
+| HAPPY | (0, 255, 200) | 197 | OK |
+| EXCITED | (100, 255, 100) | 211 | OK |
+| CURIOUS | (255, 180, 50) | 187 | OK |
+| SAD | (70, 110, 210) | 109 | OK (was 82 at (50,80,200), brightened) |
+| SCARED | (180, 50, 255) | 92 | OK |
+| ANGRY | (255, 0, 0) | 54 | Below floor at authored value, but guardrail caps intensity at 0.5 → effective ≈(153, 75, 128) L≈95. Watch item. |
+| SURPRISED | (255, 255, 200) | 251 | OK |
+| SLEEPY | (70, 90, 140) | 89 | OK (was 59 at (40,60,100), brightened) |
+| LOVE | (255, 100, 150) | 137 | OK |
+| SILLY | (200, 255, 50) | 229 | OK |
+| THINKING | (80, 135, 220) | 130 | OK |
+| CONFUSED | (200, 160, 80) | 163 | OK |
+
+**Authoring rule**: When adding or modifying mood colors, verify luma ≥ 85 before committing. Off-axis visual validation for any color with luma < 100 is required during hardware testing (T3/T4).
 
 ### 1.4 Multimodal Redundancy
 
@@ -44,6 +71,26 @@ Each mood is communicated through multiple channels simultaneously:
 | **Gaze** | Pupil position (idle wander, lock, aversion) | THINKING = avert up-right |
 
 No single channel carries the full message. A child who can't interpret eyelid slope can still read the mood from mouth shape + color. This is the redundancy principle from Löffler et al. (2018).
+
+### 1.5 Coordinate Space
+
+All gaze, position, and layout values use **screen coordinates** (viewer facing display):
+
+| Axis / Term | Convention |
+|---|---|
+| **+X** | Screen-right (viewer's right, robot's left) |
+| **+Y** | Screen-down (standard display coordinates) |
+| **Origin** | Top-left corner of 320×240 display |
+| **"Left eye"** | Screen-left eye (viewer's left). `LEFT_EYE_CX = 90` |
+| **"Right eye"** | Screen-right eye (viewer's right). `RIGHT_EYE_CX = 230` |
+| **Gaze units** | Abstract units scaled by `GAZE_PUPIL_SHIFT` (8.0) and `GAZE_EYE_SHIFT` (3.0) into pixels |
+
+Examples:
+- `THINKING_GAZE_X = +6.0` → pupils shift right on screen (eyes look up-and-right)
+- `THINKING_GAZE_Y = -4.0` → pupils shift up on screen
+- `ERROR_AVERSION_GAZE_X = -0.3` → pupils shift left on screen (brief look-away)
+
+Naming follows **viewer perspective** throughout.
 
 ---
 
@@ -144,7 +191,7 @@ No single channel carries the full message. A child who can't interpret eyelid s
 | Eyes | Slightly smaller, drooping. Deflated look. |
 | Eyelids | Strong outer droop (lid_slope -0.6). Upper lid partially closed (lid_top 0.3). Eyes look heavy. |
 | Mouth | Noticeable downturn (curve -0.5). Closed. A clear frown. |
-| Color | Deep blue (50, 80, 200). Subdued, muted. |
+| Color | Deep blue (70, 110, 210). Subdued, muted. (Brightened from (50,80,200) for TN panel luma floor §1.3.1.) |
 | Gaze | May drift slightly downward. |
 
 **Eye scale**: **(0.95, 0.85)** — both smaller, especially shorter. Deflated, droopy **[Provisional]**
@@ -224,7 +271,7 @@ No single channel carries the full message. A child who can't interpret eyelid s
 | Eyes | Smaller, especially shorter. Narrowed to slits by heavy lids. |
 | Eyelids | Heavy upper lid droop (lid_top 0.6). Slight outer sag (lid_slope -0.2). |
 | Mouth | Neutral curve (0.0). Closed. (Yawning is a gesture, not the sustained mood.) |
-| Color | Dark navy (40, 60, 100). Dim, nighttime feeling. |
+| Color | Dark navy (70, 90, 140). Dim, nighttime feeling. (Brightened from (40,60,100) for TN panel luma floor §1.3.1.) |
 | Gaze | May drift slowly downward. Sluggish wander. |
 
 **Eye scale**: **(0.95, 0.7)** — noticeably shorter, creating heavy-lidded narrow slits **[Provisional]**
@@ -322,12 +369,12 @@ Gestures are phasic overlays — they temporarily modify the face and expire. Th
 
 ### NOD (350 ms) — Semantic
 **Intent**: Agreement, understanding, "yes."
-**Motion**: **Vertical gaze oscillation** — pupils dip down then return up, 1–2 cycles. Slight upper lid droop follows the gaze. Reads as a head nod. **[New — replaces V2's mouth-chatter reuse]**
+**Motion**: **Vertical gaze oscillation** — pupils dip down then return up, 1–2 cycles. Slight upper lid droop follows the gaze. Reads as a head nod. Gaze bypasses spring (direct kinematics) for crisp amplitude at 12 rad/s. **[New — replaces V2's mouth-chatter reuse]**
 **Distinguish from**: BLINK (both eyes close vs gaze moves). LAUGH (mouth-driven vs gaze-driven).
 
 ### HEADSHAKE (350 ms) — Semantic
 **Intent**: Disagreement, negation, "no."
-**Motion**: **Horizontal gaze oscillation** — pupils sweep left-right-left, 2–3 half-cycles. Slight frown accompanies. Reads as a head shake. **[New — replaces V2's mouth-offset reuse]**
+**Motion**: **Horizontal gaze oscillation** — pupils sweep left-right-left, 2–3 half-cycles. Slight frown accompanies. Reads as a head shake. Gaze bypasses spring (direct kinematics) for crisp amplitude at 14 rad/s. **[New — replaces V2's mouth-offset reuse]**
 **Distinguish from**: NOD (vertical vs horizontal). CONFUSED (mouth offset vs gaze motion).
 
 ### LAUGH (500 ms) — Semantic
@@ -394,9 +441,11 @@ Per spec §4.2.2. One-line visual descriptions:
 | IDLE → ATTENTION | Border sweeps inward + gaze snaps to center (400ms) |
 | ATTENTION → LISTENING | Border blends teal + alpha settles to breathing (200ms) |
 | LISTENING → THINKING | Gaze averts up-right (spring ~300ms) + border shifts to blue-violet + dots start |
-| **THINKING → SPEAKING** | **Anticipation blink (100ms) + gaze returns to center (spring ~300ms) + border shifts** |
+| **THINKING → SPEAKING** | **Anticipation blink (100ms) + gaze returns to center (spring ~300ms) + border shifts. TTS onset at blink apex (~50ms) for speech-preparation illusion.** |
 | SPEAKING → DONE | Border fades (500ms) + mood ramps to neutral (500ms) + gaze releases |
 | **Any → ERROR** | **Border flashes orange + gaze micro-aversion left (200ms) then returns to center** |
+
+**Supervisor note — TTS coordination**: The THINKING→SPEAKING anticipation blink is the face's "I'm about to speak" tell. For maximum illusion quality, the supervisor should dispatch the TTS audio start timed to the blink apex (~50ms into the 100ms blink), so the mouth begins moving as the eyes reopen. This is a **supervisor-side timing requirement** — the face sim and MCU firmware treat the blink and speech onset as independent events. If TTS latency exceeds ~100ms, fire the blink at transition time anyway (don't delay it for TTS) — a brief eyes-closed-then-speaking beat still reads better than simultaneous snap.
 
 ---
 
@@ -425,6 +474,17 @@ MOOD_EYE_SCALE: dict[Mood, tuple[float, float]] = {
 }
 ```
 
+**Guardrail intensity caps**: Four moods have intensity caps (spec §7) that limit the effective runtime eye scale. The `MOOD_EYE_SCALE` values above are raw design targets at full intensity (1.0). Effective maximum = `1.0 + (target - 1.0) × cap`:
+
+| Mood | Authored (W, H) | Intensity Cap | Effective Max (W, H) |
+|---|---|---|---|
+| SURPRISED | (1.2, 1.2) | 0.8 | (1.16, 1.16) |
+| ANGRY | (1.1, 0.75) | 0.5 | (1.05, 0.875) |
+| SCARED | (0.9, 1.15) | 0.6 | (0.94, 1.09) |
+| SAD | (0.95, 0.85) | 0.7 | (0.965, 0.895) |
+
+The same intensity blending applies to all `MOOD_TARGETS` (mouth, eyelids) and `MOOD_COLORS`. Whether to over-author values to compensate for capping (e.g., SURPRISED at (1.25, 1.25) to achieve (1.2, 1.2) at cap 0.8) is a design decision deferred to visual review.
+
 ### 5.2 Mood Targets (mouth + eyelids)
 
 Keep existing spec §4.1.2 values — they are MCU-verified and consistent with the visual descriptions above. No changes needed to `MOOD_TARGETS`.
@@ -437,6 +497,8 @@ NOD_FREQ = 12.0              # rad/s — ~2 nods in 350ms
 NOD_LID_TOP_OFFSET = 0.15   # Slight upper lid follows gaze
 ```
 
+**Implementation note**: Gaze values are written **post-spring** (direct to `gaze_y`, not `gaze_y_target`) to bypass the damped spring (k=0.25, d=0.65) which would attenuate the 12 rad/s oscillation to ~60-70% amplitude. The lid droop uses pre-spring tweens as normal. Same pattern as flicker effects.
+
 ### 5.4 HEADSHAKE Gesture Constants
 
 ```python
@@ -444,6 +506,8 @@ HEADSHAKE_GAZE_X_AMP = 5.0   # Horizontal gaze displacement
 HEADSHAKE_FREQ = 14.0        # rad/s — ~2.5 sweeps in 350ms
 HEADSHAKE_MOUTH_CURVE = -0.2  # Slight frown during headshake
 ```
+
+**Implementation note**: Gaze values are written **post-spring** (direct to `gaze_x`, not `gaze_x_target`) to bypass spring attenuation. The mouth frown uses pre-spring tweens as normal.
 
 ### 5.5 ERROR Micro-Aversion Constants
 
@@ -460,5 +524,7 @@ ERROR_AVERSION_GAZE_X = -0.3   # Look-away direction (normalized, multiplied by 
 | All other eye_scale | (1.0, 1.0) | Per §5.1 table | Sim-authored; new entries pending firmware port |
 | NOD/HEADSHAKE gestures | Reuse laugh/confused | Dedicated gaze anim | Sim-authored; firmware uses MCU's existing anims until port |
 | ERROR micro-aversion | Not implemented | 200ms gaze offset | Sim-authored; supervisor-side for firmware |
+| SAD color | (50, 80, 200) | (70, 110, 210) | Brightened for TN panel luma floor (§1.3.1); pending firmware port |
+| SLEEPY color | (40, 60, 100) | (70, 90, 140) | Brightened for TN panel luma floor (§1.3.1); pending firmware port |
 
-All sim-authored values are ahead of MCU as design iterations. The parity check should skip these until firmware is updated.
+All sim-authored values are ahead of MCU as design iterations. The parity check will flag these divergences until firmware is updated.

@@ -184,11 +184,11 @@ MOOD_COLORS: dict[Mood, tuple[int, int, int]] = {
     Mood.HAPPY: (0, 255, 200),
     Mood.EXCITED: (100, 255, 100),
     Mood.CURIOUS: (255, 180, 50),
-    Mood.SAD: (50, 80, 200),
+    Mood.SAD: (70, 110, 210),  # Brightened for TN luma floor (was 50,80,200)
     Mood.SCARED: (180, 50, 255),
     Mood.ANGRY: (255, 0, 0),
     Mood.SURPRISED: (255, 255, 200),
-    Mood.SLEEPY: (40, 60, 100),
+    Mood.SLEEPY: (70, 90, 140),  # Brightened for TN luma floor (was 40,60,100)
     Mood.LOVE: (255, 100, 150),
     Mood.SILLY: (200, 255, 50),
     Mood.THINKING: (80, 135, 220),

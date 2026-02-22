@@ -420,23 +420,16 @@ def face_state_update(fs: FaceState) -> None:
         fs.mouth_open_target = 0.0
 
     if fs.anim.nod:
+        # Lid droop stays pre-spring (eyelid tweens, not spring-driven)
         elapsed_g = now - fs.anim.nod_timer
-        # Sinusoidal vertical gaze oscillation
-        gaze_y = NOD_GAZE_Y_AMP * math.sin(elapsed_g * NOD_FREQ)
-        fs.eye_l.gaze_y_target = gaze_y
-        fs.eye_r.gaze_y_target = gaze_y
-        # Slight upper lid follows downward gaze
         lid_offset = NOD_LID_TOP_OFFSET * max(0.0, math.sin(elapsed_g * NOD_FREQ))
         t_lid_top = max(t_lid_top, lid_offset)
+        # Gaze override is post-spring (see below) to bypass spring attenuation
 
     if fs.anim.headshake:
-        elapsed_g = now - fs.anim.headshake_timer
-        # Sinusoidal horizontal gaze oscillation
-        gaze_x = HEADSHAKE_GAZE_X_AMP * math.sin(elapsed_g * HEADSHAKE_FREQ)
-        fs.eye_l.gaze_x_target = gaze_x
-        fs.eye_r.gaze_x_target = gaze_x
-        # Slight frown during headshake
+        # Mouth frown stays pre-spring (mouth tweens, not spring-driven)
         fs.mouth_curve_target = HEADSHAKE_MOUTH_CURVE
+        # Gaze override is post-spring (see below) to bypass spring attenuation
 
     # ── 3. GESTURE TIMEOUTS ──────────────────────────────────────
     if fs.anim.heart and now > fs.anim.heart_timer + fs.anim.heart_duration:
@@ -606,6 +599,19 @@ def face_state_update(fs: FaceState) -> None:
         fs.eye_l.gaze_y += dy
         fs.eye_r.gaze_y += dy
         fs.anim.v_flicker_alt = not fs.anim.v_flicker_alt
+
+    # NOD/HEADSHAKE post-spring gaze overrides (bypass spring for crisp kinematics)
+    if fs.anim.nod:
+        elapsed_g = now - fs.anim.nod_timer
+        gaze_y = NOD_GAZE_Y_AMP * math.sin(elapsed_g * NOD_FREQ)
+        fs.eye_l.gaze_y = gaze_y
+        fs.eye_r.gaze_y = gaze_y
+
+    if fs.anim.headshake:
+        elapsed_g = now - fs.anim.headshake_timer
+        gaze_x = HEADSHAKE_GAZE_X_AMP * math.sin(elapsed_g * HEADSHAKE_FREQ)
+        fs.eye_l.gaze_x = gaze_x
+        fs.eye_r.gaze_x = gaze_x
 
     _update_breathing(fs)
     _update_sparkle(fs)
