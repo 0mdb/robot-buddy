@@ -146,6 +146,11 @@ class TickLoop:
         self._mood_seq = MoodSequencer()
         self._guardrails = Guardrails()
 
+        # Transition choreographer (Phase 4)
+        from supervisor_v2.core.conv_choreographer import ConvTransitionChoreographer
+
+        self._conv_choreo = ConvTransitionChoreographer()
+
         # Emotion queuing (buffered during LISTENING/THINKING, applied on SPEAKING)
         self._queued_emotion: str = ""
         self._queued_intensity: float = 0.0
@@ -500,59 +505,92 @@ class TickLoop:
             if flags != -1:
                 self._face.send_flags(flags)
             self._face.send_conv_state(int(self._conv.state))
+            self._conv_choreo.on_transition(self._conv.prev_state, self._conv.state)
 
-        # Gaze override from conversation state
-        gaze = self._conv.get_gaze_for_send()
+        # Advance transition choreographer and dispatch actions
+        choreo_actions = self._conv_choreo.update(self.robot.tick_dt_ms)
+        choreo_mood_nudge: tuple[int, float] | None = None
+        for action in choreo_actions:
+            if action.kind == "gesture":
+                gid = action.params.get("gesture_id")
+                dur = action.params.get("duration_ms", 350)
+                if isinstance(gid, int):
+                    self._face.send_gesture(gid, int(dur))
+            elif action.kind == "mood_nudge":
+                choreo_mood_nudge = (
+                    int(action.params["mood_id"]),
+                    float(action.params["intensity"]),
+                )
 
-        # Backchannel: NOD during LISTENING
-        if self._conv.consume_nod():
+        # Gaze: choreographer ramp > conv_state override > default
+        choreo_gaze = self._conv_choreo.get_gaze_override()
+        if choreo_gaze is not None:
+            scale = 127.0 / 32.0
+            gaze: tuple[float, float] | None = (
+                choreo_gaze[0] * scale,
+                choreo_gaze[1] * scale,
+            )
+        else:
+            gaze = self._conv.get_gaze_for_send()
+
+        # Backchannel: NOD during LISTENING (skip if choreographer active)
+        if self._conv.consume_nod() and not self._conv_choreo.active:
             nod_id = GESTURE_TO_FACE_ID.get("nod")
             if nod_id is not None:
                 self._face.send_gesture(nod_id, 350)
 
         # ── Mood pipeline: determine → guardrail → sequence → send ────
 
-        # Step 1: Determine target mood (AI emotion > mood hint > NEUTRAL)
-        target_mood: int = 0  # FaceMood.NEUTRAL
-        target_intensity: float = 1.0
-        if self._conversation_emotion:
-            norm = normalize_emotion_name(self._conversation_emotion)
-            if norm:
-                resolved = EMOTION_TO_FACE_MOOD.get(norm)
-                if resolved is not None:
-                    target_mood = resolved
-                    target_intensity = self._conversation_intensity
-        elif self._conv.get_mood_hint() is not None:
-            hint = self._conv.get_mood_hint()
-            if hint is not None:
-                target_mood, target_intensity = hint
-
-        # Step 2: Guardrails check
-        now_s = now_ms / 1000.0
-        target_mood, target_intensity = self._guardrails.check(
-            target_mood,
-            target_intensity,
-            conversation_active=self._conv.session_active,
-            now=now_s,
-        )
-
-        # Step 3: Feed to mood sequencer
-        self._mood_seq.request_mood(target_mood, target_intensity)
-
-        # Step 4: Advance sequencer
         dt_s = self.robot.tick_dt_ms / 1000.0
+
+        if not self._conv_choreo.suppress_mood_pipeline:
+            # Step 1: Determine target mood (AI emotion > mood hint > NEUTRAL)
+            target_mood: int = 0  # FaceMood.NEUTRAL
+            target_intensity: float = 1.0
+            if self._conversation_emotion:
+                norm = normalize_emotion_name(self._conversation_emotion)
+                if norm:
+                    resolved = EMOTION_TO_FACE_MOOD.get(norm)
+                    if resolved is not None:
+                        target_mood = resolved
+                        target_intensity = self._conversation_intensity
+            elif self._conv.get_mood_hint() is not None:
+                hint = self._conv.get_mood_hint()
+                if hint is not None:
+                    target_mood, target_intensity = hint
+
+            # Step 2: Guardrails check
+            now_s = now_ms / 1000.0
+            target_mood, target_intensity = self._guardrails.check(
+                target_mood,
+                target_intensity,
+                conversation_active=self._conv.session_active,
+                now=now_s,
+            )
+
+            # Step 3: Feed to mood sequencer
+            self._mood_seq.request_mood(target_mood, target_intensity)
+        else:
+            # Choreographer suppressing mood pipeline — process mood nudge only
+            if choreo_mood_nudge is not None:
+                self._mood_seq.request_mood(*choreo_mood_nudge)
+
+        # Step 4: Advance sequencer (always, even when suppressed)
         self._mood_seq.update(dt_s)
 
         # Step 5: Trigger BLINK gesture if sequencer requests it
+        # (suppress if choreographer already fired a blink this transition)
         if self._mood_seq.consume_blink():
-            blink_id = GESTURE_TO_FACE_ID.get("blink")
-            if blink_id is not None:
-                self._face.send_gesture(blink_id, 180)
+            if not self._conv_choreo.has_blink:
+                blink_id = GESTURE_TO_FACE_ID.get("blink")
+                if blink_id is not None:
+                    self._face.send_gesture(blink_id, 180)
 
         # Step 6: Populate telemetry
         self.robot.face_seq_phase = int(self._mood_seq.phase)
         self.robot.face_seq_mood_id = self._mood_seq.mood_id
         self.robot.face_seq_intensity = self._mood_seq.intensity
+        self.robot.face_choreo_active = self._conv_choreo.active
 
         # Step 7: Send SET_STATE when mood/intensity is changing
         if self._mood_seq.transitioning or self._mood_seq.consume_changed():
@@ -565,7 +603,7 @@ class TickLoop:
                 gaze_y=gy,
             )
         elif gaze is not None:
-            # No mood change but gaze override active
+            # No mood change but gaze override active (or choreographer ramping)
             self._face.send_state(
                 self._mood_seq.mood_id,
                 self._mood_seq.intensity,

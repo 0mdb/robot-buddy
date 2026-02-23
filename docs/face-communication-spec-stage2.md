@@ -401,14 +401,21 @@ Triggered when the personality worker's snapshot contains a different mood than 
 
 #### 5.1.2 Conversation Phase Transitions
 
-| Transition | Choreography | Duration |
-|-----------|-------------|----------|
-| IDLE → ATTENTION | Border inward sweep + gaze snap to center | 400 ms |
-| ATTENTION → LISTENING | Border color blend (cyan → teal) + alpha settles to breathing | 200 ms (blended at BLEND_RATE=8.0/s) |
-| LISTENING → THINKING | Gaze aversion (spring to up-right, ~300 ms settle) + border color shift + orbit dots start | 300 ms |
-| THINKING → SPEAKING | Anticipation blink (100 ms) + gaze return to center (spring, ~300 ms) + border color shift | 300 ms |
-| SPEAKING → DONE | Border fade out (500 ms) + mood intensity ramp to 0.0 (500 ms) + gaze release | 500 ms |
-| Any → ERROR | Border flash (immediate) + gaze micro-aversion (200 ms) | 800 ms total |
+Implemented in `ConvTransitionChoreographer` (sim: `tools/face_sim_v3/state/conv_choreographer.py`, supervisor: `supervisor_v2/core/conv_choreographer.py`). The choreographer fires timed actions on state transitions and does not mutate face state directly — tick_loop reads outputs.
+
+| Transition | Choreography | Duration | Implementation |
+|-----------|-------------|----------|----------------|
+| IDLE → ATTENTION | Border inward sweep + gaze snap to center | 400 ms | MCU border sweep + conv_state gaze override |
+| ATTENTION → LISTENING | Border color blend (cyan → teal) + alpha settles to breathing | 200 ms (blended at BLEND_RATE=8.0/s) | MCU border BLEND_RATE |
+| LISTENING → THINKING | Gaze ramp (ease-out, center → up-right) + border color shift + orbit dots start | 300 ms | Choreographer `_GazeRamp` (TRANS_LT_GAZE_RAMP_MS) + MCU spring |
+| THINKING → SPEAKING | Anticipation blink + gaze ramp (ease-out, up-right → center, 50 ms delay) + border color shift | 350 ms | Choreographer blink gesture + `_GazeRamp` (TRANS_TS_GAZE_RAMP_MS). Double-blink prevention: choreographer blink suppresses MoodSequencer anticipation blink |
+| SPEAKING → LISTENING | Re-engagement NOD (100 ms delay) | 450 ms | Choreographer nod gesture (TRANS_SL_NOD_DELAY_MS). Backchannel NOD suppressed while choreographer active |
+| SPEAKING → DONE | Mood nudge to NEUTRAL @ 0.0 + mood pipeline suppressed (500 ms) + border fade | 500 ms | Choreographer mood_nudge + suppress_mood_pipeline (TRANS_SD_SUPPRESS_MS). MoodSequencer handles 470 ms ramp |
+| Any → ERROR | Border flash (immediate) + gaze micro-aversion (200 ms) | 800 ms total | MCU border flash + conv_state micro-aversion override |
+
+**Gaze priority chain** (tick_loop): choreographer ramp > conv_state static override > default.
+
+**Interrupt behavior**: A new state transition cancels any active choreography sequence. The `on_transition()` method resets all state and loads the new transition's actions.
 
 ### 5.2 Minor Transitions (Tween)
 

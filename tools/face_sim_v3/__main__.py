@@ -34,10 +34,10 @@ from tools.face_sim_v3.state.constants import (
     SCREEN_H,
     SCREEN_W,
 )
+from tools.face_sim_v3.state.conv_choreographer import ConvTransitionChoreographer
 from tools.face_sim_v3.state.conv_state import ConvStateMachine
 from tools.face_sim_v3.state.face_state import (
     FaceState,
-    face_blink,
     face_set_flags,
     face_set_gaze,
     face_state_update,
@@ -108,6 +108,7 @@ def main() -> None:
     conv_sm = ConvStateMachine()
     sequencer = MoodSequencer()
     guardrails = Guardrails()
+    choreo = ConvTransitionChoreographer()
 
     # Input
     bus = CommandBus()
@@ -151,7 +152,9 @@ def main() -> None:
 
         # ── 4. Apply conversation state effects ──────────────────
         conv_changed = conv_sm.state != prev_conv_for_flags
-        _apply_conv_effects(conv_sm, fs, border, conv_changed, keyboard.manual_gaze)
+        _apply_conv_effects(
+            conv_sm, fs, border, conv_changed, keyboard.manual_gaze, choreo
+        )
         if conv_changed:
             prev_conv_for_flags = conv_sm.state
 
@@ -181,13 +184,29 @@ def main() -> None:
         border.update(conv_sm.state, conv_sm.timer, dt)
         border.update_state_ref(conv_sm.state, conv_sm.timer)
 
-        # ── 10. Log timeline events + transition choreography ────
+        # ── 10. Transition choreography + timeline logging ──────
         if conv_sm.state != prev_conv:
-            # Task 5: THINKING→SPEAKING anticipation blink (spec §5.1.2)
-            if prev_conv == ConvState.THINKING and conv_sm.state == ConvState.SPEAKING:
-                face_blink(fs)
+            choreo.on_transition(prev_conv, conv_sm.state)
             timeline.log_conv(conv_sm.state)
             prev_conv = conv_sm.state
+
+        # Advance choreographer and dispatch actions
+        choreo_actions = choreo.update(dt * 1000.0)
+        for action in choreo_actions:
+            if action.kind == "gesture":
+                gid = action.params.get("gesture_id")
+                if gid is not None:
+                    from tools.face_sim_v3.state.constants import GestureId as _GId
+
+                    face_trigger_gesture(fs, _GId(gid))
+            elif action.kind == "mood_nudge":
+                from tools.face_sim_v3.state.constants import Mood as _Mood
+
+                sequencer.request_mood(
+                    _Mood(action.params["mood_id"]),
+                    action.params["intensity"],
+                )
+
         if fs.mood != prev_mood:
             timeline.log_mood(fs.mood)
             prev_mood = fs.mood
@@ -263,20 +282,26 @@ def _apply_conv_effects(
     border: BorderRenderer,
     conv_changed: bool,
     manual_gaze: bool,
+    choreo: ConvTransitionChoreographer | None = None,
 ) -> None:
     """Apply per-state gaze overrides, mood hints, and flag changes.
 
     Flags are only applied on conversation state transitions (not every frame),
     matching real supervisor behavior where SET_FLAGS is sent once per transition.
-    Gaze overrides yield to manual arrow-key input for sim debugging.
+    Gaze priority: choreographer ramp > conv_state override > manual/idle.
     """
     state = conv_sm.state
 
     # Gaze override — skip when user is controlling gaze with arrow keys
     if not manual_gaze:
-        gaze = CONV_GAZE.get(state)
-        if gaze is not None:
-            face_set_gaze(fs, gaze[0] * 12.0, gaze[1] * 12.0)
+        # Choreographer gaze ramp takes priority over static conv_state override
+        choreo_gaze = choreo.get_gaze_override() if choreo else None
+        if choreo_gaze is not None:
+            face_set_gaze(fs, choreo_gaze[0] * MAX_GAZE, choreo_gaze[1] * MAX_GAZE)
+        else:
+            gaze = CONV_GAZE.get(state)
+            if gaze is not None:
+                face_set_gaze(fs, gaze[0] * 12.0, gaze[1] * 12.0)
 
         # Task 6: ERROR micro-aversion (spec §4.2.2) — brief leftward gaze
         if state == ConvState.ERROR and conv_sm.timer < ERROR_AVERSION_DURATION:

@@ -576,6 +576,26 @@ NEGATIVE_MOODS: frozenset[Mood] = frozenset({Mood.SAD, Mood.SCARED, Mood.ANGRY})
 PE_STALE_THRESHOLD_MS = 3000
 
 # ══════════════════════════════════════════════════════════════════════
+# TRANSITION CHOREOGRAPHY (spec section 5.1.2)
+# ══════════════════════════════════════════════════════════════════════
+
+# LISTENING → THINKING: smooth gaze aversion
+TRANS_LT_GAZE_RAMP_MS = 300.0  # Ease-out ramp to aversion target
+
+# THINKING → SPEAKING: anticipation blink + gaze return
+TRANS_TS_BLINK_DELAY_MS = 0.0  # Blink fires immediately
+TRANS_TS_BLINK_DURATION_MS = 180.0  # Blink gesture duration
+TRANS_TS_GAZE_RAMP_DELAY_MS = 50.0  # Start gaze return after blink apex
+TRANS_TS_GAZE_RAMP_MS = 300.0  # Ease-out ramp back to center
+
+# SPEAKING → LISTENING (multi-turn): re-engagement nod
+TRANS_SL_NOD_DELAY_MS = 100.0  # Brief delay then nod
+TRANS_SL_NOD_DURATION_MS = 350.0  # Nod gesture duration
+
+# SPEAKING → DONE: mood settle
+TRANS_SD_SUPPRESS_MS = 500.0  # Suppress mood pipeline during settle
+
+# ══════════════════════════════════════════════════════════════════════
 # SYSTEM MODES
 # ══════════════════════════════════════════════════════════════════════
 
