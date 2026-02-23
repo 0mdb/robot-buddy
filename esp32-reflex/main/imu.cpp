@@ -32,6 +32,8 @@ static constexpr uint8_t REG_ACC_RANGE = 0x41;
 static constexpr uint8_t REG_GYR_CONF = 0x42;
 static constexpr uint8_t REG_GYR_RANGE = 0x43;
 
+static constexpr uint8_t REG_INIT_ADDR_0 = 0x5B; // config write address low byte (in words)
+static constexpr uint8_t REG_INIT_ADDR_1 = 0x5C; // config write address high byte
 static constexpr uint8_t REG_INIT_CTRL = 0x59;
 static constexpr uint8_t REG_INIT_DATA = 0x5E;
 
@@ -219,23 +221,30 @@ static esp_err_t reg_read(uint8_t reg, uint8_t* data, size_t len)
     return i2c_master_transmit_receive(s_dev, &reg, 1, data, len, 50);
 }
 
-// Burst write for config file upload. The BMI270 auto-increments the
-// write address within INIT_DATA, so we can chunk the upload.
-static esp_err_t burst_write(uint8_t reg, const uint8_t* data, size_t len)
+// Burst write for BMI270 config file upload.
+// The BMI270 auto-increments within a single I2C transaction, but for
+// chunked writes we must set INIT_ADDR_0/1 before each chunk to indicate
+// the write offset (in 16-bit words, i.e., byte_offset / 2).
+static esp_err_t config_file_write(const uint8_t* data, size_t len)
 {
-    // I2C frame: [reg] [data...].  Max ~256 bytes per transaction
-    // to avoid hogging the bus.  The ESP-IDF I2C driver handles framing.
     static constexpr size_t CHUNK = 128;
 
     for (size_t off = 0; off < len; off += CHUNK) {
         size_t n = (len - off > CHUNK) ? CHUNK : (len - off);
 
-        // Build frame: register byte + payload
+        // Set write address (in words = byte offset / 2)
+        uint16_t  addr_words = static_cast<uint16_t>(off / 2);
+        esp_err_t err = reg_write(REG_INIT_ADDR_0, addr_words & 0x0F);
+        if (err != ESP_OK) return err;
+        err = reg_write(REG_INIT_ADDR_1, (addr_words >> 4) & 0xFF);
+        if (err != ESP_OK) return err;
+
+        // Burst write chunk to INIT_DATA
         uint8_t buf[1 + CHUNK];
-        buf[0] = reg;
+        buf[0] = REG_INIT_DATA;
         memcpy(&buf[1], &data[off], n);
 
-        esp_err_t err = i2c_master_transmit(s_dev, buf, 1 + n, 100);
+        err = i2c_master_transmit(s_dev, buf, 1 + n, 100);
         if (err != ESP_OK) return err;
     }
     return ESP_OK;
@@ -280,46 +289,69 @@ static bool bmi270_configure()
     uint8_t chip_id = 0;
     if (reg_read(REG_CHIP_ID, &chip_id, 1) != ESP_OK || chip_id != BMI270_CHIP_ID_VAL) {
         ESP_LOGE(TAG, "CHIP_ID failed: got 0x%02X, expected 0x%02X", chip_id, BMI270_CHIP_ID_VAL);
+
         return false;
     }
     ESP_LOGI(TAG, "BMI270 detected (CHIP_ID=0x%02X)", chip_id);
 
     // Step 2: Soft reset
     esp_err_t err = reg_write(REG_CMD, 0xB6);
-    if (err != ESP_OK) return false;
-    vTaskDelay(pdMS_TO_TICKS(2)); // BMI270 needs ~2 ms after soft reset
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "step 2 FAILED: soft reset write: %s", esp_err_to_name(err));
+
+        return false;
+    }
+    vTaskDelay(pdMS_TO_TICKS(50)); // BMI270 needs time after soft reset (2ms typical, using 50ms for margin)
 
     // Re-verify chip ID after reset
-    if (reg_read(REG_CHIP_ID, &chip_id, 1) != ESP_OK || chip_id != BMI270_CHIP_ID_VAL) {
-        ESP_LOGE(TAG, "CHIP_ID after reset: 0x%02X", chip_id);
+    err = reg_read(REG_CHIP_ID, &chip_id, 1);
+    if (err != ESP_OK || chip_id != BMI270_CHIP_ID_VAL) {
+        ESP_LOGE(TAG, "step 2 FAILED: CHIP_ID after reset: 0x%02X (read %s)", chip_id, esp_err_to_name(err));
+
         return false;
     }
 
     // Step 3: Disable advanced power save for config load
     err = reg_write(REG_PWR_CONF, 0x00);
-    if (err != ESP_OK) return false;
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "step 3 FAILED: PWR_CONF write: %s", esp_err_to_name(err));
+
+        return false;
+    }
     ets_delay_us(450); // datasheet: wait ≥450 µs
 
     // Step 4: Prepare config load
     err = reg_write(REG_INIT_CTRL, 0x00);
-    if (err != ESP_OK) return false;
-
-    // Step 5: Burst-write config file to INIT_DATA
-    err = burst_write(REG_INIT_DATA, BMI270_CONFIG_FILE, BMI270_CONFIG_FILE_SIZE);
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "config file upload failed: %s", esp_err_to_name(err));
+        ESP_LOGE(TAG, "step 4 FAILED: INIT_CTRL clear: %s", esp_err_to_name(err));
+
+        return false;
+    }
+
+    // Step 5: Burst-write config file to INIT_DATA (with address tracking per chunk)
+    ESP_LOGI(TAG, "uploading config file (%u bytes)...", (unsigned)BMI270_CONFIG_FILE_SIZE);
+    err = config_file_write(BMI270_CONFIG_FILE, BMI270_CONFIG_FILE_SIZE);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "step 5 FAILED: config file upload: %s", esp_err_to_name(err));
+
         return false;
     }
 
     // Step 6: Complete config load
     err = reg_write(REG_INIT_CTRL, 0x01);
-    if (err != ESP_OK) return false;
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "step 6 FAILED: INIT_CTRL finalize: %s", esp_err_to_name(err));
 
-    // Step 7: Wait for INTERNAL_STATUS == 0x01 (init OK), up to 20 ms
-    vTaskDelay(pdMS_TO_TICKS(20));
+        return false;
+    }
+
+    // Step 7: Wait for INTERNAL_STATUS == 0x01 (init OK)
+    vTaskDelay(pdMS_TO_TICKS(150)); // full config needs more time than stripped variant
     uint8_t status = 0;
-    if (reg_read(REG_INTERNAL_STATUS, &status, 1) != ESP_OK || (status & 0x0F) != 0x01) {
-        ESP_LOGE(TAG, "INTERNAL_STATUS = 0x%02X (expected 0x01), init failed", status);
+    err = reg_read(REG_INTERNAL_STATUS, &status, 1);
+    if (err != ESP_OK || (status & 0x0F) != 0x01) {
+        ESP_LOGE(TAG, "step 7 FAILED: INTERNAL_STATUS = 0x%02X (read %s), expected 0x01", status, esp_err_to_name(err));
+
         return false;
     }
     ESP_LOGI(TAG, "config file loaded OK (INTERNAL_STATUS=0x%02X)", status);
@@ -330,9 +362,17 @@ static bool bmi270_configure()
     uint8_t acc_conf = (ACC_FILTER_HP << 7) | (ACC_BWP_NORM << 4) | acc_odr_reg;
 
     err = reg_write(REG_ACC_CONF, acc_conf);
-    if (err != ESP_OK) return false;
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "step 8 FAILED: ACC_CONF write: %s", esp_err_to_name(err));
+
+        return false;
+    }
     err = reg_write(REG_ACC_RANGE, acc_range_reg);
-    if (err != ESP_OK) return false;
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "step 8 FAILED: ACC_RANGE write: %s", esp_err_to_name(err));
+
+        return false;
+    }
 
     // Step 9: Configure gyroscope
     uint8_t gyr_range_reg = gyro_range_dps_to_reg(g_cfg.imu_gyro_range_dps);
@@ -340,17 +380,33 @@ static bool bmi270_configure()
     uint8_t gyr_conf = (GYR_FILTER_HP << 7) | (GYR_NOISE_HP << 6) | (GYR_BWP_NORM << 4) | gyr_odr_reg;
 
     err = reg_write(REG_GYR_CONF, gyr_conf);
-    if (err != ESP_OK) return false;
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "step 9 FAILED: GYR_CONF write: %s", esp_err_to_name(err));
+
+        return false;
+    }
     err = reg_write(REG_GYR_RANGE, gyr_range_reg);
-    if (err != ESP_OK) return false;
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "step 9 FAILED: GYR_RANGE write: %s", esp_err_to_name(err));
+
+        return false;
+    }
 
     // Step 10: Enable accel + gyro + temp
     err = reg_write(REG_PWR_CTRL, PWR_CTRL_ACC_EN | PWR_CTRL_GYR_EN | PWR_CTRL_TEMP_EN);
-    if (err != ESP_OK) return false;
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "step 10 FAILED: PWR_CTRL write: %s", esp_err_to_name(err));
+
+        return false;
+    }
 
     // Step 11: Set power mode — disable adv_power_save for continuous operation
     err = reg_write(REG_PWR_CONF, 0x02); // fifo_self_wake=1, adv_power_save=0
-    if (err != ESP_OK) return false;
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "step 11 FAILED: PWR_CONF write: %s", esp_err_to_name(err));
+
+        return false;
+    }
 
     // Compute runtime sensitivity values from selected ranges
     s_accel_sens_g = ACCEL_SENS_TABLE[acc_range_reg];
@@ -367,6 +423,8 @@ static bool bmi270_configure()
 
 bool imu_init()
 {
+    ESP_LOGI(TAG, "imu_init: I²C SDA=GPIO%d SCL=GPIO%d addr=0x%02X", PIN_IMU_SDA, PIN_IMU_SCL, BMI270_ADDR);
+
     if (!i2c_driver_init()) {
         ESP_LOGW(TAG, "I²C driver init failed, trying bus recovery...");
         i2c_bus_recover();
@@ -375,9 +433,10 @@ bool imu_init()
             return false;
         }
     }
+    ESP_LOGI(TAG, "I²C driver init OK");
 
     if (!bmi270_configure()) {
-        ESP_LOGE(TAG, "BMI270 configuration failed");
+        ESP_LOGE(TAG, "BMI270 configuration failed (see step errors above)");
         return false;
     }
 
@@ -423,6 +482,7 @@ void imu_task(void* arg)
 
         // Successful read — clear error count and IMU_FAIL fault
         if (consecutive_errors > 0) {
+            ESP_LOGI(TAG, "I²C read recovered after %d errors", consecutive_errors);
             consecutive_errors = 0;
             g_fault_flags.fetch_and(~static_cast<uint16_t>(Fault::IMU_FAIL), std::memory_order_relaxed);
         }

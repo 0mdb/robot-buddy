@@ -114,6 +114,9 @@ extern "C" void app_main()
         ESP_LOGW(TAG, "Range sensor init failed — continuing without range");
     }
 
+    // Silence ESP_LOG before binary protocol starts — text logs corrupt COBS frames.
+    esp_log_level_set("*", ESP_LOG_NONE);
+
     // Install USB Serial/JTAG driver before starting tasks that use it.
     usb_serial_jtag_driver_config_t usb_cfg = {};
     usb_cfg.rx_buffer_size = 512;

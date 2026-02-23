@@ -134,6 +134,15 @@ class TickLoop:
         self._last_greet_ms = 0.0
         self._greet_debounce_ms = 5000.0
 
+        # Conversation state machine
+        from supervisor_v2.core.conv_state import ConvStateTracker
+
+        self._conv = ConvStateTracker()
+
+        # Emotion queuing (buffered during LISTENING/THINKING, applied on SPEAKING)
+        self._queued_emotion: str = ""
+        self._queued_intensity: float = 0.0
+
         # Face flags sent on reconnect
         self._face_flags_sent = False
         self._last_face_system_mode: int | None = None
@@ -232,6 +241,11 @@ class TickLoop:
             await self._event_router.route(worker_name, env)
             self._handle_face_events(env)
 
+        # 1b. Update conversation state machine (auto-transitions, backchannel)
+        self._conv.update(self.robot.tick_dt_ms)
+        self.robot.face_conv_state = int(self._conv.state)
+        self.robot.face_conv_timer_ms = self._conv.timer_ms
+
         # 2. MCU telemetry (already arriving via callbacks)
         self._snapshot_reflex()
         self._snapshot_face()
@@ -270,6 +284,9 @@ class TickLoop:
         self.robot.speed_l_mm_s = tel.speed_l_mm_s
         self.robot.speed_r_mm_s = tel.speed_r_mm_s
         self.robot.gyro_z_mrad_s = tel.gyro_z_mrad_s
+        self.robot.accel_x_mg = tel.accel_x_mg
+        self.robot.accel_y_mg = tel.accel_y_mg
+        self.robot.accel_z_mg = tel.accel_z_mg
         self.robot.battery_mv = tel.battery_mv
         self.robot.fault_flags = tel.fault_flags
         self.robot.range_mm = tel.range_mm
@@ -313,7 +330,9 @@ class TickLoop:
             self.robot.face_last_button_state = btn.state
 
     def _on_face_button(self, evt: Any) -> None:
-        """Handle face button events for PTT and greet."""
+        """Handle face button events for PTT, cancel, and greet."""
+        from supervisor_v2.devices.protocol import FaceConvState
+
         self._event_bus.on_face_button(evt)
 
         # PTT toggle
@@ -324,31 +343,60 @@ class TickLoop:
             self.world.ptt_active = ptt_on
             if ptt_on:
                 self._start_conversation("ptt")
+                self._conv.ptt_held = True
+                self._conv.set_state(FaceConvState.ATTENTION)
             else:
+                self._conv.ptt_held = False
                 self._end_conversation()
 
-        # ACTION click — greet routine
+        # ACTION click — context-gated: cancel during session, greet outside
         if evt.button_id == int(FaceButtonId.ACTION) and evt.event_type == int(
             FaceButtonEventType.CLICK
         ):
-            now_ms = time.monotonic() * 1000.0
-            if now_ms - self._last_greet_ms > self._greet_debounce_ms:
-                self._last_greet_ms = now_ms
-                self._trigger_greet(now_ms)
+            if self._conv.session_active:
+                # Cancel active conversation
+                self._conv.set_state(FaceConvState.DONE)
+                if self.world.session_id:
+                    self._end_conversation()
+            else:
+                # Greet routine (only outside conversation)
+                now_ms = time.monotonic() * 1000.0
+                if now_ms - self._last_greet_ms > self._greet_debounce_ms:
+                    self._last_greet_ms = now_ms
+                    self._trigger_greet(now_ms)
 
     # ── Face composition (§8.2) ──────────────────────────────────
 
     def _handle_face_events(self, env: Envelope) -> None:
-        """Buffer conversation emotion/gesture and handle ear/TTS events."""
+        """Buffer conversation emotion/gesture and handle ear/TTS events.
+
+        Also drives ConvStateTracker transitions for conversation phase tracking.
+        """
+        from supervisor_v2.devices.protocol import FaceConvState
+
         if env.type == AI_CONVERSATION_EMOTION:
-            self._conversation_emotion = str(env.payload.get("emotion", ""))
-            self._conversation_intensity = float(env.payload.get("intensity", 0.7))
+            emotion = str(env.payload.get("emotion", ""))
+            intensity = float(env.payload.get("intensity", 0.7))
+            # Queue emotions during LISTENING/THINKING (spec §2.3 layer clamping)
+            if self._conv.state in (
+                FaceConvState.LISTENING,
+                FaceConvState.PTT,
+                FaceConvState.THINKING,
+            ):
+                self._queued_emotion = emotion
+                self._queued_intensity = intensity
+            else:
+                self._conversation_emotion = emotion
+                self._conversation_intensity = intensity
         elif env.type == AI_CONVERSATION_GESTURE:
             self._conversation_gestures = list(env.payload.get("names", []))
         elif env.type == AI_CONVERSATION_DONE:
             self._conversation_emotion = ""
             self._conversation_intensity = 0.0
             self._conversation_gestures = []
+            self._queued_emotion = ""
+            self._queued_intensity = 0.0
+            self._conv.set_state(FaceConvState.DONE)
             # If wake-word conversation, clean up session after response
             if self.world.conversation_trigger == "wake_word" and self.world.session_id:
                 self._finish_session()
@@ -357,9 +405,11 @@ class TickLoop:
         elif env.type == EAR_EVENT_WAKE_WORD:
             if not self.world.session_id and not self.world.speaking:
                 self._start_conversation("wake_word")
+                self._conv.set_state(FaceConvState.ATTENTION)
 
         elif env.type == EAR_EVENT_END_OF_UTTERANCE:
             if self.world.session_id and self.world.conversation_trigger == "wake_word":
+                self._conv.set_state(FaceConvState.THINKING)
                 # Signal end of speech, then wait for AI_CONVERSATION_DONE
                 asyncio.ensure_future(
                     self._workers.send_to(
@@ -375,11 +425,25 @@ class TickLoop:
                 )
                 self.robot.face_listening = False
 
-        # VAD suppression during TTS playback
+        # TTS events → conversation state transitions
         elif env.type == TTS_EVENT_STARTED:
             asyncio.ensure_future(self._workers.send_to("ear", EAR_CMD_PAUSE_VAD))
+            if self._conv.session_active:
+                self._conv.set_state(FaceConvState.SPEAKING)
+                # Apply queued emotion now that we're speaking
+                if self._queued_emotion:
+                    self._conversation_emotion = self._queued_emotion
+                    self._conversation_intensity = self._queued_intensity
+                    self._queued_emotion = ""
+                    self._queued_intensity = 0.0
         elif env.type in (TTS_EVENT_FINISHED, TTS_EVENT_CANCELLED):
             asyncio.ensure_future(self._workers.send_to("ear", EAR_CMD_RESUME_VAD))
+            if self._conv.session_active:
+                if self.world.session_id:
+                    # Multi-turn: return to LISTENING
+                    self._conv.set_state(FaceConvState.LISTENING)
+                else:
+                    self._conv.set_state(FaceConvState.DONE)
 
     # ── Output emission ──────────────────────────────────────────
 
@@ -420,14 +484,49 @@ class TickLoop:
             self._conversation_gestures = []
             return
 
-        # Conversation layer — emotion and gesture from AI worker
+        # ── Conversation state effects ────────────────────────────
+        conv_changed = self._conv.consume_changed()
+
+        # Flag overrides on state transitions
+        if conv_changed:
+            flags = self._conv.get_flags()
+            if flags != -1:
+                self._face.send_flags(flags)
+
+        # Gaze override from conversation state
+        gaze = self._conv.get_gaze_for_send()
+
+        # Backchannel: NOD during LISTENING
+        if self._conv.consume_nod():
+            nod_id = GESTURE_TO_FACE_ID.get("nod")
+            if nod_id is not None:
+                self._face.send_gesture(nod_id, 350)
+
+        # Determine mood/intensity: AI emotion > mood hint > current
+        mood_id: int | None = None
+        intensity: float = 0.7
         if self._conversation_emotion:
             norm = normalize_emotion_name(self._conversation_emotion)
             if norm:
                 mood_id = EMOTION_TO_FACE_MOOD.get(norm)
-                if mood_id is not None:
-                    self._face.send_state(mood_id, self._conversation_intensity)
+                intensity = self._conversation_intensity
+        elif self._conv.get_mood_hint() is not None:
+            hint = self._conv.get_mood_hint()
+            if hint is not None:
+                mood_id, intensity = hint
 
+        # Send SET_STATE with mood + gaze
+        if mood_id is not None:
+            gx = gaze[0] if gaze is not None else 0.0
+            gy = gaze[1] if gaze is not None else 0.0
+            self._face.send_state(mood_id, intensity, gaze_x=gx, gaze_y=gy)
+        elif gaze is not None:
+            # No mood change but gaze override active — send current mood with gaze
+            self._face.send_state(
+                self.robot.face_mood, 1.0, gaze_x=gaze[0], gaze_y=gaze[1]
+            )
+
+        # Gestures from AI worker
         for g in self._conversation_gestures:
             norm_g = normalize_face_gesture_name(g)
             if norm_g:

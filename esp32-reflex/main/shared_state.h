@@ -71,7 +71,7 @@ struct ImuBuffer {
 struct Command {
     int16_t  v_mm_s = 0;
     int16_t  w_mrad_s = 0;
-    uint32_t cmd_seq = 0;  // v2: sequence number from command packet
+    uint32_t cmd_seq = 0; // v2: sequence number from command packet
 };
 
 struct CommandBuffer {
@@ -107,6 +107,9 @@ struct TelemetryState {
     int16_t  speed_l_mm_s = 0;
     int16_t  speed_r_mm_s = 0;
     int16_t  gyro_z_mrad_s = 0;
+    int16_t  accel_x_mg = 0; // milli-g
+    int16_t  accel_y_mg = 0;
+    int16_t  accel_z_mg = 0;
     uint16_t battery_mv = 0;
     uint16_t fault_flags = 0;
     uint32_t timestamp_us = 0;

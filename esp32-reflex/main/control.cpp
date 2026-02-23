@@ -117,8 +117,8 @@ static int16_t clamp_i16(float v)
 // Write telemetry using seqlock pattern.
 // acquire fence after first increment prevents data writes from reordering before it.
 // release fence on second increment prevents data writes from reordering after it.
-static void publish_telemetry(float speed_l, float speed_r, float gyro_z_mrad,
-                              uint32_t now_us, uint32_t cmd_seq_applied)
+static void publish_telemetry(float speed_l, float speed_r, float gyro_z_mrad, float accel_x_mg, float accel_y_mg,
+                              float accel_z_mg, uint32_t now_us, uint32_t cmd_seq_applied)
 {
     // Increment to odd (writing) — acquire prevents subsequent stores
     // from being reordered before this point.
@@ -127,6 +127,9 @@ static void publish_telemetry(float speed_l, float speed_r, float gyro_z_mrad,
     g_telemetry.speed_l_mm_s = clamp_i16(speed_l);
     g_telemetry.speed_r_mm_s = clamp_i16(speed_r);
     g_telemetry.gyro_z_mrad_s = clamp_i16(gyro_z_mrad);
+    g_telemetry.accel_x_mg = clamp_i16(accel_x_mg);
+    g_telemetry.accel_y_mg = clamp_i16(accel_y_mg);
+    g_telemetry.accel_z_mg = clamp_i16(accel_z_mg);
     g_telemetry.fault_flags = g_fault_flags.load(std::memory_order_relaxed);
     g_telemetry.timestamp_us = now_us;
     g_telemetry.cmd_seq_last_applied = cmd_seq_applied;
@@ -189,7 +192,7 @@ void control_task(void* arg)
         const Command* cmd = g_cmd.read();
         float          v_cmd = static_cast<float>(cmd->v_mm_s);
         float          w_cmd = static_cast<float>(cmd->w_mrad_s) / 1000.0f; // mrad/s → rad/s
-        uint32_t       cmd_seq = cmd->cmd_seq; // v2 causality tracking
+        uint32_t       cmd_seq = cmd->cmd_seq;                              // v2 causality tracking
 
         // ---- 3. Differential drive: twist → per-wheel targets ----
         float half_wb = g_cfg.wheelbase_mm / 2.0f;
@@ -241,7 +244,8 @@ void control_task(void* arg)
 
         // ---- 10. Publish telemetry ----
         publish_telemetry(v_meas_l, v_meas_r,
-                          gyro_z * 1000.0f, // rad/s → mrad/s
-                          now_us, cmd_seq);
+                          gyro_z * 1000.0f,         // rad/s → mrad/s
+                          imu->accel_x_g * 1000.0f, // g → milli-g
+                          imu->accel_y_g * 1000.0f, imu->accel_z_g * 1000.0f, now_us, cmd_seq);
     }
 }

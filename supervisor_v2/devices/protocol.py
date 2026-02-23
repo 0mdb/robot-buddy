@@ -131,6 +131,19 @@ class FaceSystemMode(IntEnum):
     SHUTTING_DOWN = 5
 
 
+class FaceConvState(IntEnum):
+    """Conversation phase — drives border animation + gaze/flag overrides."""
+
+    IDLE = 0
+    ATTENTION = 1
+    LISTENING = 2
+    PTT = 3
+    THINKING = 4
+    SPEAKING = 5
+    ERROR = 6
+    DONE = 7
+
+
 FACE_FLAG_IDLE_WANDER = 1 << 0
 FACE_FLAG_AUTOBLINK = 1 << 1
 FACE_FLAG_SOLID_EYE = 1 << 2
@@ -195,12 +208,15 @@ class StatePayload:
     speed_l_mm_s: int
     speed_r_mm_s: int
     gyro_z_mrad_s: int
+    accel_x_mg: int
+    accel_y_mg: int
+    accel_z_mg: int
     battery_mv: int
     fault_flags: int
     range_mm: int
     range_status: int
 
-    _FMT = struct.Struct("<hhhHHHB")  # 15 bytes
+    _FMT = struct.Struct("<hhhhhhHHHB")  # 21 bytes
 
     @classmethod
     def unpack(cls, data: bytes) -> StatePayload:

@@ -21,13 +21,13 @@
 
 // Protocol handshake / time sync (shared with esp32-face-v2)
 enum class CommonCmdId : uint8_t {
-    TIME_SYNC_REQ        = 0x06,  // Pi -> MCU: {ping_seq:u32, reserved:u32}
-    SET_PROTOCOL_VERSION = 0x07,  // Pi -> MCU: {version:u8}
+    TIME_SYNC_REQ = 0x06,        // Pi -> MCU: {ping_seq:u32, reserved:u32}
+    SET_PROTOCOL_VERSION = 0x07, // Pi -> MCU: {version:u8}
 };
 
 enum class CommonTelId : uint8_t {
-    TIME_SYNC_RESP       = 0x86,  // MCU -> Pi: {ping_seq:u32, t_src_us:u64}
-    PROTOCOL_VERSION_ACK = 0x87,  // MCU -> Pi: {version:u8}
+    TIME_SYNC_RESP = 0x86,       // MCU -> Pi: {ping_seq:u32, t_src_us:u64}
+    PROTOCOL_VERSION_ACK = 0x87, // MCU -> Pi: {version:u8}
 };
 
 enum class CmdId : uint8_t {
@@ -67,6 +67,9 @@ struct __attribute__((packed)) StatePayload {
     int16_t  speed_l_mm_s;
     int16_t  speed_r_mm_s;
     int16_t  gyro_z_mrad_s;
+    int16_t  accel_x_mg; // milli-g
+    int16_t  accel_y_mg;
+    int16_t  accel_z_mg;
     uint16_t battery_mv;
     uint16_t fault_flags;
     uint16_t range_mm;
@@ -76,17 +79,20 @@ struct __attribute__((packed)) StatePayload {
 // ---- v2 extended payloads ----
 
 struct __attribute__((packed)) StatePayloadV2 {
-    // Original fields (13 bytes)
+    // Core fields (19 bytes)
     int16_t  speed_l_mm_s;
     int16_t  speed_r_mm_s;
     int16_t  gyro_z_mrad_s;
+    int16_t  accel_x_mg; // milli-g
+    int16_t  accel_y_mg;
+    int16_t  accel_z_mg;
     uint16_t battery_mv;
     uint16_t fault_flags;
     uint16_t range_mm;
     uint8_t  range_status;
     // v2 additions (8 bytes)
-    uint32_t cmd_seq_last_applied;     // echo of last command seq applied
-    uint32_t t_cmd_applied_us;         // when motor output was committed
+    uint32_t cmd_seq_last_applied; // echo of last command seq applied
+    uint32_t t_cmd_applied_us;     // when motor output was committed
 };
 
 struct __attribute__((packed)) TimeSyncRespPayload {
@@ -109,35 +115,33 @@ uint16_t crc16(const uint8_t* data, size_t len);
 
 // ---- Protocol version negotiation ----
 
-extern std::atomic<uint8_t>  g_protocol_version;  // 1 or 2, default 1
-extern std::atomic<uint32_t> g_tx_seq;             // global monotonic TX seq
+extern std::atomic<uint8_t>  g_protocol_version; // 1 or 2, default 1
+extern std::atomic<uint32_t> g_tx_seq;           // global monotonic TX seq
 
-inline uint32_t next_seq() {
+inline uint32_t next_seq()
+{
     return g_tx_seq.fetch_add(1, std::memory_order_relaxed);
 }
 
 // ---- Packet building (MCU -> host) ----
 
 // v1 builder (legacy — kept for backward compat)
-size_t packet_build(uint8_t type, uint8_t seq,
-                    const uint8_t* payload, size_t payload_len,
-                    uint8_t* out, size_t out_cap);
+size_t packet_build(uint8_t type, uint8_t seq, const uint8_t* payload, size_t payload_len, uint8_t* out,
+                    size_t out_cap);
 
 // v2 builder (uses v2 envelope when g_protocol_version==2, else falls back to v1)
-size_t packet_build_v2(uint8_t type, uint32_t seq, uint64_t t_src_us,
-                       const uint8_t* payload, size_t payload_len,
+size_t packet_build_v2(uint8_t type, uint32_t seq, uint64_t t_src_us, const uint8_t* payload, size_t payload_len,
                        uint8_t* out, size_t out_cap);
 
 // ---- Packet parsing (host -> MCU) ----
 
 struct ParsedPacket {
-    uint8_t  type;
-    uint32_t seq;          // u32 in v2, zero-extended u8 in v1
-    uint64_t t_src_us;     // 0 in v1
+    uint8_t        type;
+    uint32_t       seq;      // u32 in v2, zero-extended u8 in v1
+    uint64_t       t_src_us; // 0 in v1
     const uint8_t* data;
-    size_t   data_len;
-    bool     valid;
+    size_t         data_len;
+    bool           valid;
 };
 
-ParsedPacket packet_parse(const uint8_t* frame, size_t frame_len,
-                          uint8_t* decode_buf, size_t decode_buf_len);
+ParsedPacket packet_parse(const uint8_t* frame, size_t frame_len, uint8_t* decode_buf, size_t decode_buf_len);

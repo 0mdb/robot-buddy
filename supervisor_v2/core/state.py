@@ -73,6 +73,9 @@ class RobotState:
     speed_l_mm_s: int = 0
     speed_r_mm_s: int = 0
     gyro_z_mrad_s: int = 0
+    accel_x_mg: int = 0
+    accel_y_mg: int = 0
+    accel_z_mg: int = 0
     battery_mv: int = 0
     fault_flags: int = 0
     range_mm: int = 0
@@ -101,6 +104,8 @@ class RobotState:
     face_last_button_id: int = -1
     face_last_button_event: int = -1
     face_last_button_state: int = 0
+    face_conv_state: int = 0  # FaceConvState.IDLE
+    face_conv_timer_ms: float = 0.0
     face_seq: int = 0
     face_rx_mono_ms: float = 0.0
 
@@ -135,6 +140,9 @@ class RobotState:
             "speed_l": self.speed_l_mm_s,
             "speed_r": self.speed_r_mm_s,
             "gyro_z": self.gyro_z_mrad_s,
+            "accel_x": self.accel_x_mg,
+            "accel_y": self.accel_y_mg,
+            "accel_z": self.accel_z_mg,
             "battery_mv": self.battery_mv,
             "fault_flags": self.fault_flags,
             "range_mm": self.range_mm,
@@ -153,6 +161,8 @@ class RobotState:
             "face_last_button_id": self.face_last_button_id,
             "face_last_button_event": self.face_last_button_event,
             "face_last_button_state": self.face_last_button_state,
+            "face_conv_state": self.face_conv_state,
+            "face_conv_timer_ms": round(self.face_conv_timer_ms, 1),
             "face_seq": self.face_seq,
             "face_rx_mono_ms": round(self.face_rx_mono_ms, 1),
             "speed_caps": [

@@ -63,6 +63,19 @@ export default function TelemetryTab() {
         ]}
       />
 
+      {/* Accelerometer */}
+      <TimeSeriesChart
+        title="Accelerometer"
+        yLabel="mg"
+        window={window}
+        height={200}
+        series={[
+          { metric: 'accel_x', label: 'Accel X', color: '#ef4444' },
+          { metric: 'accel_y', label: 'Accel Y', color: '#22c55e' },
+          { metric: 'accel_z', label: 'Accel Z', color: '#3b82f6' },
+        ]}
+      />
+
       {/* Range */}
       <TimeSeriesChart
         title="Range"

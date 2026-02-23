@@ -171,12 +171,17 @@ def _decode_fields(pkt_type: int, payload: bytes) -> dict[str, Any]:
             return {"param_id": f"0x{param_id:02X}", "value_hex": value_hex}
 
         # -- Reflex telemetry ----------------------------------------------
-        if pkt_type == 0x80 and len(payload) >= 13:  # STATE
-            sl, sr, gz, bat, faults, rng, rs = struct.unpack_from("<hhhHHHB", payload)
+        if pkt_type == 0x80 and len(payload) >= 19:  # STATE
+            sl, sr, gz, ax, ay, az, bat, faults, rng, rs = struct.unpack_from(
+                "<hhhhhhHHHB", payload
+            )
             return {
                 "speed_l": sl,
                 "speed_r": sr,
                 "gyro_z": gz,
+                "accel_x": ax,
+                "accel_y": ay,
+                "accel_z": az,
                 "battery_mv": bat,
                 "faults": f"0x{faults:04X}",
                 "range_mm": rng,

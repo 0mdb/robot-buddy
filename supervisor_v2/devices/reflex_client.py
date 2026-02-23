@@ -62,6 +62,9 @@ class ReflexTelemetry:
     speed_l_mm_s: int = 0
     speed_r_mm_s: int = 0
     gyro_z_mrad_s: int = 0
+    accel_x_mg: int = 0
+    accel_y_mg: int = 0
+    accel_z_mg: int = 0
     battery_mv: int = 0
     fault_flags: int = 0
     range_mm: int = 0
@@ -236,6 +239,9 @@ class ReflexClient:
             t.speed_l_mm_s = state.speed_l_mm_s
             t.speed_r_mm_s = state.speed_r_mm_s
             t.gyro_z_mrad_s = state.gyro_z_mrad_s
+            t.accel_x_mg = state.accel_x_mg
+            t.accel_y_mg = state.accel_y_mg
+            t.accel_z_mg = state.accel_z_mg
             t.battery_mv = state.battery_mv
             t.fault_flags = state.fault_flags
             t.range_mm = state.range_mm
