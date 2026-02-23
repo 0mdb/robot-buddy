@@ -11,7 +11,7 @@ test-all: test-supervisor test-server test-dashboard
 
 # Run supervisor tests (with optional filter)
 test-supervisor *filter:
-    cd {{project}}/supervisor_v2 && python -m pytest tests/ -v {{filter}}
+    cd {{project}}/supervisor_v2 && uv run pytest tests/ -v {{filter}}
 
 # Run server tests (with optional filter)
 test-server *filter:
@@ -31,13 +31,13 @@ lint-fix: lint-python-fix lint-cpp-fix lint-dashboard-fix
 
 # Check Python formatting + lint
 lint-python:
-    ruff format --check {{project}}/server/ {{project}}/supervisor_v2/
-    ruff check {{project}}/server/ {{project}}/supervisor_v2/
+    cd {{project}}/supervisor_v2 && uv run ruff format --check {{project}}/server/ {{project}}/supervisor_v2/
+    cd {{project}}/supervisor_v2 && uv run ruff check {{project}}/server/ {{project}}/supervisor_v2/
 
 # Auto-fix Python formatting + lint
 lint-python-fix:
-    ruff format {{project}}/server/ {{project}}/supervisor_v2/
-    ruff check --fix {{project}}/server/ {{project}}/supervisor_v2/
+    cd {{project}}/supervisor_v2 && uv run ruff format {{project}}/server/ {{project}}/supervisor_v2/
+    cd {{project}}/supervisor_v2 && uv run ruff check --fix {{project}}/server/ {{project}}/supervisor_v2/
 
 # Check C++ formatting + static analysis
 lint-cpp:
@@ -62,11 +62,11 @@ lint-dashboard-fix:
 
 # Run supervisor with mock hardware (no robot needed)
 run-mock:
-    cd {{project}}/supervisor_v2 && python -m supervisor_v2 --mock --no-face --no-vision
+    cd {{project}}/supervisor_v2 && uv run python -m supervisor_v2 --mock --no-face --no-vision
 
 # Run supervisor (default ports)
 run:
-    cd {{project}}/supervisor_v2 && python -m supervisor_v2
+    cd {{project}}/supervisor_v2 && uv run python -m supervisor_v2
 
 # Run planner server
 run-server:
@@ -147,7 +147,7 @@ deploy-wakeword:
 
 # Check V3 sim / MCU face parity
 check-parity:
-    cd {{project}} && python tools/check_face_parity.py
+    cd {{project}} && uv run --project tools python tools/check_face_parity.py
 
 # ── Preflight ────────────────────────────────────────────
 
