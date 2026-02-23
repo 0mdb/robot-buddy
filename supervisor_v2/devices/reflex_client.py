@@ -105,6 +105,9 @@ class ReflexClient:
         self._rx_state_packets = 0
         self._rx_bad_payload_packets = 0
         self._rx_unknown_packets = 0
+        # Command causality tracking
+        self.last_cmd_seq: int = 0
+        self.last_cmd_tx_ns: int = 0
 
         transport.on_packet(self._handle_packet)
 
@@ -118,6 +121,8 @@ class ReflexClient:
     def send_twist(self, v_mm_s: int, w_mrad_s: int) -> None:
         seq = self._next_seq()
         pkt = build_set_twist(seq, v_mm_s, w_mrad_s)
+        self.last_cmd_seq = seq
+        self.last_cmd_tx_ns = time.monotonic_ns()
         self._transport.write(pkt)
         self._tx_packets += 1
         if self._capture and self._capture.active:
@@ -131,6 +136,8 @@ class ReflexClient:
     def send_stop(self, reason: int = 0) -> None:
         seq = self._next_seq()
         pkt = build_stop(seq, reason)
+        self.last_cmd_seq = seq
+        self.last_cmd_tx_ns = time.monotonic_ns()
         self._transport.write(pkt)
         self._tx_packets += 1
         if self._capture and self._capture.active:
@@ -219,12 +226,14 @@ class ReflexClient:
 
     def _next_seq(self) -> int:
         s = self._seq
-        self._seq = (self._seq + 1) & 0xFF
+        self._seq = (self._seq + 1) & 0xFFFFFFFF
         return s
 
     def _handle_packet(self, pkt: ParsedPacket) -> None:
         if self._capture and self._capture.active:
-            self._capture.capture_rx("reflex", pkt.pkt_type, pkt.seq, pkt.payload)
+            self._capture.capture_rx(
+                "reflex", pkt.pkt_type, pkt.seq, pkt.payload, pkt.t_src_us
+            )
 
         if pkt.pkt_type == TelType.STATE:
             try:
@@ -246,7 +255,11 @@ class ReflexClient:
             t.fault_flags = state.fault_flags
             t.range_mm = state.range_mm
             t.range_status = state.range_status
-            t.rx_mono_ms = time.monotonic() * 1000.0
+            t.rx_mono_ms = (
+                pkt.t_pi_rx_ns / 1_000_000.0
+                if pkt.t_pi_rx_ns
+                else time.monotonic() * 1000.0
+            )
             t.seq = pkt.seq
 
             if self._on_telemetry:

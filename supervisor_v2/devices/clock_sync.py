@@ -119,14 +119,18 @@ class ClockSyncEngine:
         self._pending_ping_seq = self._ping_seq
         self._t_ping_tx_ns = time.monotonic_ns()
 
-        pkt = build_time_sync_req(self._next_pkt_seq(), self._ping_seq)
+        pkt = build_time_sync_req(
+            self._next_pkt_seq(),
+            self._ping_seq,
+            protocol_version=self._transport.protocol_version,
+        )
         self._transport.write(pkt)
 
     def _handle_packet(self, pkt: ParsedPacket) -> None:
         if pkt.pkt_type != COMMON_TIME_SYNC_RESP:
             return
 
-        t_pi_rx_ns = time.monotonic_ns()
+        t_pi_rx_ns = pkt.t_pi_rx_ns if pkt.t_pi_rx_ns else time.monotonic_ns()
 
         try:
             resp = TimeSyncRespPayload.unpack(pkt.payload)
@@ -252,5 +256,5 @@ class ClockSyncEngine:
 
     def _next_pkt_seq(self) -> int:
         s = self._pkt_seq
-        self._pkt_seq = (self._pkt_seq + 1) & 0xFF
+        self._pkt_seq = (self._pkt_seq + 1) & 0xFFFFFFFF
         return s

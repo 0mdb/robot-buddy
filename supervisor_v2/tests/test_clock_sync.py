@@ -26,6 +26,7 @@ class FakeTransport:
 
     def __init__(self) -> None:
         self.connected = True
+        self.protocol_version: int = 1
         self.written: list[bytes] = []
         self._handlers: list[Callable[[ParsedPacket], None]] = []
 

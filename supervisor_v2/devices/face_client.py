@@ -287,12 +287,14 @@ class FaceClient:
 
     def _next_seq(self) -> int:
         s = self._seq
-        self._seq = (self._seq + 1) & 0xFF
+        self._seq = (self._seq + 1) & 0xFFFFFFFF
         return s
 
     def _handle_packet(self, pkt: ParsedPacket) -> None:
         if self._capture and self._capture.active:
-            self._capture.capture_rx("face", pkt.pkt_type, pkt.seq, pkt.payload)
+            self._capture.capture_rx(
+                "face", pkt.pkt_type, pkt.seq, pkt.payload, pkt.t_src_us
+            )
 
         if pkt.pkt_type == FaceTelType.FACE_STATUS:
             try:
@@ -307,7 +309,11 @@ class FaceClient:
             t.active_gesture = status.active_gesture
             t.system_mode = status.system_mode
             t.flags = status.flags
-            t.rx_mono_ms = time.monotonic() * 1000.0
+            t.rx_mono_ms = (
+                pkt.t_pi_rx_ns / 1_000_000.0
+                if pkt.t_pi_rx_ns
+                else time.monotonic() * 1000.0
+            )
             t.seq = pkt.seq
 
         elif pkt.pkt_type == FaceTelType.TOUCH_EVENT:
@@ -318,7 +324,12 @@ class FaceClient:
                 log.warning("face: bad TOUCH_EVENT: %s", e)
                 return
             self._rx_touch_packets += 1
-            touch_evt = TouchEvent(te.event_type, te.x, te.y, time.monotonic() * 1000.0)
+            rx_ms = (
+                pkt.t_pi_rx_ns / 1_000_000.0
+                if pkt.t_pi_rx_ns
+                else time.monotonic() * 1000.0
+            )
+            touch_evt = TouchEvent(te.event_type, te.x, te.y, rx_ms)
             self.last_touch = touch_evt
             for touch_cb in tuple(self._touch_subscribers):
                 touch_cb(touch_evt)
@@ -331,11 +342,16 @@ class FaceClient:
                 log.warning("face: bad BUTTON_EVENT: %s", e)
                 return
             self._rx_button_packets += 1
+            rx_ms = (
+                pkt.t_pi_rx_ns / 1_000_000.0
+                if pkt.t_pi_rx_ns
+                else time.monotonic() * 1000.0
+            )
             button_evt = ButtonEvent(
                 button_id=bp.button_id,
                 event_type=bp.event_type,
                 state=bp.state,
-                timestamp_mono_ms=time.monotonic() * 1000.0,
+                timestamp_mono_ms=rx_ms,
             )
             self.last_button = button_evt
             for button_cb in tuple(self._button_subscribers):
@@ -370,7 +386,9 @@ class FaceClient:
                 usb_rts=bool(hb.usb_rts),
                 ptt_listening=bool(hb.ptt_listening),
                 seq=pkt.seq,
-                rx_mono_ms=time.monotonic() * 1000.0,
+                rx_mono_ms=pkt.t_pi_rx_ns / 1_000_000.0
+                if pkt.t_pi_rx_ns
+                else time.monotonic() * 1000.0,
             )
 
         else:

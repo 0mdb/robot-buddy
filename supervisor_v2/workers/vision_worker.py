@@ -18,7 +18,6 @@ from supervisor_v2.messages.types import (
     VISION_DETECTION_SNAPSHOT,
     VISION_FRAME_JPEG,
     VISION_LIFECYCLE_ERROR,
-    VISION_STATUS_HEALTH,
 )
 from supervisor_v2.workers.base import BaseWorker, worker_main
 
@@ -86,7 +85,7 @@ class VisionWorker(BaseWorker):
         """Main vision loop — capture frames and run detection."""
         try:
             import cv2
-            import numpy as np
+            import numpy as np  # noqa: F401 — imported to verify availability
         except ImportError as e:
             self.send(VISION_LIFECYCLE_ERROR, {"error": f"missing dependency: {e}"})
             return
@@ -102,6 +101,7 @@ class VisionWorker(BaseWorker):
         cam = None
         try:
             from picamera2 import Picamera2
+
             cam = Picamera2(0)
             cam.configure(
                 cam.create_video_configuration(
@@ -125,10 +125,24 @@ class VisionWorker(BaseWorker):
         loop = asyncio.get_running_loop()
 
         try:
+
+            def _capture_with_metadata() -> tuple[Any, int]:
+                """Blocking capture that returns (rgb_array, t_cam_ns)."""
+                request = cam.capture_request()
+                try:
+                    arr = request.make_array("main")
+                    metadata = request.get_metadata()
+                    t_cam_ns = metadata.get("SensorTimestamp", 0)
+                    return arr, int(t_cam_ns)
+                finally:
+                    request.release()
+
             while self.running:
                 # Capture in executor to avoid blocking the event loop
                 try:
-                    rgb = await loop.run_in_executor(None, cam.capture_array)
+                    rgb, t_cam_ns = await loop.run_in_executor(
+                        None, _capture_with_metadata
+                    )
                 except Exception as e:
                     self._last_error = str(e)
                     self._camera_ok = False
@@ -140,9 +154,14 @@ class VisionWorker(BaseWorker):
                 rgb = cv2.rotate(rgb, cv2.ROTATE_180)
                 small = cv2.resize(rgb, self._process_size)
 
-                clear_conf = detect_clear_path(small, self._floor_hsv_low, self._floor_hsv_high)
+                clear_conf = detect_clear_path(
+                    small, self._floor_hsv_low, self._floor_hsv_high
+                )
                 ball_result = detect_ball(
-                    small, self._ball_hsv_low, self._ball_hsv_high, self._min_ball_radius
+                    small,
+                    self._ball_hsv_low,
+                    self._ball_hsv_high,
+                    self._min_ball_radius,
                 )
 
                 # FPS tracking
@@ -159,24 +178,39 @@ class VisionWorker(BaseWorker):
                 if now - self._last_snapshot_t >= _SNAPSHOT_MIN_INTERVAL_S:
                     self._last_snapshot_t = now
                     t_det_done_ns = time.monotonic_ns()
-                    self.send(VISION_DETECTION_SNAPSHOT, {
-                        "frame_seq": self._frame_seq,
-                        "t_frame_ns": time.monotonic_ns(),
-                        "t_det_done_ns": t_det_done_ns,
-                        "clear_confidence": round(clear_conf, 3),
-                        "ball_confidence": round(ball_result[0], 3) if ball_result else 0.0,
-                        "ball_bearing_deg": round(ball_result[1], 1) if ball_result else 0.0,
-                        "fps": round(self._fps, 1),
-                    })
+                    self.send(
+                        VISION_DETECTION_SNAPSHOT,
+                        {
+                            "frame_seq": self._frame_seq,
+                            "t_cam_ns": t_cam_ns,
+                            "t_det_done_ns": t_det_done_ns,
+                            "clear_confidence": round(clear_conf, 3),
+                            "ball_confidence": round(ball_result[0], 3)
+                            if ball_result
+                            else 0.0,
+                            "ball_bearing_deg": round(ball_result[1], 1)
+                            if ball_result
+                            else 0.0,
+                            "fps": round(self._fps, 1),
+                        },
+                    )
 
                 # MJPEG frame at ≤ 5 Hz
-                if self._mjpeg_enabled and now - self._last_jpeg_t >= _JPEG_MIN_INTERVAL_S:
+                if (
+                    self._mjpeg_enabled
+                    and now - self._last_jpeg_t >= _JPEG_MIN_INTERVAL_S
+                ):
                     self._last_jpeg_t = now
-                    _, jpeg = cv2.imencode(".jpg", small, [cv2.IMWRITE_JPEG_QUALITY, 50])
-                    self.send(VISION_FRAME_JPEG, {
-                        "frame_seq": self._frame_seq,
-                        "data_b64": base64.b64encode(jpeg.tobytes()).decode(),
-                    })
+                    _, jpeg = cv2.imencode(
+                        ".jpg", small, [cv2.IMWRITE_JPEG_QUALITY, 50]
+                    )
+                    self.send(
+                        VISION_FRAME_JPEG,
+                        {
+                            "frame_seq": self._frame_seq,
+                            "data_b64": base64.b64encode(jpeg.tobytes()).decode(),
+                        },
+                    )
 
         except asyncio.CancelledError:
             pass

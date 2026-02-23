@@ -93,6 +93,7 @@ async def async_main(args: argparse.Namespace) -> None:
         )
         reflex = ReflexClient(reflex_transport, capture=capture)
         await reflex_transport.start()
+        await reflex_transport.negotiate_v2()
 
         # ── Face MCU ─────────────────────────────────────────────
         if not args.no_face:
@@ -101,6 +102,7 @@ async def async_main(args: argparse.Namespace) -> None:
             )
             face = FaceClient(face_transport, capture=capture)
             await face_transport.start()
+            await face_transport.negotiate_v2()
 
         # ── API components ─────────────────────────────────────
         registry = create_default_registry()
@@ -222,6 +224,16 @@ async def async_main(args: argparse.Namespace) -> None:
                 label="face",
                 rtt_threshold_ns=_RTT_THRESHOLD_FACE_NS,
             )
+
+        # ── Raw Packet Logger ─────────────────────────────────────
+        from supervisor_v2.io.raw_logger import RawPacketLogger
+
+        raw_log_dir = Path(cfg.logging.record_dir) / "raw"
+        raw_logger = RawPacketLogger(raw_log_dir)
+        raw_logger.start()
+        reflex_transport.on_raw_frame(raw_logger.log_frame)
+        if face:
+            face_transport.on_raw_frame(raw_logger.log_frame)
 
         log.info(
             "supervisor v2 running (mock=%s, vision=%s, planner=%s, http=%s:%d)",

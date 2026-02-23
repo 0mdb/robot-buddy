@@ -9,7 +9,12 @@ from typing import Callable
 
 import serial
 
-from supervisor_v2.devices.protocol import ParsedPacket, parse_frame
+from supervisor_v2.devices.protocol import (
+    COMMON_PROTOCOL_VERSION_ACK,
+    ParsedPacket,
+    build_set_protocol_version,
+    parse_frame,
+)
 
 log = logging.getLogger(__name__)
 
@@ -36,9 +41,14 @@ class SerialTransport:
         self._connected = False
         self._running = False
         self._on_packet_handlers: list[Callable[[ParsedPacket], None]] = []
+        self._on_raw_frame: Callable[[int, str, bytes], None] | None = None
         self._on_connect: Callable[[], None] | None = None
         self._on_disconnect: Callable[[], None] | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
+
+        # Protocol version (1=legacy, 2=v2 with u32 seq + u64 t_src_us).
+        # Set to 2 after successful SET_PROTOCOL_VERSION handshake.
+        self.protocol_version: int = 1
 
         # Debug counters (for /debug/devices and troubleshooting).
         self._connect_count = 0
@@ -68,6 +78,10 @@ class SerialTransport:
     def on_connect(self, cb: Callable[[], None]) -> None:
         self._on_connect = cb
 
+    def on_raw_frame(self, cb: Callable[[int, str, bytes], None]) -> None:
+        """Register callback for raw frames: (t_pi_rx_ns, label, frame_bytes)."""
+        self._on_raw_frame = cb
+
     def on_disconnect(self, cb: Callable[[], None]) -> None:
         self._on_disconnect = cb
 
@@ -79,6 +93,46 @@ class SerialTransport:
     async def stop(self) -> None:
         self._running = False
         self._close()
+
+    async def negotiate_v2(self, timeout_s: float = 0.5) -> bool:
+        """Send SET_PROTOCOL_VERSION(2) and wait for ACK.
+
+        Returns True if MCU acknowledged v2, False on timeout (stays v1).
+        """
+        if not self._connected:
+            return False
+
+        ack_event = asyncio.Event()
+        ack_version: list[int] = []
+
+        def _on_ack(pkt: ParsedPacket) -> None:
+            if pkt.pkt_type == COMMON_PROTOCOL_VERSION_ACK:
+                v = pkt.payload[0] if pkt.payload else 0
+                ack_version.append(v)
+                ack_event.set()
+
+        self._on_packet_handlers.append(_on_ack)
+        try:
+            pkt = build_set_protocol_version(0, version=2)
+            self.write(pkt)
+            try:
+                await asyncio.wait_for(ack_event.wait(), timeout=timeout_s)
+            except asyncio.TimeoutError:
+                log.warning(
+                    "%s: v2 handshake timeout (%.0f ms), staying at v1",
+                    self.label,
+                    timeout_s * 1000,
+                )
+                return False
+
+            if ack_version and ack_version[0] == 2:
+                self.protocol_version = 2
+                log.info("%s: protocol v2 negotiated", self.label)
+                return True
+            log.warning("%s: unexpected ACK version %s", self.label, ack_version)
+            return False
+        finally:
+            self._on_packet_handlers.remove(_on_ack)
 
     def write(self, data: bytes) -> bool:
         """Write raw bytes (already COBS-framed). Non-blocking best-effort."""
@@ -119,6 +173,7 @@ class SerialTransport:
             "port": self.port,
             "label": self.label,
             "connected": self._connected,
+            "protocol_version": self.protocol_version,
             "dtr": dtr,
             "rts": rts,
             "connect_count": self._connect_count,
@@ -238,15 +293,19 @@ class SerialTransport:
                     self._buf.clear()
 
     def _dispatch_frame(self, frame: bytes) -> None:
+        t_pi_rx_ns = time.monotonic_ns()
+        if self._on_raw_frame:
+            self._on_raw_frame(t_pi_rx_ns, self.label, frame)
         try:
-            pkt = parse_frame(frame)
+            pkt = parse_frame(frame, protocol_version=self.protocol_version)
         except ValueError as e:
             self._frames_bad += 1
             self._last_bad_frame = str(e)
             log.debug("%s: bad frame: %s", self.label, e)
             return
+        pkt.t_pi_rx_ns = t_pi_rx_ns
         self._frames_ok += 1
-        self._last_frame_mono_ms = time.monotonic() * 1000.0
+        self._last_frame_mono_ms = t_pi_rx_ns / 1_000_000.0
         for handler in self._on_packet_handlers:
             handler(pkt)
 
@@ -254,6 +313,7 @@ class SerialTransport:
         if self._connected:
             self._disconnect_count += 1
             self._connected = False
+            self.protocol_version = 1  # Reset to v1; re-negotiate on reconnect
             log.warning("%s: disconnected from %s", self.label, self.port)
             if self._on_disconnect:
                 self._on_disconnect()

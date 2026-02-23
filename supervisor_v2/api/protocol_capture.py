@@ -65,6 +65,7 @@ class CapturedPacket:
     fields: dict[str, Any]
     raw_hex: str
     size: int
+    t_src_us: int = 0  # v2: MCU source timestamp (µs since boot)
 
 
 class ProtocolCapture:
@@ -94,11 +95,17 @@ class ProtocolCapture:
         pkt_type: int,
         seq: int,
         payload: bytes,
+        t_src_us: int = 0,
     ) -> None:
         if not self._clients:
             return
         self._emit(
-            direction="RX", device=device, pkt_type=pkt_type, seq=seq, payload=payload
+            direction="RX",
+            device=device,
+            pkt_type=pkt_type,
+            seq=seq,
+            payload=payload,
+            t_src_us=t_src_us,
         )
 
     def capture_tx(
@@ -122,10 +129,11 @@ class ProtocolCapture:
         pkt_type: int,
         seq: int,
         payload: bytes,
+        t_src_us: int = 0,
     ) -> None:
         type_name = ALL_TYPE_NAMES.get(pkt_type, f"0x{pkt_type:02X}")
         fields = _decode_fields(pkt_type, payload)
-        raw_hex = bytes([pkt_type, seq]).hex() + payload.hex()
+        raw_hex = bytes([pkt_type, seq & 0xFF]).hex() + payload.hex()
 
         pkt = CapturedPacket(
             ts_mono_ms=round(time.monotonic() * 1000.0, 1),
@@ -137,6 +145,7 @@ class ProtocolCapture:
             fields=fields,
             raw_hex=raw_hex,
             size=len(payload) + 2,  # type + seq + payload
+            t_src_us=t_src_us,
         )
 
         entry = json.dumps(asdict(pkt))

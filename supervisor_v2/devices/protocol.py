@@ -1,10 +1,12 @@
 """Binary protocol matching esp32-reflex wire format.
 
 Packet structure (before COBS):
-    [type:u8] [seq:u8] [payload:N] [crc16:u16-LE]
+    v1: [type:u8] [seq:u8]                        [payload:N] [crc16:u16-LE]
+    v2: [type:u8] [seq:u32-LE] [t_src_us:u64-LE]  [payload:N] [crc16:u16-LE]
 
 On wire: COBS-encode the above, then append 0x00 delimiter.
 All multi-byte values are little-endian.
+Protocol version negotiated per-port via SET_PROTOCOL_VERSION (0x07).
 """
 
 from __future__ import annotations
@@ -21,7 +23,12 @@ from supervisor_v2.io.crc import crc16
 # -- Common packet type IDs (shared by reflex + face MCUs) ------------------
 
 COMMON_TIME_SYNC_REQ: int = 0x06
+COMMON_SET_PROTOCOL_VERSION: int = 0x07
 COMMON_TIME_SYNC_RESP: int = 0x86
+COMMON_PROTOCOL_VERSION_ACK: int = 0x87
+
+# v2 envelope header size: type(1) + seq(4) + t_src_us(8) = 13 bytes
+_V2_HEADER_SIZE: int = 13
 
 
 # -- Packet type IDs --------------------------------------------------------
@@ -368,11 +375,26 @@ _CONFIG_FMT = struct.Struct("<B4s")  # param_id:u8, value:4 bytes
 
 
 def build_packet(pkt_type: int, seq: int, payload: bytes = b"") -> bytes:
-    """Build a wire-ready packet: COBS-encode(type|seq|payload|crc16-LE) + 0x00."""
+    """Build a v1 wire-ready packet: COBS-encode(type|seq|payload|crc16-LE) + 0x00."""
     raw = bytes([pkt_type & 0xFF, seq & 0xFF]) + payload
     crc = crc16(raw)
     raw += struct.pack("<H", crc)
     return cobs_encode(raw) + b"\x00"
+
+
+def build_packet_v2(
+    pkt_type: int, seq: int, t_src_us: int, payload: bytes = b""
+) -> bytes:
+    """Build a v2 wire-ready packet with u32 seq and u64 t_src_us."""
+    raw = struct.pack("<BIQ", pkt_type & 0xFF, seq & 0xFFFFFFFF, t_src_us) + payload
+    crc = crc16(raw)
+    raw += struct.pack("<H", crc)
+    return cobs_encode(raw) + b"\x00"
+
+
+def build_set_protocol_version(seq: int, version: int = 2) -> bytes:
+    """Build a SET_PROTOCOL_VERSION packet."""
+    return build_packet(COMMON_SET_PROTOCOL_VERSION, seq, bytes([version & 0xFF]))
 
 
 def build_set_twist(seq: int, v_mm_s: int, w_mrad_s: int) -> bytes:
@@ -473,9 +495,13 @@ class TimeSyncRespPayload:
         return cls(ping_seq=ping_seq, t_src_us=t_src_us)
 
 
-def build_time_sync_req(seq: int, ping_seq: int) -> bytes:
+def build_time_sync_req(
+    seq: int, ping_seq: int, *, protocol_version: int = 1, t_src_us: int = 0
+) -> bytes:
     """Build a TIME_SYNC_REQ packet (PROTOCOL.md section 2.2)."""
     payload = _TIME_SYNC_REQ_FMT.pack(ping_seq, 0)
+    if protocol_version >= 2:
+        return build_packet_v2(COMMON_TIME_SYNC_REQ, seq, t_src_us, payload)
     return build_packet(COMMON_TIME_SYNC_REQ, seq, payload)
 
 
@@ -487,10 +513,16 @@ class ParsedPacket:
     pkt_type: int
     seq: int
     payload: bytes
+    t_src_us: int = 0  # v2: MCU monotonic timestamp (µs since boot)
+    t_pi_rx_ns: int = 0  # Pi receive time (monotonic ns), set by transport
 
 
-def parse_frame(frame: bytes) -> ParsedPacket:
+def parse_frame(frame: bytes, *, protocol_version: int = 1) -> ParsedPacket:
     """Parse a COBS-encoded frame (without the trailing 0x00 delimiter).
+
+    Args:
+        frame: Raw COBS-encoded bytes (excluding 0x00 delimiter).
+        protocol_version: 1 for v1 envelope, 2 for v2 (u32 seq + u64 t_src_us).
 
     Raises ValueError on CRC mismatch or truncated data.
     """
@@ -504,6 +536,18 @@ def parse_frame(frame: bytes) -> ParsedPacket:
     if crc_recv != crc_calc:
         raise ValueError(f"CRC mismatch: recv=0x{crc_recv:04X} calc=0x{crc_calc:04X}")
 
+    if protocol_version >= 2 and len(body) >= _V2_HEADER_SIZE:
+        # v2: [type:u8][seq:u32-LE][t_src_us:u64-LE][payload:N]
+        seq = struct.unpack_from("<I", body, 1)[0]
+        t_src_us = struct.unpack_from("<Q", body, 5)[0]
+        return ParsedPacket(
+            pkt_type=body[0],
+            seq=seq,
+            payload=body[_V2_HEADER_SIZE:],
+            t_src_us=t_src_us,
+        )
+
+    # v1: [type:u8][seq:u8][payload:N]
     return ParsedPacket(
         pkt_type=body[0],
         seq=body[1],

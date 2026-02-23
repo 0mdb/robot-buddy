@@ -32,7 +32,8 @@ Face Sim V3 (`tools/face_sim_v3/`, ~2600 lines, 16 modules) is the canonical des
 - [x] CI parity check — `tools/check_face_parity.py` (70/70 passed)
 
 ### Remaining (Phase 0–5)
-- [x] Phase 0: Sync MCU constants to match V3 sim — 17 divergences ported, parity check 169/169, `just check-parity` in preflight
+- [ ] Phase 0: Sync MCU constants to match V3 sim — 17 divergences ported, parity check 169/169, `just check-parity` in preflight
+    - gaps remain, the system logos on device not updated, thinking face looks angry(needs refinement in sim?), could add this to the firmware optmization as part of step 5?
 - [x] Phase 1: Supervisor conversation state machine in tick_loop — `ConvStateTracker` module + tick_loop wiring + 39 tests
 - [x] Phase 2: Firmware border rendering + SET_CONV_STATE (0x25)
 - [x] Phase 3: Supervisor mood transition sequencer + guardrails — `MoodSequencer` (4-phase choreography ~470ms) + `Guardrails` (context gate, intensity caps, duration caps) + tick_loop integration + 58 tests
@@ -197,11 +198,11 @@ Add dashboard panel per device:
 
 ### Immediate Actions
 
-- [ ] Add `seq` and `t_src_us` to all MCU packets
-- [ ] Implement `TIME_SYNC_REQ / RESP`
-- [ ] Log raw packets with `t_pi_rx_ns`
-- [ ] Add `frame_seq`, `t_cam_ns`, `t_det_done_ns`
-- [ ] Add `cmd_seq` to motion commands
+- [x] Add `seq` and `t_src_us` to all MCU packets (MCU v2 envelope done; supervisor activates via `negotiate_v2()`)
+- [x] Implement `TIME_SYNC_REQ / RESP` (ClockSyncEngine with min-RTT offset, drift tracking)
+- [x] Log raw packets with `t_pi_rx_ns` (RawPacketLogger: binary format per PROTOCOL.md §10.1, 50MB rotation)
+- [x] Add `frame_seq`, `t_cam_ns`, `t_det_done_ns` (Picamera2 SensorTimestamp extraction)
+- [x] Add `cmd_seq` to motion commands (u32 seq, `t_cmd_tx_ns` causality tracking)
 - [x] Add telemetry health dashboard (Monitor tab: diagnostic tree, Pi resources, comms, power, sensors, faults, workers)
 
 ---
