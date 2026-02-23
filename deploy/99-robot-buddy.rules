@@ -1,0 +1,43 @@
+# Robot Buddy — stable device symlinks for MCU serial ports
+#
+# Creates /dev/robot_reflex and /dev/robot_face symlinks that persist across
+# firmware changes, reboots, and USB reconnects.
+#
+# Install:
+#   sudo cp deploy/99-robot-buddy.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload-rules && sudo udevadm trigger
+#
+# Matching strategy: physical USB port path (KERNELS).
+#   - Survives firmware changes (TinyUSB CDC vs bare JTAG, different descriptors)
+#   - Survives bootloader/debug mode vs normal firmware
+#   - Must be updated if MCUs are physically moved to different USB ports
+#
+# To find your port paths, plug in one MCU at a time and run:
+#   udevadm info -a /dev/ttyACM0 | grep KERNELS
+# Look for the USB hub port path (e.g. "1-1.3" or "3-1.1").
+#
+# Alternatively, use tools/serial_diag.py which reports the KERNELS value.
+
+# ── Reflex MCU (motion control) ─────────────────────────────────────
+# Match Espressif VID on the physical USB port where the reflex MCU is plugged in.
+# Replace REFLEX_PORT_PATH with your actual KERNELS value (e.g. "1-1.3").
+#SUBSYSTEM=="tty", ATTRS{idVendor}=="303a", KERNELS=="REFLEX_PORT_PATH", SYMLINK+="robot_reflex", MODE="0666"
+
+# ── Face MCU (display) ──────────────────────────────────────────────
+# Replace FACE_PORT_PATH with your actual KERNELS value.
+#SUBSYSTEM=="tty", ATTRS{idVendor}=="303a", KERNELS=="FACE_PORT_PATH", SYMLINK+="robot_face", MODE="0666"
+
+# ── Fallback: match by serial number ────────────────────────────────
+# These rules match specific device serial numbers as a fallback.
+# The JTAG serial is the ESP32's MAC address (unique per chip).
+# Update the serial values below to match your hardware.
+
+# Reflex (bare JTAG mode — "USB JTAG serial debug unit")
+#SUBSYSTEM=="tty", ATTRS{idVendor}=="303a", ATTRS{serial}=="D0:CF:13:27:CF:6C", SYMLINK+="robot_reflex", MODE="0666"
+
+# Reflex (TinyUSB CDC mode — "Espressif Device")
+# When using CONFIG_ESP_CONSOLE_USB_CDC, the binary protocol is on interface 01.
+#SUBSYSTEM=="tty", ATTRS{idVendor}=="303a", ATTRS{serial}=="REFLEX_TINYUSB_SERIAL", ENV{ID_USB_INTERFACE_NUM}=="01", SYMLINK+="robot_reflex", MODE="0666"
+
+# Face (TinyUSB CDC — serial defaults to "123456")
+#SUBSYSTEM=="tty", ATTRS{idVendor}=="303a", ATTRS{serial}=="123456", SYMLINK+="robot_face", MODE="0666"

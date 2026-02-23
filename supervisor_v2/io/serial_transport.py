@@ -175,7 +175,7 @@ class SerialTransport:
                 self.port,
                 self.baudrate,
                 timeout=0.05,  # 50ms blocking read timeout
-                write_timeout=0,  # non-blocking writes; called from event loop thread
+                write_timeout=0.1,  # bounded write latency; avoid indefinite event-loop stalls
             )
             # Keep CDC host line-state asserted; some device stacks gate OUT traffic on DTR/RTS.
             try:

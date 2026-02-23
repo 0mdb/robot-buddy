@@ -115,12 +115,30 @@ for grp in dialout video; do
     fi
 done
 
-# ── 8. Enable and (re)start the service ───────────────────────────────────────
+# ── 8. Install udev rules for stable device naming ─────────────────────────────
+UDEV_SRC="$DEPLOY_DIR/99-robot-buddy.rules"
+UDEV_DEST="/etc/udev/rules.d/99-robot-buddy.rules"
+if [[ -f "$UDEV_SRC" ]]; then
+    if [[ -f "$UDEV_DEST" ]]; then
+        info "udev rules already exist at $UDEV_DEST — not overwriting."
+        info "To update: sudo cp $UDEV_SRC $UDEV_DEST && sudo udevadm control --reload-rules"
+    else
+        sudo cp "$UDEV_SRC" "$UDEV_DEST"
+        sudo udevadm control --reload-rules
+        sudo udevadm trigger
+        ok "udev rules installed at $UDEV_DEST"
+    fi
+    info "To configure device symlinks, edit $UDEV_DEST and uncomment the"
+    info "appropriate rules. Use 'udevadm info -a /dev/ttyACMx | grep KERNELS'"
+    info "or 'python3 tools/serial_diag.py --all' to find port paths."
+fi
+
+# ── 9. Enable and (re)start the service ───────────────────────────────────────
 sudo systemctl daemon-reload
 sudo systemctl enable "$SERVICE_NAME"
 sudo systemctl restart "$SERVICE_NAME"
 
-# ── 9. Status ─────────────────────────────────────────────────────────────────
+# ── 10. Status ────────────────────────────────────────────────────────────────
 echo ""
 echo "═══════════════════════════════════════════════════════"
 sudo systemctl status "$SERVICE_NAME" --no-pager -l || true

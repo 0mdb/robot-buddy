@@ -93,7 +93,9 @@ static void open_loop_test_task(void* arg)
 
 extern "C" void app_main()
 {
-    ESP_LOGI(TAG, "Reflex MCU booting...");
+    // Silence ALL ESP_LOG immediately — USB Serial/JTAG is used exclusively
+    // for binary protocol.  Any text output corrupts COBS framing.
+    esp_log_level_set("*", ESP_LOG_NONE);
 
     // ---- Phase 1: hardware init ----
     motor_init();
@@ -114,16 +116,11 @@ extern "C" void app_main()
         ESP_LOGW(TAG, "Range sensor init failed — continuing without range");
     }
 
-    // Silence ESP_LOG before binary protocol starts — text logs corrupt COBS frames.
-    esp_log_level_set("*", ESP_LOG_NONE);
-
     // Install USB Serial/JTAG driver before starting tasks that use it.
     usb_serial_jtag_driver_config_t usb_cfg = {};
     usb_cfg.rx_buffer_size = 512;
     usb_cfg.tx_buffer_size = 512;
     ESP_ERROR_CHECK(usb_serial_jtag_driver_install(&usb_cfg));
-
-    ESP_LOGI(TAG, "Hardware init complete.");
 
     // ---- Phase 2: APP core tasks (USB protocol + telemetry + range) ----
     xTaskCreatePinnedToCore(usb_rx_task, "usb_rx", 4096, nullptr, 5, nullptr, 1);   // APP core, normal priority
@@ -140,6 +137,4 @@ extern "C" void app_main()
     xTaskCreatePinnedToCore(control_task, "control", 4096, nullptr, 10, nullptr, 0); // PRO core, highest
     xTaskCreatePinnedToCore(safety_task, "safety", 4096, nullptr, 6, nullptr, 0);    // PRO core, above-normal
 #endif
-
-    ESP_LOGI(TAG, "All tasks started.");
 }
