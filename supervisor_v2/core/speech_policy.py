@@ -15,12 +15,18 @@ class SpeechIntent:
     source_event: str
 
 
+_FACE_BUSY_HOLD_MS: float = 1500.0
+
+
 class SpeechPolicy:
     """Turns high-signal runtime events into bounded spoken lines."""
 
     def __init__(self) -> None:
         self._last_spoken_ms: dict[str, float] = {}
         self._phrase_index: dict[str, int] = {}
+        # Intents held when face was busy; retried on next tick when face is free.
+        # Maps event key → (phrase, expire_mono_ms).  One slot per key.
+        self._held: dict[str, tuple[str, float]] = {}
         self._cooldown_ms = {
             "vision.ball_acquired": 5000.0,
             "mode.changed:WANDER": 7000.0,
@@ -64,6 +70,23 @@ class SpeechPolicy:
         """Return speech intents and drop reasons from the provided events."""
         intents: list[SpeechIntent] = []
         drops: list[str] = []
+
+        # Expire stale held intents.
+        expired = [k for k, (_, exp) in self._held.items() if now_mono_ms > exp]
+        for k in expired:
+            del self._held[k]
+            drops.append("policy_held_expired")
+
+        # Flush one held intent when face becomes free.
+        if not (state.face_listening or state.face_talking):
+            for key, (phrase, _) in list(self._held.items()):
+                if not self._on_cooldown(key, now_mono_ms):
+                    self._last_spoken_ms[key] = now_mono_ms
+                    del self._held[key]
+                    return [
+                        SpeechIntent(text=phrase, source_event=f"held:{key}")
+                    ], drops
+
         if not events:
             return intents, drops
 
@@ -80,6 +103,13 @@ class SpeechPolicy:
                     continue
 
             if state.face_listening or state.face_talking:
+                # Hold for retry rather than silently dropping.
+                if key not in self._held and not self._on_cooldown(key, now_mono_ms):
+                    phrase = self._next_phrase(key)
+                    if phrase:
+                        self._held[key] = (phrase, now_mono_ms + _FACE_BUSY_HOLD_MS)
+                        drops.append("policy_face_busy_held")
+                        continue
                 drops.append("policy_face_busy")
                 continue
 
@@ -103,6 +133,7 @@ class SpeechPolicy:
             "cooldowns": dict(self._cooldown_ms),
             "last_spoken_ms": dict(self._last_spoken_ms),
             "phrase_index": dict(self._phrase_index),
+            "held": {k: phrase for k, (phrase, _) in self._held.items()},
         }
 
     def _event_key(self, evt: PlannerEvent) -> str | None:

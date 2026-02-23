@@ -156,7 +156,6 @@ Living section — reorder as priorities shift. Current recommended sequence:
 ### Conversation & Voice
 
 - [ ] `[opus]` LLM conversation history/memory — server-side session context
-- [ ] `[sonnet]` TTS from deterministic sources (non-button press) either cut off or not firing
 - [ ] `[sonnet]` Wake word model: increase recall from 42%→80%+ (n_samples 15k→50k+, augmentation rounds 3→5, speech-heavy negative data, layer_size 64)
 - [ ] `[sonnet]` Wake word: record 20–50 real "hey buddy" utterances from family
 - [ ] `[sonnet]` Wake word: soak test 1+ hours idle with household noise
@@ -186,15 +185,6 @@ Living section — reorder as priorities shift. Current recommended sequence:
 - [ ] Rename `supervisor_v2/` → `supervisor/` (update 69+ Python imports, pyproject.toml, justfile, configs, pyrightconfig.json)
 - [ ] Rename `esp32-face-v2/` → `esp32-face/` (update CMake, justfile, docs, skills)
 - [ ] Update all cross-references (CLAUDE.md, README.md, deploy scripts, .vscode/settings.json)
-
-**New Skills** `[sonnet]`
-- [ ] `/status` skill: quick project state snapshot (connected devices, test results, current TODO priority) for session start
-
-**Efficiency Improvements** `[sonnet]`
-- [ ] `specs/INDEX.md` — one-paragraph summary of each spec with section links for targeted reading
-- [ ] Expand CLAUDE.md "Repository Structure" with annotated key file paths for common tasks
-
----
 
 
 ---
@@ -243,6 +233,10 @@ Living section — reorder as priorities shift. Current recommended sequence:
 
 ### Infrastructure & Tooling
 - [x] `/diagnose` skill — curl commands, 5-step workflow, fault-specific diagnostics
+- [x] `/status` skill — git state, hardware detection, top TODO priorities, quick test status
+- [x] `specs/INDEX.md` — one-paragraph summaries with section links for all 6 spec files
+- [x] CLAUDE.md Key File Paths expanded: workers, mood/expression, conversation AI paths added
+- [x] TTS deterministic speech fix: `SpeechPolicy._held` queue retries face-busy intents for 1500ms
 - [x] Protocol docs: SET_FLAGS (0x24) + SET_CONV_STATE (0x25) + CONFUSED mood ID 12 added to `docs/protocols.md`
 - [x] Border constants parity (`BORDER_FRAME_W`, `GLOW_W`, `CORNER_R`, `BLEND_RATE`) in `check_face_parity.py`
 - [x] `docs/architecture.md` — 181-line comprehensive rewrite (was stale 17-line stub)

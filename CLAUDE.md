@@ -68,6 +68,23 @@ robot-buddy/
 - `supervisor_v2/core/conv_state.py` — conversation state machine
 - `supervisor_v2/core/state_machine.py` — BOOT/IDLE/TELEOP/WANDER/ERROR
 
+**Mood & expression:**
+- `supervisor_v2/core/mood_sequencer.py` — 4-phase transition choreography (~470ms)
+- `supervisor_v2/core/guardrails.py` — intensity/duration caps, context gate
+- `supervisor_v2/core/conv_transition.py` — ConvTransitionChoreographer (gaze ramps, nods)
+- `supervisor_v2/devices/expressions.py` — mood → SET_STATE parameter mapping
+
+**Conversation & AI:**
+- `supervisor_v2/core/speech_policy.py` — deterministic event-driven TTS intents
+- `supervisor_v2/core/action_scheduler.py` — planner action cooldowns, TTL gating
+- `supervisor_v2/core/event_bus.py` — PlannerEvent production and subscription
+
+**Workers (process-isolated):**
+- `supervisor_v2/workers/tts_worker.py` — TTS_CMD_SPEAK/CANCEL, energy stream
+- `supervisor_v2/workers/ear_worker.py` — wake word detection, Silero VAD
+- `supervisor_v2/workers/ai_worker.py` — LLM plan requests to server
+- `supervisor_v2/workers/vision_worker.py` — ball/clear detection via OpenCV
+
 **Reflex MCU:**
 - Entry: `esp32-reflex/main/app_main.cpp`
 - Pins: `esp32-reflex/main/pin_map.h`
