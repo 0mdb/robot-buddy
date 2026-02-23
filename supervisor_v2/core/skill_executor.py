@@ -126,7 +126,9 @@ class SkillExecutor:
             return DesiredTwist(self._avoid_reverse_mm_s, self._avoid_turn_mrad_s)
         return DesiredTwist(0, self._avoid_turn_mrad_s)
 
-    def _scan_for_target(self, robot: RobotState, world: WorldState, skill_elapsed_ms: float) -> DesiredTwist:
+    def _scan_for_target(
+        self, robot: RobotState, world: WorldState, skill_elapsed_ms: float
+    ) -> DesiredTwist:
         if world.ball_confidence >= self._investigate_min_conf:
             return self._investigate_ball(robot, world)
 
@@ -162,7 +164,9 @@ class SkillExecutor:
         return DesiredTwist(self._approach_v_cautious_mm_s, turn)
 
     def _retreat_and_recover(self, skill_elapsed_ms: float) -> DesiredTwist:
-        cycle_ms = self._retreat_reverse_ms + self._retreat_turn_ms + self._retreat_pause_ms
+        cycle_ms = (
+            self._retreat_reverse_ms + self._retreat_turn_ms + self._retreat_pause_ms
+        )
         if cycle_ms <= 0:
             return DesiredTwist(0, 0)
 

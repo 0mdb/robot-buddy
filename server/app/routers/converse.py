@@ -36,6 +36,7 @@ log = logging.getLogger(__name__)
 
 router = APIRouter()
 
+
 @router.websocket("/converse")
 async def converse(ws: WebSocket):
     """Bidirectional conversation WebSocket.
@@ -87,14 +88,18 @@ async def converse(ws: WebSocket):
             elif msg_type == "end_utterance":
                 # Transcribe accumulated audio → generate response
                 if not audio_buffer:
-                    await ws.send_json({"type": "error", "message": "No audio received"})
+                    await ws.send_json(
+                        {"type": "error", "message": "No audio received"}
+                    )
                     continue
 
                 user_text = await _transcribe_audio(bytes(audio_buffer))
                 audio_buffer.clear()
 
                 if not user_text.strip():
-                    await ws.send_json({"type": "error", "message": "Could not understand audio"})
+                    await ws.send_json(
+                        {"type": "error", "message": "Could not understand audio"}
+                    )
                     await ws.send_json({"type": "listening"})
                     continue
 
@@ -181,18 +186,22 @@ async def _generate_and_stream(
         return
 
     # 1. Send emotion immediately (face changes before speech)
-    await ws.send_json({
-        "type": "emotion",
-        "emotion": response.emotion,
-        "intensity": response.intensity,
-    })
+    await ws.send_json(
+        {
+            "type": "emotion",
+            "emotion": response.emotion,
+            "intensity": response.intensity,
+        }
+    )
 
     # 2. Send gestures if any
     if response.gestures:
-        await ws.send_json({
-            "type": "gestures",
-            "names": response.gestures,
-        })
+        await ws.send_json(
+            {
+                "type": "gestures",
+                "names": response.gestures,
+            }
+        )
 
     # 3. Stream TTS audio
     if response.text:
@@ -201,12 +210,14 @@ async def _generate_and_stream(
         try:
             async for chunk in tts.stream(response.text, response.emotion):
                 if chunk:
-                    await ws.send_json({
-                        "type": "audio",
-                        "data": base64.b64encode(chunk).decode("ascii"),
-                        "sample_rate": 16000,
-                        "chunk_index": chunk_index,
-                    })
+                    await ws.send_json(
+                        {
+                            "type": "audio",
+                            "data": base64.b64encode(chunk).decode("ascii"),
+                            "sample_rate": 16000,
+                            "chunk_index": chunk_index,
+                        }
+                    )
                     chunk_index += 1
         except TTSBusyError:
             await ws.send_json({"type": "error", "message": "tts_busy_no_fallback"})

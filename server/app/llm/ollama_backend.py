@@ -198,7 +198,9 @@ class OllamaBackend(PlannerLLMBackend):
         await self._acquire_generation_slot()
         try:
             try:
-                return await generate_conversation_response(self._client, history, user_text)
+                return await generate_conversation_response(
+                    self._client, history, user_text
+                )
             except httpx.TimeoutException as exc:
                 raise LLMTimeoutError("llm_timeout") from exc
             except httpx.ConnectError as exc:
@@ -260,7 +262,9 @@ class OllamaBackend(PlannerLLMBackend):
 
         for payload in payloads:
             try:
-                resp = await self._client.post("/api/pull", json=payload, timeout=timeout)
+                resp = await self._client.post(
+                    "/api/pull", json=payload, timeout=timeout
+                )
             except httpx.HTTPError as exc:
                 last_error = str(exc)
                 continue

@@ -115,7 +115,9 @@ def test_skill_invalid_name_rejected():
 def test_move_action_rejected():
     with pytest.raises(ValidationError):
         ModelPlan(
-            actions=[{"action": "move", "v_mm_s": 100, "w_mrad_s": 0, "duration_ms": 500}],
+            actions=[
+                {"action": "move", "v_mm_s": 100, "w_mrad_s": 0, "duration_ms": 500}
+            ],
             ttl_ms=1000,
         )
 

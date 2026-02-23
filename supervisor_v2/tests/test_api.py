@@ -4,14 +4,17 @@ from __future__ import annotations
 
 import asyncio
 import json
-import time
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
 from supervisor_v2.api.http_server import create_app
-from supervisor_v2.api.param_registry import ParamRegistry, ParamDef, create_default_registry
+from supervisor_v2.api.param_registry import (
+    ParamRegistry,
+    ParamDef,
+    create_default_registry,
+)
 from supervisor_v2.api.ws_hub import WsHub
 from supervisor_v2.core.state import Mode, RobotState, WorldState, DesiredTwist
 
@@ -58,12 +61,16 @@ class FakeWorkers:
     def worker_alive(self, name: str) -> bool:
         return self._alive.get(name, False)
 
-    async def send_to(self, name: str, msg_type: str, payload: dict | None = None) -> bool:
+    async def send_to(
+        self, name: str, msg_type: str, payload: dict | None = None
+    ) -> bool:
         self._sent.append((name, msg_type, payload or {}))
         return True
 
     def worker_snapshot(self) -> dict:
-        return {"vision": {"alive": False, "restart_count": 0, "last_seq": 0, "pid": None}}
+        return {
+            "vision": {"alive": False, "restart_count": 0, "last_seq": 0, "pid": None}
+        }
 
 
 @pytest.fixture
@@ -236,7 +243,6 @@ class TestWsHub:
             hub.broadcast_telemetry({"mode": "IDLE"})
             assert mock_ef.called
             # Check the envelope JSON
-            call_args = mock_ef.call_args
             # ensure_future receives a coroutine from ws.send_text(envelope)
             # The send_text was called with the serialized envelope
             ws.send_text.assert_called_once()

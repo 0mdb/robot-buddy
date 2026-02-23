@@ -12,7 +12,9 @@ class TestEnvelopeRoundTrip:
     """Verify serialise → deserialise identity."""
 
     def test_minimal(self):
-        env = Envelope(type="tts.event.energy", src="tts", seq=11, t_ns=0, payload={"energy": 180})
+        env = Envelope(
+            type="tts.event.energy", src="tts", seq=11, t_ns=0, payload={"energy": 180}
+        )
         line = env.to_line()
         assert line.endswith(b"\n")
         parsed = Envelope.from_line(line)
@@ -47,8 +49,7 @@ class TestEnvelopeRoundTrip:
     def test_inline_payload_format(self):
         """Wire format must have payload fields inline, not nested (§1.8)."""
         env = Envelope(
-            type="tts.event.energy", src="tts", seq=11, t_ns=0,
-            payload={"energy": 180}
+            type="tts.event.energy", src="tts", seq=11, t_ns=0, payload={"energy": 180}
         )
         d = json.loads(env.to_line())
         assert "energy" in d

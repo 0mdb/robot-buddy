@@ -123,7 +123,9 @@ class Settings:
         if not (0.5 <= self.gpu_utilization_cap <= 0.95):
             raise ValueError("GPU_UTILIZATION_CAP must be in [0.5, 0.95]")
         if self.llm_backend == "vllm":
-            combined = self.vllm_gpu_memory_utilization + self.orpheus_gpu_memory_utilization
+            combined = (
+                self.vllm_gpu_memory_utilization + self.orpheus_gpu_memory_utilization
+            )
             if combined > self.gpu_utilization_cap:
                 raise ValueError(
                     "Combined VLLM/ORPHEUS GPU utilization exceeds GPU_UTILIZATION_CAP"

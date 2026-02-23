@@ -12,8 +12,7 @@ import logging
 import os
 import sys
 import time
-from dataclasses import dataclass, field
-from pathlib import Path
+from dataclasses import dataclass
 from typing import Any, Callable, Coroutine
 
 from supervisor_v2.messages.envelope import Envelope, SeqCounter, make_envelope
@@ -130,7 +129,13 @@ class WorkerManager:
 
         self._cleanup_sockets()
 
-    async def send_to(self, worker_name: str, msg_type: str, payload: dict | None = None, **kwargs: Any) -> bool:
+    async def send_to(
+        self,
+        worker_name: str,
+        msg_type: str,
+        payload: dict | None = None,
+        **kwargs: Any,
+    ) -> bool:
         """Send one NDJSON message to a worker's stdin."""
         info = self._workers.get(worker_name)
         if not info or not info.process or not info.process.stdin:
@@ -174,7 +179,9 @@ class WorkerManager:
         info.starting = True
         try:
             proc = await asyncio.create_subprocess_exec(
-                sys.executable, "-m", info.module,
+                sys.executable,
+                "-m",
+                info.module,
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
@@ -186,10 +193,10 @@ class WorkerManager:
                 self._read_loop(info), name=f"reader-{info.name}"
             )
             # Also forward stderr to our log
-            asyncio.create_task(
-                self._stderr_loop(info), name=f"stderr-{info.name}"
+            asyncio.create_task(self._stderr_loop(info), name=f"stderr-{info.name}")
+            log.info(
+                "launched %s (pid=%d, module=%s)", info.name, proc.pid, info.module
             )
-            log.info("launched %s (pid=%d, module=%s)", info.name, proc.pid, info.module)
         except Exception:
             log.exception("failed to launch %s", info.name)
             info.alive = False
@@ -236,8 +243,7 @@ class WorkerManager:
             log.exception("%s reader error", info.name)
         finally:
             info.alive = False
-            log.info("%s stdout closed (pid=%s)", info.name,
-                     proc.pid if proc else "?")
+            log.info("%s stdout closed (pid=%s)", info.name, proc.pid if proc else "?")
 
     async def _stderr_loop(self, info: WorkerInfo) -> None:
         """Forward worker stderr to Core's log."""
@@ -276,7 +282,11 @@ class WorkerManager:
     async def _restart(self, info: WorkerInfo) -> None:
         """Kill and relaunch a worker with backoff."""
         if info.restart_count >= self._max_restarts:
-            log.error("%s exceeded max restarts (%d), giving up", info.name, self._max_restarts)
+            log.error(
+                "%s exceeded max restarts (%d), giving up",
+                info.name,
+                self._max_restarts,
+            )
             info.alive = False
             return
 
@@ -303,8 +313,13 @@ class WorkerManager:
             self._restart_backoff_min_s * info.restart_count,
             self._restart_backoff_max_s,
         )
-        log.info("restarting %s in %.1fs (attempt %d/%d)",
-                 info.name, backoff, info.restart_count, self._max_restarts)
+        log.info(
+            "restarting %s in %.1fs (attempt %d/%d)",
+            info.name,
+            backoff,
+            info.restart_count,
+            self._max_restarts,
+        )
         await asyncio.sleep(backoff)
 
         if self._running:
@@ -328,6 +343,7 @@ class WorkerManager:
     def _cleanup_stale_sockets(self) -> None:
         """Remove any leftover socket files from previous crashes."""
         import glob
+
         for pattern in ("/tmp/rb-mic-*.sock", "/tmp/rb-spk-*.sock"):
             for path in glob.glob(pattern):
                 try:

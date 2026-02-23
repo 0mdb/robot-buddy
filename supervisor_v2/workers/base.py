@@ -20,7 +20,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import sys
-import time
 from typing import Any
 
 from supervisor_v2.messages.envelope import Envelope, SeqCounter, make_envelope
@@ -43,7 +42,9 @@ class BaseWorker:
 
     # ── Public API for subclasses ────────────────────────────────
 
-    def send(self, msg_type: str, payload: dict[str, Any] | None = None, **kwargs: Any) -> None:
+    def send(
+        self, msg_type: str, payload: dict[str, Any] | None = None, **kwargs: Any
+    ) -> None:
         """Write one NDJSON message to stdout (synchronous, atomic)."""
         env = make_envelope(
             msg_type=msg_type,
@@ -78,8 +79,12 @@ class BaseWorker:
         log.info("%s worker started", self.domain)
 
         # Launch background tasks
-        reader_task = asyncio.create_task(self._stdin_loop(), name=f"{self.domain}-stdin")
-        heartbeat_task = asyncio.create_task(self._heartbeat_loop(), name=f"{self.domain}-hb")
+        reader_task = asyncio.create_task(
+            self._stdin_loop(), name=f"{self.domain}-stdin"
+        )
+        heartbeat_task = asyncio.create_task(
+            self._heartbeat_loop(), name=f"{self.domain}-hb"
+        )
 
         try:
             await self.run()
@@ -146,9 +151,7 @@ class BaseWorker:
             except Exception:
                 log.exception("%s heartbeat error", self.domain)
             try:
-                await asyncio.wait_for(
-                    self._shutdown_event.wait(), timeout=1.0
-                )
+                await asyncio.wait_for(self._shutdown_event.wait(), timeout=1.0)
                 return  # shutdown signalled
             except asyncio.TimeoutError:
                 pass  # 1s elapsed — emit next heartbeat

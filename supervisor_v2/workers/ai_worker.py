@@ -100,7 +100,9 @@ class AIWorker(BaseWorker):
             self._spk_socket_path = str(p.get("spk_socket_path", ""))
             self._server_base_url = str(p.get("server_base_url", ""))
             self._robot_id = str(p.get("robot_id", ""))
-            log.info("configured: mode=%s server=%s", self._audio_mode, self._server_base_url)
+            log.info(
+                "configured: mode=%s server=%s", self._audio_mode, self._server_base_url
+            )
             self._configured.set()
 
         elif t == AI_CMD_REQUEST_PLAN:
@@ -160,13 +162,16 @@ class AIWorker(BaseWorker):
             return
         prev = self._state
         self._state = new_state
-        self.send(AI_STATE_CHANGED, {
-            "state": new_state,
-            "prev_state": prev,
-            "session_id": self._session_id,
-            "turn_id": self._turn_id,
-            "reason": reason,
-        })
+        self.send(
+            AI_STATE_CHANGED,
+            {
+                "state": new_state,
+                "prev_state": prev,
+                "session_id": self._session_id,
+                "turn_id": self._turn_id,
+                "reason": reason,
+            },
+        )
 
     # ── Plan requests ────────────────────────────────────────────
 
@@ -200,13 +205,17 @@ class AIWorker(BaseWorker):
                     return
 
                 self._server_connected = True
-                self.send(AI_PLAN_RECEIVED, {
-                    "plan_id": plan_id,
-                    "plan_seq": int(data.get("seq", 0)),
-                    "t_server_ms": int(data.get("server_monotonic_ts_ms", 0)),
-                    "actions": data.get("actions", []),
-                    "ttl_ms": int(data.get("ttl_ms", 2000)),
-                }, ref_seq=self._plan_seq)
+                self.send(
+                    AI_PLAN_RECEIVED,
+                    {
+                        "plan_id": plan_id,
+                        "plan_seq": int(data.get("seq", 0)),
+                        "t_server_ms": int(data.get("server_monotonic_ts_ms", 0)),
+                        "actions": data.get("actions", []),
+                        "ttl_ms": int(data.get("ttl_ms", 2000)),
+                    },
+                    ref_seq=self._plan_seq,
+                )
 
         except Exception as e:
             log.warning("plan request failed: %s", e)
@@ -296,33 +305,46 @@ class AIWorker(BaseWorker):
         try:
             async for raw_msg in self._ws:
                 try:
-                    msg = json.loads(raw_msg) if isinstance(raw_msg, str) else json.loads(raw_msg.decode())
+                    msg = (
+                        json.loads(raw_msg)
+                        if isinstance(raw_msg, str)
+                        else json.loads(raw_msg.decode())
+                    )
                 except (json.JSONDecodeError, UnicodeDecodeError):
                     continue
 
                 msg_type = msg.get("type", "")
 
                 if msg_type == "transcription":
-                    self.send(AI_CONVERSATION_TRANSCRIPTION, {
-                        "session_id": self._session_id,
-                        "turn_id": self._turn_id,
-                        "text": msg.get("text", ""),
-                    })
+                    self.send(
+                        AI_CONVERSATION_TRANSCRIPTION,
+                        {
+                            "session_id": self._session_id,
+                            "turn_id": self._turn_id,
+                            "text": msg.get("text", ""),
+                        },
+                    )
 
                 elif msg_type == "emotion":
-                    self.send(AI_CONVERSATION_EMOTION, {
-                        "session_id": self._session_id,
-                        "turn_id": self._turn_id,
-                        "emotion": msg.get("emotion", ""),
-                        "intensity": float(msg.get("intensity", 0.7)),
-                    })
+                    self.send(
+                        AI_CONVERSATION_EMOTION,
+                        {
+                            "session_id": self._session_id,
+                            "turn_id": self._turn_id,
+                            "emotion": msg.get("emotion", ""),
+                            "intensity": float(msg.get("intensity", 0.7)),
+                        },
+                    )
 
                 elif msg_type == "gestures":
-                    self.send(AI_CONVERSATION_GESTURE, {
-                        "session_id": self._session_id,
-                        "turn_id": self._turn_id,
-                        "names": msg.get("names", []),
-                    })
+                    self.send(
+                        AI_CONVERSATION_GESTURE,
+                        {
+                            "session_id": self._session_id,
+                            "turn_id": self._turn_id,
+                            "names": msg.get("names", []),
+                        },
+                    )
 
                 elif msg_type == "audio":
                     self._set_state("speaking", "audio_received")
@@ -341,10 +363,13 @@ class AIWorker(BaseWorker):
                             self.send("ai.conversation.audio", {"data_b64": data_b64})
 
                 elif msg_type == "done":
-                    self.send(AI_CONVERSATION_DONE, {
-                        "session_id": self._session_id,
-                        "turn_id": self._turn_id,
-                    })
+                    self.send(
+                        AI_CONVERSATION_DONE,
+                        {
+                            "session_id": self._session_id,
+                            "turn_id": self._turn_id,
+                        },
+                    )
                     self._set_state("listening", "turn_done")
 
                 elif msg_type == "listening":
@@ -384,10 +409,12 @@ class AIWorker(BaseWorker):
                     pcm += data
 
                 if len(pcm) == chunk_len:
-                    await self._ws_send({
-                        "type": "audio",
-                        "data": base64.b64encode(pcm).decode(),
-                    })
+                    await self._ws_send(
+                        {
+                            "type": "audio",
+                            "data": base64.b64encode(pcm).decode(),
+                        }
+                    )
         except (ConnectionError, OSError) as e:
             self.send(SYSTEM_AUDIO_LINK_DOWN, {"socket": "mic", "reason": str(e)})
         except asyncio.CancelledError:
@@ -419,6 +446,7 @@ class AIWorker(BaseWorker):
             return
 
         import os
+
         # Always unlink first (stale from previous crash)
         try:
             os.unlink(path)
@@ -463,6 +491,7 @@ class AIWorker(BaseWorker):
             if self._server_base_url:
                 try:
                     import httpx
+
                     async with httpx.AsyncClient(timeout=3.0) as client:
                         resp = await client.get(f"{self._server_base_url}/health")
                         self._server_connected = resp.status_code == 200

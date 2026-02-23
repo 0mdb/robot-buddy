@@ -93,7 +93,9 @@ def format_user_prompt(state: WorldState) -> str:
     conf = f"{state.clear_confidence:.0%}" if state.clear_confidence >= 0 else "n/a"
     ball_conf = f"{state.ball_confidence:.2f}"
     vision_age = f"{state.vision_age_ms:.0f} ms" if state.vision_age_ms >= 0 else "n/a"
-    recent_events = ", ".join(state.recent_events[-5:]) if state.recent_events else "none"
+    recent_events = (
+        ", ".join(state.recent_events[-5:]) if state.recent_events else "none"
+    )
 
     return (
         f"World state:\n"

@@ -205,7 +205,9 @@ def parse_conversation_response_content(content: str) -> ConversationResponse:
     # Validate emotion name
     normalized_emotion = normalize_emotion_name(response.emotion)
     if normalized_emotion is None or normalized_emotion not in VALID_EMOTIONS:
-        log.warning("LLM returned unknown emotion %r, defaulting to neutral", raw_emotion)
+        log.warning(
+            "LLM returned unknown emotion %r, defaulting to neutral", raw_emotion
+        )
         response.emotion = "neutral"
     else:
         response.emotion = normalized_emotion

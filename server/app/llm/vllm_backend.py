@@ -150,7 +150,9 @@ class VLLMBackend(PlannerLLMBackend):
         try:
             prompt = self._build_plan_prompt(state)
             for attempt in (1, 2):
-                text = await self._generate_text(prompt, request_tag=f"plan-{state.seq}-{attempt}")
+                text = await self._generate_text(
+                    prompt, request_tag=f"plan-{state.seq}-{attempt}"
+                )
                 candidate = _extract_json_object(text)
                 try:
                     plan = ModelPlan.model_validate_json(candidate)

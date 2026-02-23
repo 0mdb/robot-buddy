@@ -173,9 +173,7 @@ class PlannerEventBus:
             )
 
         # Vision staleness
-        vision_healthy_now = (
-            vision_age >= 0 and vision_age <= self._vision_stale_ms
-        )
+        vision_healthy_now = vision_age >= 0 and vision_age <= self._vision_stale_ms
         if self._vision_healthy is None:
             self._vision_healthy = vision_healthy_now
         elif vision_healthy_now != self._vision_healthy:
@@ -245,7 +243,9 @@ class PlannerEventBus:
                 names.append(fault.name)
         return names
 
-    def _ball_signal_valid(self, robot: RobotState, world: WorldState, vision_age: float) -> bool:
+    def _ball_signal_valid(
+        self, robot: RobotState, world: WorldState, vision_age: float
+    ) -> bool:
         vision_fresh = 0.0 <= vision_age <= self._vision_stale_ms
         clear_ok = (
             world.clear_confidence < 0.0

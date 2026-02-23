@@ -121,10 +121,11 @@ def detect_clear_path(
 #     normalized_x = (cx - frame_w / 2) / (frame_w / 2)  # -1..1
 #     bearing_deg = normalized_x * (HFOV_DEG / 2)
 
+
 #     return (confidence, bearing_deg)
 def detect_ball(
     frame: np.ndarray,
-    hsv_low: Tuple[int, int, int] = (170, 80, 40),   # more forgiving S/V
+    hsv_low: Tuple[int, int, int] = (170, 80, 40),  # more forgiving S/V
     hsv_high: Tuple[int, int, int] = (15, 255, 255),
     min_radius_px: int = 8,
     good_radius_px: int = 35,
@@ -152,8 +153,12 @@ def detect_ball(
     if hsv_low[0] <= hsv_high[0]:
         mask = cv2.inRange(hsv, np.array(hsv_low), np.array(hsv_high))
     else:
-        mask1 = cv2.inRange(hsv, np.array(hsv_low), np.array((180, hsv_high[1], hsv_high[2])))
-        mask2 = cv2.inRange(hsv, np.array((0, hsv_low[1], hsv_low[2])), np.array(hsv_high))
+        mask1 = cv2.inRange(
+            hsv, np.array(hsv_low), np.array((180, hsv_high[1], hsv_high[2]))
+        )
+        mask2 = cv2.inRange(
+            hsv, np.array((0, hsv_low[1], hsv_low[2])), np.array(hsv_high)
+        )
         mask = cv2.bitwise_or(mask1, mask2)
 
     # Morph: open to remove specks, close + dilate to connect fragments
@@ -167,7 +172,7 @@ def detect_ball(
         return None
 
     best_score = -1.0
-    best_cx = best_cy = best_r = 0.0
+    best_cx = 0.0
     best_conf = 0.0
 
     frame_w = frame.shape[1]
@@ -190,14 +195,22 @@ def detect_ball(
         circle_mask = np.zeros_like(mask)
         cv2.circle(circle_mask, (int(cx), int(cy)), int(r), 255, -1)
         inside = cv2.bitwise_and(mask, circle_mask)
-        purity = float(np.count_nonzero(inside)) / (float(np.count_nonzero(circle_mask)) + 1e-6)
+        purity = float(np.count_nonzero(inside)) / (
+            float(np.count_nonzero(circle_mask)) + 1e-6
+        )
 
         # Size term saturates at good_radius_px
         good_r = max(float(good_radius_px), float(min_radius_px) + 1.0)
-        size_term = float(np.clip((r - float(min_radius_px)) / (good_r - float(min_radius_px)), 0.0, 1.0))
+        size_term = float(
+            np.clip(
+                (r - float(min_radius_px)) / (good_r - float(min_radius_px)), 0.0, 1.0
+            )
+        )
 
         # Soft score (no hard reject): weighted sum
-        shape_term = float(np.clip(0.45 * circularity + 0.35 * fill + 0.20 * purity, 0.0, 1.0))
+        shape_term = float(
+            np.clip(0.45 * circularity + 0.35 * fill + 0.20 * purity, 0.0, 1.0)
+        )
         conf = float(np.clip(size_term * shape_term, 0.0, 1.0))
 
         # Prefer larger + rounder things; add tiny bias toward center to avoid edges/noise
@@ -206,7 +219,7 @@ def detect_ball(
 
         if score > best_score:
             best_score = score
-            best_cx, best_cy, best_r = cx, cy, r
+            best_cx = cx
             best_conf = conf
 
     if best_score < 0.0:

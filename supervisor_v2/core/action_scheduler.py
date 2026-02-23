@@ -74,7 +74,9 @@ class PlanValidator:
                 if not text:
                     dropped += 1
                     continue
-                safe_actions.append({"action": "say", "text": text[: self._max_text_len]})
+                safe_actions.append(
+                    {"action": "say", "text": text[: self._max_text_len]}
+                )
                 continue
 
             if action == "emote":
@@ -109,7 +111,9 @@ class PlanValidator:
                     continue
                 safe_actions.append({"action": "skill", "name": name})
 
-        return ValidatedPlan(actions=safe_actions, ttl_ms=ttl_ms_i, dropped_actions=dropped)
+        return ValidatedPlan(
+            actions=safe_actions, ttl_ms=ttl_ms_i, dropped_actions=dropped
+        )
 
 
 # ── Scheduling ───────────────────────────────────────────────────

@@ -101,7 +101,15 @@ def load_config(path: str | Path | None = None) -> SupervisorConfig:
             raw = yaml.safe_load(f) or {}
 
         cfg = SupervisorConfig()
-        for section_name in ("serial", "control", "safety", "network", "logging", "vision", "workers"):
+        for section_name in (
+            "serial",
+            "control",
+            "safety",
+            "network",
+            "logging",
+            "vision",
+            "workers",
+        ):
             if section_name in raw:
                 section = getattr(cfg, section_name)
                 for k, v in raw[section_name].items():

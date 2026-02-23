@@ -560,25 +560,201 @@ def create_default_registry() -> ParamRegistry:
 
     # Floor HSV thresholds — tune these to match your actual floor color.
     # Use a colour-picker on a /video frame to find the right HSV range.
-    reg.register(ParamDef(name="vision.floor_hsv_h_low",  type="int", min=0, max=180, step=1, default=0,   owner="vision", doc="Floor HSV hue lower bound"))
-    reg.register(ParamDef(name="vision.floor_hsv_h_high", type="int", min=0, max=180, step=1, default=180, owner="vision", doc="Floor HSV hue upper bound"))
-    reg.register(ParamDef(name="vision.floor_hsv_s_low",  type="int", min=0, max=255, step=1, default=0,   owner="vision", doc="Floor HSV saturation lower bound"))
-    reg.register(ParamDef(name="vision.floor_hsv_s_high", type="int", min=0, max=255, step=1, default=80,  owner="vision", doc="Floor HSV saturation upper bound"))
-    reg.register(ParamDef(name="vision.floor_hsv_v_low",  type="int", min=0, max=255, step=1, default=50,  owner="vision", doc="Floor HSV value lower bound"))
-    reg.register(ParamDef(name="vision.floor_hsv_v_high", type="int", min=0, max=255, step=1, default=220, owner="vision", doc="Floor HSV value upper bound"))
+    reg.register(
+        ParamDef(
+            name="vision.floor_hsv_h_low",
+            type="int",
+            min=0,
+            max=180,
+            step=1,
+            default=0,
+            owner="vision",
+            doc="Floor HSV hue lower bound",
+        )
+    )
+    reg.register(
+        ParamDef(
+            name="vision.floor_hsv_h_high",
+            type="int",
+            min=0,
+            max=180,
+            step=1,
+            default=180,
+            owner="vision",
+            doc="Floor HSV hue upper bound",
+        )
+    )
+    reg.register(
+        ParamDef(
+            name="vision.floor_hsv_s_low",
+            type="int",
+            min=0,
+            max=255,
+            step=1,
+            default=0,
+            owner="vision",
+            doc="Floor HSV saturation lower bound",
+        )
+    )
+    reg.register(
+        ParamDef(
+            name="vision.floor_hsv_s_high",
+            type="int",
+            min=0,
+            max=255,
+            step=1,
+            default=80,
+            owner="vision",
+            doc="Floor HSV saturation upper bound",
+        )
+    )
+    reg.register(
+        ParamDef(
+            name="vision.floor_hsv_v_low",
+            type="int",
+            min=0,
+            max=255,
+            step=1,
+            default=50,
+            owner="vision",
+            doc="Floor HSV value lower bound",
+        )
+    )
+    reg.register(
+        ParamDef(
+            name="vision.floor_hsv_v_high",
+            type="int",
+            min=0,
+            max=255,
+            step=1,
+            default=220,
+            owner="vision",
+            doc="Floor HSV value upper bound",
+        )
+    )
 
     # Ball HSV thresholds — defaults target a red ball (hue wraps 0/180).
-    reg.register(ParamDef(name="vision.ball_hsv_h_low",  type="int", min=0, max=180, step=1, default=0,   owner="vision", doc="Ball HSV hue lower bound"))
-    reg.register(ParamDef(name="vision.ball_hsv_h_high", type="int", min=0, max=180, step=1, default=15,  owner="vision", doc="Ball HSV hue upper bound"))
-    reg.register(ParamDef(name="vision.ball_hsv_s_low",  type="int", min=0, max=255, step=1, default=120, owner="vision", doc="Ball HSV saturation lower bound"))
-    reg.register(ParamDef(name="vision.ball_hsv_s_high", type="int", min=0, max=255, step=1, default=255, owner="vision", doc="Ball HSV saturation upper bound"))
-    reg.register(ParamDef(name="vision.ball_hsv_v_low",  type="int", min=0, max=255, step=1, default=70,  owner="vision", doc="Ball HSV value lower bound"))
-    reg.register(ParamDef(name="vision.ball_hsv_v_high", type="int", min=0, max=255, step=1, default=255, owner="vision", doc="Ball HSV value upper bound"))
-    reg.register(ParamDef(name="vision.min_ball_radius_px", type="int", min=1, max=100, step=1, default=10, owner="vision", doc="Minimum ball contour radius in pixels"))
+    reg.register(
+        ParamDef(
+            name="vision.ball_hsv_h_low",
+            type="int",
+            min=0,
+            max=180,
+            step=1,
+            default=0,
+            owner="vision",
+            doc="Ball HSV hue lower bound",
+        )
+    )
+    reg.register(
+        ParamDef(
+            name="vision.ball_hsv_h_high",
+            type="int",
+            min=0,
+            max=180,
+            step=1,
+            default=15,
+            owner="vision",
+            doc="Ball HSV hue upper bound",
+        )
+    )
+    reg.register(
+        ParamDef(
+            name="vision.ball_hsv_s_low",
+            type="int",
+            min=0,
+            max=255,
+            step=1,
+            default=120,
+            owner="vision",
+            doc="Ball HSV saturation lower bound",
+        )
+    )
+    reg.register(
+        ParamDef(
+            name="vision.ball_hsv_s_high",
+            type="int",
+            min=0,
+            max=255,
+            step=1,
+            default=255,
+            owner="vision",
+            doc="Ball HSV saturation upper bound",
+        )
+    )
+    reg.register(
+        ParamDef(
+            name="vision.ball_hsv_v_low",
+            type="int",
+            min=0,
+            max=255,
+            step=1,
+            default=70,
+            owner="vision",
+            doc="Ball HSV value lower bound",
+        )
+    )
+    reg.register(
+        ParamDef(
+            name="vision.ball_hsv_v_high",
+            type="int",
+            min=0,
+            max=255,
+            step=1,
+            default=255,
+            owner="vision",
+            doc="Ball HSV value upper bound",
+        )
+    )
+    reg.register(
+        ParamDef(
+            name="vision.min_ball_radius_px",
+            type="int",
+            min=1,
+            max=100,
+            step=1,
+            default=10,
+            owner="vision",
+            doc="Minimum ball contour radius in pixels",
+        )
+    )
 
     # Vision safety thresholds — control how clear_confidence caps speed.
-    reg.register(ParamDef(name="vision.stale_ms",   type="float", min=100.0, max=2000.0, step=50.0,  default=500.0, owner="vision", doc="Vision age (ms) above which stale speed cap applies"))
-    reg.register(ParamDef(name="vision.clear_low",  type="float", min=0.01,  max=1.0,    step=0.01,  default=0.3,   owner="vision", doc="clear_conf below this → 25%% speed cap"))
-    reg.register(ParamDef(name="vision.clear_high", type="float", min=0.01,  max=1.0,    step=0.01,  default=0.6,   owner="vision", doc="clear_conf below this → 50%% speed cap"))
+    reg.register(
+        ParamDef(
+            name="vision.stale_ms",
+            type="float",
+            min=100.0,
+            max=2000.0,
+            step=50.0,
+            default=500.0,
+            owner="vision",
+            doc="Vision age (ms) above which stale speed cap applies",
+        )
+    )
+    reg.register(
+        ParamDef(
+            name="vision.clear_low",
+            type="float",
+            min=0.01,
+            max=1.0,
+            step=0.01,
+            default=0.3,
+            owner="vision",
+            doc="clear_conf below this → 25%% speed cap",
+        )
+    )
+    reg.register(
+        ParamDef(
+            name="vision.clear_high",
+            type="float",
+            min=0.01,
+            max=1.0,
+            step=0.01,
+            default=0.6,
+            owner="vision",
+            doc="clear_conf below this → 50%% speed cap",
+        )
+    )
 
     return reg

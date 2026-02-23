@@ -227,9 +227,7 @@ class ModelPlan(BaseModel):
                 return None
             intensity_raw = payload.get("intensity", 0.5)
             intensity = (
-                float(intensity_raw)
-                if isinstance(intensity_raw, (int, float))
-                else 0.5
+                float(intensity_raw) if isinstance(intensity_raw, (int, float)) else 0.5
             )
             return {"action": "emote", "name": name, "intensity": intensity}
 

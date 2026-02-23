@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-import time
-
-from supervisor_v2.core.action_scheduler import ActionScheduler, PlanValidator, ValidatedPlan
+from supervisor_v2.core.action_scheduler import (
+    ActionScheduler,
+    PlanValidator,
+)
 from supervisor_v2.core.behavior_engine import BehaviorEngine
 from supervisor_v2.core.event_bus import PlannerEventBus
 from supervisor_v2.core.event_router import EventRouter
@@ -68,7 +69,12 @@ class TestSafety:
         assert result.w_mrad_s == 0
 
     def test_passthrough_in_teleop(self):
-        r = RobotState(mode=Mode.TELEOP, reflex_connected=True, range_status=RangeStatus.OK, range_mm=2000)
+        r = RobotState(
+            mode=Mode.TELEOP,
+            reflex_connected=True,
+            range_status=RangeStatus.OK,
+            range_mm=2000,
+        )
         w = WorldState()
         result = apply_safety(DesiredTwist(100, 200), r, w)
         assert result.v_mm_s == 100
@@ -81,15 +87,23 @@ class TestSafety:
         assert result.v_mm_s == 0
 
     def test_range_close_cap(self):
-        r = RobotState(mode=Mode.TELEOP, reflex_connected=True,
-                       range_status=RangeStatus.OK, range_mm=250)
+        r = RobotState(
+            mode=Mode.TELEOP,
+            reflex_connected=True,
+            range_status=RangeStatus.OK,
+            range_mm=250,
+        )
         w = WorldState()
         result = apply_safety(DesiredTwist(100, 200), r, w)
         assert result.v_mm_s == 25  # 25% of 100
 
     def test_vision_stale_cap(self):
-        r = RobotState(mode=Mode.TELEOP, reflex_connected=True,
-                       range_status=RangeStatus.OK, range_mm=2000)
+        r = RobotState(
+            mode=Mode.TELEOP,
+            reflex_connected=True,
+            range_status=RangeStatus.OK,
+            range_mm=2000,
+        )
         w = WorldState(clear_confidence=0.9, vision_rx_mono_ms=1.0)
         # vision_age_ms will be huge since rx_mono_ms is near zero
         result = apply_safety(DesiredTwist(100, 200), r, w)
@@ -129,17 +143,23 @@ class TestEventBus:
         w = WorldState()
 
         # Close: range < 450
-        bus.ingest(RobotState(range_status=RangeStatus.OK, range_mm=400, tick_mono_ms=100), w)
+        bus.ingest(
+            RobotState(range_status=RangeStatus.OK, range_mm=400, tick_mono_ms=100), w
+        )
         events = bus.latest()
         assert any(e.type == "safety.obstacle_close" for e in events)
 
         # Still close at 500 (not cleared — needs > 650)
-        bus.ingest(RobotState(range_status=RangeStatus.OK, range_mm=500, tick_mono_ms=200), w)
+        bus.ingest(
+            RobotState(range_status=RangeStatus.OK, range_mm=500, tick_mono_ms=200), w
+        )
         events = bus.latest()
         assert not any(e.type == "safety.obstacle_cleared" for e in events)
 
         # Cleared at 700
-        bus.ingest(RobotState(range_status=RangeStatus.OK, range_mm=700, tick_mono_ms=300), w)
+        bus.ingest(
+            RobotState(range_status=RangeStatus.OK, range_mm=700, tick_mono_ms=300), w
+        )
         events = bus.latest()
         assert any(e.type == "safety.obstacle_cleared" for e in events)
 
@@ -151,9 +171,7 @@ class TestActionScheduler:
     def test_schedule_and_pop(self):
         s = ActionScheduler()
         v = PlanValidator()
-        plan = v.validate(
-            [{"action": "say", "text": "Hello"}], ttl_ms=2000
-        )
+        plan = v.validate([{"action": "say", "text": "Hello"}], ttl_ms=2000)
         s.schedule_plan(plan, now_mono_ms=1000, issued_mono_ms=1000)
         due = s.pop_due_actions(now_mono_ms=1000, face_locked=False)
         assert len(due) == 1
@@ -174,9 +192,7 @@ class TestActionScheduler:
     def test_ttl_expiry(self):
         s = ActionScheduler()
         v = PlanValidator()
-        plan = v.validate(
-            [{"action": "say", "text": "Hello"}], ttl_ms=500
-        )
+        plan = v.validate([{"action": "say", "text": "Hello"}], ttl_ms=500)
         s.schedule_plan(plan, now_mono_ms=1000, issued_mono_ms=1000)
         # Pop after TTL expires
         due = s.pop_due_actions(now_mono_ms=2000, face_locked=False)
@@ -246,9 +262,17 @@ class TestEventRouter:
     async def test_vision_snapshot(self):
         router, world, _ = self._make_router()
         env = Envelope(
-            type="vision.detection.snapshot", src="vision", seq=1, t_ns=0,
-            payload={"clear_confidence": 0.8, "ball_confidence": 0.5,
-                     "ball_bearing_deg": -5.0, "fps": 30.0, "frame_seq": 42},
+            type="vision.detection.snapshot",
+            src="vision",
+            seq=1,
+            t_ns=0,
+            payload={
+                "clear_confidence": 0.8,
+                "ball_confidence": 0.5,
+                "ball_bearing_deg": -5.0,
+                "fps": 30.0,
+                "frame_seq": 42,
+            },
         )
         await router.route("vision", env)
         assert world.clear_confidence == 0.8
@@ -258,25 +282,42 @@ class TestEventRouter:
     async def test_tts_started_finished(self):
         router, world, _ = self._make_router()
 
-        await router.route("tts", Envelope(
-            type="tts.event.started", src="tts", seq=1, t_ns=0,
-            payload={"ref_seq": 5, "text": "Hello"},
-        ))
+        await router.route(
+            "tts",
+            Envelope(
+                type="tts.event.started",
+                src="tts",
+                seq=1,
+                t_ns=0,
+                payload={"ref_seq": 5, "text": "Hello"},
+            ),
+        )
         assert world.speaking
 
-        await router.route("tts", Envelope(
-            type="tts.event.finished", src="tts", seq=2, t_ns=0,
-            payload={"ref_seq": 5},
-        ))
+        await router.route(
+            "tts",
+            Envelope(
+                type="tts.event.finished",
+                src="tts",
+                seq=2,
+                t_ns=0,
+                payload={"ref_seq": 5},
+            ),
+        )
         assert not world.speaking
 
     async def test_plan_dedup(self):
         router, world, sched = self._make_router()
         plan_env = Envelope(
-            type="ai.plan.received", src="ai", seq=1, t_ns=0,
+            type="ai.plan.received",
+            src="ai",
+            seq=1,
+            t_ns=0,
             payload={
-                "plan_id": "abc123", "plan_seq": 1,
-                "actions": [{"action": "say", "text": "Hi"}], "ttl_ms": 2000,
+                "plan_id": "abc123",
+                "plan_seq": 1,
+                "actions": [{"action": "say", "text": "Hi"}],
+                "ttl_ms": 2000,
             },
         )
         await router.route("ai", plan_env)
@@ -284,10 +325,15 @@ class TestEventRouter:
 
         # Same plan_id again
         plan_env2 = Envelope(
-            type="ai.plan.received", src="ai", seq=2, t_ns=0,
+            type="ai.plan.received",
+            src="ai",
+            seq=2,
+            t_ns=0,
             payload={
-                "plan_id": "abc123", "plan_seq": 2,
-                "actions": [{"action": "say", "text": "Hi again"}], "ttl_ms": 2000,
+                "plan_id": "abc123",
+                "plan_seq": 2,
+                "actions": [{"action": "say", "text": "Hi again"}],
+                "ttl_ms": 2000,
             },
         )
         await router.route("ai", plan_env2)
@@ -295,17 +341,29 @@ class TestEventRouter:
 
     async def test_audio_link_state(self):
         router, world, _ = self._make_router()
-        await router.route("tts", Envelope(
-            type="system.audio.link_up", src="tts", seq=1, t_ns=0,
-            payload={"socket": "mic"},
-        ))
+        await router.route(
+            "tts",
+            Envelope(
+                type="system.audio.link_up",
+                src="tts",
+                seq=1,
+                t_ns=0,
+                payload={"socket": "mic"},
+            ),
+        )
         assert world.mic_link_up
         assert not world.spk_link_up
 
-        await router.route("ai", Envelope(
-            type="system.audio.link_up", src="ai", seq=1, t_ns=0,
-            payload={"socket": "spk"},
-        ))
+        await router.route(
+            "ai",
+            Envelope(
+                type="system.audio.link_up",
+                src="ai",
+                seq=1,
+                t_ns=0,
+                payload={"socket": "spk"},
+            ),
+        )
         assert world.both_audio_links_up
 
 
@@ -335,7 +393,12 @@ class TestBehaviorEngine:
     def test_wander_returns_nonzero(self):
         skill = SkillExecutor()
         be = BehaviorEngine(skill)
-        r = RobotState(mode=Mode.WANDER, tick_mono_ms=1000.0, range_status=RangeStatus.OK, range_mm=2000)
+        r = RobotState(
+            mode=Mode.WANDER,
+            tick_mono_ms=1000.0,
+            range_status=RangeStatus.OK,
+            range_mm=2000,
+        )
         w = WorldState(active_skill="patrol_drift")
         twist = be.step(r, w)
         # Patrol drift should produce some motion

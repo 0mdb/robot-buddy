@@ -90,14 +90,20 @@ def apply_safety(
         elif world.clear_confidence < _vision_clear_low:
             scale = 0.25
             robot.speed_caps.append(
-                SpeedCap(scale, f"clear_conf={world.clear_confidence:.2f}<{_vision_clear_low}")
+                SpeedCap(
+                    scale,
+                    f"clear_conf={world.clear_confidence:.2f}<{_vision_clear_low}",
+                )
             )
             v = int(v * scale)
             w = int(w * scale)
         elif world.clear_confidence < _vision_clear_high:
             scale = 0.50
             robot.speed_caps.append(
-                SpeedCap(scale, f"clear_conf={world.clear_confidence:.2f}<{_vision_clear_high}")
+                SpeedCap(
+                    scale,
+                    f"clear_conf={world.clear_confidence:.2f}<{_vision_clear_high}",
+                )
             )
             v = int(v * scale)
             w = int(w * scale)
