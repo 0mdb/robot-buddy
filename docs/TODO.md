@@ -16,19 +16,19 @@ Single source of implementation truth. All task tracking lives here.
 Living section — reorder as priorities shift. Current recommended sequence:
 
 ### Track A: Face Communication (firmware + supervisor)
-1. Phase 5 polish (talking sync, protocol docs, dashboard viz)
-2. Phase 0 remaining gaps (system logos, thinking face)
-3. Stage 4.0 parity work (system overlays, corner buttons, semantic gaps, gesture gap analysis)
-4. Stage 4.1–4.2 firmware optimization (profiling → targeted optimizations)
-5. T1–T4 evaluation
+1. Stage 4.0 parity + hardware polish (system overlays/screens, corner buttons, thinking face read, timing values, docs)
+2. Stage 4.1–4.2 firmware optimization (profiling → targeted optimizations)
+3. T1–T4 evaluation
 
 ### Track B: Personality Engine (server + supervisor)
-1. PersonalityWorker scaffold + affect vector
-2. Layer 0 deterministic rules
-3. Server prompt engineering (system prompt v2)
-4. Layer 1 LLM integration
-5. Memory system + impulse catalog
-6. PE evaluation
+1. PE↔Face spec compliance fixes (clamping, planner emote routing, conv lifecycle events, worker intensity caps)
+2. Server emotion vocab alignment (add confused, update prompts/schemas/tests)
+3. Conversation response schema v2 + prompt v2 (bucket-6 v2 skeleton, mood_reason, memory_tags)
+4. vLLM guided JSON decoding + model config defaults (Qwen3-8B-AWQ)
+5. Personality profile injection (`personality.llm.profile` → `/converse` prompt injection + anchor cadence)
+6. Memory system (local JSON, consent gate, dashboard viewer + forget)
+7. Prosody routing (TTS emotion from PE mood; optional VA→prosody later)
+8. PE evaluation (metrics + guardrail + child-safety validation)
 
 ### Track C: Reflex MCU Commissioning (hardware)
 1. Phase 1: IMU bring-up
@@ -46,13 +46,6 @@ _(all items completed)_
 
 ### Face Communication System
 
-**Phase 0 — Remaining Gaps** `[sonnet]`
-- [ ] Thinking face looks angry on hardware — needs refinement (may defer to Stage 4)
-- [ ] Visual review: V3 sim vs MCU side-by-side on hardware for all 13 moods
-
-**Phase 5 — Polish** `[sonnet]`
-- [ ] Tune timing values on hardware: ramp durations, hold times, border alpha curves
-
 **Stage 4 — Parity + Firmware Display Optimization** `[opus]`
 - [ ] Stage 4.0: Update `specs/face-communication-spec-stage2.md` + `docs/protocols.md` to match chosen behavior:
   - System overlays = Sim V3 “face-based” screens + hide border/buttons while SystemMode != NONE
@@ -68,6 +61,9 @@ _(all items completed)_
   - CONFUSED mood acceptance, system-mode suppression of border/buttons, corner icon mapping defaults
 - [ ] Stage 4.0: Supervisor: send LOW_BATTERY param (0–255) derived from `battery_mv` (battery fill/progress)
 - [ ] Stage 4.0: Doc parity cleanup: reconcile `esp32-face/README.md` with current renderer + corner button semantics
+- [ ] Stage 4.0: Hardware visual pass: Sim V3 vs MCU side-by-side on hardware for all 13 moods (confirm “real” reads match spec intent) `[sonnet]`
+- [ ] Stage 4.0: Refine THINKING face on hardware (currently reads as angry) `[sonnet]`
+- [ ] Stage 4.0: Tune timing values on hardware: ramp durations, hold times, border alpha curves `[sonnet]`
 - [ ] Stage 4.1: Profile current render loop (esp_timer instrumentation, 1000-frame stats)
 - [ ] Stage 4.1: Profile border SDF render cost for all 8 conv states
 - [ ] Stage 4.1: Profile command-to-pixel latency end-to-end (button/wake/PTT → first pixel)
@@ -89,37 +85,57 @@ _(all items completed)_
 
 ### Personality Engine Implementation
 
-**Spec reference**: `specs/personality-engine-spec-stage2.md`
+**Spec references**: `specs/personality-engine-spec-stage2.md`, `specs/pe-face-comm-alignment.md`, `specs/face-communication-spec-stage2.md`
 
-**Scaffold** `[opus]`
-- [x] PersonalityWorker as dedicated BaseWorker on Pi 5 (1 Hz tick + event-triggered fast path)
-- [x] Continuous affect vector (valence, arousal) with decaying integrator
-- [x] 13 mood anchors in VA space with asymmetric hysteresis projection
-- [x] 20 axis-derived parameters from 5 personality axes
-- [x] Worker↔tick_loop protocol: personality snapshot struct
+**Status (already done)** `[opus]`
+- [x] L0 PersonalityWorker + affect vector model + tick loop integration (see Completed → “Personality Engine — Layer 0 Implementation”)
+- [x] L0 impulse catalog, idle rules, duration caps, context gate, fast-path processing (unit tested)
 
-**Layer 0 — Deterministic Rules** `[opus]`
-- [x] Impulse catalog implementation (stimulus → affect delta mappings)
-- [x] Duration caps, intensity caps, context gate enforcement
-- [x] Idle behavior rules (SLEEPY after inactivity, CURIOUS on sensor trigger)
-- [x] Auto-recovery sequences for negative moods
+**B1 — PE↔Face Compliance Fixes** `[sonnet]`
+- [ ] Tick loop conversation clamping: during LISTENING/PTT force NEUTRAL@0.3, during THINKING force THINKING@0.5, regardless of PE snapshot freshness (face comm S2 §2.3; alignment §4.5)
+- [ ] Route planner `emote` actions as PE impulses (do not call `FaceClient.send_state()` directly); face mood must come from PE snapshot (face comm S2 “Layer 3 source updated” note)
+- [ ] Ensure `personality.event.conv_ended` is emitted on all conversation teardown paths (PTT off, ACTION cancel, AI error/disconnect), not only `AI_CONVERSATION_DONE`
+- [ ] Add PE intensity caps enforcement (SAD 0.70, SCARED 0.60, ANGRY 0.50, SURPRISED 0.80) so the PE-fresh path is guardrail-safe
+- [ ] Face send-rate discipline: dedup/throttle `SET_STATE`/`SET_CONV_STATE` when unchanged; avoid serial/MCU spam (perf + face smoothness)
+- [ ] Add `confused` to server canonical emotions and ensure it survives end-to-end (server → ai_worker → tick_loop → personality_worker → face)
 
-**Layer 1 — LLM Integration** `[opus]`
-- [ ] System prompt v2 for personality (from `docs/research/bucket-6-prompt-engineering.md`)
-- [ ] Server-side prompt engineering: embed personality axes + affect state in LLM context
-- [ ] Qwen3-8B-AWQ integration (per PE spec §8, bucket-5 decision)
-- [ ] LLM response → affect impulse parsing
-- [ ] Fallback to Layer 0 when server unreachable
+**B1b — Guardrail Config + Safety Timers** `[opus]`
+- [ ] Extend `personality.config.init` to include `{axes, guardrails, memory_path, memory_consent}` and plumb into PersonalityWorker (PE spec S2 §9.5, §14.1)
+- [ ] Implement RS-1 session time limit (900 s) + RS-2 daily time limit (2700 s): enforcement behavior + “daily” semantics + persistence/reset strategy (PE spec S2 §9.3)
+- [ ] Expose time-limit state via telemetry + add a child-safe UX path (stop-and-redirect + cooldown) + parent override controls
 
-**Memory & Prosody** `[opus]`
-- [ ] Memory system: local JSON, 5 decay tiers, COPPA compliant (spec §9)
-- [ ] TTS prosody routing from affect vector (valence/arousal → speech rate/pitch)
-- [ ] Emotional memory consolidation (interaction summaries)
+**B2 — Conversation Schema V2 + Prompt V2 (Layer 1)** `[opus]`
+- [ ] Implement ConversationResponse v2 schema (PE spec S2 §12.3): `inner_thought`, `emotion`, `intensity`, `mood_reason`, `emotional_arc`, `child_affect`, `text`, `gestures`, `memory_tags`
+- [ ] Normalize target child age range across prompts/specs/eval docs (avoid mixed 4–6 vs 5–12 messaging; pick canonical and enforce in system prompt)
+- [ ] Implement conversation history context-budget enforcement (PE spec S2 §12.6): deterministic truncation + rolling summary/compression
+- [ ] `/converse` websocket protocol: include `mood_reason` (+ `memory_tags`) with emotion metadata; update `supervisor/workers/ai_worker.py` parsing + forwarding
+- [ ] Harden `/converse` websocket: cap per-utterance `audio_buffer` bytes + max utterance seconds; reject/clear on overflow; add overflow/timeout telemetry (server `routers/converse.py`)
+- [ ] Privacy hardening: disable transcript logging by default (no user/assistant text in logs); add redaction hooks + retention note (server `llm/conversation.py`)
+- [ ] Update PersonalityWorker L1 pipeline (PE spec S2 §13): `mood_reason` validation + modulation factor; rejected reasons substitute THINKING and emit guardrail-trigger event
+- [ ] Extend `personality.event.ai_emotion` payload forwarding: include `session_id`, `turn_id`, `mood_reason`; add `personality.event.memory_extract` emission per turn
 
-**Evaluation** `[opus]`
-- [ ] PE evaluation metrics (spec §13): emotional coherence, response appropriateness
-- [ ] Guardrail compliance testing
-- [ ] Child interaction safety validation
+**B3 — vLLM Guided Decoding + Model Defaults** `[sonnet]`
+- [ ] Set server defaults: `VLLM_MODEL_NAME=Qwen/Qwen3-8B-Instruct-AWQ` and `VLLM_DTYPE=auto` (PE spec S2 §12.1)
+- [ ] Implement vLLM schema-guided decoding (PE spec S2 §12.2) for conversation (+ planner where applicable); remove JSON repair loop
+- [ ] Use model chat templates (Qwen) instead of ad-hoc `ROLE: ...` prompting to avoid behavior drift between backends (quality + token efficiency)
+
+**B4 — Personality Profile Injection (server conditioning)** `[opus]`
+- [ ] Add outbound `personality.llm.profile` from PersonalityWorker (conv start + 1 Hz during conv) and route it to AI worker
+- [ ] Extend `/converse` protocol to accept `{"type":"profile","profile":{...}}`; server injects “CURRENT STATE …” system block each turn + anchor reminder every 5 turns (PE spec S2 §12.5, §12.7)
+
+**B5 — Memory System (COPPA)** `[opus]`
+- [ ] Implement local memory store per PE spec S2 §8: decay tiers, max 50 entries, eviction, local-only JSON, consent gate default false
+- [ ] Memory timestamps: clarify/resolve monotonic-vs-wall-clock for persistence across reboots; implement `boot_id` + wall-clock fallback if needed (may require spec amendment)
+- [ ] Dashboard: parent memory viewer + “Forget everything” button (`personality.cmd.reset_memory`) (PE spec S2 §8.5)
+- [ ] Apply memory bias term in affect update (step 3) (PE spec S2 §8.3)
+
+**B6 — Prosody** `[sonnet]`
+- [ ] Route TTS emotion tag from `world.personality_mood` (PE spec S2 §11.5) instead of hardcoding `"neutral"`
+
+**B7 — Evaluation** `[opus]`
+- [ ] Add/extend tests: clamping behavior, worker intensity caps, planner-emote impulse routing, conv-ended teardown coverage, `confused` server vocab, schema-v2 parsing, guided decoding compliance
+- [ ] Add tests for RS-1/RS-2 time limits, `/converse` overflow/timeouts/disconnects, and “no transcript logs by default” privacy policy
+- [ ] PE evaluation checklist: emotional coherence, guardrail compliance, child-safety validation (PE spec S2 §13 + §9 HC/RS)
 
 ---
 
@@ -174,6 +190,7 @@ _(all items completed)_
 ### Conversation & Voice
 
 - [ ] `[opus]` LLM conversation history/memory — server-side session context
+- [ ] `[sonnet]` TTS perf hardening: replace Python-loop resampling in `server/app/tts/orpheus.py` with an efficient resampler; add max utterance duration safeguards
 - [ ] `[sonnet]` Wake word model: increase recall from 42%→80%+ (n_samples 15k→50k+, augmentation rounds 3→5, speech-heavy negative data, layer_size 64)
 - [ ] `[sonnet]` Wake word: record 20–50 real "hey buddy" utterances from family
 - [ ] `[sonnet]` Wake word: soak test 1+ hours idle with household noise
@@ -284,9 +301,19 @@ _(all items completed)_
 ## Future Development & R&D
 
 ### Near-Term Ideas
-- Voice ID / speaker identification — per-child voice embeddings for personalized responses
+- `[opus]` Speaker personalization (HC-2 compliant): explicit per-child profiles via parent UI; no voice ID / biometric embeddings
 - Home Assistant light control via conversation (see `docs/home-assistant-integration.md`)
 - Additional modes: LINE_FOLLOW, BALL, CRANE, CHARGING
+
+### Blue-Sky Personality Features
+- `[opus]` Homeostatic drives layer (energy/curiosity/social “batteries”) that slowly biases PE impulses over minutes
+- `[opus]` Rituals & routines library: parent-scheduled “morning / bedtime / homework” scripts with safe affect arcs
+- `[opus]` Curiosity threads (“quests”): bounded follow-ups based on `memory_tags` with decay + consent gate
+- `[opus]` Social repair skills: apologize, clarify misunderstandings, de-escalate, and re-engage after frustration
+- `[opus]` Story mode: short interactive stories with `emotional_arc` + gestures + prosody (bounded + opt-out)
+- `[opus]` Humor timing engine: callbacks, playful patterns, and “inside jokes” without parasocial deepening
+- `[opus]` Embodied habits: micro-motions / gaze cues synced to PE mood + sensor context (with strict safety caps)
+- `[opus]` Parent-tunable “persona packs”: seasonal themes, catchphrases, preferred activities (opt-in + reversible)
 
 ### R&D Research Plan
 - On-device inference feasibility if PE spec revisits PE-7 decision
