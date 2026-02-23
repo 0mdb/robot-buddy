@@ -3,12 +3,9 @@
 from __future__ import annotations
 
 from supervisor_v2.core.state import (
-    ClockSync,
-    DesiredTwist,
     Mode,
     MOTION_MODES,
     RobotState,
-    SpeedCap,
     WorldState,
 )
 from supervisor_v2.devices.protocol import Fault

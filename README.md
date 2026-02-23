@@ -279,7 +279,6 @@ Plan actions: `say(text)`, `emote(name, intensity)`, `gesture(name, params)`, `s
 - [x] Deterministic telemetry: timestamps, sequence numbers, clock sync, raw packet logging
 
 ### In Progress
-- [ ] Face-speech timing sync (face stops talking before speech ends)
 - [ ] Reflex MCU hardware commissioning (breadboard bring-up)
 - [ ] Personality engine implementation (spec complete, implementation pending)
 

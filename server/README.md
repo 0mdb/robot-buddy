@@ -12,7 +12,7 @@ Supervisor (Pi 5) ──POST /plan / WS /converse──► FastAPI server
                                       └─ TTS backend: Orpheus (vLLM) with espeak shedding
 ```
 
-- **Planner model:** default `Qwen/Qwen2.5-3B-Instruct` when `LLM_BACKEND=vllm`
+- **Planner model:** default `Qwen/Qwen3-8B-AWQ` when `LLM_BACKEND=vllm`
 - **Rollout backend switch:** `LLM_BACKEND=ollama|vllm` (default `vllm`)
 - **Server:** FastAPI + uvicorn on port 8100
 - **STT:** faster-whisper, CPU-first (`STT_DEVICE=cpu`)
@@ -41,7 +41,7 @@ uv sync --extra dev --extra llm --extra stt --extra tts
 
 ```bash
 curl -fsSL https://ollama.com/install.sh | sh
-ollama pull qwen2.5:3b
+ollama pull qwen3:8b
 ```
 
 ### 3. Run (testing profile, vLLM planner + CPU STT + espeak)
@@ -49,7 +49,7 @@ ollama pull qwen2.5:3b
 ```bash
 cd server/
 LLM_BACKEND=vllm \
-VLLM_MODEL_NAME=Qwen/Qwen2.5-3B-Instruct \
+VLLM_MODEL_NAME=Qwen/Qwen3-8B-AWQ \
 PERFORMANCE_MODE=0 \
 STT_DEVICE=cpu \
 STT_COMPUTE_TYPE=int8 \
@@ -62,7 +62,7 @@ uv run --extra llm --extra stt --extra tts python -m app.main
 ```bash
 cd server/
 LLM_BACKEND=vllm \
-VLLM_MODEL_NAME=Qwen/Qwen2.5-3B-Instruct \
+VLLM_MODEL_NAME=Qwen/Qwen3-8B-AWQ \
 PERFORMANCE_MODE=1 \
 STT_DEVICE=cpu \
 VLLM_GPU_MEMORY_UTILIZATION=0.35 \
@@ -81,12 +81,12 @@ Example `.env`:
 
 ```bash
 LLM_BACKEND=vllm
-VLLM_MODEL_NAME=Qwen/Qwen2.5-3B-Instruct
+VLLM_MODEL_NAME=Qwen/Qwen3-8B-AWQ
 STT_DEVICE=cpu
 HF_TOKEN=hf_xxx
 
 # Legacy Ollama compatibility path:
-MODEL_NAME=qwen2.5:3b
+MODEL_NAME=qwen3:8b
 AUTO_PULL_OLLAMA_MODEL=1
 OLLAMA_PULL_TIMEOUT_S=1800
 ```
@@ -104,7 +104,7 @@ All settings are overridable via environment variables:
 |---|---|---|
 | `LLM_BACKEND` | `vllm` | `vllm` (default) or `ollama` compatibility backend |
 | `LLM_MAX_INFLIGHT` | `1` | Shared generation concurrency across `/plan` and `/converse` |
-| `VLLM_MODEL_NAME` | `Qwen/Qwen2.5-3B-Instruct` | Planner/conversation model for vLLM backend |
+| `VLLM_MODEL_NAME` | `Qwen/Qwen3-8B-AWQ` | Planner/conversation model for vLLM backend |
 | `VLLM_DTYPE` | `bfloat16` | vLLM dtype |
 | `VLLM_GPU_MEMORY_UTILIZATION` | `0.35` | GPU memory target for Qwen vLLM engine |
 | `VLLM_MAX_MODEL_LEN` | `4096` | vLLM max sequence length |
@@ -154,7 +154,7 @@ Returns server and LLM backend status.
 ```json
 {
   "status": "ok",
-  "model": "Qwen/Qwen2.5-3B-Instruct",
+  "model": "Qwen/Qwen3-8B-AWQ",
   "llm_backend": "vllm",
   "llm_engine_loaded": true,
   "ollama": false,

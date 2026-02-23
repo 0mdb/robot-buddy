@@ -29,6 +29,7 @@ class SafetyConfig:
     speed_cap_medium_mm: int = 500
     speed_cap_medium_scale: float = 0.50
     speed_cap_stale_scale: float = 0.50
+    low_battery_mv: int = 6400  # 2S LiPo ~3.2 V/cell; override via config YAML
 
 
 @dataclass

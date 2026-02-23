@@ -486,6 +486,11 @@ class TickLoop:
                 desired_sys = int(FaceSystemMode.BOOTING)
             elif self.robot.mode == Mode.ERROR:
                 desired_sys = int(FaceSystemMode.ERROR_DISPLAY)
+            elif (
+                self.robot.battery_mv > 0
+                and self.robot.battery_mv < self._cfg.safety.low_battery_mv
+            ):
+                desired_sys = int(FaceSystemMode.LOW_BATTERY)
             else:
                 desired_sys = int(FaceSystemMode.NONE)
             if desired_sys != self._last_face_system_mode:

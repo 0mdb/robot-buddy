@@ -38,10 +38,8 @@ Living section — reorder as priorities shift. Current recommended sequence:
 5. Phase 5: Closed-loop PID
 
 ### Track D: Infrastructure & Tooling
-1. Protocol docs update (SET_FLAGS, SET_CONV_STATE)
-2. `-v2` rename (supervisor_v2 → supervisor, esp32-face-v2 → esp32-face)
-3. `/diagnose` skill for direct MCU debugging from dev PC
-4. specs/INDEX.md for efficient spec navigation
+1. `-v2` rename (supervisor_v2 → supervisor, esp32-face-v2 → esp32-face)
+2. specs/INDEX.md for efficient spec navigation
 
 ---
 
@@ -56,9 +54,6 @@ Living section — reorder as priorities shift. Current recommended sequence:
 
 **Phase 5 — Polish** `[sonnet]`
 - [ ] Tune timing values on hardware: ramp durations, hold times, border alpha curves
-
-**LOW_BATTERY supervisor trigger** `[sonnet]`
-- [ ] LOW_BATTERY mode exists in protocol but no supervisor trigger wired
 
 **Stage 4 — Firmware Display Optimization** `[opus]`
 - [ ] Profile current render loop (esp_timer instrumentation, 1000-frame stats)
@@ -187,16 +182,12 @@ Living section — reorder as priorities shift. Current recommended sequence:
 
 ### Infrastructure & Tooling
 
-**Protocol Documentation** `[sonnet]`
-- [ ] Extend parity check for new border constants
-
 **Rename: Remove -v2 Suffixes** `[sonnet]` — do as a single dedicated commit
 - [ ] Rename `supervisor_v2/` → `supervisor/` (update 69+ Python imports, pyproject.toml, justfile, configs, pyrightconfig.json)
 - [ ] Rename `esp32-face-v2/` → `esp32-face/` (update CMake, justfile, docs, skills)
 - [ ] Update all cross-references (CLAUDE.md, README.md, deploy scripts, .vscode/settings.json)
 
 **New Skills** `[sonnet]`
-- [ ] `/diagnose` skill: detect connected MCUs, start supervisor locally against real hardware, query HTTP API for debugging, parse telemetry for fault patterns — eliminates Pi SSH hop for debug cycles
 - [ ] `/status` skill: quick project state snapshot (connected devices, test results, current TODO priority) for session start
 
 **Efficiency Improvements** `[sonnet]`
@@ -205,15 +196,6 @@ Living section — reorder as priorities shift. Current recommended sequence:
 
 ---
 
-### Spec Compliance — Known Discrepancies
-
-- [ ] `[sonnet]` `docs/architecture.md` is 17 lines — needs full rewrite
-- [ ] `[sonnet]` Root README.md references `pip install` (should be `uv sync`)
-- [ ] `[sonnet]` Root README.md "In Progress" stale: wake word works, dashboard exists but unlisted
-- [ ] `[sonnet]` `server/README.md` model reference: shows Qwen2.5-3B but PE spec says Qwen3-8B-AWQ
-- [ ] `[sonnet]` `esp32-reflex/README.md` references "Jetson" (should be "Pi 5")
-- [ ] `[sonnet]` CONFUSED mood (13th, from alignment review) — verify end-to-end in all layers
-- [ ] `[sonnet]` `SystemMode.ERROR` (sim) vs `SystemMode::ERROR_DISPLAY` (MCU) — symbol name divergence (same integer)
 
 ---
 
@@ -244,7 +226,7 @@ Living section — reorder as priorities shift. Current recommended sequence:
 - [x] Visual language remediation (G1-G7) + review cycles (R1-R5, D1-D5, B1-B3)
 
 ### Face Implementation (Phases 0–4)
-- [x] Phase 0: Sim/MCU parity sync (17 divergences ported, 196/196 parity, CONFUSED mood end-to-end; blink interval, idle gaze, gesture durations, talking speed, BG color, mouth curve all confirmed synced)
+- [x] Phase 0: Sim/MCU parity sync (17 divergences ported, 196/196 parity; blink interval, idle gaze, gesture durations, talking speed, BG color, mouth curve all confirmed synced; CONFUSED mood verified end-to-end in constants.ts, types.ts, protocols.md, sim)
 - [x] Phase 1: Supervisor conversation state machine (ConvStateTracker + tick_loop wiring + 39 tests)
 - [x] Phase 2: Firmware border rendering + SET_CONV_STATE 0x25 (~700 lines C++, corner buttons, LED sync + 8 protocol tests)
 - [x] Phase 3: Mood transition sequencer + guardrails (MoodSequencer 4-phase ~470ms + Guardrails + tick_loop + 58 tests)
@@ -258,6 +240,15 @@ Living section — reorder as priorities shift. Current recommended sequence:
 - [x] Camera frames: frame_seq, t_cam_ns (Picamera2 SensorTimestamp), t_det_done_ns
 - [x] Command causality: cmd_seq (u32), t_cmd_tx_ns tracking
 - [x] Telemetry health dashboard (Monitor tab: diagnostic tree, Pi resources, comms, power, sensors, faults, workers)
+
+### Infrastructure & Tooling
+- [x] `/diagnose` skill — curl commands, 5-step workflow, fault-specific diagnostics
+- [x] Protocol docs: SET_FLAGS (0x24) + SET_CONV_STATE (0x25) + CONFUSED mood ID 12 added to `docs/protocols.md`
+- [x] Border constants parity (`BORDER_FRAME_W`, `GLOW_W`, `CORNER_R`, `BLEND_RATE`) in `check_face_parity.py`
+- [x] `docs/architecture.md` — 181-line comprehensive rewrite (was stale 17-line stub)
+- [x] `SystemMode::ERROR_DISPLAY` symbol parity — consistent across sim, supervisor, MCU
+- [x] LOW_BATTERY supervisor trigger wired: `low_battery_mv` threshold in `SafetyConfig`, `FaceSystemMode.LOW_BATTERY` overlay in `tick_loop.py` `_emit_mcu`
+- [x] README spec compliance: model refs (Qwen2.5-3B → Qwen3-8B-AWQ), hardware refs (Jetson → Pi 5), stale In Progress items removed
 
 ### Infrastructure
 - [x] Voice pipeline: STT + TTS on 3090 Ti server, audio on Pi USB devices

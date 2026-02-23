@@ -76,7 +76,7 @@ BMI270 IMU is integrated. Current implementation:
 
 ### C) Battery-aware torque limiting (high leverage)
 - Monitor battery voltage
-- If sag detected: reduce accel / max PWM to avoid Jetson brownouts
+- If sag detected: reduce accel / max PWM to avoid Pi 5 brownouts
 This is *very* useful in kid scenarios (stalls, carpet, low battery).
 
 ### D) Odometry (recommended once encoders are stable)
