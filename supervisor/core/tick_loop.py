@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import time
 from collections import deque
 from typing import Any, Callable
@@ -334,6 +335,13 @@ class TickLoop:
         self.robot.reflex_rx_mono_ms = tel.rx_mono_ms
         self.robot.v_meas_mm_s = tel.v_meas_mm_s
         self.robot.w_meas_mrad_s = tel.w_meas_mrad_s
+        # Derived IMU values
+        self.robot.tilt_angle_deg = math.degrees(
+            math.atan2(tel.accel_x_mg, tel.accel_z_mg)
+        )
+        self.robot.accel_magnitude_mg = math.sqrt(
+            tel.accel_x_mg**2 + tel.accel_y_mg**2 + tel.accel_z_mg**2
+        )
 
     def _snapshot_reflex(self) -> None:
         self.robot.reflex_connected = self._reflex.connected if self._reflex else False

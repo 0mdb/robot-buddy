@@ -24,6 +24,11 @@ export interface TelemetryPayload {
   speed_l: number
   speed_r: number
   gyro_z: number
+  accel_x: number
+  accel_y: number
+  accel_z: number
+  tilt_angle_deg: number
+  accel_magnitude_mg: number
 
   // Sensors
   battery_mv: number

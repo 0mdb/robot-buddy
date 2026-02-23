@@ -10,6 +10,7 @@ import { useWorkers } from '../hooks/useWorkers'
 import styles from '../styles/global.module.css'
 import m from '../styles/monitor.module.css'
 import type {
+  ClockSyncInfo,
   ClocksDebug,
   DeviceDebug,
   SystemDebug,
@@ -463,6 +464,7 @@ function SensorHealthPanel({
   visionFps,
   visionAgeMs,
   workerAlive,
+  tiltAngleDeg,
 }: {
   faultFlags: number
   rangeStatus: number
@@ -470,6 +472,7 @@ function SensorHealthPanel({
   visionFps: number
   visionAgeMs: number
   workerAlive: Record<string, boolean>
+  tiltAngleDeg: number
 }) {
   const imuFail = !!(faultFlags & (1 << 4))
   const imuLevel: DiagLevel = imuFail ? 'error' : 'ok'
@@ -506,9 +509,20 @@ function SensorHealthPanel({
           <h3 className={m.sectionTitle} style={{ marginBottom: 0 }}>
             IMU
           </h3>
-          <StatusBadge level={imuLevel} text={imuLevel.toUpperCase()} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span className={styles.mono} style={{ fontSize: 12, color: 'var(--text-dim)' }}>
+              {tiltAngleDeg >= 0 ? '+' : ''}
+              {tiltAngleDeg.toFixed(1)}°
+            </span>
+            <StatusBadge level={imuLevel} text={imuLevel.toUpperCase()} />
+          </div>
         </div>
-        <Sparkline metric="gyro_z" color="var(--blue)" width={160} height={36} window={10} />
+        <Sparkline metric="gyro_z" color="var(--blue)" width={160} height={28} window={10} />
+        <div style={{ marginTop: 4, fontSize: 11, color: 'var(--text-dim)' }}>gyro Z</div>
+        <Sparkline metric="accel_z" color="var(--green)" width={160} height={28} window={10} />
+        <div style={{ marginTop: 4, fontSize: 11, color: 'var(--text-dim)' }}>
+          accel Z (≈1000 mg)
+        </div>
       </div>
       <div className={styles.card}>
         <div
@@ -617,6 +631,72 @@ function WorkerHealthPanel({ workers }: { workers: WorkersDebug | undefined }) {
   )
 }
 
+function DeviceClockPanel({
+  devices,
+  clocks,
+}: {
+  devices: DeviceDebug | undefined
+  clocks: ClocksDebug | undefined
+}) {
+  function ClockCard({
+    label,
+    clock,
+    ageMs,
+    seq,
+  }: {
+    label: string
+    clock: ClockSyncInfo | undefined
+    ageMs: number | undefined
+    seq: number | undefined
+  }) {
+    const level: DiagLevel = clock ? clockLevel(clock.state) : 'stale'
+    const offsetUs = clock ? Math.round(clock.offset_ns / 1000) : null
+    return (
+      <div className={styles.card}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: 8,
+          }}
+        >
+          <h3 className={m.sectionTitle} style={{ marginBottom: 0 }}>
+            {label}
+          </h3>
+          <StatusBadge level={level} text={clock?.state ?? 'stale'} />
+        </div>
+        <Row label="RTT min" value={clock ? `${fmt(clock.rtt_min_us)} µs` : '--'} />
+        <Row
+          label="Offset"
+          value={offsetUs !== null ? `${offsetUs >= 0 ? '+' : ''}${fmt(offsetUs)} µs` : '--'}
+        />
+        <Row label="Drift" value={clock ? `${clock.drift_us_per_s.toFixed(2)} µs/s` : '--'} />
+        <Row label="Samples" value={fmt(clock?.samples)} />
+        <Row label="Data age" value={ageMs !== undefined ? `${fmt(ageMs)} ms` : '--'} />
+        <Row label="Last seq" value={fmt(seq)} />
+      </div>
+    )
+  }
+
+  return (
+    <div className={styles.grid2}>
+      <ClockCard
+        label="Reflex MCU Clock"
+        clock={clocks?.reflex}
+        ageMs={devices?.reflex.last_state_age_ms}
+        seq={devices?.reflex.last_state_seq}
+      />
+      <ClockCard
+        label="Face MCU Clock"
+        clock={clocks?.face}
+        ageMs={devices?.face.last_status_age_ms}
+        seq={devices?.face.last_status_seq}
+      />
+    </div>
+  )
+}
+
 /* ---- main tab ---- */
 
 export default function MonitorTab() {
@@ -652,6 +732,10 @@ export default function MonitorTab() {
     200,
   )
   const seqGaps = useTelemetry((s) => s.meta.seqGaps, 500)
+  const tiltAngleDeg = useTelemetry(
+    (s) => (s.snapshot as TelemetryPayload).tilt_angle_deg ?? 0,
+    200,
+  )
 
   const tree = useMemo(
     () => buildTree(sys, reflexConnected, faceConnected, faultFlags, devices, clocks, workers),
@@ -671,6 +755,9 @@ export default function MonitorTab() {
         <CommunicationPanel devices={devices} clocks={clocks} seqGaps={seqGaps} />
       </div>
 
+      {/* Per-device clock health */}
+      <DeviceClockPanel devices={devices} clocks={clocks} />
+
       {/* Power chart */}
       <PowerPanel batteryMv={batteryMv} reflexConnected={reflexConnected} />
 
@@ -682,6 +769,7 @@ export default function MonitorTab() {
         visionFps={visionFps}
         visionAgeMs={visionAgeMs}
         workerAlive={workerAlive}
+        tiltAngleDeg={tiltAngleDeg}
       />
 
       {/* Drive health + Workers */}

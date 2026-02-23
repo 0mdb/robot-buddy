@@ -122,6 +122,8 @@ export const RING_METRICS = [
   'accel_x',
   'accel_y',
   'accel_z',
+  'tilt_angle_deg',
+  'accel_magnitude_mg',
   'range_mm',
   'battery_mv',
   'tick_dt_ms',

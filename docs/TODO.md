@@ -79,17 +79,17 @@ _(all items completed)_
 **Spec reference**: `specs/personality-engine-spec-stage2.md`
 
 **Scaffold** `[opus]`
-- [ ] PersonalityWorker as dedicated BaseWorker on Pi 5 (1 Hz tick + event-triggered fast path)
-- [ ] Continuous affect vector (valence, arousal) with decaying integrator
-- [ ] 13 mood anchors in VA space with asymmetric hysteresis projection
-- [ ] 20 axis-derived parameters from 5 personality axes
-- [ ] Worker↔tick_loop protocol: personality snapshot struct
+- [x] PersonalityWorker as dedicated BaseWorker on Pi 5 (1 Hz tick + event-triggered fast path)
+- [x] Continuous affect vector (valence, arousal) with decaying integrator
+- [x] 13 mood anchors in VA space with asymmetric hysteresis projection
+- [x] 20 axis-derived parameters from 5 personality axes
+- [x] Worker↔tick_loop protocol: personality snapshot struct
 
 **Layer 0 — Deterministic Rules** `[opus]`
-- [ ] Impulse catalog implementation (stimulus → affect delta mappings)
-- [ ] Duration caps, intensity caps, context gate enforcement
-- [ ] Idle behavior rules (SLEEPY after inactivity, CURIOUS on sensor trigger)
-- [ ] Auto-recovery sequences for negative moods
+- [x] Impulse catalog implementation (stimulus → affect delta mappings)
+- [x] Duration caps, intensity caps, context gate enforcement
+- [x] Idle behavior rules (SLEEPY after inactivity, CURIOUS on sensor trigger)
+- [x] Auto-recovery sequences for negative moods
 
 **Layer 1 — LLM Integration** `[opus]`
 - [ ] System prompt v2 for personality (from `docs/research/bucket-6-prompt-engineering.md`)
@@ -172,7 +172,7 @@ _(all items completed)_
 
 ### Dashboard
 
-- [ ] `[sonnet]` Telemetry health panel per device (RTT, offset, drift, seq drops)
+- [x] `[sonnet]` Telemetry health panel per device (RTT, offset, drift, seq drops)
 - [ ] `[sonnet]` Camera settings panel
 - [ ] `[opus]` Personality engine visualization (affect vector, mood anchors, decay curves)
 
@@ -190,6 +190,19 @@ _(all items completed)_
 - [x] Spec revisions: 10 fixes + 3 nits applied, verification pass done
 - [x] Face visual language design document → `specs/face-visual-language.md`
 - [x] Face communication evaluation plan → `specs/face-communication-eval-plan.md`
+
+### Personality Engine — Layer 0 Implementation
+- [x] `supervisor/personality/affect.py`: sigmoid_map, TraitParameters, AffectVector, Impulse, PersonalitySnapshot, update_affect, apply_impulse, project_mood, enforce_context_gate
+- [x] `supervisor/workers/personality_worker.py`: L0 rules 01–13, duration caps, idle rules, fast path, all event handlers
+- [x] `supervisor/core/event_router.py` + `state.py` + `tick_loop.py`: full PE integration (event forwarding + snapshot → WorldState)
+- [x] `supervisor/tests/test_affect.py`: 31 tests covering all affect model math
+- [x] `supervisor/tests/test_personality_worker.py`: worker unit tests covering all L0 rules
+
+### Dashboard
+- [x] Per-device clock health panel (`DeviceClockPanel` in `MonitorTab.tsx`): RTT, offset, drift, samples, data age, last seq per MCU
+
+### IMU Derived Fields
+- [x] `tilt_angle_deg` + `accel_magnitude_mg` computed in tick_loop, exposed in telemetry + dashboard
 
 ### Personality Engine — Research & Specs
 - [x] Research buckets 0-7 → `docs/research/bucket-*.md`

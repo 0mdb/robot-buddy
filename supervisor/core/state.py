@@ -83,6 +83,10 @@ class RobotState:
     reflex_seq: int = 0
     reflex_rx_mono_ms: float = 0.0
 
+    # Derived from IMU (computed each telemetry callback)
+    tilt_angle_deg: float = 0.0  # atan2(accel_x_mg, accel_z_mg) — forward tilt
+    accel_magnitude_mg: float = 0.0  # sqrt(x²+y²+z²) — should ≈ 1000 mg at rest
+
     # Computed from wheel speeds
     v_meas_mm_s: float = 0.0
     w_meas_mrad_s: float = 0.0
@@ -147,6 +151,8 @@ class RobotState:
             "accel_x": self.accel_x_mg,
             "accel_y": self.accel_y_mg,
             "accel_z": self.accel_z_mg,
+            "tilt_angle_deg": round(self.tilt_angle_deg, 1),
+            "accel_magnitude_mg": round(self.accel_magnitude_mg, 1),
             "battery_mv": self.battery_mv,
             "fault_flags": self.fault_flags,
             "range_mm": self.range_mm,

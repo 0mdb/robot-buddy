@@ -4,11 +4,18 @@
 Usage: python3 tools/gen_clang_db.py <input.json> <output.json>
 
 ESP-IDF generates compile commands using xtensa-esp32s3-elf-gcc, which includes
-flags that are unknown to clang/clang-tidy.  This script strips those flags so
-esp-clang (Espressif's Xtensa-capable clang) can process the files.
+flags unknown to clang-tidy and uses a compiler binary whose name implies an
+Xtensa target that the system clang doesn't support.
 
-esp-clang ships with ESP-IDF and is installed via:
-  python3 ~/esp/esp-idf/tools/idf_tools.py install esp-clang
+This script:
+  1. Removes GCC-specific flags unknown to clang.
+  2. Replaces the Xtensa GCC compiler binary with esp-clang's clang/clang++.
+  3. Adds --target=xtensa-esp-unknown-elf and -mcpu=<chip> so esp-clang finds
+     its bundled Xtensa runtime headers.
+
+Prerequisites:
+  esp-clang must be installed via:
+    python3 ~/esp/esp-idf/tools/idf_tools.py install esp-clang
 
 Flags removed (GCC-specific, not understood by clang):
   -mlongcalls              Xtensa call-range extension (clang uses -mlong-calls)
@@ -20,8 +27,10 @@ Flags removed (GCC-specific, not understood by clang):
 from __future__ import annotations
 
 import json
+import re
 import shlex
 import sys
+from pathlib import Path
 
 _REMOVE_FLAGS = frozenset(
     {
@@ -32,10 +41,39 @@ _REMOVE_FLAGS = frozenset(
     }
 )
 
+# Regex to extract the chip name from the Xtensa GCC compiler binary name.
+# e.g. "xtensa-esp32s3-elf-g++" → "esp32s3"
+_CHIP_RE = re.compile(r"xtensa-(esp\w+)-elf")
+
+_ESP_CLANG_BIN = Path(
+    "/home/ben/.espressif/tools/esp-clang/esp-18.1.2_20240912/esp-clang/bin"
+)
+
+
+def _replace_compiler(binary: str) -> tuple[str, list[str]]:
+    """Return (new_compiler, extra_flags) for a given GCC compiler binary path.
+
+    For Xtensa GCC binaries, swaps in esp-clang and adds the target/cpu flags
+    needed to point it at the correct Xtensa runtime headers.
+    For any other compiler, returns it unchanged with no extra flags.
+    """
+    name = Path(binary).name
+    m = _CHIP_RE.search(name)
+    if not m:
+        return binary, []
+
+    chip = m.group(1)  # e.g. "esp32s3"
+    is_cxx = "++" in name
+    new_binary = str(_ESP_CLANG_BIN / ("clang++" if is_cxx else "clang"))
+    extra = ["--target=xtensa-esp-unknown-elf", f"-mcpu={chip}"]
+    return new_binary, extra
+
 
 def filter_command(command: str) -> str:
     args = shlex.split(command)
-    return shlex.join(a for a in args if a not in _REMOVE_FLAGS)
+    new_compiler, extra_flags = _replace_compiler(args[0])
+    filtered = [a for a in args[1:] if a not in _REMOVE_FLAGS]
+    return shlex.join([new_compiler] + extra_flags + filtered)
 
 
 def main() -> None:
@@ -52,9 +90,10 @@ def main() -> None:
         if "command" in entry:
             entry["command"] = filter_command(entry["command"])
         elif "arguments" in entry:
-            entry["arguments"] = [
-                a for a in entry["arguments"] if a not in _REMOVE_FLAGS
-            ]
+            args = entry["arguments"]
+            new_compiler, extra_flags = _replace_compiler(args[0])
+            filtered = [a for a in args[1:] if a not in _REMOVE_FLAGS]
+            entry["arguments"] = [new_compiler] + extra_flags + filtered
 
     with open(output_path, "w") as f:
         json.dump(commands, f, indent=2)
