@@ -149,7 +149,8 @@ void control_task(void* arg)
     // Register with Task Watchdog
     ESP_ERROR_CHECK(esp_task_wdt_add(nullptr));
 
-    const TickType_t period = pdMS_TO_TICKS(1000 / g_cfg.control_hz);
+    const TickType_t period_raw = pdMS_TO_TICKS(1000 / g_cfg.control_hz);
+    const TickType_t period = (period_raw > 0) ? period_raw : 1;
     const float      dt = 1.0f / static_cast<float>(g_cfg.control_hz);
 
     WheelPI pi_left;

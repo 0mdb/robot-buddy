@@ -178,7 +178,8 @@ void range_task(void* arg)
 {
     ESP_LOGI(TAG, "range_task started @ %u Hz", g_cfg.range_hz);
 
-    TickType_t period = pdMS_TO_TICKS(1000 / g_cfg.range_hz);
+    TickType_t period_raw = pdMS_TO_TICKS(1000 / g_cfg.range_hz);
+    TickType_t period = (period_raw > 0) ? period_raw : 1;
     TickType_t last_wake = xTaskGetTickCount();
 
     while (true) {

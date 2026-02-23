@@ -448,7 +448,8 @@ void imu_task(void* arg)
     // Task period derived from configured ODR.
     // Run slightly faster than ODR to avoid missing samples.
     const uint32_t       period_ms = (g_cfg.imu_odr_hz >= 400) ? 2 : 4;
-    const TickType_t     period = pdMS_TO_TICKS(period_ms);
+    const TickType_t     period_raw = pdMS_TO_TICKS(period_ms);
+    const TickType_t     period = (period_raw > 0) ? period_raw : 1;
     int                  consecutive_errors = 0;
     static constexpr int MAX_ERRORS_BEFORE_RECOVERY = 10;
 

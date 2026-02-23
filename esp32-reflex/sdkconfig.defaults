@@ -11,8 +11,9 @@ CONFIG_BOOTLOADER_LOG_LEVEL_NONE=y
 # Logging (compile-time level; runtime suppressed via esp_log_level_set in app_main)
 CONFIG_LOG_DEFAULT_LEVEL_INFO=y
 
-# FreeRTOS: both cores enabled (default on S3, but be explicit)
+# FreeRTOS
 CONFIG_FREERTOS_UNICORE=n
+CONFIG_FREERTOS_HZ=1000
 
 # Task watchdog — we'll register control_task with it
 CONFIG_ESP_TASK_WDT_EN=y
