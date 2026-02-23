@@ -56,6 +56,7 @@ class SerialTransport:
         self._last_frame_mono_ms = 0.0
         self._last_bad_frame = ""
         self._last_error = ""
+        self._connect_mono: float = 0.0  # monotonic time of last connect
 
     @property
     def connected(self) -> bool:
@@ -178,6 +179,7 @@ class SerialTransport:
             except Exception:
                 pass
 
+            self._connect_mono = time.monotonic()
             self._connect_count += 1
             self._connected = True
             self._buf.clear()
@@ -200,8 +202,13 @@ class SerialTransport:
     def _feed(self, data: bytes) -> None:
         """Feed raw bytes into COBS frame extractor."""
         self._rx_bytes += len(data)
-        if data:
-            self._last_rx_mono_ms = time.monotonic() * 1000.0
+        if not data:
+            return
+        self._last_rx_mono_ms = time.monotonic() * 1000.0
+        # Discard data for 200ms after connect to flush ROM bootloader text.
+        if time.monotonic() - self._connect_mono < 0.2:
+            self._buf.clear()
+            return
         for b in data:
             if b == 0x00:
                 if self._buf:
@@ -212,8 +219,17 @@ class SerialTransport:
                 if len(self._buf) > 512:
                     self._frames_too_long += 1
                     self._frames_bad += 1
-                    self._last_bad_frame = "frame too long (>512 bytes)"
-                    log.warning("%s: frame too long, discarding", self.label)
+                    preview = bytes(self._buf[:64])
+                    hex_str = preview.hex(" ")
+                    ascii_str = preview.decode("ascii", errors="replace")
+                    self._last_bad_frame = f"frame too long ({len(self._buf)} bytes)"
+                    log.warning(
+                        "%s: frame too long (%d bytes), first 64: %s | %s",
+                        self.label,
+                        len(self._buf),
+                        hex_str,
+                        ascii_str,
+                    )
                     self._buf.clear()
 
     def _dispatch_frame(self, frame: bytes) -> None:
