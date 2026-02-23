@@ -23,7 +23,7 @@ Supervisor (Pi 5) ──POST /plan / WS /converse──► FastAPI server
   - USB mic capture on supervisor -> server `/converse`
   - server emits emotion + TTS audio stream
   - supervisor plays TTS on USB speaker
-- Face MCU (`esp32-face-v2`) is visual/interaction only:
+- Face MCU (`esp32-face`) is visual/interaction only:
   - receives `SET_STATE` / `GESTURE` / `SET_SYSTEM` / `SET_TALKING`
   - sends touch/button/status telemetry
   - does not carry PCM speaker/mic audio over its CDC protocol

@@ -38,8 +38,7 @@ Living section — reorder as priorities shift. Current recommended sequence:
 5. Phase 5: Closed-loop PID
 
 ### Track D: Infrastructure & Tooling
-1. `-v2` rename (supervisor_v2 → supervisor, esp32-face-v2 → esp32-face)
-2. specs/INDEX.md for efficient spec navigation
+_(all items completed)_
 
 ---
 
@@ -181,12 +180,6 @@ Living section — reorder as priorities shift. Current recommended sequence:
 
 ### Infrastructure & Tooling
 
-**Rename: Remove -v2 Suffixes** `[sonnet]` — do as a single dedicated commit
-- [ ] Rename `supervisor_v2/` → `supervisor/` (update 69+ Python imports, pyproject.toml, justfile, configs, pyrightconfig.json)
-- [ ] Rename `esp32-face-v2/` → `esp32-face/` (update CMake, justfile, docs, skills)
-- [ ] Update all cross-references (CLAUDE.md, README.md, deploy scripts, .vscode/settings.json)
-
-
 ---
 
 ## Completed
@@ -243,6 +236,7 @@ Living section — reorder as priorities shift. Current recommended sequence:
 - [x] `SystemMode::ERROR_DISPLAY` symbol parity — consistent across sim, supervisor, MCU
 - [x] LOW_BATTERY supervisor trigger wired: `low_battery_mv` threshold in `SafetyConfig`, `FaceSystemMode.LOW_BATTERY` overlay in `tick_loop.py` `_emit_mcu`
 - [x] README spec compliance: model refs (Qwen2.5-3B → Qwen3-8B-AWQ), hardware refs (Jetson → Pi 5), stale In Progress items removed
+- [x] `-v2` rename: `supervisor_v2/` → `supervisor/`, `esp32-face-v2/` → `esp32-face/` (~85 files, Python imports, configs, deploy, docs, specs, skills, VSCode)
 
 ### Infrastructure
 - [x] Voice pipeline: STT + TTS on 3090 Ti server, audio on Pi USB devices

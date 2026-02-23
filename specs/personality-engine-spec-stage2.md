@@ -907,7 +907,7 @@ The personality worker is now the single source of emotional truth. The tick loo
 ### 11.2 WorldState Additions
 
 ```python
-# Add to WorldState dataclass in supervisor_v2/core/state.py:
+# Add to WorldState dataclass in supervisor/core/state.py:
 personality_mood: str = "neutral"
 personality_intensity: float = 0.0
 personality_valence: float = 0.0
@@ -1239,7 +1239,7 @@ Trait-based scaling (`_apply_impulse()`) is intentionally light for positive emo
 
 ### 14.1 Message Type Constants
 
-Add to `supervisor_v2/messages/types.py`:
+Add to `supervisor/messages/types.py`:
 
 ```python
 # ── Personality Worker ─────────────────────────────────────────
@@ -1265,8 +1265,8 @@ SRC_PERSONALITY = "personality"
 ### 14.2 Registration
 
 ```python
-# In supervisor_v2/main.py, startup sequence:
-workers.register("personality", "supervisor_v2.workers.personality_worker")
+# In supervisor/main.py, startup sequence:
+workers.register("personality", "supervisor.workers.personality_worker")
 ```
 
 ### 14.3 Config Init Payload

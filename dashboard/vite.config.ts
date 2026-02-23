@@ -5,7 +5,7 @@ export default defineConfig({
   plugins: [react()],
   base: './',
   build: {
-    outDir: '../supervisor_v2/static',
+    outDir: '../supervisor/static',
     emptyOutDir: true,
   },
   server: {

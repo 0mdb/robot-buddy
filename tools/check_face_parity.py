@@ -16,7 +16,7 @@ from pathlib import Path
 # ── Paths ────────────────────────────────────────────────────────────
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-MCU_DIR = REPO_ROOT / "esp32-face-v2" / "main"
+MCU_DIR = REPO_ROOT / "esp32-face" / "main"
 CONFIG_H = MCU_DIR / "config.h"
 FACE_STATE_CPP = MCU_DIR / "face_state.cpp"
 FACE_STATE_H = MCU_DIR / "face_state.h"

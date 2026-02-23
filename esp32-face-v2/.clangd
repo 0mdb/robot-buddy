@@ -1,0 +1,10 @@
+CompileFlags:
+  CompilationDatabase: build/
+  # Use esp-clang (Espressif's Xtensa-capable clang) as the compiler driver.
+  # Install: python3 ~/esp/esp-idf/tools/idf_tools.py install esp-clang
+  Compiler: /home/ben/.espressif/tools/esp-clang/esp-18.1.2_20240912/esp-clang/bin/clang++
+  Remove:
+    - -mlongcalls
+    - -fno-tree-switch-conversion
+    - -fstrict-volatile-bitfields
+    - -fno-shrink-wrap

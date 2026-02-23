@@ -11,7 +11,7 @@ test-all: test-supervisor test-server test-dashboard
 
 # Run supervisor tests (with optional filter)
 test-supervisor *filter:
-    cd {{project}}/supervisor_v2 && uv run pytest tests/ -v {{filter}}
+    cd {{project}}/supervisor && uv run pytest tests/ -v {{filter}}
 
 # Run server tests (with optional filter)
 test-server *filter:
@@ -31,23 +31,32 @@ lint-fix: lint-python-fix lint-cpp-fix lint-dashboard-fix
 
 # Check Python formatting + lint
 lint-python:
-    cd {{project}}/supervisor_v2 && uv run ruff format --check {{project}}/server/ {{project}}/supervisor_v2/
-    cd {{project}}/supervisor_v2 && uv run ruff check {{project}}/server/ {{project}}/supervisor_v2/
+    cd {{project}}/supervisor && uv run ruff format --check {{project}}/server/ {{project}}/supervisor/
+    cd {{project}}/supervisor && uv run ruff check {{project}}/server/ {{project}}/supervisor/
 
 # Auto-fix Python formatting + lint
 lint-python-fix:
-    cd {{project}}/supervisor_v2 && uv run ruff format {{project}}/server/ {{project}}/supervisor_v2/
-    cd {{project}}/supervisor_v2 && uv run ruff check --fix {{project}}/server/ {{project}}/supervisor_v2/
+    cd {{project}}/supervisor && uv run ruff format {{project}}/server/ {{project}}/supervisor/
+    cd {{project}}/supervisor && uv run ruff check --fix {{project}}/server/ {{project}}/supervisor/
 
 # Check C++ formatting + static analysis
 lint-cpp:
-    clang-format --dry-run -Werror {{project}}/esp32-reflex/main/*.cpp {{project}}/esp32-reflex/main/*.h {{project}}/esp32-face-v2/main/*.cpp {{project}}/esp32-face-v2/main/*.h
+    clang-format --dry-run -Werror {{project}}/esp32-reflex/main/*.cpp {{project}}/esp32-reflex/main/*.h {{project}}/esp32-face/main/*.cpp {{project}}/esp32-face/main/*.h
     cppcheck --language=c++ --enable=warning,performance,portability --suppress=missingIncludeSystem --error-exitcode=1 -I {{project}}/esp32-reflex/main {{project}}/esp32-reflex/main/*.cpp {{project}}/esp32-reflex/main/*.h
-    cppcheck --language=c++ --enable=warning,performance,portability --suppress=missingIncludeSystem --error-exitcode=1 -I {{project}}/esp32-face-v2/main {{project}}/esp32-face-v2/main/*.cpp {{project}}/esp32-face-v2/main/*.h
+    cppcheck --language=c++ --enable=warning,performance,portability --suppress=missingIncludeSystem --error-exitcode=1 -I {{project}}/esp32-face/main {{project}}/esp32-face/main/*.cpp {{project}}/esp32-face/main/*.h
 
 # Auto-fix C++ formatting
 lint-cpp-fix:
-    clang-format -i {{project}}/esp32-reflex/main/*.cpp {{project}}/esp32-reflex/main/*.h {{project}}/esp32-face-v2/main/*.cpp {{project}}/esp32-face-v2/main/*.h
+    clang-format -i {{project}}/esp32-reflex/main/*.cpp {{project}}/esp32-reflex/main/*.h {{project}}/esp32-face/main/*.cpp {{project}}/esp32-face/main/*.h
+
+# Run clang-tidy deep static analysis on firmware (requires: just build-reflex, just build-face)
+# Uses esp-clang (Xtensa-capable clang) — install: python3 ~/esp/esp-idf/tools/idf_tools.py install esp-clang
+_ESP_CLANG_TIDY := "/home/ben/.espressif/tools/esp-clang/esp-18.1.2_20240912/esp-clang/bin/clang-tidy"
+lint-cpp-tidy:
+    {{_ESP_CLANG_TIDY}} -p {{project}}/esp32-reflex/build \
+        {{project}}/esp32-reflex/main/*.cpp
+    {{_ESP_CLANG_TIDY}} -p {{project}}/esp32-face/build \
+        {{project}}/esp32-face/main/*.cpp
 
 # Check dashboard formatting + lint
 lint-dashboard:
@@ -62,11 +71,11 @@ lint-dashboard-fix:
 
 # Run supervisor with mock hardware (no robot needed)
 run-mock:
-    cd {{project}}/supervisor_v2 && uv run python -m supervisor_v2 --mock --no-face --no-vision
+    cd {{project}}/supervisor && uv run python -m supervisor --mock --no-face --no-vision
 
 # Run supervisor (default ports)
 run:
-    cd {{project}}/supervisor_v2 && uv run python -m supervisor_v2
+    cd {{project}}/supervisor && uv run python -m supervisor
 
 # Run planner server
 run-server:
@@ -76,7 +85,7 @@ run-server:
 run-dashboard:
     cd {{project}}/dashboard && npx vite
 
-# Build dashboard (outputs to supervisor_v2/static/)
+# Build dashboard (outputs to supervisor/static/)
 build-dashboard:
     cd {{project}}/dashboard && npm run build
 
@@ -94,13 +103,19 @@ serial-diag *args:
 
 # ── ESP32 Firmware ───────────────────────────────────────
 
-# Build reflex firmware
+# Build reflex firmware (also filters GCC-specific flags from compile_commands.json for clang/clang-tidy)
 build-reflex:
     cd {{project}}/esp32-reflex && idf.py build
+    python3 {{project}}/tools/gen_clang_db.py \
+        {{project}}/esp32-reflex/build/compile_commands.json \
+        {{project}}/esp32-reflex/build/compile_commands.json
 
-# Build face firmware
+# Build face firmware (also filters GCC-specific flags from compile_commands.json for clang/clang-tidy)
 build-face:
-    cd {{project}}/esp32-face-v2 && idf.py build
+    cd {{project}}/esp32-face && idf.py build
+    python3 {{project}}/tools/gen_clang_db.py \
+        {{project}}/esp32-face/build/compile_commands.json \
+        {{project}}/esp32-face/build/compile_commands.json
 
 # Flash reflex firmware
 flash-reflex: build-reflex
@@ -108,7 +123,7 @@ flash-reflex: build-reflex
 
 # Flash face firmware
 flash-face: build-face
-    cd {{project}}/esp32-face-v2 && idf.py flash
+    cd {{project}}/esp32-face && idf.py flash
 
 # Monitor reflex serial output
 monitor-reflex:
@@ -116,7 +131,7 @@ monitor-reflex:
 
 # Monitor face serial output
 monitor-face:
-    cd {{project}}/esp32-face-v2 && idf.py monitor
+    cd {{project}}/esp32-face && idf.py monitor
 
 # ── Deployment ───────────────────────────────────────────
 
@@ -140,8 +155,8 @@ train-wakeword *phase:
 
 # Deploy trained model to supervisor
 deploy-wakeword:
-    cp {{project}}/training/output/hey_buddy.onnx {{project}}/supervisor_v2/models/hey_buddy.onnx
-    @echo "Deployed hey_buddy.onnx to supervisor_v2/models/"
+    cp {{project}}/training/output/hey_buddy.onnx {{project}}/supervisor/models/hey_buddy.onnx
+    @echo "Deployed hey_buddy.onnx to supervisor/models/"
 
 # ── Parity ──────────────────────────────────────────────
 

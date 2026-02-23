@@ -49,15 +49,15 @@ Research is two-phased:
 |-----------|------------|---------|-----|
 | Personality axes | 5 axes defined [S1-C3], positions instantiated in face comm Stage 2 §1 | `face-communication-spec-stage1.md` §C.3, `face-communication-spec-stage2.md` §1 | Not operationalized — no code uses axis positions to bias behavior |
 | Relational role | Caretaker/guide [S1-C2] — predominantly calm, reassuring, emotionally authoritative | `face-communication-spec-stage1.md` §C.2 | Role described in LLM prompt but not enforced by any system |
-| Emotion vocabulary | 12 moods, 13 gestures, full facial parameter targets per mood | `supervisor_v2/devices/expressions.py`, `face-communication-spec-stage2.md` §4.1 | No personality filtering on which emotions the AI selects |
+| Emotion vocabulary | 12 moods, 13 gestures, full facial parameter targets per mood | `supervisor/devices/expressions.py`, `face-communication-spec-stage2.md` §4.1 | No personality filtering on which emotions the AI selects |
 | Negative affect guardrails | Per-mood duration limits, intensity caps, context gate | `face-communication-spec-stage2.md` §7 | Spec-only — not yet implemented in supervisor |
 | LLM system prompt | "curious, warm, encouraging, loves learning together" | `server/app/llm/prompts.py` (87 lines) | Trait descriptions don't constrain emotion output. LLM can choose any mood freely |
 | Conversation prompt | Same persona, JSON response with emotion/intensity/text | `server/app/llm/conversation.py` (lines 27-57) | No personality biasing on emotion selection |
-| Idle behavior | MCU handles breathing, auto-blink, gaze wander autonomously | `esp32-face-v2/main/face_state.cpp` | No emotional idle behavior (no SLEEPY after inactivity, no CURIOUS on boot) |
+| Idle behavior | MCU handles breathing, auto-blink, gaze wander autonomously | `esp32-face/main/face_state.cpp` | No emotional idle behavior (no SLEEPY after inactivity, no CURIOUS on boot) |
 | Emotional memory | None | — | Fully stateless — each conversation turn is independent |
-| Emotion application | AI worker emits `AI_CONVERSATION_EMOTION`, tick_loop buffers, applies in `_emit_mcu()` | `supervisor_v2/core/tick_loop.py` (lines 341-437) | Direct passthrough — no personality modulation |
-| Greet routine | ACTION button → EXCITED @ 0.8 + NOD gesture | `supervisor_v2/core/tick_loop.py` (lines 544-551) | Hard-coded, no personality influence |
-| Planner emotions | `_apply_emote()` accepts name + intensity from behavior engine | `supervisor_v2/core/tick_loop.py` (lines 519-542) | No autonomous emotion — only in response to planner commands |
+| Emotion application | AI worker emits `AI_CONVERSATION_EMOTION`, tick_loop buffers, applies in `_emit_mcu()` | `supervisor/core/tick_loop.py` (lines 341-437) | Direct passthrough — no personality modulation |
+| Greet routine | ACTION button → EXCITED @ 0.8 + NOD gesture | `supervisor/core/tick_loop.py` (lines 544-551) | Hard-coded, no personality influence |
+| Planner emotions | `_apply_emote()` accepts name + intensity from behavior engine | `supervisor/core/tick_loop.py` (lines 519-542) | No autonomous emotion — only in response to planner commands |
 
 ### Current Technology Stack
 

@@ -401,7 +401,7 @@ Triggered when the personality worker's snapshot contains a different mood than 
 
 #### 5.1.2 Conversation Phase Transitions
 
-Implemented in `ConvTransitionChoreographer` (sim: `tools/face_sim_v3/state/conv_choreographer.py`, supervisor: `supervisor_v2/core/conv_choreographer.py`). The choreographer fires timed actions on state transitions and does not mutate face state directly — tick_loop reads outputs.
+Implemented in `ConvTransitionChoreographer` (sim: `tools/face_sim_v3/state/conv_choreographer.py`, supervisor: `supervisor/core/conv_choreographer.py`). The choreographer fires timed actions on state transitions and does not mutate face state directly — tick_loop reads outputs.
 
 | Transition | Choreography | Duration | Implementation |
 |-----------|-------------|----------|----------------|

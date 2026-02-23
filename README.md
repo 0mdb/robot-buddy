@@ -4,7 +4,7 @@ A kid-safe, expressive robot platform combining real-time motor control, an anim
 
 ## How It Works
 
-Two ESP32-S3 microcontrollers handle the deterministic, safety-critical work: one drives motors with PID control and enforces safety limits, the other renders an animated face on a 320x240 TFT touch display (`esp32-face-v2`). A Raspberry Pi 5 orchestrates everything at 50 Hz — reading sensors, running the state machine, applying layered safety policies, and streaming telemetry to a browser UI. An optional AI planner server on a separate machine (3090 Ti) generates expressive behavior plans via a local LLM.
+Two ESP32-S3 microcontrollers handle the deterministic, safety-critical work: one drives motors with PID control and enforces safety limits, the other renders an animated face on a 320x240 TFT touch display (`esp32-face`). A Raspberry Pi 5 orchestrates everything at 50 Hz — reading sensors, running the state machine, applying layered safety policies, and streaming telemetry to a browser UI. An optional AI planner server on a separate machine (3090 Ti) generates expressive behavior plans via a local LLM.
 
 Reflexes are local and deterministic. Planner is remote and optional.
 
@@ -23,7 +23,7 @@ Reflexes are local and deterministic. Planner is remote and optional.
 
 ```
 robot-buddy/
-├── supervisor_v2/       # Python supervisor (Raspberry Pi 5, process-isolated workers)
+├── supervisor/       # Python supervisor (Raspberry Pi 5, process-isolated workers)
 │   ├── core/            # 50 Hz tick loop, state machine, safety, behavior engine
 │   ├── devices/         # MCU clients (reflex, face), protocol, expressions
 │   ├── io/              # Serial transport, COBS framing, CRC
@@ -38,7 +38,7 @@ robot-buddy/
 │   ├── tests/           # pytest test suite
 │   ├── Modelfile        # Legacy Ollama model config
 │   └── pyproject.toml   # Package metadata, deps
-├── esp32-face-v2/       # Face MCU firmware (ESP32-S3, C/C++, ESP-IDF)
+├── esp32-face/       # Face MCU firmware (ESP32-S3, C/C++, ESP-IDF)
 │   └── main/            # TFT face rendering + touch/buttons + USB protocol
 ├── esp32-reflex/        # Reflex MCU firmware (ESP32-S3, C/C++, ESP-IDF)
 │   └── main/            # Differential drive, PID, IMU, safety, encoders
@@ -120,7 +120,7 @@ Binary packets over USB serial with COBS framing:
 [type:u8][seq:u8][payload:N][crc16:u16-LE]
 ```
 
-For `esp32-face-v2`, this protocol carries face state/gesture/system/talking commands and touch/button/status telemetry only. Audio transport is supervisor-side USB audio.
+For `esp32-face`, this protocol carries face state/gesture/system/talking commands and touch/button/status telemetry only. Audio transport is supervisor-side USB audio.
 
 Auto-reconnect with exponential backoff (0.5s–5s). See `docs/protocols.md` for packet definitions.
 
@@ -142,7 +142,7 @@ Auto-reconnect with exponential backoff (0.5s–5s). See `docs/protocols.md` for
 ### Supervisor (Raspberry Pi 5)
 
 ```bash
-cd supervisor_v2
+cd supervisor
 uv sync --group dev
 
 # Run with mock hardware (no physical robot needed)
@@ -152,9 +152,9 @@ just run-mock
 just run
 
 # Other options
-uv run python -m supervisor_v2 --no-vision         # Disable vision worker
-uv run python -m supervisor_v2 --http-port 8080    # Custom HTTP port
-uv run python -m supervisor_v2 --planner-api http://10.0.0.20:8100 --robot-id robot-1
+uv run python -m supervisor --no-vision         # Disable vision worker
+uv run python -m supervisor --http-port 8080    # Custom HTTP port
+uv run python -m supervisor --planner-api http://10.0.0.20:8100 --robot-id robot-1
 ```
 
 ### AI Planner Server (3090 Ti PC)
@@ -176,7 +176,7 @@ The server starts on port 8100. See `server/README.md` for full API docs and con
 Requires ESP-IDF toolchain.
 
 ```bash
-cd esp32-face-v2   # or esp32-reflex
+cd esp32-face   # or esp32-reflex
 idf.py build
 idf.py flash
 idf.py monitor
@@ -186,7 +186,7 @@ idf.py monitor
 
 ```bash
 just run-dashboard         # dev server with hot reload
-just build-dashboard       # production build → supervisor_v2/static/
+just build-dashboard       # production build → supervisor/static/
 ```
 
 ## Development
@@ -204,7 +204,7 @@ just check-parity          # verify sim↔MCU constant alignment
 
 ### Mock Mode
 
-The supervisor includes a PTY-based mock Reflex MCU (`supervisor_v2/mock/mock_reflex.py`) that simulates serial communication, telemetry, and fault injection. Use `just run-mock` to run the full supervisor stack without any hardware.
+The supervisor includes a PTY-based mock Reflex MCU (`supervisor/mock/mock_reflex.py`) that simulates serial communication, telemetry, and fault injection. Use `just run-mock` to run the full supervisor stack without any hardware.
 
 ### Dashboard
 
@@ -219,7 +219,7 @@ When the supervisor is running, open `http://<robot_ip>:8080` in a browser for:
 
 ### Configuration
 
-**Supervisor** — YAML config file (schema in `supervisor_v2/config.py`):
+**Supervisor** — YAML config file (schema in `supervisor/config.py`):
 - Sections: serial, control, safety, network, logging, vision
 - Default serial paths: `/dev/robot_reflex`, `/dev/robot_face` (via udev symlinks)
 

@@ -18,14 +18,6 @@
             "presentation": { "reveal": "always", "panel": "shared" }
         },
         {
-            "label": "Test: Supervisor V2",
-            "type": "shell",
-            "command": "just test-sv2",
-            "group": "test",
-            "problemMatcher": [],
-            "presentation": { "reveal": "always", "panel": "shared" }
-        },
-        {
             "label": "Test: All",
             "type": "shell",
             "command": "just test-all",
@@ -103,14 +95,6 @@
             "label": "Run: Supervisor (mock)",
             "type": "shell",
             "command": "just run-mock",
-            "isBackground": true,
-            "problemMatcher": [],
-            "presentation": { "reveal": "always", "panel": "dedicated" }
-        },
-        {
-            "label": "Run: Supervisor V2 (mock)",
-            "type": "shell",
-            "command": "just run-v2-mock",
             "isBackground": true,
             "problemMatcher": [],
             "presentation": { "reveal": "always", "panel": "dedicated" }

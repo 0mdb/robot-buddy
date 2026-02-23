@@ -47,7 +47,7 @@ Command IDs: `0x10–0x1F` | Telemetry IDs: `0x80`
 
 Command IDs: `0x20–0x2F` | Telemetry IDs: `0x90–0x9F`
 
-Applies to current face display backend (`esp32-face-v2`).
+Applies to current face display backend (`esp32-face`).
 
 ### Commands (supervisor → MCU)
 
@@ -91,7 +91,7 @@ animation rendered around the face display:
 | 6     | ERROR     | Red flash                                 |
 | 7     | DONE      | Fade out                                  |
 
-Command channel semantics in `esp32-face-v2`:
+Command channel semantics in `esp32-face`:
 - `SET_STATE`, `SET_SYSTEM`, `SET_TALKING`, `SET_FLAGS`, `SET_CONV_STATE` are latched last-value channels.
 - `GESTURE` is a FIFO one-shot queue.
 - High-rate `SET_TALKING` updates must not overwrite queued gestures or latched mood/system.

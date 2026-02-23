@@ -1,13 +1,13 @@
 {
     "cmake.sourceDirectory": [
-        "${workspaceFolder}/esp32-face-v2",
+        "${workspaceFolder}/esp32-face",
         "${workspaceFolder}/esp32-reflex"
     ],
     "cmake.generator": "Ninja",
     "cmake.buildDirectory": "${sourceDir}/build",
     "cmake.configureOnOpen": false,
     "python.testing.pytestArgs": [
-        "supervisor_v2"
+        "supervisor"
     ],
     "python.testing.unittestEnabled": false,
     "python.testing.pytestEnabled": true,
@@ -17,12 +17,7 @@
     "C_Cpp.clang_format_style": "file",
     "C_Cpp.codeAnalysis.clangTidy.enabled": true,
     "C_Cpp.codeAnalysis.clangTidy.useBuildPath": true,
-    "C_Cpp.codeAnalysis.clangTidy.args": [
-        "--extra-arg=-isystem/home/ben/.espressif/tools/xtensa-esp-elf/esp-14.2.0_20241119/xtensa-esp-elf/xtensa-esp-elf/include/c++/14.2.0",
-        "--extra-arg=-isystem/home/ben/.espressif/tools/xtensa-esp-elf/esp-14.2.0_20241119/xtensa-esp-elf/xtensa-esp-elf/include/c++/14.2.0/xtensa-esp-elf/esp32s3",
-        "--extra-arg=-isystem/home/ben/.espressif/tools/xtensa-esp-elf/esp-14.2.0_20241119/xtensa-esp-elf/lib/gcc/xtensa-esp-elf/14.2.0/include",
-        "--extra-arg=-D__xtensa__"
-    ],
+    "C_Cpp.codeAnalysis.clangTidy.path": "/home/ben/.espressif/tools/esp-clang/esp-18.1.2_20240912/esp-clang/bin/clang-tidy",
 
     "[typescript]": {
         "editor.defaultFormatter": "biomejs.biome"

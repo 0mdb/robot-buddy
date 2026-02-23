@@ -16,9 +16,9 @@ ok()   { echo "[update] ✓ $*"; }
 die()  { echo "[update] ERROR: $*" >&2; exit 1; }
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
-SUPERVISOR_DIR="$REPO_ROOT/supervisor_v2"
-SERVICE_NAME="robot-buddy-supervisor-v2"
-MODULE_NAME="supervisor_v2"
+SUPERVISOR_DIR="$REPO_ROOT/supervisor"
+SERVICE_NAME="robot-buddy-supervisor"
+MODULE_NAME="supervisor"
 
 info "Updating $MODULE_NAME..."
 

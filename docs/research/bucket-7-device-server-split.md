@@ -489,7 +489,7 @@ When device rules and LLM suggestions conflict (e.g., LLM suggests EXCITED at 0.
 
 ### 7.1 BaseWorker Integration
 
-The personality worker follows the existing BaseWorker pattern exactly. From the codebase (`supervisor_v2/workers/base.py`):
+The personality worker follows the existing BaseWorker pattern exactly. From the codebase (`supervisor/workers/base.py`):
 
 - Separate process, launched by WorkerManager
 - NDJSON over stdin (inbound events from Core) and stdout (outbound state to Core)

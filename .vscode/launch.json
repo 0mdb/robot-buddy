@@ -5,9 +5,9 @@
             "name": "Supervisor (mock)",
             "type": "debugpy",
             "request": "launch",
-            "module": "supervisor_v2",
+            "module": "supervisor",
             "args": ["--mock", "--no-face", "--no-vision", "--log-level", "DEBUG"],
-            "cwd": "${workspaceFolder}/supervisor_v2",
+            "cwd": "${workspaceFolder}/supervisor",
             "console": "integratedTerminal",
             "justMyCode": true
         },

@@ -1,6 +1,6 @@
 #pragma once
 // Reflex MCU protocol: COBS framing + CRC16 integrity.
-// Wire format identical to esp32-face-v2 (shared transport layer).
+// Wire format identical to esp32-face (shared transport layer).
 //
 // Packet on the wire:
 //   [COBS-encoded payload] [0x00 delimiter]
@@ -19,7 +19,7 @@
 // Reflex commands (host -> MCU): 0x10-0x1F
 // Reflex telemetry (MCU -> host): 0x80+
 
-// Protocol handshake / time sync (shared with esp32-face-v2)
+// Protocol handshake / time sync (shared with esp32-face)
 enum class CommonCmdId : uint8_t {
     TIME_SYNC_REQ = 0x06,        // Pi -> MCU: {ping_seq:u32, reserved:u32}
     SET_PROTOCOL_VERSION = 0x07, // Pi -> MCU: {version:u8}

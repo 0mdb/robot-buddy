@@ -21,7 +21,7 @@
 
 ### 2.1 Conversation State Machine (Phase 1)
 
-**Test file**: `supervisor_v2/tests/test_conv_state.py`
+**Test file**: `supervisor/tests/test_conv_state.py`
 
 | Test Case | Assertion |
 |-----------|-----------|
@@ -44,7 +44,7 @@
 
 ### 2.2 Mood Transition Choreography (Phase 3)
 
-**Test file**: `supervisor_v2/tests/test_mood_transitions.py`
+**Test file**: `supervisor/tests/test_mood_transitions.py`
 
 | Test Case | Assertion |
 |-----------|-----------|

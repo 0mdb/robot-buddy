@@ -23,7 +23,7 @@ Robot Buddy is a kid-safe, expressive robot platform combining real-time motor c
 
 ```
 robot-buddy/
-├── supervisor_v2/       # Python supervisor (Raspberry Pi 5, process-isolated workers)
+├── supervisor/       # Python supervisor (Raspberry Pi 5, process-isolated workers)
 │   ├── api/             # FastAPI HTTP/WebSocket server, param registry
 │   ├── core/            # 50 Hz tick loop, state machine, safety, conv state, mood sequencer
 │   ├── devices/         # MCU clients (reflex, face), protocol, expressions
@@ -33,7 +33,7 @@ robot-buddy/
 │   ├── mock/            # Mock Reflex MCU (PTY-based fake serial)
 │   ├── tests/           # pytest test suite
 │   └── pyproject.toml
-├── esp32-face-v2/       # Face MCU firmware (ESP32-S3, C/C++)
+├── esp32-face/       # Face MCU firmware (ESP32-S3, C/C++)
 │   └── main/            # ILI9341 display, LVGL, touch, LED, border renderer
 ├── esp32-reflex/        # Motion MCU firmware (ESP32-S3, C/C++)
 │   └── main/            # Differential drive, PID, safety, encoders, IMU
@@ -54,36 +54,36 @@ robot-buddy/
 ### Key File Paths (Common Edit Targets)
 
 **Face protocol (all layers):**
-- Supervisor: `supervisor_v2/devices/protocol.py` + `supervisor_v2/devices/face_client.py`
-- Firmware: `esp32-face-v2/main/protocol.h` + `esp32-face-v2/main/face_ui.cpp`
-- Expressions: `supervisor_v2/devices/expressions.py`
+- Supervisor: `supervisor/devices/protocol.py` + `supervisor/devices/face_client.py`
+- Firmware: `esp32-face/main/protocol.h` + `esp32-face/main/face_ui.cpp`
+- Expressions: `supervisor/devices/expressions.py`
 
 **Face state & rendering:**
 - Sim: `tools/face_sim_v3/state/constants.py` (canonical values)
-- Firmware: `esp32-face-v2/main/config.h` + `esp32-face-v2/main/face_state.cpp`
+- Firmware: `esp32-face/main/config.h` + `esp32-face/main/face_state.cpp`
 - Parity: `tools/check_face_parity.py`
 
 **Core control loop:**
-- `supervisor_v2/core/tick_loop.py` — 50 Hz orchestration
-- `supervisor_v2/core/conv_state.py` — conversation state machine
-- `supervisor_v2/core/state_machine.py` — BOOT/IDLE/TELEOP/WANDER/ERROR
+- `supervisor/core/tick_loop.py` — 50 Hz orchestration
+- `supervisor/core/conv_state.py` — conversation state machine
+- `supervisor/core/state_machine.py` — BOOT/IDLE/TELEOP/WANDER/ERROR
 
 **Mood & expression:**
-- `supervisor_v2/core/mood_sequencer.py` — 4-phase transition choreography (~470ms)
-- `supervisor_v2/core/guardrails.py` — intensity/duration caps, context gate
-- `supervisor_v2/core/conv_transition.py` — ConvTransitionChoreographer (gaze ramps, nods)
-- `supervisor_v2/devices/expressions.py` — mood → SET_STATE parameter mapping
+- `supervisor/core/mood_sequencer.py` — 4-phase transition choreography (~470ms)
+- `supervisor/core/guardrails.py` — intensity/duration caps, context gate
+- `supervisor/core/conv_transition.py` — ConvTransitionChoreographer (gaze ramps, nods)
+- `supervisor/devices/expressions.py` — mood → SET_STATE parameter mapping
 
 **Conversation & AI:**
-- `supervisor_v2/core/speech_policy.py` — deterministic event-driven TTS intents
-- `supervisor_v2/core/action_scheduler.py` — planner action cooldowns, TTL gating
-- `supervisor_v2/core/event_bus.py` — PlannerEvent production and subscription
+- `supervisor/core/speech_policy.py` — deterministic event-driven TTS intents
+- `supervisor/core/action_scheduler.py` — planner action cooldowns, TTL gating
+- `supervisor/core/event_bus.py` — PlannerEvent production and subscription
 
 **Workers (process-isolated):**
-- `supervisor_v2/workers/tts_worker.py` — TTS_CMD_SPEAK/CANCEL, energy stream
-- `supervisor_v2/workers/ear_worker.py` — wake word detection, Silero VAD
-- `supervisor_v2/workers/ai_worker.py` — LLM plan requests to server
-- `supervisor_v2/workers/vision_worker.py` — ball/clear detection via OpenCV
+- `supervisor/workers/tts_worker.py` — TTS_CMD_SPEAK/CANCEL, energy stream
+- `supervisor/workers/ear_worker.py` — wake word detection, Silero VAD
+- `supervisor/workers/ai_worker.py` — LLM plan requests to server
+- `supervisor/workers/vision_worker.py` — ball/clear detection via OpenCV
 
 **Reflex MCU:**
 - Entry: `esp32-reflex/main/app_main.cpp`
@@ -125,7 +125,7 @@ just preflight             # full pre-commit check (lint + tests + parity)
 just run-mock              # run supervisor with mock hardware
 just run-server            # run planner server
 just run-dashboard         # run dashboard dev server (Vite)
-just build-dashboard       # build dashboard → supervisor_v2/static/
+just build-dashboard       # build dashboard → supervisor/static/
 just build-reflex          # build reflex firmware (needs ESP-IDF env)
 just flash-reflex          # build + flash reflex
 just deploy                # update + restart on Pi
@@ -159,7 +159,7 @@ just check-parity          # verify sim↔MCU constant parity
 - **CSS Modules** for component styles (`.module.css`)
 - **Custom hooks** in `src/hooks/` for data fetching and WebSocket state
 - **Tab-based layout** — each tab is a self-contained page component in `src/tabs/`
-- Builds to `supervisor_v2/static/` — served by FastAPI at `/`
+- Builds to `supervisor/static/` — served by FastAPI at `/`
 
 ### General
 - Keep reflexes deterministic and local to MCUs
@@ -169,10 +169,10 @@ just check-parity          # verify sim↔MCU constant parity
 
 ## Testing
 
-- Python tests: `supervisor_v2/tests/`, `server/tests/`
+- Python tests: `supervisor/tests/`, `server/tests/`
 - Dashboard tests: `dashboard/src/**/*.test.{ts,tsx}` (Vitest + Testing Library)
 - Use `pytest-asyncio` for async tests
-- Mock Reflex MCU (`supervisor_v2/mock/mock_reflex.py`) — PTY-based fake serial
+- Mock Reflex MCU (`supervisor/mock/mock_reflex.py`) — PTY-based fake serial
 - Run `just preflight` before submitting changes (lint + tests + parity)
 
 ## Skills

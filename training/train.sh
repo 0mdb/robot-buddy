@@ -66,7 +66,7 @@ if [ -f "$MODEL" ]; then
     echo "  Size: $(du -h "$MODEL" | cut -f1)"
     echo ""
     echo "  Deploy with:"
-    echo "    cp $SCRIPT_DIR/$MODEL $SCRIPT_DIR/../supervisor_v2/models/hey_buddy.onnx"
+    echo "    cp $SCRIPT_DIR/$MODEL $SCRIPT_DIR/../supervisor/models/hey_buddy.onnx"
 else
     echo "  WARNING: Model file not found at $MODEL"
     echo "  Check output/ directory for results."

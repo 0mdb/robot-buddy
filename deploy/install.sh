@@ -21,12 +21,12 @@ warn()  { echo "[install] WARNING: $*" >&2; }
 die()   { echo "[install] ERROR: $*" >&2; exit 1; }
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
-SUPERVISOR_DIR="$REPO_ROOT/supervisor_v2"
-SERVICE_NAME="robot-buddy-supervisor-v2"
+SUPERVISOR_DIR="$REPO_ROOT/supervisor"
+SERVICE_NAME="robot-buddy-supervisor"
 SERVICE_FILE="$DEPLOY_DIR/$SERVICE_NAME.service"
-ENV_SOURCE="$DEPLOY_DIR/supervisor-v2.env"
-ENV_DEST="/etc/robot-buddy/supervisor-v2.env"
-MODULE_NAME="supervisor_v2"
+ENV_SOURCE="$DEPLOY_DIR/supervisor.env"
+ENV_DEST="/etc/robot-buddy/supervisor.env"
+MODULE_NAME="supervisor"
 
 SYSTEMD_DEST="/etc/systemd/system/$SERVICE_NAME.service"
 VENV="$SUPERVISOR_DIR/.venv"

@@ -141,10 +141,10 @@ AI Worker ─── AI_CONVERSATION_EMOTION ──> EventRouter
 
 | Change | File | Description | When |
 |--------|------|-------------|------|
-| Add CONFUSED mood enum | `esp32-face-v2/main/face_state.h` | `CONFUSED = 12` in Mood enum | Stage 3 / Phase 0 |
-| CONFUSED parameters | `esp32-face-v2/main/face_state.cpp` | Add target table entry + color | Stage 3 / Phase 0 |
-| Protocol enum | `supervisor_v2/devices/protocol.py` | `CONFUSED = 12` in FaceMood | Stage 3 / Phase 0 |
-| Expression map | `supervisor_v2/devices/expressions.py` | Add "confused" mapping | Stage 3 / Phase 0 |
+| Add CONFUSED mood enum | `esp32-face/main/face_state.h` | `CONFUSED = 12` in Mood enum | Stage 3 / Phase 0 |
+| CONFUSED parameters | `esp32-face/main/face_state.cpp` | Add target table entry + color | Stage 3 / Phase 0 |
+| Protocol enum | `supervisor/devices/protocol.py` | `CONFUSED = 12` in FaceMood | Stage 3 / Phase 0 |
+| Expression map | `supervisor/devices/expressions.py` | Add "confused" mapping | Stage 3 / Phase 0 |
 
 No firmware changes are made during the alignment review. These are recorded for Stage 3.
 

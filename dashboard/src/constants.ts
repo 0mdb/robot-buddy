@@ -20,7 +20,7 @@ export function decodeFaults(flags: number): string[] {
   return active
 }
 
-// ---- Range status (mirrors supervisor_v2/devices/protocol.py RangeStatus) ----
+// ---- Range status (mirrors supervisor/devices/protocol.py RangeStatus) ----
 
 export const RANGE_STATUS = {
   OK: 0,

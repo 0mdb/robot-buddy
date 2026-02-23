@@ -1,6 +1,6 @@
 # Robot Buddy Dashboard
 
-Web dashboard for the Robot Buddy supervisor. Replaces the old single-file HTML dashboard entirely — `npm run build` outputs to `supervisor_v2/static/` which FastAPI serves at `/`.
+Web dashboard for the Robot Buddy supervisor. Replaces the old single-file HTML dashboard entirely — `npm run build` outputs to `supervisor/static/` which FastAPI serves at `/`.
 
 ## Quick Start
 
@@ -21,7 +21,7 @@ cd dashboard
 npm run build
 ```
 
-Outputs to `../supervisor_v2/static/`. The supervisor serves it automatically — no separate web server needed.
+Outputs to `../supervisor/static/`. The supervisor serves it automatically — no separate web server needed.
 
 ## Tabs
 
@@ -103,7 +103,7 @@ dashboard/
 │   │   └── FaultBadges.tsx       # Decoded fault flags
 │   ├── tabs/                     # One file per tab
 │   └── styles/                   # CSS Modules (dark theme)
-├── vite.config.ts                # Build → ../supervisor_v2/static/
+├── vite.config.ts                # Build → ../supervisor/static/
 └── package.json
 ```
 
