@@ -32,7 +32,7 @@ Face Sim V3 (`tools/face_sim_v3/`, ~2600 lines, 16 modules) is the canonical des
 - [x] CI parity check — `tools/check_face_parity.py` (70/70 passed)
 
 ### Remaining (Phase 0–5)
-- [ ] Phase 0: Sync MCU constants to match V3 sim (the new canonical source)
+- [x] Phase 0: Sync MCU constants to match V3 sim — 17 divergences ported, parity check 169/169, `just check-parity` in preflight
 - [x] Phase 1: Supervisor conversation state machine in tick_loop — `ConvStateTracker` module + tick_loop wiring + 39 tests
 - [ ] Phase 2: Firmware border rendering + SET_CONV_STATE (0x25)
 - [ ] Phase 3: Supervisor mood transition sequencer + guardrails

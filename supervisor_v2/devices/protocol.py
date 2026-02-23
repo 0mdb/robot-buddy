@@ -104,6 +104,7 @@ class FaceMood(IntEnum):
     LOVE = 9
     SILLY = 10
     THINKING = 11
+    CONFUSED = 12
 
 
 class FaceGesture(IntEnum):

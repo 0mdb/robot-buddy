@@ -20,6 +20,7 @@ enum class Mood : uint8_t {
     LOVE = 9,      // heart-shaped / warm glow
     SILLY = 10,    // cross-eyed or asymmetric
     THINKING = 11, // looking up/aside
+    CONFUSED = 12, // puzzled, asymmetric mouth
 };
 
 enum class GestureId : uint8_t {
@@ -120,6 +121,14 @@ struct AnimTimers {
     bool  rage = false;
     float rage_timer = 0.0f;
     float rage_duration = 3.0f;
+
+    bool  nod = false;
+    float nod_timer = 0.0f;
+    float nod_duration = 0.35f;
+
+    bool  headshake = false;
+    float headshake_timer = 0.0f;
+    float headshake_duration = 0.35f;
 
     // Flicker (driven by confused/laugh)
     bool  h_flicker = false;

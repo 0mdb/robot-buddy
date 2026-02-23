@@ -271,7 +271,7 @@ void face_state_update(FaceState& fs)
         break;
     case Mood::CURIOUS:
         t_curve = 0.0f;
-        t_lid_slope = -0.3f;
+        t_open = 0.1f;
         t_width = 0.9f;
         break;
     case Mood::SAD:
@@ -283,8 +283,6 @@ void face_state_update(FaceState& fs)
         t_curve = -0.3f;
         t_open = 0.3f;
         t_width = 0.8f;
-        fs.eye_l.width_scale_target = 0.9f;
-        fs.eye_r.width_scale_target = 0.9f;
         break;
     case Mood::ANGRY:
         t_curve = -0.6f;
@@ -295,10 +293,6 @@ void face_state_update(FaceState& fs)
         t_curve = 0.0f;
         t_open = 0.6f;
         t_width = 0.4f;
-        fs.eye_l.width_scale_target = 1.2f;
-        fs.eye_l.height_scale_target = 1.2f;
-        fs.eye_r.width_scale_target = 1.2f;
-        fs.eye_r.height_scale_target = 1.2f;
         break;
     case Mood::SLEEPY:
         t_curve = 0.0f;
@@ -318,6 +312,11 @@ void face_state_update(FaceState& fs)
         t_lid_slope = 0.4f;
         t_lid_top = 0.2f;
         break;
+    case Mood::CONFUSED:
+        t_curve = -0.2f;
+        t_lid_slope = 0.2f;
+        t_lid_top = 0.1f;
+        break;
     }
 
     const float intensity = clampf(fs.expression_intensity, 0.0f, 1.0f);
@@ -330,6 +329,63 @@ void face_state_update(FaceState& fs)
     t_lid_slope = blend_target(0.0f, t_lid_slope);
     t_lid_top = blend_target(0.0f, t_lid_top);
     t_lid_bot = blend_target(0.0f, t_lid_bot);
+
+    // Per-mood eye scale (V3 sim MOOD_EYE_SCALE — intensity-blended)
+    float ws = 1.0f, hs = 1.0f;
+    switch (fs.mood) {
+    case Mood::HAPPY:
+        ws = 1.05f;
+        hs = 0.9f;
+        break;
+    case Mood::EXCITED:
+        ws = 1.15f;
+        hs = 1.1f;
+        break;
+    case Mood::CURIOUS:
+        ws = 1.05f;
+        hs = 1.15f;
+        break;
+    case Mood::SAD:
+        ws = 0.95f;
+        hs = 0.85f;
+        break;
+    case Mood::SCARED:
+        ws = 0.9f;
+        hs = 1.15f;
+        break;
+    case Mood::ANGRY:
+        ws = 1.1f;
+        hs = 0.65f;
+        break;
+    case Mood::SURPRISED:
+        ws = 1.2f;
+        hs = 1.2f;
+        break;
+    case Mood::SLEEPY:
+        ws = 0.95f;
+        hs = 0.7f;
+        break;
+    case Mood::LOVE:
+        ws = 1.05f;
+        hs = 1.05f;
+        break;
+    case Mood::SILLY:
+        ws = 1.1f;
+        hs = 1.0f;
+        break;
+    case Mood::CONFUSED:
+        ws = 1.0f;
+        hs = 1.05f;
+        break;
+    default:
+        break;
+    }
+    ws = 1.0f + (ws - 1.0f) * intensity;
+    hs = 1.0f + (hs - 1.0f) * intensity;
+    fs.eye_l.width_scale_target = ws;
+    fs.eye_r.width_scale_target = ws;
+    fs.eye_l.height_scale_target = hs;
+    fs.eye_r.height_scale_target = hs;
 
     fs.mouth_curve_target = t_curve;
     fs.mouth_width_target = t_width;
@@ -344,6 +400,18 @@ void face_state_update(FaceState& fs)
         fs.eye_l.gaze_y_target = -4.0f;
         fs.eye_r.gaze_x_target = 6.0f;
         fs.eye_r.gaze_y_target = -4.0f;
+    }
+
+    // Confused: persistent asymmetric mouth (puzzled look)
+    if (fs.mood == Mood::CONFUSED) {
+        fs.mouth_offset_x_target = 2.0f;
+    }
+
+    // Love: mild pupil convergence (soft focus / adoring gaze)
+    if (fs.mood == Mood::LOVE) {
+        const float li = clampf(fs.expression_intensity, 0.0f, 1.0f);
+        fs.eye_l.gaze_x_target = 2.5f * li;
+        fs.eye_r.gaze_x_target = -2.5f * li;
     }
 
     if (fs.anim.surprise) {
@@ -427,6 +495,18 @@ void face_state_update(FaceState& fs)
         fs.mouth_open_target = 0.0f;
     }
 
+    // NOD: slight lid droop follows vertical gaze (pre-spring, tweened)
+    if (fs.anim.nod) {
+        const float elapsed = now - fs.anim.nod_timer;
+        const float lid_offset = 0.15f * fmaxf(0.0f, sinf(elapsed * 12.0f));
+        t_lid_top = fmaxf(t_lid_top, lid_offset);
+    }
+
+    // HEADSHAKE: slight frown (pre-spring, tweened)
+    if (fs.anim.headshake) {
+        fs.mouth_curve_target = -0.2f;
+    }
+
     if (fs.anim.heart && now > fs.anim.heart_timer + fs.anim.heart_duration) {
         fs.anim.heart = false;
     }
@@ -442,6 +522,12 @@ void face_state_update(FaceState& fs)
     }
     if (fs.anim.sleepy && now > fs.anim.sleepy_timer + fs.anim.sleepy_duration) {
         fs.anim.sleepy = false;
+    }
+    if (fs.anim.nod && now > fs.anim.nod_timer + fs.anim.nod_duration) {
+        fs.anim.nod = false;
+    }
+    if (fs.anim.headshake && now > fs.anim.headshake_timer + fs.anim.headshake_duration) {
+        fs.anim.headshake = false;
     }
 
     if (fs.anim.confused) {
@@ -485,7 +571,13 @@ void face_state_update(FaceState& fs)
     const float closure_l = fs.eye_l.is_open ? 0.0f : 1.0f;
     const float closure_r = fs.eye_r.is_open ? 0.0f : 1.0f;
     const float final_top_l = fmaxf(t_lid_top, closure_l);
-    const float final_top_r = fmaxf(t_lid_top, closure_r);
+    float       final_top_r = fmaxf(t_lid_top, closure_r);
+
+    // Curious: asymmetric brow — right eye slightly hooded, left appears "raised"
+    if (fs.mood == Mood::CURIOUS) {
+        const float ci = clampf(fs.expression_intensity, 0.0f, 1.0f);
+        final_top_r = fmaxf(final_top_r, 0.25f * ci);
+    }
 
     const float speed_l = (final_top_l > fs.eyelids.top_l) ? 0.6f : 0.4f;
     const float speed_r = (final_top_r > fs.eyelids.top_r) ? 0.6f : 0.4f;
@@ -508,13 +600,25 @@ void face_state_update(FaceState& fs)
                 fs.eye_l.gaze_x_target = -6.0f;
                 fs.eye_r.gaze_x_target = 6.0f;
             }
+        } else if (fs.mood == Mood::LOVE) {
+            // Reduced wander amplitude + convergence maintained (still, adoring)
+            const float li = clampf(fs.expression_intensity, 0.0f, 1.0f);
+            fs.eye_l.gaze_x_target = target_x * 0.4f + 2.5f * li;
+            fs.eye_r.gaze_x_target = target_x * 0.4f - 2.5f * li;
         } else {
             fs.eye_l.gaze_x_target = target_x;
             fs.eye_r.gaze_x_target = target_x;
         }
-        fs.eye_l.gaze_y_target = target_y;
-        fs.eye_r.gaze_y_target = target_y;
-        fs.anim.next_idle = now + 1.0f + randf() * 2.0f;
+
+        if (fs.mood == Mood::LOVE) {
+            fs.eye_l.gaze_y_target = target_y * 0.4f;
+            fs.eye_r.gaze_y_target = target_y * 0.4f;
+            fs.anim.next_idle = now + 2.5f + randf() * 3.0f;
+        } else {
+            fs.eye_l.gaze_y_target = target_y;
+            fs.eye_r.gaze_y_target = target_y;
+            fs.anim.next_idle = now + 1.0f + randf() * 2.0f;
+        }
     }
 
     if (now > fs.anim.next_saccade) {
@@ -580,6 +684,20 @@ void face_state_update(FaceState& fs)
         fs.anim.v_flicker_alt = !fs.anim.v_flicker_alt;
     }
 
+    // NOD/HEADSHAKE post-spring gaze overrides (bypass spring for crisp kinematics)
+    if (fs.anim.nod) {
+        const float elapsed = now - fs.anim.nod_timer;
+        const float gy = 4.0f * sinf(elapsed * 12.0f);
+        fs.eye_l.gaze_y = gy;
+        fs.eye_r.gaze_y = gy;
+    }
+    if (fs.anim.headshake) {
+        const float elapsed = now - fs.anim.headshake_timer;
+        const float gx = 5.0f * sinf(elapsed * 14.0f);
+        fs.eye_l.gaze_x = gx;
+        fs.eye_r.gaze_x = gx;
+    }
+
     update_breathing(fs);
     update_sparkle(fs);
     update_fire(fs);
@@ -633,9 +751,9 @@ void face_get_emotion_color(const FaceState& fs, uint8_t& r, uint8_t& g, uint8_t
             bb = 50;
             break;
         case Mood::SAD:
-            rr = 50;
-            gg = 80;
-            bb = 200;
+            rr = 70;
+            gg = 110;
+            bb = 210;
             break;
         case Mood::SCARED:
             rr = 180;
@@ -653,9 +771,9 @@ void face_get_emotion_color(const FaceState& fs, uint8_t& r, uint8_t& g, uint8_t
             bb = 200;
             break;
         case Mood::SLEEPY:
-            rr = 40;
-            gg = 60;
-            bb = 100;
+            rr = 70;
+            gg = 90;
+            bb = 140;
             break;
         case Mood::LOVE:
             rr = 255;
@@ -671,6 +789,11 @@ void face_get_emotion_color(const FaceState& fs, uint8_t& r, uint8_t& g, uint8_t
             rr = 80;
             gg = 135;
             bb = 220;
+            break;
+        case Mood::CONFUSED:
+            rr = 200;
+            gg = 160;
+            bb = 80;
             break;
         default:
             rr = 50;
@@ -763,18 +886,16 @@ void face_trigger_gesture(FaceState& fs, GestureId gesture, uint16_t duration_ms
         set_active_gesture(fs, gesture, dur_s(0.20f), now);
         break;
     case GestureId::NOD:
-        fs.anim.laugh = true;
-        fs.anim.laugh_timer = now;
-        fs.anim.laugh_toggle = true;
-        fs.anim.laugh_duration = dur_s(0.35f);
-        set_active_gesture(fs, gesture, fs.anim.laugh_duration, now);
+        fs.anim.nod = true;
+        fs.anim.nod_timer = now;
+        fs.anim.nod_duration = dur_s(0.35f);
+        set_active_gesture(fs, gesture, fs.anim.nod_duration, now);
         break;
     case GestureId::HEADSHAKE:
-        fs.anim.confused = true;
-        fs.anim.confused_timer = now;
-        fs.anim.confused_toggle = true;
-        fs.anim.confused_duration = dur_s(0.35f);
-        set_active_gesture(fs, gesture, fs.anim.confused_duration, now);
+        fs.anim.headshake = true;
+        fs.anim.headshake_timer = now;
+        fs.anim.headshake_duration = dur_s(0.35f);
+        set_active_gesture(fs, gesture, fs.anim.headshake_duration, now);
         break;
     case GestureId::WIGGLE:
         fs.anim.confused = true;

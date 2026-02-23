@@ -223,34 +223,46 @@ Three rounds of spec review applied after initial visual language definition:
 
 ---
 
-## Phase 0: Sim/MCU Parity (V3 → MCU Sync)
+## Phase 0: Sim/MCU Parity (V3 → MCU Sync) — DONE
 
 **Goal**: Sync MCU firmware constants to match V3 sim (the new canonical source). Establish CI-enforced parity.
 
-**Scope** (expanded from original — 17 divergences tracked in Visual Language §5.6):
-- SAD/SLEEPY colors (TN luma floor)
-- CURIOUS/CONFUSED lid_slope (silhouette distinctiveness)
-- CONFUSED mouth_offset (new behavior)
-- LOVE convergence + idle wander (new behavior)
-- ANGRY eye height, THINKING eye width (adjusted)
-- NOD/HEADSHAKE gestures (new dedicated animations)
-- ERROR micro-aversion (new behavior)
-- All other MOOD_EYE_SCALE entries (sim-authored)
+**Status**: Complete. All 17 divergences ported. Parity check expanded to 169 checks (geometry, timing, colors, eye scales, mood targets, flags). `just check-parity` integrated into preflight. CONFUSED mood (id=12) added to firmware and supervisor.
+
+### Implementation Notes
+
+- **CONFUSED mood** added end-to-end: firmware Mood enum (id=12), mood targets (-0.2 curve, +0.2 lid_slope inner furrow), eye scale (1.0, 1.05), color (200,160,80), persistent mouth_offset (2.0), supervisor FaceMood enum + expressions map
+- **Per-mood eye scale** refactored: dedicated switch with intensity blending replaces scattered per-case assignments (SCARED/SURPRISED). All 13 moods now have explicit (width, height) targets
+- **CURIOUS** reworked: lid_slope removed (-0.3→0.0), asymmetric brow added (right eye lid_top += 0.25 × intensity), mouth_open added (0.1)
+- **LOVE** behaviors: pupil convergence (±2.5 gaze_x × intensity), reduced idle wander (40% amplitude, 2.5-5.5s holds with convergence maintained)
+- **NOD/HEADSHAKE** gestures: dedicated animation fields replace laugh/confused reuse. Post-spring gaze bypass for crisp kinematics (NOD: Y_AMP=4.0, FREQ=12.0; HEADSHAKE: X_AMP=5.0, FREQ=14.0)
+- **SAD/SLEEPY colors** brightened for TN panel luma floor compliance
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `esp32-face-v2/main/face_state.h` | Added `CONFUSED = 12` to Mood enum, `nod`/`headshake` anim fields to AnimTimers |
+| `esp32-face-v2/main/face_state.cpp` | Mood targets, eye scales, colors, CONFUSED/LOVE/CURIOUS behaviors, NOD/HEADSHAKE gestures |
+| `supervisor_v2/devices/protocol.py` | Added `CONFUSED = 12` to `FaceMood` enum |
+| `supervisor_v2/devices/expressions.py` | Added "confused" to canonical emotions, mood map, "puzzled" alias |
+| `tools/check_face_parity.py` | Removed sim-ahead exclusions, added eye scale (26 values) + mood targets (78 values) + CONFUSED color checks |
+| `justfile` | Added `check-parity` recipe, integrated into `preflight` |
 
 ### Tasks
 
 | # | Task | Files | Depends On |
 |---|------|-------|-----------|
-| 0.1 | Diff V3 `constants.py` vs MCU `config.h`/`face_state.cpp` — identify all divergences | `tools/face_sim_v3/state/constants.py`, `esp32-face-v2/main/config.h`, `esp32-face-v2/main/face_state.cpp` | Stage 3 |
-| 0.2 | Update MCU constants to match V3 for all divergences (mood colors, eye scales, mood targets, gesture constants, new mood-specific behaviors) | `esp32-face-v2/main/config.h`, `esp32-face-v2/main/face_state.cpp` | 0.1 |
-| 0.3 | Port CONFUSED mouth_offset and LOVE convergence behaviors to MCU face_state.cpp | `esp32-face-v2/main/face_state.cpp` | 0.2 |
-| 0.4 | Port NOD/HEADSHAKE dedicated gesture animations (post-spring gaze bypass) to MCU | `esp32-face-v2/main/face_state.cpp` | 0.2 |
-| 0.5 | CI parity check passes (V3 = MCU within tolerance per eval plan §2.4), sim-ahead exclusions removed | `tools/check_face_parity.py` | 0.2–0.4 |
-| 0.6 | Add parity check to `just preflight` | `justfile` | 0.5 |
+| 0.1 | ~~Diff V3 `constants.py` vs MCU `config.h`/`face_state.cpp` — identify all divergences~~ | `tools/face_sim_v3/state/constants.py`, `esp32-face-v2/main/config.h`, `esp32-face-v2/main/face_state.cpp` | Stage 3 |
+| 0.2 | ~~Update MCU constants to match V3 for all divergences (mood colors, eye scales, mood targets, gesture constants, new mood-specific behaviors)~~ | `esp32-face-v2/main/config.h`, `esp32-face-v2/main/face_state.cpp` | 0.1 |
+| 0.3 | ~~Port CONFUSED mouth_offset and LOVE convergence behaviors to MCU face_state.cpp~~ | `esp32-face-v2/main/face_state.cpp` | 0.2 |
+| 0.4 | ~~Port NOD/HEADSHAKE dedicated gesture animations (post-spring gaze bypass) to MCU~~ | `esp32-face-v2/main/face_state.cpp` | 0.2 |
+| 0.5 | ~~CI parity check passes (V3 = MCU within tolerance per eval plan §2.4), sim-ahead exclusions removed~~ | `tools/check_face_parity.py` | 0.2–0.4 |
+| 0.6 | ~~Add parity check to `just preflight`~~ | `justfile` | 0.5 |
 
 ### Exit Criteria
-- `just preflight` passes with parity check
-- V3 sim and MCU produce visually identical idle behavior
+- ~~`just preflight` passes with parity check~~ ✓ 169/169 passed
+- [ ] V3 sim and MCU produce visually identical idle behavior — pending visual review on hardware
 
 ---
 
@@ -475,7 +487,7 @@ Visual Language Remediation ── DONE (G1–G7)
 Visual Language Review ──────── DONE (R1–R5 + D1–D5 + B1–B3)
     │
     v
-Phase 0 (Parity V3→MCU) ── 17 divergences to port
+Phase 0 (Parity V3→MCU) ── DONE (169/169 parity checks)
     │
     v
 Phase 1 (Conv State Machine) ──────┐ ── DONE

@@ -135,9 +135,15 @@ deploy-wakeword:
     cp {{project}}/training/output/hey_buddy.onnx {{project}}/supervisor_v2/models/hey_buddy.onnx
     @echo "Deployed hey_buddy.onnx to supervisor_v2/models/"
 
+# ── Parity ──────────────────────────────────────────────
+
+# Check V3 sim / MCU face parity
+check-parity:
+    cd {{project}} && python tools/check_face_parity.py
+
 # ── Preflight ────────────────────────────────────────────
 
 # Full pre-commit quality check
-preflight: lint test-all
+preflight: lint test-all check-parity
     @echo ""
     @echo "✓ All checks passed — ready to commit."

@@ -566,22 +566,17 @@ ERROR_AVERSION_DURATION = 0.2   # 200ms gaze micro-aversion
 ERROR_AVERSION_GAZE_X = -0.3   # Look-away direction (normalized, multiplied by MAX_GAZE)
 ```
 
-### 5.6 MCU Parity Notes
+### 5.6 MCU Parity Notes — SYNCED (Phase 0 Complete)
 
-| Value | MCU Current | V3 Sim | Status |
-|---|---|---|---|
-| SCARED eye_scale | (0.9, 1.0) | (0.9, 1.15) | Sim-authored; height increase pending firmware port |
-| All other eye_scale | (1.0, 1.0) | Per §5.1 table | Sim-authored; new entries pending firmware port |
-| NOD/HEADSHAKE gestures | Reuse laugh/confused | Dedicated gaze anim | Sim-authored; firmware uses MCU's existing anims until port |
-| ERROR micro-aversion | Not implemented | 200ms gaze offset | Sim-authored; supervisor-side for firmware |
-| SAD color | (50, 80, 200) | (70, 110, 210) | Brightened for TN panel luma floor (§1.3.1); pending firmware port |
-| SLEEPY color | (40, 60, 100) | (70, 90, 140) | Brightened for TN panel luma floor (§1.3.1); pending firmware port |
-| CURIOUS lid_slope | -0.15 | 0.0 | Removed (asymmetric brow replaces slope); pending firmware port |
-| CURIOUS asymmetric brow | None | 0.25 (right eye extra lid_top) | New: one-eyebrow-raised look; pending firmware port |
-| CONFUSED lid_slope | -0.15 | +0.2 | Flipped to inner furrow for silhouette distinctiveness; pending firmware port |
-| CONFUSED mouth_offset | None | 2.0 | Persistent asymmetric mouth; pending firmware port |
-| LOVE convergence | None | ±2.5 gaze_x | Mild pupil convergence + reduced idle wander; pending firmware port |
-| ANGRY eye height | 0.75 | 0.65 | Compressed further for silhouette distinctiveness; pending firmware port |
-| THINKING eye width | 0.95 | 1.0 | Neutralized (gaze aversion carries mood); pending firmware port |
+All divergences ported to firmware. CI parity check (`just check-parity`) enforces 169 constants match between V3 sim and MCU.
 
-All sim-authored values are ahead of MCU as design iterations. The parity check will flag these divergences until firmware is updated.
+| Value | Status |
+|---|---|
+| All 13 mood eye_scale entries | Ported — dedicated intensity-blended switch in `face_state.cpp` |
+| NOD/HEADSHAKE gestures | Ported — dedicated post-spring gaze bypass animations |
+| ERROR micro-aversion | Handled supervisor-side via `ConvStateTracker` (Phase 1) |
+| SAD/SLEEPY colors | Ported — brightened for TN panel luma floor |
+| CURIOUS lid_slope + asymmetric brow | Ported — slope removed, right eye lid_top offset added |
+| CONFUSED mood (lid_slope, mouth_offset, color, eye_scale) | Ported — new Mood::CONFUSED (id=12) added end-to-end |
+| LOVE convergence + idle wander | Ported — pupil convergence + 40% amplitude + longer holds |
+| ANGRY eye height (0.65), THINKING eye width (1.0) | Ported via eye_scale switch |

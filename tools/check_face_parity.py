@@ -106,6 +106,8 @@ def main() -> int:
         LEFT_EYE_CY,
         MAX_GAZE,
         MOOD_COLORS,
+        MOOD_EYE_SCALE,
+        MOOD_TARGETS,
         MOUTH_CX,
         MOUTH_CY,
         MOUTH_HALF_W,
@@ -139,26 +141,11 @@ def main() -> int:
 
     all_text = config_text + "\n" + state_h + "\n" + protocol_text
 
-    # Known sim-ahead-of-MCU divergences (sim is the design surface, MCU will catch up)
-    # See docs/face-visual-language.md §5.6 for rationale
-    sim_ahead_exclusions = {
-        "MOOD_COLOR_SAD_R",
-        "MOOD_COLOR_SAD_G",
-        "MOOD_COLOR_SAD_B",
-        "MOOD_COLOR_SLEEPY_R",
-        "MOOD_COLOR_SLEEPY_G",
-        "MOOD_COLOR_SLEEPY_B",
-    }
-
     passed = 0
     failed = 0
 
     def check(name: str, mcu_val: float | int | None, sim_val: float | int) -> None:
         nonlocal passed, failed
-        if name in sim_ahead_exclusions and mcu_val is not None and mcu_val != sim_val:
-            print(f"  SKIP  {name}: sim-ahead (MCU={mcu_val} SIM={sim_val})")
-            passed += 1
-            return
         if compare(name, mcu_val, sim_val):
             passed += 1
         else:
@@ -287,6 +274,7 @@ def main() -> int:
         "LOVE": Mood.LOVE,
         "SILLY": Mood.SILLY,
         "THINKING": Mood.THINKING,
+        "CONFUSED": Mood.CONFUSED,
     }
     # Parse the switch statement in face_get_emotion_color
     color_pattern = re.compile(
@@ -305,6 +293,78 @@ def main() -> int:
             check(f"MOOD_COLOR_{name}_R", r, sim_color[0])
             check(f"MOOD_COLOR_{name}_G", g, sim_color[1])
             check(f"MOOD_COLOR_{name}_B", b, sim_color[2])
+
+    # ── Mood eye scale ────────────────────────────────────────────
+    print("-- Mood eye scale --")
+    # Parse per-mood eye scale from the dedicated switch in face_state.cpp
+    # Pattern: case Mood::NAME:\n    ws = X;\n    hs = Y;\n    break;
+    eye_scale_pattern = re.compile(
+        r"case\s+Mood::(\w+):\s*\n"
+        r"\s*ws\s*=\s*([0-9.]+)f?;\s*\n"
+        r"\s*hs\s*=\s*([0-9.]+)f?;\s*\n"
+        r"\s*break;",
+        re.MULTILINE,
+    )
+    mcu_eye_scales: dict[str, tuple[float, float]] = {}
+    for match in eye_scale_pattern.finditer(state_cpp):
+        name = match.group(1)
+        mcu_eye_scales[name] = (float(match.group(2)), float(match.group(3)))
+
+    for mood_name, mood_enum in mood_color_map.items():
+        sim_scale = MOOD_EYE_SCALE.get(mood_enum, (1.0, 1.0))
+        mcu_scale = mcu_eye_scales.get(mood_name, (1.0, 1.0))
+        check(f"EYE_SCALE_{mood_name}_W", mcu_scale[0], sim_scale[0])
+        check(f"EYE_SCALE_{mood_name}_H", mcu_scale[1], sim_scale[1])
+
+    # ── Mood targets ──────────────────────────────────────────────
+    print("-- Mood targets --")
+    # Parse per-mood expression targets from face_state.cpp mood switch
+    # Each case sets some subset of: t_curve, t_width, t_open, t_lid_slope, t_lid_top, t_lid_bot
+    # Defaults: (0.1, 1.0, 0.0, 0.0, 0.0, 0.0)
+    target_fields = {
+        "t_curve": 0.1,
+        "t_width": 1.0,
+        "t_open": 0.0,
+        "t_lid_slope": 0.0,
+        "t_lid_top": 0.0,
+        "t_lid_bot": 0.0,
+    }
+    field_names = ["CURVE", "WIDTH", "OPEN", "LID_SLOPE", "LID_TOP", "LID_BOT"]
+
+    # Extract each mood case block from the first switch(fs.mood) in face_update
+    mood_switch_pattern = re.compile(
+        r"case\s+Mood::(\w+):\s*\n(.*?)break;",
+        re.MULTILINE | re.DOTALL,
+    )
+    # Find the mood target switch (the first switch(fs.mood) in the file)
+    mood_switch_start = state_cpp.find("switch (fs.mood)")
+    if mood_switch_start >= 0:
+        # Find the closing brace of this switch
+        mood_switch_end = state_cpp.find(
+            "\n\n    const float intensity", mood_switch_start
+        )
+        mood_switch_text = state_cpp[mood_switch_start:mood_switch_end]
+
+        for match in mood_switch_pattern.finditer(mood_switch_text):
+            mood_name = match.group(1)
+            case_body = match.group(2)
+            mood_enum = mood_color_map.get(mood_name)
+            if mood_enum is None:
+                continue
+            sim_targets = MOOD_TARGETS.get(mood_enum, (0.1, 1.0, 0.0, 0.0, 0.0, 0.0))
+
+            mcu_vals = list(target_fields.values())  # defaults
+            for i, field in enumerate(target_fields):
+                m = re.search(rf"{field}\s*=\s*(-?[0-9.]+)f?;", case_body)
+                if m:
+                    mcu_vals[i] = float(m.group(1))
+
+            for i, fname in enumerate(field_names):
+                check(
+                    f"TARGET_{mood_name}_{fname}",
+                    mcu_vals[i],
+                    sim_targets[i],
+                )
 
     # ── Summary ──────────────────────────────────────────────────
     total = passed + failed

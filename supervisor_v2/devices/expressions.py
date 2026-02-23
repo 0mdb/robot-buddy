@@ -20,10 +20,12 @@ CANONICAL_EMOTIONS: Final[tuple[str, ...]] = (
     "love",
     "silly",
     "thinking",
+    "confused",
 )
 
 EMOTION_ALIASES: Final[dict[str, str]] = {
     "tired": "sleepy",
+    "puzzled": "confused",
 }
 
 EMOTION_TO_FACE_MOOD: Final[dict[str, int]] = {
@@ -39,6 +41,7 @@ EMOTION_TO_FACE_MOOD: Final[dict[str, int]] = {
     "love": int(FaceMood.LOVE),
     "silly": int(FaceMood.SILLY),
     "thinking": int(FaceMood.THINKING),
+    "confused": int(FaceMood.CONFUSED),
 }
 
 FACE_MOOD_TO_EMOTION: Final[dict[int, str]] = {
