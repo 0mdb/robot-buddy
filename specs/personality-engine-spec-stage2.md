@@ -6,7 +6,7 @@ This document is the implementation-ready specification for the Robot Buddy Pers
 
 The personality engine is a process-isolated worker (`PersonalityWorker`) on the Pi 5 that maintains a continuous affect vector, applies personality-derived parameters, modulates LLM emotion suggestions, and emits state snapshots consumed by the 50 Hz tick loop for face display. It integrates with the server LLM via system prompt injection and structured response parsing.
 
-**Companion documents**: [Stage 1 spec](personality-engine-spec-stage1.md) (research & decisions), [Face comm Stage 2](face-communication-spec-stage2.md) (visual grammar), [Face comm impl plan](face-communication-impl-plan.md) (implementation sequence).
+**Companion documents**: [Stage 1 spec](personality-engine-spec-stage1.md) (research & decisions), [Face comm Stage 2](face-communication-spec-stage2.md) (visual grammar), [Alignment report](pe-face-comm-alignment.md) (conflict resolutions). Implementation tracking is in `docs/TODO.md`.
 
 **Evidence tagging**: Every design choice is tagged `[Empirical]` (peer-reviewed evidence), `[Theory]` (general principle), or `[Inference]` (derived from evidence, needs validation).
 
@@ -606,7 +606,7 @@ Migrated from face comm S2 §7 to the personality worker — the single source o
 
 **Enforcement**: The personality worker tracks how long the projected mood has been in a negative state. When the duration cap is exceeded, a recovery impulse toward baseline is injected at the recovery λ rate, rapidly pulling affect back toward NEUTRAL. [Inference — face comm S2 §7 duration caps]
 
-**Relationship to face comm spec**: The tick loop (face comm §7) acts as a safety backstop only, enforcing the same duration caps when the personality snapshot is stale (age > 3000 ms). Under normal operation, the tick loop trusts the worker's snapshot and does not run independent guardrail timers. See `docs/pe-face-comm-alignment.md` §4.1.
+**Relationship to face comm spec**: The tick loop (face comm §7) acts as a safety backstop only, enforcing the same duration caps when the personality snapshot is stale (age > 3000 ms). Under normal operation, the tick loop trusts the worker's snapshot and does not run independent guardrail timers. See `specs/pe-face-comm-alignment.md` §4.1.
 
 **SURPRISED**: Not listed above because it is classified as Neutral (§4.1), not Negative. However, a startle-reflex safety rule applies: 3.0 s maximum duration and 0.8 intensity cap (face comm §7.4). The personality worker enforces this as a special case alongside the negative duration caps — tracking SURPRISED duration separately and injecting a recovery impulse when the cap is exceeded.
 
@@ -902,7 +902,7 @@ AI Worker → AI_CONVERSATION_EMOTION → EventRouter
 
 The personality worker is now the single source of emotional truth. The tick loop never interprets AI emotions directly — it only reads the worker's snapshot. [PE-9: balanced split]
 
-**Interaction with conversation layer suppression**: During LISTENING and THINKING phases, the tick loop suppresses the emotion layer display (face comm §2.3) and shows attentive NEUTRAL or THINKING mood regardless of the worker's snapshot. The worker continues to evolve the affect vector during these phases — AI emotion impulses are integrated immediately, not queued. When SPEAKING begins, the tick loop resumes reading the worker's snapshot for face display. This "suppress-then-read" pattern replaces the face comm spec's original "queue" model. See `docs/pe-face-comm-alignment.md` §4.5.
+**Interaction with conversation layer suppression**: During LISTENING and THINKING phases, the tick loop suppresses the emotion layer display (face comm §2.3) and shows attentive NEUTRAL or THINKING mood regardless of the worker's snapshot. The worker continues to evolve the affect vector during these phases — AI emotion impulses are integrated immediately, not queued. When SPEAKING begins, the tick loop resumes reading the worker's snapshot for face display. This "suppress-then-read" pattern replaces the face comm spec's original "queue" model. See `specs/pe-face-comm-alignment.md` §4.5.
 
 ### 11.2 WorldState Additions
 

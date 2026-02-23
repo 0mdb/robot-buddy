@@ -81,7 +81,7 @@ This is *very* useful in kid scenarios (stalls, carpet, low battery).
 
 ### D) Odometry (recommended once encoders are stable)
 - Integrate wheel distances -> (x, y, theta)
-- Provide odom to Jetson for higher-level behavior
+- Provide odom to Pi 5 for higher-level behavior
 Note: odom on tracks drifts; still valuable.
 
 ---
@@ -148,6 +148,9 @@ Faults force stop or limit mode depending on severity.
 - [x] BMI270 IMU integration (gyro-Z yaw damping)
 
 ## TODO
-- [ ] Battery voltage sense (ADC) + sag-aware limiting
-- [ ] Odometry integration (x, y, theta)
-- [ ] Full IMU heading hold PID (currently gyro damping only)
+
+See [docs/TODO.md](../docs/TODO.md) for the full backlog. Key remaining items for reflex:
+- Battery voltage sense (ADC) + sag-aware limiting
+- Odometry integration (x, y, theta)
+- Full IMU heading hold PID (currently gyro damping only)
+- Hardware commissioning (Phases 1-5)

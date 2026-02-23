@@ -35,26 +35,27 @@ Audio codec/microphone handling was removed from this firmware. Audio is owned b
 
 ## Current Parity Gaps
 
-- Face center rendering is not yet pixel-for-pixel with `tools/face_render_v2.py`
-  (SDF eye/mouth rasterization differences remain).
-- A hardware-visible scaling/placement artifact is still open in face mode
-  (multi-eye duplication / missing mouth in recent test photos); this is under active parity tuning.
+- Face center rendering is not pixel-for-pixel with sim V3 (SDF eye/mouth rasterization differences remain)
+- Some sim↔MCU timing divergences documented in [docs/TODO.md](../docs/TODO.md)
+- Stage 4 firmware optimization planned (dirty-rect, DMA, RGB565 dithering)
 
-## Protocol (v3)
+## Protocol
 
 Commands (host -> face):
 
-- `0x20` `SET_STATE`
-- `0x21` `GESTURE`
-- `0x22` `SET_SYSTEM`
-- `0x23` `SET_TALKING`
+- `0x20` `SET_STATE` — mood, intensity, gaze, brightness
+- `0x21` `GESTURE` — one-shot animation (FIFO queue)
+- `0x22` `SET_SYSTEM` — system overlays (boot, error, battery)
+- `0x23` `SET_TALKING` — lip sync (talking flag + energy)
+- `0x24` `SET_FLAGS` — feature toggles (blink, wander, sparkle)
+- `0x25` `SET_CONV_STATE` — conversation border state
 
 Telemetry (face -> host):
 
-- `0x90` `FACE_STATUS`
-- `0x91` `TOUCH_EVENT`
-- `0x92` `BUTTON_EVENT`
-- `0x93` `HEARTBEAT`
+- `0x90` `FACE_STATUS` (20 Hz)
+- `0x91` `TOUCH_EVENT` (on change)
+- `0x92` `BUTTON_EVENT` (on change)
+- `0x93` `HEARTBEAT` (1 Hz)
 
 ## Build
 

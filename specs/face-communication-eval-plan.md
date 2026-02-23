@@ -1,6 +1,6 @@
 # Face Communication — Stage 2: Evaluation Plan
 
-**Companion to**: `face-communication-spec-stage2.md` (the spec) and `face-communication-impl-plan.md` (the implementation plan).
+**Companion to**: `face-communication-spec-stage2.md` (the spec). Implementation tracking is in `docs/TODO.md`.
 
 **Purpose**: Define how to verify that the face communication system achieves its goals — the robot's actions feel intentional and aware rather than random, for children ages 4–6. This plan covers automated tests, instrumented benchmarks, and human evaluation protocols.
 

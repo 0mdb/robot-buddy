@@ -1,0 +1,5 @@
+[lint]
+# Warn on unused imports but don't auto-remove them.
+# This prevents the auto-format hook from deleting imports
+# that are being wired up during active development.
+unfixable = ["F401"]

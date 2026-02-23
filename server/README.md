@@ -266,7 +266,8 @@ uv run pytest tests/ -v
 
 ## TODO
 
-- [x] Implement `/tts` endpoint
-- [ ] Add caching for instant responses to common triggers
-- [ ] Interaction history / conversation memory
-- [x] Supervisor-side `PlannerClient` integration
+See [docs/TODO.md](../docs/TODO.md) for the full backlog. Key remaining items for server:
+- Interaction history / conversation memory
+- Personality engine: system prompt v2 with affect state embedding
+- Personality engine: LLM response → affect impulse parsing
+- Response caching for common triggers

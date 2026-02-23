@@ -42,9 +42,13 @@ robot-buddy/
 │   └── main/            # TFT face rendering + touch/buttons + USB protocol
 ├── esp32-reflex/        # Reflex MCU firmware (ESP32-S3, C/C++, ESP-IDF)
 │   └── main/            # Differential drive, PID, IMU, safety, encoders
+├── dashboard/           # React dashboard (Vite + TypeScript + Biome)
+│   └── src/             # Components, hooks, stores, tabs
+├── specs/               # Completed specifications (immutable reference)
+├── docs/                # TODO, architecture, protocols, wiring, power, research
 ├── deploy/              # Deployment (systemd service, install/update scripts)
-├── tools/               # Dev utilities (face simulation via pygame)
-└── docs/                # Architecture, protocol specs, power topology
+├── tools/               # Dev utilities (face sim V3, parity check)
+└── training/            # Wake word model training
 ```
 
 ## Architecture
@@ -127,10 +131,11 @@ Auto-reconnect with exponential backoff (0.5s–5s). See `docs/protocols.md` for
 | Supervisor | Python 3.11+, asyncio, FastAPI, uvicorn, pyserial, OpenCV |
 | AI Server | Python 3.11+, FastAPI, httpx, Pydantic, Ollama (compat) + vLLM (migration target) |
 | ESP32 Firmware | C/C++, ESP-IDF (FreeRTOS), CMake |
-| Build (Python) | Hatchling via pyproject.toml |
-| Build (ESP32) | `idf.py build` (CMake) |
-| Tests | pytest, pytest-asyncio |
-| Linting | ruff (>=0.15.1) |
+| Build (Python) | Hatchling via pyproject.toml, uv for dependency management |
+| Build (ESP32) | `idf.py build` (CMake), `source ~/esp/esp-idf/export.sh` |
+| Dashboard | React 19, Vite, TypeScript, Zustand, TanStack Query |
+| Tests | pytest, pytest-asyncio, Vitest |
+| Linting | ruff (Python), clang-format + cppcheck (C++), Biome (TypeScript) |
 
 ## Getting Started
 
@@ -138,18 +143,18 @@ Auto-reconnect with exponential backoff (0.5s–5s). See `docs/protocols.md` for
 
 ```bash
 cd supervisor_v2
-pip install -e ".[dev]"
+uv sync --group dev
 
 # Run with mock hardware (no physical robot needed)
-python -m supervisor_v2 --mock
+just run-mock
 
 # Run with real hardware
-python -m supervisor_v2 --port /dev/ttyUSB0
+just run
 
 # Other options
-python -m supervisor_v2 --no-vision         # Disable vision worker
-python -m supervisor_v2 --http-port 8080    # Custom HTTP port
-python -m supervisor_v2 --planner-api http://10.0.0.20:8100 --robot-id robot-1
+uv run python -m supervisor_v2 --no-vision         # Disable vision worker
+uv run python -m supervisor_v2 --http-port 8080    # Custom HTTP port
+uv run python -m supervisor_v2 --planner-api http://10.0.0.20:8100 --robot-id robot-1
 ```
 
 ### AI Planner Server (3090 Ti PC)
@@ -177,44 +182,39 @@ idf.py flash
 idf.py monitor
 ```
 
-## Development
-
-### Running Tests
+### Dashboard
 
 ```bash
-# Supervisor tests (from repo root)
-python -m pytest supervisor_v2/tests/ -v
-
-# AI server tests
-cd server
-python -m pytest tests/ -v
+just run-dashboard         # dev server with hot reload
+just build-dashboard       # production build → supervisor_v2/static/
 ```
 
-### Linting
+## Development
+
+All commands are available via `just` (see `justfile`):
 
 ```bash
-# Check
-ruff check supervisor_v2/
-ruff check server/
-
-# Auto-fix
-ruff check --fix supervisor_v2/ server/
-
-# Format
-ruff format supervisor_v2/ server/
+just test-all              # run all tests (supervisor, server, dashboard)
+just lint                  # check Python + C++ + dashboard
+just lint-fix              # auto-fix formatting
+just preflight             # full pre-commit check (lint + tests + parity)
+just sim                   # run face simulator V3
+just check-parity          # verify sim↔MCU constant alignment
 ```
 
 ### Mock Mode
 
-The supervisor includes a PTY-based mock Reflex MCU (`supervisor_v2/mock/mock_reflex.py`) that simulates serial communication, telemetry, and fault injection. Use `--mock` to run the full supervisor stack without any hardware.
+The supervisor includes a PTY-based mock Reflex MCU (`supervisor_v2/mock/mock_reflex.py`) that simulates serial communication, telemetry, and fault injection. Use `just run-mock` to run the full supervisor stack without any hardware.
 
-### Web UI
+### Dashboard
 
 When the supervisor is running, open `http://<robot_ip>:8080` in a browser for:
-- Live telemetry display
+- Live telemetry display with diagnostic tree
 - Mode control (IDLE, TELEOP, WANDER)
 - E-STOP button
+- Face control (moods, gestures, talking, conversation state)
 - Parameter tuning sliders (PID gains, speed limits, safety thresholds)
+- Monitor tab (device health, comms, power, sensors, faults, workers)
 - MJPEG video stream (if vision enabled)
 
 ### Configuration
@@ -265,27 +265,29 @@ Plan actions: `say(text)`, `emote(name, intensity)`, `gesture(name, params)`, `s
 ## Project Status
 
 ### Working
-- [x] Supervisor: 50 Hz control loop, state machine, safety policies
-- [x] Supervisor: serial transport with COBS framing, CRC, auto-reconnect
+- [x] Supervisor: 50 Hz control loop, state machine, safety policies, conversation state, mood choreography
+- [x] Supervisor: serial transport with COBS framing, CRC, auto-reconnect, protocol v2 (timestamps + seq)
 - [x] Supervisor: FastAPI HTTP/WebSocket API with telemetry streaming
-- [x] Supervisor: parameter registry with runtime tuning
-- [x] Supervisor: vision process (separate OS process, multiprocessing queue)
+- [x] Supervisor: process-isolated workers (TTS, vision, AI, ear)
 - [x] Supervisor: mock Reflex MCU for hardware-free development
-- [x] Supervisor: telemetry recording (JSONL)
-- [x] AI Server: FastAPI + backend-switchable planner inference (Ollama/vLLM)
-- [x] AI Server: bounded performance plans (emote, say, gesture, skill)
-- [x] AI Server: direct TTS endpoint with Orpheus/espeak fallback
-- [x] ESP32 Face v2: TFT face rendering, touch/button telemetry, supervisor-driven emotions/gestures
+- [x] AI Server: FastAPI + vLLM planner (Qwen), conversation, TTS (Orpheus + espeak)
+- [x] ESP32 Face: TFT face rendering, 13 moods, 13 gestures, conversation border, touch/button telemetry
 - [x] ESP32 Reflex: motor control, PID, encoders, IMU, safety enforcement
-- [x] Supervisor-side PlannerClient + planner module (scheduler, event bus, skills)
+- [x] Dashboard: React 19, live telemetry, face control, monitor tab, mode control
+- [x] Voice pipeline: wake word ("hey buddy") + VAD → STT → LLM → TTS → face animation
 - [x] WANDER mode driven by deterministic skills + planner intent
-- [x] Voice pipeline (STT + TTS on 3090 Ti server, audio on Pi USB devices)
-- [x] Conversation flow (button-triggered STT → LLM → TTS → face animation)
+- [x] Deterministic telemetry: timestamps, sequence numbers, clock sync, raw packet logging
 
 ### In Progress
-- [ ] AI Server: interaction history / conversation memory
-- [ ] Lip sync / face-speech timing improvements
-- [ ] Wake word detection (remove need for button press)
+- [ ] Face-speech timing sync (face stops talking before speech ends)
+- [ ] Reflex MCU hardware commissioning (breadboard bring-up)
+- [ ] Personality engine implementation (spec complete, implementation pending)
 
 ### Future
+- [ ] Conversation memory / interaction history
+- [ ] Wake word model improvements (recall 42% → 80%+)
 - [ ] Additional modes: LINE_FOLLOW, BALL, CRANE, CHARGING
+- [ ] Home Assistant integration
+- [ ] Voice ID / speaker identification
+
+See [docs/TODO.md](docs/TODO.md) for the detailed backlog and [specs/](specs/) for design specifications.

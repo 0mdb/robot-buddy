@@ -944,4 +944,4 @@ VLLM_MAX_NUM_BATCHED_TOKENS=256
 - `server/app/llm/prompts.py` -- System prompt (87 lines)
 - `server/app/llm/conversation.py` -- Conversation system prompt and response parsing
 - `server/app/llm/expressions.py` -- 12 canonical emotions, gestures vocabulary
-- `docs/personality-engine-spec-stage1.md` -- Personality engine spec with PE-6/PE-7 decision framework
+- `specs/personality-engine-spec-stage1.md` -- Personality engine spec with PE-6/PE-7 decision framework

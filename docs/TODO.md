@@ -1,283 +1,335 @@
 # Robot Buddy — TODO
 
+Single source of implementation truth. All task tracking lives here.
+
+## How to Use This File
+
+- **Priority**: Tasks within each section are listed in recommended execution order (top = highest)
+- **Parallel tracks**: Tracks A–D can run concurrently. Dependencies are noted inline.
+- **Model tags**: `[opus]` = needs Opus 4.6 (architecture, spec interpretation, complex debugging, prompt engineering). `[sonnet]` = Sonnet handles well (mechanical refactors, test writing, parity checks, README updates).
+- **Spec-driven**: Changes that diverge from specs require a spec amendment first. Debate the spec change, update the spec, then implement.
+
+---
+
+## Execution Order & Priority
+
+Living section — reorder as priorities shift. Current recommended sequence:
+
+### Track A: Face Communication (firmware + supervisor)
+1. Phase 5 polish (talking sync, protocol docs, dashboard viz)
+2. Phase 0 remaining gaps (system logos, thinking face)
+3. Sim↔MCU divergence fixes
+4. Stage 4 firmware optimization
+5. T1–T4 evaluation
+
+### Track B: Personality Engine (server + supervisor)
+1. PersonalityWorker scaffold + affect vector
+2. Layer 0 deterministic rules
+3. Server prompt engineering (system prompt v2)
+4. Layer 1 LLM integration
+5. Memory system + impulse catalog
+6. PE evaluation
+
+### Track C: Reflex MCU Commissioning (hardware)
+1. Phase 1: IMU bring-up
+2. Phase 2: Motors + encoders
+3. Phase 3: Ultrasonic range
+4. Phase 4: E-stop & safety
+5. Phase 5: Closed-loop PID
+
+### Track D: Infrastructure & Tooling
+1. Protocol docs update (SET_FLAGS, SET_CONV_STATE)
+2. `-v2` rename (supervisor_v2 → supervisor, esp32-face-v2 → esp32-face)
+3. `/diagnose` skill for direct MCU debugging from dev PC
+4. specs/INDEX.md for efficient spec navigation
+
+---
+
 ## Active Backlog
 
-- ~~Add trigger word so conversations flow more naturally. Wait for silence. Remove need to press button.~~ Done — ear worker with "hey buddy" wake word + Silero VAD end-of-utterance detection. See `supervisor_v2/workers/ear_worker.py`.
-- Upgrade the camera and adjust settings.
-- Add camera calibration/mask/cv settings in supervisor dash.
-- ~~Fix server issue when trying to run better TTS model.~~ Fixed — persistent event loop for Orpheus vLLM engine + proper GPU memory cleanup on reset.
-- Add LLM history so conversations feel more natural.
-- TTS from non-button press (deterministic sources) either cut off or not firing at all.
-- work through reflex comissioning plan, all hardware has arrived and ready on the bread board
-- Face stops talking before speech stops playing, needs better sync.
-- camera replaced with Arducam for Raspberry Pi Camera Module 3, 12MP IMX708 75°(D) Autofocus Pi Camera V3.  This needs to be properly integrated into the stack and set up correctly for the robot.
-- ~~Should play a sound when listening for command is active (either by button press or keyword).~~ Done — ear worker plays `assets/chimes/listening.wav` on wake word detection.
+### Face Communication System
+
+**Phase 0 — Remaining Gaps** `[sonnet]`
+- [ ] System logos on device not updated to V3 design
+- [ ] Thinking face looks angry on hardware — needs refinement (may defer to Stage 4)
+- [ ] Visual review: V3 sim vs MCU side-by-side on hardware for all 13 moods
+
+**Phase 5 — Polish** `[opus]` for sync fix, `[sonnet]` for protocol docs
+- [ ] Fix talking-stops-before-speech-ends bug: supervisor sends `SET_TALKING(false)` before TTS audio fully finishes (not on last chunk). Files: `supervisor_v2/workers/tts_worker.py`, `supervisor_v2/core/tick_loop.py`
+- [ ] Dashboard conversation state visualization (state indicator, border color preview, timeline). File: `dashboard/src/tabs/FaceTab.tsx`
+- [ ] Dashboard mood transition visualization (ramp state, intensity, hold timer). File: `dashboard/src/tabs/FaceTab.tsx`
+- [ ] Document SET_FLAGS (0x24) in `docs/protocols.md` — currently undocumented, firmware-only
+- [ ] Document SET_CONV_STATE (0x25) in `docs/protocols.md` — implemented but not in protocol spec
+- [ ] Tune timing values on hardware: ramp durations, hold times, border alpha curves
+
+**Sim↔MCU Divergences** (from baseline inventory audit) `[sonnet]`
+- [ ] Blink interval: sim 3.0–7.0s vs MCU 2.0–5.0s
+- [ ] Idle gaze interval: sim 1.0–3.0s vs MCU 1.5–4.0s
+- [ ] SURPRISE gesture duration: sim 1.0s vs MCU 0.8s
+- [ ] X_EYES gesture duration: sim 2.5s vs MCU 1.5s
+- [ ] Talking phase speed: sim energy-dependent (12–18 rad/s) vs MCU fixed 15 rad/s
+- [ ] Background color: sim (10,10,14) vs MCU (0,0,0)
+- [ ] Neutral mouth curve: sim 0.2 vs MCU 0.1
+- [ ] LOW_BATTERY mode exists in protocol but no supervisor trigger wired
+
+**Stage 4 — Firmware Display Optimization** `[opus]`
+- [ ] Profile current render loop (esp_timer instrumentation, 1000-frame stats)
+- [ ] Profile border SDF render cost for all 8 conv states
+- [ ] Implement dirty-rectangle tracking (ILI9341 CASET/RASET window commands)
+- [ ] Implement DMA double-buffering (render to back buffer during SPI transfer)
+- [ ] Optimize border SDF with precomputed lookup table
+- [ ] Audit 13 mood colors for RGB565 fidelity — corrected palette
+- [ ] Temporal dithering for smooth gradients at RGB565 depth
+- [ ] Gamma correction for SDF antialiasing
+- [ ] Profile command-to-pixel latency end-to-end
+- [ ] Profile sparkle/fire/afterglow effects budget
+
+**Evaluation** `[opus]`
+- [ ] T1: Automated CI tests (parity check, unit tests, linting)
+- [ ] T2: Instrumented benchmarks (frame time, latency, SPI throughput)
+- [ ] T3: Developer review — 5 scenarios (idle, conversation, mood sweep, stress, edge cases)
+- [ ] T4: Child evaluation protocol (ages 4-6, per eval plan spec)
 
 ---
 
-## Conversation State Visual System (Sim V3 Complete — Firmware Pending)
+### Personality Engine Implementation
 
-Face Sim V3 (`tools/face_sim_v3/`, ~2600 lines, 16 modules) is the canonical design authoring surface. Run with `just sim`. Full spec implementation with command bus protocol, mood sequencer choreography, conversation state machine, negative affect guardrails, and CI parity check (70/70 constants match MCU).
+**Spec reference**: `specs/personality-engine-spec-stage2.md`
 
-### Completed — Face Sim V3 (Stage 3)
-- [x] Clean rewrite from spec — modular package replacing V2's 4 monolithic files
-- [x] 13 moods (including CONFUSED) with distinct colors, expression intensity blending
-- [x] Mood transition choreography — blink → 150ms ramp-down → switch → 200ms ramp-up
-- [x] Negative affect guardrails — context gate, intensity caps, duration caps, auto-recovery
-- [x] Conversation state machine — 8 states with auto-transitions, per-state gaze/flag overrides
-- [x] Border renderer — SDF frame + glow, per-state animations (sweep, breathing, orbit dots, energy-reactive, flash, fade)
-- [x] Command bus — all inputs → protocol-equivalent commands (no direct state mutation)
-- [x] LED sync, PTT/Cancel buttons, sparkle/fire/afterglow effects
-- [x] Debug HUD + scrolling timeline of state transitions
-- [x] CI parity check — `tools/check_face_parity.py` (70/70 passed)
+**Scaffold** `[opus]`
+- [ ] PersonalityWorker as dedicated BaseWorker on Pi 5 (1 Hz tick + event-triggered fast path)
+- [ ] Continuous affect vector (valence, arousal) with decaying integrator
+- [ ] 13 mood anchors in VA space with asymmetric hysteresis projection
+- [ ] 20 axis-derived parameters from 5 personality axes
+- [ ] Worker↔tick_loop protocol: personality snapshot struct
 
-### Remaining (Phase 0–5)
-- [ ] Phase 0: Sync MCU constants to match V3 sim — 17 divergences ported, parity check 169/169, `just check-parity` in preflight
-    - gaps remain, the system logos on device not updated, thinking face looks angry(needs refinement in sim?), could add this to the firmware optmization as part of step 5?
-- [x] Phase 1: Supervisor conversation state machine in tick_loop — `ConvStateTracker` module + tick_loop wiring + 39 tests
-- [x] Phase 2: Firmware border rendering + SET_CONV_STATE (0x25)
-- [x] Phase 3: Supervisor mood transition sequencer + guardrails — `MoodSequencer` (4-phase choreography ~470ms) + `Guardrails` (context gate, intensity caps, duration caps) + tick_loop integration + 58 tests
-- [x] Phase 4: Conversation phase transition choreography — `ConvTransitionChoreographer` (gaze ramps, anticipation blink, re-engagement nod, mood settle) + tick_loop integration + 51 tests
-- [ ] Phase 5: Polish, talking sync fix, dashboard visualization
+**Layer 0 — Deterministic Rules** `[opus]`
+- [ ] Impulse catalog implementation (stimulus → affect delta mappings)
+- [ ] Duration caps, intensity caps, context gate enforcement
+- [ ] Idle behavior rules (SLEEPY after inactivity, CURIOUS on sensor trigger)
+- [ ] Auto-recovery sequences for negative moods
 
----
+**Layer 1 — LLM Integration** `[opus]`
+- [ ] System prompt v2 for personality (from `docs/research/bucket-6-prompt-engineering.md`)
+- [ ] Server-side prompt engineering: embed personality axes + affect state in LLM context
+- [ ] Qwen3-8B-AWQ integration (per PE spec §8, bucket-5 decision)
+- [ ] LLM response → affect impulse parsing
+- [ ] Fallback to Layer 0 when server unreachable
 
-## Timestamps & Deterministic Telemetry
+**Memory & Prosody** `[opus]`
+- [ ] Memory system: local JSON, 5 decay tiers, COPPA compliant (spec §9)
+- [ ] TTS prosody routing from affect vector (valence/arousal → speech rate/pitch)
+- [ ] Emotional memory consolidation (interaction summaries)
 
-### Goal
-
-Design deterministic, replayable telemetry across **Pi + Reflex MCU + Face MCU** so autonomy and debugging are based on evidence, not guesswork.
-
-We must be able to answer:
-
-- Did it turn because of IMU data?
-- Because vision was stale?
-- Because a motor fault occurred?
-- Or because of latency?
-
-### Principles
-
-- Use **monotonic clocks only** (no wall clock in control paths).
-- Timestamp at **acquisition time**, not publish time.
-- Add **sequence numbers everywhere**.
-- Maintain a stable mapping from MCU time → Pi time.
-- Log raw bytes for perfect replay.
-
-### Clock Domains
-
-- **Pi** → `CLOCK_MONOTONIC` (ns)
-- **Reflex MCU** → `t_reflex_us` since boot (u64)
-- **Face MCU** → `t_face_us` since boot (u64)
-
-### Required Fields (All MCU Messages)
-
-Every packet must include:
-
-- `src_id`
-- `msg_type`
-- `seq` (u32)
-- `t_src_us` (monotonic since boot)
-- `payload`
-
-On Pi receive, attach:
-
-- `t_pi_rx_ns`
-
-Minimum viable envelope:
-```
-t_pi_est_ns = t_src_us * 1000 + offset_ns
-```
-
-Sync at 2–10 Hz. Use lowest RTT samples for stable offset.
-
-### Reflex MCU Timestamp Rules
-
-Timestamp at **acquisition moment**:
-
-- IMU → at I2C/SPI read completion or DRDY interrupt
-- Encoders → at control loop tick boundary
-- Ultrasonic → at echo completion
-- Motor PWM applied → when update committed
-- Faults → at detection moment
-
-Optional (ultrasonic precision):
-
-- `t_trig_us`
-- `t_echo_us`
-
-### Face MCU Timestamp Rules
-
-Timestamp:
-
-- `STATE_APPLIED`
-- `BLINK`
-- `GAZE_CHANGE`
-- `FAULT`
-- Future audio-related events (lip sync, beat sync)
-
-Consistency is more important than frequency.
-
-### Camera Frames (Pi Domain)
-
-Each frame must include:
-
-- `frame_seq`
-- `t_cam_ns` (sensor timestamp if available)
-- `t_rx_ns` (Pi receive time)
-
-Detection events must reference:
-
-- `frame_seq`
-- `t_frame_ns`
-- `t_det_done_ns`
-
-Never use detection completion time for sensor fusion alignment.
-
-### Commands & Causality
-
-Motion commands:
-
-- Add `cmd_seq`
-- Record `t_cmd_tx_ns` on Pi
-
-Reflex echoes back:
-
-- `cmd_seq_last_applied`
-- `t_applied_src_us`
-
-This enables full control causality tracing.
-
-### Server Events
-
-For each planner request:
-
-- `req_id`
-- `t_req_tx_ns`
-- `t_resp_rx_ns`
-- `rtt_ns`
-
-Never use server wall clock for control decisions.
-
-### Logging Strategy (Critical)
-
-#### 1. Raw Binary Log (Authoritative)
-
-For each received packet:
-
-- `t_pi_rx_ns`
-- `src_id`
-- `len`
-- raw bytes
-
-This is your deterministic replay stream (rosbag equivalent).
-
-#### 2. Derived Log (Optional)
-
-Decoded fields:
-
-- `t_pi_est_ns`
-- latency diagnostics
-- seq gap detection
-- offset + drift estimate
-
-### Telemetry Health Metrics
-
-Add dashboard panel per device:
-
-- RTT min / avg
-- offset_ns
-- drift estimate
-- seq drop rate
-
-### Known Failure Modes
-
-- Offset drift → periodic sync + drift estimation
-- USB jitter → rely on minimum RTT samples
-- Packet drops → detect via seq gaps
-- Sensor fusion misalignment → enforce acquisition timestamps
-
-### Immediate Actions
-
-- [x] Add `seq` and `t_src_us` to all MCU packets (MCU v2 envelope done; supervisor activates via `negotiate_v2()`)
-- [x] Implement `TIME_SYNC_REQ / RESP` (ClockSyncEngine with min-RTT offset, drift tracking)
-- [x] Log raw packets with `t_pi_rx_ns` (RawPacketLogger: binary format per PROTOCOL.md §10.1, 50MB rotation)
-- [x] Add `frame_seq`, `t_cam_ns`, `t_det_done_ns` (Picamera2 SensorTimestamp extraction)
-- [x] Add `cmd_seq` to motion commands (u32 seq, `t_cmd_tx_ns` causality tracking)
-- [x] Add telemetry health dashboard (Monitor tab: diagnostic tree, Pi resources, comms, power, sensors, faults, workers)
+**Evaluation** `[opus]`
+- [ ] PE evaluation metrics (spec §13): emotional coherence, response appropriateness
+- [ ] Guardrail compliance testing
+- [ ] Child interaction safety validation
 
 ---
 
-## Wake Word Model — Next Steps
+### Reflex MCU Commissioning
 
-First pass trained (v1, 2025-02-21). Metrics on synthetic test set:
-- Accuracy: 71%, Recall: 42%, FP/hour: 0.27
+**Prerequisite**: ESP-IDF environment, USB-C cable, hardware on breadboard.
 
-### Improve recall (currently 42% — should be 80%+)
-- [ ] Increase `n_samples` from 15k → 50k+ (more voice diversity)
-- [ ] Increase `augmentation_rounds` from 3 → 5
-- [ ] Add speech-heavy negative data (LibriSpeech, AudioSet speech subset) — currently only FMA music backgrounds
-- [ ] Try `layer_size: 64` (more model capacity, still tiny at ~400KB)
+**Firmware change required first** `[sonnet]`:
+- [ ] Update `pin_map.h`: TRIG GPIO1→GPIO21, VBAT GPIO14→GPIO1 (per `docs/reflex-wiring.md`)
 
-### Improve robustness with real audio
-- [ ] Record 20–50 real "hey buddy" utterances from the family (different distances, volumes, rooms)
-- [ ] Place recordings in `training/real_clips/` and add to config as `custom_verifier_clips`
-- [ ] Re-train and compare metrics
+**Phase 1: IMU (BMI270) — I2C Validation** `[sonnet]`
+- [ ] I2C bus scan (verify BMI270 at 0x68 or 0x69)
+- [ ] BMI270 init: CHIP_ID=0x24, INTERNAL_STATUS=0x01, ODR 400 Hz
+- [ ] Live data validation: flat=1g Z, rotate=gyro deflection, tilt=0.7g shift
+- [ ] Pass: no IMU_FAIL fault, no I2C recovery in first 60s
 
-### Reduce false positives in deployment
-- [ ] Add more negative phrases based on real-world triggers observed during testing
-- [ ] Soak test: run idle for 1+ hours with household noise, log all detections
-- [ ] Tune detection threshold in ear worker (currently 0.5 — may need adjustment)
+**Phase 2: Motors + Encoders — Open-Loop Test** `[sonnet]`
+- [ ] Enable `BRINGUP_OPEN_LOOP_TEST 1` in `app_main.cpp`
+- [ ] Verify motor direction matches encoder count direction (both wheels)
+- [ ] Verify encoder counts (1440 counts/rev for TT motor)
+- [ ] Disable open-loop test, flash full firmware
 
-### Training infrastructure
-- [ ] Pin openWakeWord to a specific commit in setup.sh (avoid breaking changes)
-- [ ] Skip tflite conversion (we only need ONNX) — currently fails due to onnx_tf version mismatch
-- [ ] Add a `just retrain-wakeword` target that skips Phase 1 if clips already exist
+**Phase 3: Ultrasonic Range Sensor** `[sonnet]`
+- [ ] Static distance test (100mm, 300mm, 1000mm, 3000mm ± tolerances)
+- [ ] OBSTACLE fault triggers at <250mm, clears at >350mm with hysteresis
+
+**Phase 4: E-Stop & Safety Systems** `[sonnet]`
+- [ ] E-stop test (GPIO13 switch: open→ESTOP fault, close+CLEAR_FAULTS→recovery)
+- [ ] Tilt detection (>45° for >200ms → TILT fault)
+- [ ] Command timeout (no commands for 400ms → CMD_TIMEOUT fault + soft-stop)
+- [ ] Stall detection (blocked wheel → STALL fault after ~500ms)
+
+**Phase 5: Closed-Loop Integration** `[opus]` for PID tuning
+- [ ] PID tuning baseline: SET_TWIST v=100 mm/s, observe convergence
+- [ ] Yaw damping: straight-line travel, verify gyro_z correction
+- [ ] Full exercise: forward/reverse/spin/arc/stop/accel-limit/obstacle
+- [ ] Pass: PID tracks ±20%, no oscillation, safety overrides work under load
+
+**Post-Commissioning** `[sonnet]`
+- [ ] Battery voltage sense (ADC) + sag-aware limiting
+- [ ] Odometry integration (x, y, theta)
+- [ ] Full IMU heading hold PID (currently gyro damping only)
 
 ---
 
-## Future / Ideas
+### Conversation & Voice
 
-- Investigate voice ID / speaker identification — know which kid said 'hey buddy' so the robot can personalize the conversation and response (e.g. per-child voice embeddings, speaker diarization on wake word audio).
-- Home Assistant light control via conversation — kid says "turn off my light" and Buddy does it. Extend conversation JSON schema with `home_actions`, add server-side HA REST client, YAML device whitelist. Lights only to start. See [docs/home-assistant-integration.md](home-assistant-integration.md) for full plan.
+- [ ] `[opus]` LLM conversation history/memory — server-side session context
+- [ ] `[opus]` Face-speech timing sync fix — face stops talking before speech ends
+- [ ] `[sonnet]` TTS from deterministic sources (non-button press) either cut off or not firing
+- [ ] `[sonnet]` Wake word model: increase recall from 42%→80%+ (n_samples 15k→50k+, augmentation rounds 3→5, speech-heavy negative data, layer_size 64)
+- [ ] `[sonnet]` Wake word: record 20–50 real "hey buddy" utterances from family
+- [ ] `[sonnet]` Wake word: soak test 1+ hours idle with household noise
+- [ ] `[sonnet]` Wake word: pin openWakeWord commit, skip tflite, add `just retrain-wakeword`
 
 ---
 
-## Personality Engine (Complete — Ready for Stage 3)
+### Camera & Vision
 
-Principled personality system driving the robot's emotions. Research complete, spec written, alignment review done. Ready for Stage 3 implementation.
+- [ ] `[sonnet]` Arducam IMX708 integration — proper V4L2/Picamera2 setup, autofocus config
+- [ ] `[sonnet]` Camera calibration/mask/CV settings in dashboard
+- [ ] `[sonnet]` Upgrade camera settings for new hardware
 
-### Research & Decisions — Complete
+---
 
-**Phase 1 — Ideal System** (Buckets 0–4):
-- [x] Bucket 0: Safety psychology — `docs/research/bucket-0-safety-psychology.md`
-- [x] Bucket 1: Temperament & personality models — `docs/research/bucket-1-temperament-models.md`
-- [x] Bucket 2: Emotional memory & affect dynamics — `docs/research/bucket-2-memory-affect.md`
-- [x] Bucket 3: Child-robot relationship development — `docs/research/bucket-3-relationships.md`
-- [x] Bucket 4: Proactive vs reactive behavior — `docs/research/bucket-4-proactive-reactive.md`
-- [x] Decision points PE-1 through PE-5 (recorded in Stage 1 spec §E)
+### Dashboard
 
-**Phase 2 — Technology** (Buckets 5–7):
-- [x] Bucket 5: LLM model selection → Qwen3-8B-AWQ — `docs/research/bucket-5-llm-model-selection.md`
-- [x] Bucket 6: Prompt engineering for personality — `docs/research/bucket-6-prompt-engineering.md`
-- [x] Bucket 7: Device/server split — `docs/research/bucket-7-device-server-split.md`
-- [x] Decision points PE-6 through PE-10 (recorded in Stage 1 spec §E)
+- [ ] `[sonnet]` Telemetry health panel per device (RTT, offset, drift, seq drops)
+- [ ] `[sonnet]` Camera settings panel
+- [ ] `[opus]` Personality engine visualization (affect vector, mood anchors, decay curves)
 
-**Specs**:
-- [x] PE Stage 1: Research & decisions — `docs/personality-engine-spec-stage1.md`
-- [x] PE Stage 2: Full implementation-ready spec — `docs/personality-engine-spec-stage2.md` (~1340 lines, 14 sections + appendix)
-- ~~Pi 5 inference spike~~ N/A — PE-7 = Option C (rules only, no on-device LLM)
+---
 
-### Alignment Review — Complete
+### Infrastructure & Tooling
 
-- [x] Alignment review: reconcile PE spec with face communication spec → `docs/pe-face-comm-alignment.md`
-  - 5 conflicts resolved: guardrail enforcement (tiered model), SURPRISED reclassification, mood transition ownership, CONFUSED mood addition, suppress-then-read model
-  - Both specs amended in place, alignment report written
+**Protocol Documentation** `[sonnet]`
+- [ ] Add SET_FLAGS (0x24) to `docs/protocols.md`
+- [ ] Add SET_CONV_STATE (0x25) to `docs/protocols.md`
+- [ ] Extend parity check for new border constants
 
-### Architecture
+**Rename: Remove -v2 Suffixes** `[sonnet]` — do as a single dedicated commit
+- [ ] Rename `supervisor_v2/` → `supervisor/` (update 69+ Python imports, pyproject.toml, justfile, configs, pyrightconfig.json)
+- [ ] Rename `esp32-face-v2/` → `esp32-face/` (update CMake, justfile, docs, skills)
+- [ ] Update all cross-references (CLAUDE.md, README.md, deploy scripts, .vscode/settings.json)
 
-- **PersonalityWorker** (dedicated BaseWorker on Pi 5) — 1 Hz tick + event-triggered fast path
-- **Continuous affect vector** (valence, arousal) with decaying integrator, 20 axis-derived parameters
-- **13 mood anchors** in VA space with asymmetric hysteresis projection
-- **Layer 0** (deterministic rules, no server) + **Layer 1** (LLM-enhanced, Qwen3-8B)
-- **Single source of emotional truth** — personality worker is final authority on face + TTS prosody
-- **Memory system** — local-only JSON, 5 decay tiers, COPPA compliant
+**New Skills** `[sonnet]`
+- [ ] `/diagnose` skill: detect connected MCUs, start supervisor locally against real hardware, query HTTP API for debugging, parse telemetry for fault patterns — eliminates Pi SSH hop for debug cycles
+- [ ] `/status` skill: quick project state snapshot (connected devices, test results, current TODO priority) for session start
+
+**Efficiency Improvements** `[sonnet]`
+- [ ] `specs/INDEX.md` — one-paragraph summary of each spec with section links for targeted reading
+- [ ] Expand CLAUDE.md "Repository Structure" with annotated key file paths for common tasks
+
+---
+
+### Spec Compliance — Known Discrepancies
+
+- [ ] `[sonnet]` `docs/architecture.md` is 17 lines — needs full rewrite
+- [ ] `[sonnet]` Root README.md references `pip install` (should be `uv sync`)
+- [ ] `[sonnet]` Root README.md "In Progress" stale: wake word works, dashboard exists but unlisted
+- [ ] `[sonnet]` `server/README.md` model reference: shows Qwen2.5-3B but PE spec says Qwen3-8B-AWQ
+- [ ] `[sonnet]` `esp32-reflex/README.md` references "Jetson" (should be "Pi 5")
+- [ ] `[sonnet]` CONFUSED mood (13th, from alignment review) — verify end-to-end in all layers
+- [ ] `[sonnet]` `SystemMode.ERROR` (sim) vs `SystemMode::ERROR_DISPLAY` (MCU) — symbol name divergence (same integer)
+
+---
+
+## Completed
+
+### Face Communication — Research & Specs
+- [x] Face communication spec Stage 1 (research) → `specs/face-communication-spec-stage1.md`
+- [x] Face communication spec Stage 2 (implementation-ready, ~1340 lines) → `specs/face-communication-spec-stage2.md`
+- [x] Spec revisions: 10 fixes + 3 nits applied, verification pass done
+- [x] Face visual language design document → `specs/face-visual-language.md`
+- [x] Face communication evaluation plan → `specs/face-communication-eval-plan.md`
+
+### Personality Engine — Research & Specs
+- [x] Research buckets 0-7 → `docs/research/bucket-*.md`
+- [x] PE Stage 1: research & decisions (PE-1 through PE-10) → `specs/personality-engine-spec-stage1.md`
+- [x] PE Stage 2: full implementation spec (~1340 lines) → `specs/personality-engine-spec-stage2.md`
+- [x] PE↔Face alignment review (5 conflicts resolved) → `specs/pe-face-comm-alignment.md`
+
+### Face Sim V3 (Stage 3)
+- [x] Clean rewrite: 16 modules, ~2600 lines, `tools/face_sim_v3/`
+- [x] 13 moods with distinct colors, expression intensity blending
+- [x] Mood transition choreography (blink → 150ms ramp-down → switch → 200ms ramp-up)
+- [x] Negative affect guardrails (context gate, intensity caps, duration caps, auto-recovery)
+- [x] Conversation state machine (8 states, auto-transitions, per-state gaze/flag overrides)
+- [x] Border renderer (SDF frame + glow, 8 state animations)
+- [x] Command bus (all inputs via protocol-equivalent commands)
+- [x] CI parity check (196/196 passed)
+- [x] Visual language remediation (G1-G7) + review cycles (R1-R5, D1-D5, B1-B3)
+
+### Face Implementation (Phases 0–4)
+- [x] Phase 0: Sim/MCU parity sync (17 divergences ported, 196/196 parity, CONFUSED mood end-to-end)
+- [x] Phase 1: Supervisor conversation state machine (ConvStateTracker + tick_loop wiring + 39 tests)
+- [x] Phase 2: Firmware border rendering + SET_CONV_STATE 0x25 (~700 lines C++, corner buttons, LED sync + 8 protocol tests)
+- [x] Phase 3: Mood transition sequencer + guardrails (MoodSequencer 4-phase ~470ms + Guardrails + tick_loop + 58 tests)
+- [x] Phase 4: Conversation phase transitions (ConvTransitionChoreographer: gaze ramps, anticipation blink, re-engagement nod, mood settle + 51 tests)
+
+### Timestamps & Deterministic Telemetry
+- [x] Protocol v2 envelope: seq (u32) + t_src_us (u64) for all MCU packets
+- [x] TIME_SYNC_REQ/RESP (ClockSyncEngine: min-RTT offset, drift tracking)
+- [x] Raw packet logger (binary format per PROTOCOL.md §10.1, 50MB rotation)
+- [x] Camera frames: frame_seq, t_cam_ns (Picamera2 SensorTimestamp), t_det_done_ns
+- [x] Command causality: cmd_seq (u32), t_cmd_tx_ns tracking
+- [x] Telemetry health dashboard (Monitor tab: diagnostic tree, Pi resources, comms, power, sensors, faults, workers)
+
+### Infrastructure
+- [x] Voice pipeline: STT + TTS on 3090 Ti server, audio on Pi USB devices
+- [x] Conversation flow: button-triggered STT → LLM → TTS → face animation
+- [x] Wake word detection with "hey buddy" + Silero VAD
+- [x] Ear worker plays `assets/chimes/listening.wav` on wake word detection
+- [x] Planner server: FastAPI + vLLM backend, conversation + planning endpoints
+- [x] Dashboard: React 19, Vite, TypeScript, Zustand, TanStack Query
+- [x] Deploy scripts + systemd service on Pi
+
+---
+
+## Future Development & R&D
+
+### Near-Term Ideas
+- Voice ID / speaker identification — per-child voice embeddings for personalized responses
+- Home Assistant light control via conversation (see `docs/home-assistant-integration.md`)
+- Additional modes: LINE_FOLLOW, BALL, CRANE, CHARGING
+
+### R&D Research Plan
+- On-device inference feasibility if PE spec revisits PE-7 decision
+- Advanced wake word models (transformer-based, multi-keyword)
+- Multi-modal interaction (gesture recognition via camera + IMU fusion)
+- Proactive behavior triggers from sensor patterns (per bucket-4 research)
+
+### Ongoing Research Cadence
+- Monthly spec review: check assumptions against upstream model releases (Qwen, Orpheus)
+- Track ESP-IDF updates for display pipeline improvements
+- Monitor child-robot interaction research for safety/ethical updates
+
+---
+
+## Model Assignment Guide
+
+| Task Type | Model | Rationale |
+|-----------|-------|-----------|
+| Spec writing & interpretation | Opus 4.6 | Requires deep understanding of multi-document specs |
+| Architecture decisions | Opus 4.6 | Trade-off analysis, system-level reasoning |
+| Complex debugging | Opus 4.6 | Multi-system causality tracing |
+| Personality engine design | Opus 4.6 | Psychology-informed design, prompt engineering |
+| PID tuning & control theory | Opus 4.6 | Mathematical reasoning, parameter sensitivity |
+| Mechanical refactors | Sonnet 4.6 | Pattern-apply across files (rename, import updates) |
+| Test writing | Sonnet 4.6 | Well-scoped, pattern-following |
+| README/doc updates | Sonnet 4.6 | Factual updates, no design decisions |
+| Parity checks | Sonnet 4.6 | Systematic comparison, no judgment calls |
+| Protocol documentation | Sonnet 4.6 | Transcribe from code to docs |
+| Linter/config fixes | Sonnet 4.6 | Mechanical, well-defined |
+
+---
+
+## Efficiency Notes
+
+### Token optimization
+- **Spec navigation**: Use `specs/INDEX.md` (once created) for targeted reading instead of re-reading full 1000+ line specs
+- **Key file paths**: Common edit targets are listed in CLAUDE.md under Repository Structure
+- **Debug cycles**: Use `/diagnose` skill (once created) to debug MCUs directly from dev PC, avoiding Pi SSH round-trips
+
+### Process improvements
+- **Spec-first**: Never implement counter to a spec without debating the spec change first
+- **Parity checks**: Run `just check-parity` after any face constant changes
+- **Preflight**: Run `just preflight` before any commit (lint + test + parity)
