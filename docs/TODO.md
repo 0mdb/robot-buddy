@@ -34,8 +34,8 @@ Face Sim V3 (`tools/face_sim_v3/`, ~2600 lines, 16 modules) is the canonical des
 ### Remaining (Phase 0–5)
 - [x] Phase 0: Sync MCU constants to match V3 sim — 17 divergences ported, parity check 169/169, `just check-parity` in preflight
 - [x] Phase 1: Supervisor conversation state machine in tick_loop — `ConvStateTracker` module + tick_loop wiring + 39 tests
-- [ ] Phase 2: Firmware border rendering + SET_CONV_STATE (0x25)
-- [ ] Phase 3: Supervisor mood transition sequencer + guardrails
+- [x] Phase 2: Firmware border rendering + SET_CONV_STATE (0x25)
+- [x] Phase 3: Supervisor mood transition sequencer + guardrails — `MoodSequencer` (4-phase choreography ~470ms) + `Guardrails` (context gate, intensity caps, duration caps) + tick_loop integration + 58 tests
 - [ ] Phase 4: Conversation phase transition choreography
 - [ ] Phase 5: Polish, talking sync fix, dashboard visualization
 

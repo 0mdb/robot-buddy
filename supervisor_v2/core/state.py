@@ -106,6 +106,9 @@ class RobotState:
     face_last_button_state: int = 0
     face_conv_state: int = 0  # FaceConvState.IDLE
     face_conv_timer_ms: float = 0.0
+    face_seq_phase: int = 0  # SeqPhase (mood transition sequencer)
+    face_seq_mood_id: int = 0  # Current sequencer mood
+    face_seq_intensity: float = 0.0  # Current sequencer intensity
     face_seq: int = 0
     face_rx_mono_ms: float = 0.0
 
@@ -163,6 +166,9 @@ class RobotState:
             "face_last_button_state": self.face_last_button_state,
             "face_conv_state": self.face_conv_state,
             "face_conv_timer_ms": round(self.face_conv_timer_ms, 1),
+            "face_seq_phase": self.face_seq_phase,
+            "face_seq_mood_id": self.face_seq_mood_id,
+            "face_seq_intensity": round(self.face_seq_intensity, 3),
             "face_seq": self.face_seq,
             "face_rx_mono_ms": round(self.face_rx_mono_ms, 1),
             "speed_caps": [

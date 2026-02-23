@@ -139,6 +139,13 @@ class TickLoop:
 
         self._conv = ConvStateTracker()
 
+        # Mood transition sequencer + guardrails (Phase 3)
+        from supervisor_v2.core.guardrails import Guardrails
+        from supervisor_v2.core.mood_sequencer import MoodSequencer
+
+        self._mood_seq = MoodSequencer()
+        self._guardrails = Guardrails()
+
         # Emotion queuing (buffered during LISTENING/THINKING, applied on SPEAKING)
         self._queued_emotion: str = ""
         self._queued_intensity: float = 0.0
@@ -503,28 +510,67 @@ class TickLoop:
             if nod_id is not None:
                 self._face.send_gesture(nod_id, 350)
 
-        # Determine mood/intensity: AI emotion > mood hint > current
-        mood_id: int | None = None
-        intensity: float = 0.7
+        # ── Mood pipeline: determine → guardrail → sequence → send ────
+
+        # Step 1: Determine target mood (AI emotion > mood hint > NEUTRAL)
+        target_mood: int = 0  # FaceMood.NEUTRAL
+        target_intensity: float = 1.0
         if self._conversation_emotion:
             norm = normalize_emotion_name(self._conversation_emotion)
             if norm:
-                mood_id = EMOTION_TO_FACE_MOOD.get(norm)
-                intensity = self._conversation_intensity
+                resolved = EMOTION_TO_FACE_MOOD.get(norm)
+                if resolved is not None:
+                    target_mood = resolved
+                    target_intensity = self._conversation_intensity
         elif self._conv.get_mood_hint() is not None:
             hint = self._conv.get_mood_hint()
             if hint is not None:
-                mood_id, intensity = hint
+                target_mood, target_intensity = hint
 
-        # Send SET_STATE with mood + gaze
-        if mood_id is not None:
+        # Step 2: Guardrails check
+        now_s = now_ms / 1000.0
+        target_mood, target_intensity = self._guardrails.check(
+            target_mood,
+            target_intensity,
+            conversation_active=self._conv.session_active,
+            now=now_s,
+        )
+
+        # Step 3: Feed to mood sequencer
+        self._mood_seq.request_mood(target_mood, target_intensity)
+
+        # Step 4: Advance sequencer
+        dt_s = self.robot.tick_dt_ms / 1000.0
+        self._mood_seq.update(dt_s)
+
+        # Step 5: Trigger BLINK gesture if sequencer requests it
+        if self._mood_seq.consume_blink():
+            blink_id = GESTURE_TO_FACE_ID.get("blink")
+            if blink_id is not None:
+                self._face.send_gesture(blink_id, 180)
+
+        # Step 6: Populate telemetry
+        self.robot.face_seq_phase = int(self._mood_seq.phase)
+        self.robot.face_seq_mood_id = self._mood_seq.mood_id
+        self.robot.face_seq_intensity = self._mood_seq.intensity
+
+        # Step 7: Send SET_STATE when mood/intensity is changing
+        if self._mood_seq.transitioning or self._mood_seq.consume_changed():
             gx = gaze[0] if gaze is not None else 0.0
             gy = gaze[1] if gaze is not None else 0.0
-            self._face.send_state(mood_id, intensity, gaze_x=gx, gaze_y=gy)
-        elif gaze is not None:
-            # No mood change but gaze override active — send current mood with gaze
             self._face.send_state(
-                self.robot.face_mood, 1.0, gaze_x=gaze[0], gaze_y=gaze[1]
+                self._mood_seq.mood_id,
+                self._mood_seq.intensity,
+                gaze_x=gx,
+                gaze_y=gy,
+            )
+        elif gaze is not None:
+            # No mood change but gaze override active
+            self._face.send_state(
+                self._mood_seq.mood_id,
+                self._mood_seq.intensity,
+                gaze_x=gaze[0],
+                gaze_y=gaze[1],
             )
 
         # Gestures from AI worker
