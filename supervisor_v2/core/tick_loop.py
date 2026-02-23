@@ -487,11 +487,12 @@ class TickLoop:
         # ── Conversation state effects ────────────────────────────
         conv_changed = self._conv.consume_changed()
 
-        # Flag overrides on state transitions
+        # Flag overrides on state transitions + send border state to MCU
         if conv_changed:
             flags = self._conv.get_flags()
             if flags != -1:
                 self._face.send_flags(flags)
+            self._face.send_conv_state(int(self._conv.state))
 
         # Gaze override from conversation state
         gaze = self._conv.get_gaze_for_send()

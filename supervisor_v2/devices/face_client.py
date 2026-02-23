@@ -18,6 +18,7 @@ from supervisor_v2.devices.protocol import (
     ParsedPacket,
     TouchEventPayload,
     build_face_gesture,
+    build_face_set_conv_state,
     build_face_set_flags,
     build_face_set_state,
     build_face_set_system,
@@ -239,6 +240,22 @@ class FaceClient:
                 FaceCmdType.SET_FLAGS,
                 seq,
                 struct.pack("<B", flags_u8),
+            )
+
+    def send_conv_state(self, conv_state: int) -> None:
+        """Send SET_CONV_STATE command (conversation phase for border animation)."""
+        if not self.connected:
+            return
+        seq = self._next_seq()
+        pkt = build_face_set_conv_state(seq, int(conv_state))
+        self._transport.write(pkt)
+        self._tx_packets += 1
+        if self._capture and self._capture.active:
+            self._capture.capture_tx(
+                "face",
+                FaceCmdType.SET_CONV_STATE,
+                seq,
+                struct.pack("<B", conv_state & 0xFF),
             )
 
     def debug_snapshot(self) -> dict:

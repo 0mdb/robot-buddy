@@ -70,6 +70,7 @@ class FaceCmdType(IntEnum):
     SET_SYSTEM = 0x22
     SET_TALKING = 0x23
     SET_FLAGS = 0x24
+    SET_CONV_STATE = 0x25
 
 
 class FaceTelType(IntEnum):
@@ -408,6 +409,7 @@ _FACE_GESTURE_FMT = struct.Struct("<BH")  # gesture_id, duration_ms
 _FACE_SET_SYSTEM_FMT = struct.Struct("<BBB")  # mode, phase, param
 _FACE_SET_TALKING_FMT = struct.Struct("<BB")  # talking, energy
 _FACE_SET_FLAGS_FMT = struct.Struct("<B")  # renderer/animation feature flags
+_FACE_SET_CONV_STATE_FMT = struct.Struct("<B")  # conversation phase
 
 
 def build_face_set_state(
@@ -442,6 +444,12 @@ def build_face_set_flags(seq: int, flags: int) -> bytes:
     """Build a SET_FLAGS packet (renderer/animation feature toggles)."""
     payload = _FACE_SET_FLAGS_FMT.pack(flags & FACE_FLAGS_ALL)
     return build_packet(FaceCmdType.SET_FLAGS, seq, payload)
+
+
+def build_face_set_conv_state(seq: int, conv_state: int) -> bytes:
+    """Build a SET_CONV_STATE packet (conversation phase for border animation)."""
+    payload = _FACE_SET_CONV_STATE_FMT.pack(conv_state & 0xFF)
+    return build_packet(FaceCmdType.SET_CONV_STATE, seq, payload)
 
 
 # -- TIME_SYNC packet building / parsing ------------------------------------

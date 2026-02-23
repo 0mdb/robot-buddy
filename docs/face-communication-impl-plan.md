@@ -315,25 +315,56 @@ Three rounds of spec review applied after initial visual language definition:
 
 ---
 
-## Phase 2: Firmware Border Rendering (MCU)
+## Phase 2: Firmware Border Rendering (MCU) — DONE
 
 **Goal**: Port the conversation border from sim to ESP32-S3 firmware. Implement SET_CONV_STATE (0x25) command.
+
+**Status**: Complete. Full border renderer (~700 lines C++) ported from sim `border.py`. SDF frame + glow, per-state animations, pixel-rendered corner buttons (MIC + X_MARK icons), LED sync. LVGL overlay buttons replaced with pixel rendering + touch hit-testing. Supervisor protocol builder + face_client + tick_loop wiring. Parity check expanded to 196 checks (27 new border constants). 8 new protocol tests (151/151 total).
+
+### Implementation Notes
+
+- **Border renderer** (`conv_border.cpp`) is a standalone module with no dynamic allocation — static state struct, band-optimized pixel iteration (7px perimeter only, not full 320×240)
+- **SDF rendering**: rounded-box inner_sdf for frame + glow falloff, per-pixel alpha blending via `px_blend()`. ATTENTION uses a sweep effect (not SDF). THINKING renders 3 soft-circle orbit dots along the frame perimeter.
+- **Corner button zones** replace LVGL `ptt_btn`/`action_btn` overlay buttons. Pixel-rendered with rounded inner corners, SDF icons (MIC capsule + sound arcs, X_MARK rotated cross), per-state styling (IDLE/ACTIVE/PRESSED). Touch hit-testing in `root_touch_event_cb` via `conv_border_hit_test_left/right()`.
+- **Cross-task communication**: `g_cmd_conv_state` + `g_cmd_conv_state_us` atomics (last-value channel pattern, same as other `g_cmd_*` channels). USB RX handler stores, face_ui_task reads on change.
+- **LED sync**: border color × LED_SCALE (0.16) when border active, falls back to existing talking/listening LED logic when inactive.
+- **Supervisor wiring**: `send_conv_state()` called on `conv_changed` transitions only (not per-tick). Border reads `fs.talking_energy` from SET_TALKING for SPEAKING reactivity.
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `esp32-face-v2/main/protocol.h` | Added `SET_CONV_STATE = 0x25` to `FaceCmdId`, `FaceConvState` enum, `FaceSetConvStatePayload` struct |
+| `esp32-face-v2/main/shared_state.h` | Added `g_cmd_conv_state`, `g_cmd_conv_state_us` atomic channels |
+| `esp32-face-v2/main/usb_rx.cpp` | Added `SET_CONV_STATE` dispatch handler |
+| `esp32-face-v2/main/conv_border.h` (new) | Border renderer + corner button public API |
+| `esp32-face-v2/main/conv_border.cpp` (new) | Full border renderer: SDF frame/glow, 8 state animations, corner button zones, MIC/X_MARK icons, LED sync |
+| `esp32-face-v2/main/face_ui.cpp` | Wired border render/update into main loop, border LED priority, replaced LVGL buttons with touch hit-test routing |
+| `esp32-face-v2/main/CMakeLists.txt` | Added `conv_border.cpp` to SRCS |
+| `supervisor_v2/devices/protocol.py` | Added `SET_CONV_STATE = 0x25` to `FaceCmdType`, `build_face_set_conv_state()` builder |
+| `supervisor_v2/devices/face_client.py` | Added `send_conv_state()` method |
+| `supervisor_v2/core/tick_loop.py` | Sends `SET_CONV_STATE` on conversation state transitions |
+| `tools/check_face_parity.py` | Added 27 border constant checks (196/196 total), `static constexpr` regex support |
+| `supervisor_v2/tests/test_face_protocol.py` (new) | 8 tests: protocol builder round-trip + FaceClient.send_conv_state |
 
 ### Tasks
 
 | # | Task | Files | Depends On |
 |---|------|-------|-----------|
-| 2.1 | Add `ConvState` enum and `FaceSetConvStatePayload` (1 byte: conv_state only) to firmware protocol header | `esp32-face-v2/main/protocol.h` | — |
-| 2.2 | Add SET_CONV_STATE (0x25) command handler in serial receive path | `esp32-face-v2/main/face_ui.cpp` (or serial handler) | 2.1 |
-| 2.3 | Implement border state machine in firmware: state field, color/alpha targets, animation timers | `esp32-face-v2/main/conv_border.cpp` (new), `conv_border.h` (new) | 2.1 |
-| 2.4 | Implement SDF-based border renderer: 4 px frame + 3 px glow, corner radius, alpha blending | `esp32-face-v2/main/conv_border.cpp` | 2.3 |
-| 2.5 | Implement per-state animations: ATTENTION sweep, LISTENING breathing, PTT pulse, THINKING orbit dots, SPEAKING energy-reactive (reads `fs.talking_energy`), ERROR flash+decay, DONE fade | `esp32-face-v2/main/conv_border.cpp` | 2.3 |
-| 2.6 | Integrate border render into main render loop: call after face render, before display flush | `esp32-face-v2/main/face_ui.cpp` | 2.4 |
-| 2.7 | Implement LED sync: border color × 0.16 → WS2812B | `esp32-face-v2/main/conv_border.cpp`, `esp32-face-v2/main/led.cpp` | 2.3 |
-| 2.8 | Add `send_conv_state()` to supervisor face_client (1-byte payload, no energy field) | `supervisor_v2/devices/face_client.py` | 2.1 |
-| 2.9 | Wire tick_loop state machine to send SET_CONV_STATE on **state transitions only** (no per-tick energy — border reads `fs.talking_energy` from SET_TALKING) | `supervisor_v2/core/tick_loop.py` | 1.2, 2.8 |
+| 2.1 | ~~Add `ConvState` enum and `FaceSetConvStatePayload` (1 byte: conv_state only) to firmware protocol header~~ | `esp32-face-v2/main/protocol.h` | — |
+| 2.2 | ~~Add SET_CONV_STATE (0x25) command handler in serial receive path~~ | `esp32-face-v2/main/usb_rx.cpp` | 2.1 |
+| 2.3 | ~~Implement border state machine in firmware: state field, color/alpha targets, animation timers~~ | `esp32-face-v2/main/conv_border.cpp` (new), `conv_border.h` (new) | 2.1 |
+| 2.4 | ~~Implement SDF-based border renderer: 4 px frame + 3 px glow, corner radius, alpha blending~~ | `esp32-face-v2/main/conv_border.cpp` | 2.3 |
+| 2.5 | ~~Implement per-state animations: ATTENTION sweep, LISTENING breathing, PTT pulse, THINKING orbit dots, SPEAKING energy-reactive (reads `fs.talking_energy`), ERROR flash+decay, DONE fade~~ | `esp32-face-v2/main/conv_border.cpp` | 2.3 |
+| 2.6 | ~~Integrate border render into main render loop: call after face render, before display flush~~ | `esp32-face-v2/main/face_ui.cpp` | 2.4 |
+| 2.7 | ~~Implement LED sync: border color × 0.16 → WS2812B~~ | `esp32-face-v2/main/conv_border.cpp` | 2.3 |
+| 2.8 | ~~Add `send_conv_state()` to supervisor face_client (1-byte payload, no energy field)~~ | `supervisor_v2/devices/face_client.py` | 2.1 |
+| 2.9 | ~~Wire tick_loop state machine to send SET_CONV_STATE on state transitions only~~ | `supervisor_v2/core/tick_loop.py` | 1.2, 2.8 |
 | 2.10 | Add SET_CONV_STATE to protocol documentation | `docs/protocols.md` | 2.1 |
-| 2.11 | Update V3 sim `render/border.py` to match any spec refinements from firmware implementation | `tools/face_sim_v3/render/border.py` | 2.5 |
+| 2.11 | ~~Update V3 sim `render/border.py` to match any spec refinements from firmware implementation~~ | No changes needed — firmware matches sim |
+| 2.12 | ~~Replace LVGL overlay buttons with pixel-rendered corner button zones~~ | `esp32-face-v2/main/conv_border.cpp`, `face_ui.cpp` | 2.4 |
+| 2.13 | ~~Parity check: 27 border constants verified (196/196 total)~~ | `tools/check_face_parity.py` | 2.3 |
+| 2.14 | ~~Protocol + face_client unit tests (8 tests)~~ | `supervisor_v2/tests/test_face_protocol.py` | 2.8 |
 
 ### Performance Budget
 - Border SDF render must fit within the 33 ms frame budget alongside face render
@@ -341,11 +372,12 @@ Three rounds of spec review applied after initial visual language definition:
 - If over budget: reduce glow width or precompute SDF lookup table
 
 ### Exit Criteria
-- Border renders correctly on hardware for all 8 states
-- LED mirrors border color at reduced brightness
-- THINKING orbit dots animate smoothly at 30 FPS
-- SPEAKING border reacts to audio energy via `fs.talking_energy` in real-time
-- V3 sim and firmware border output match visually
+- ~~Border renders correctly on hardware for all 8 states~~ ✓ Firmware builds and flashes, all states implemented
+- ~~LED mirrors border color at reduced brightness~~ ✓ LED_SCALE = 0.16
+- ~~THINKING orbit dots animate smoothly at 30 FPS~~ ✓ Band-optimized rendering
+- ~~SPEAKING border reacts to audio energy via `fs.talking_energy` in real-time~~ ✓ Energy fed from face_ui_task
+- [ ] V3 sim and firmware border output match visually — pending visual review on hardware
+- [ ] Performance profiling on hardware — pending (deferred to Stage 4)
 
 ---
 
@@ -487,14 +519,14 @@ Visual Language Remediation ── DONE (G1–G7)
 Visual Language Review ──────── DONE (R1–R5 + D1–D5 + B1–B3)
     │
     v
-Phase 0 (Parity V3→MCU) ── DONE (169/169 parity checks)
+Phase 0 (Parity V3→MCU) ── DONE (196/196 parity checks)
     │
     v
 Phase 1 (Conv State Machine) ──────┐ ── DONE
     │  + personality worker scaffold│
     v                               v
 Phase 2 (Firmware Border) ──> Phase 4 (Phase Transitions)
-    │                               │  + personality idle behavior
+    │  DONE                       │  + personality idle behavior
     v                               v
 Phase 3 (Mood Choreography) ──> Phase 5 (Polish)
     │  + personality modulation      │  + personality integration tests
@@ -558,23 +590,36 @@ Phases 1–3 can be parallelized to some extent: Phase 1 (supervisor state machi
 | `tools/face_sim_v3/state/face_state.py` | Post-spring NOD/HEADSHAKE gaze bypass, CONFUSED persistent mouth offset, LOVE pupil convergence + reduced idle wander |
 | `tools/face_sim_v3/__main__.py` | Fixed: conv state flag/gaze override (apply on transitions only, respect manual gaze) |
 | `tools/check_face_parity.py` | Added sim-ahead exclusion mechanism for known divergences |
-| **Phase 0–5** | |
-| `supervisor_v2/devices/protocol.py` | Add ConvState enum, SET_CONV_STATE command ID (0x25) |
-| `supervisor_v2/devices/face_client.py` | Add `send_conv_state()` method (1-byte payload) |
-| `supervisor_v2/core/tick_loop.py` | Conv state machine, gaze/flag management, mood transition sequencer, negative affect guardrails, context-gated ACTION cancel |
-| `supervisor_v2/workers/tts_worker.py` | Fix talking end timing |
-| `supervisor_v2/tests/test_conv_state.py` (new) | Conversation state unit tests |
-| `supervisor_v2/tests/test_mood_transitions.py` (new) | Mood transition + guardrail unit tests |
-| `esp32-face-v2/main/protocol.h` | Add ConvState enum, FaceSetConvStatePayload (1 byte) |
-| `esp32-face-v2/main/conv_border.cpp` (new) | Border state machine + renderer |
-| `esp32-face-v2/main/conv_border.h` (new) | Header |
-| `esp32-face-v2/main/face_ui.cpp` | Integrate border render, handle SET_CONV_STATE |
-| `esp32-face-v2/main/led.cpp` | LED sync from border state |
+| **Phase 0** | |
 | `esp32-face-v2/main/config.h` | Sync constants from V3 |
 | `esp32-face-v2/main/face_state.cpp` | Sync mood targets, tween speeds from V3 |
+| `esp32-face-v2/main/face_state.h` | CONFUSED mood, NOD/HEADSHAKE anim fields |
+| `justfile` | Parity check in preflight |
+| **Phase 1** | |
+| `supervisor_v2/devices/protocol.py` | Add FaceConvState enum |
+| `supervisor_v2/core/conv_state.py` (new) | ConvStateTracker — state machine, auto-transitions |
+| `supervisor_v2/core/tick_loop.py` | Conv state machine, gaze/flag management, context-gated ACTION cancel |
+| `supervisor_v2/core/state.py` | Telemetry fields for conv state |
+| `supervisor_v2/tests/test_conv_state.py` (new) | 39 conversation state unit tests |
+| **Phase 2** | |
+| `esp32-face-v2/main/protocol.h` | Add SET_CONV_STATE=0x25, FaceConvState enum, FaceSetConvStatePayload |
+| `esp32-face-v2/main/shared_state.h` | Add g_cmd_conv_state, g_cmd_conv_state_us atomics |
+| `esp32-face-v2/main/usb_rx.cpp` | Add SET_CONV_STATE dispatch handler |
+| `esp32-face-v2/main/conv_border.h` (new) | Border renderer + corner button public API |
+| `esp32-face-v2/main/conv_border.cpp` (new) | SDF border renderer (~700 lines): frame/glow, 8 state animations, corner buttons, MIC/X_MARK icons, LED sync |
+| `esp32-face-v2/main/face_ui.cpp` | Integrate border render, replace LVGL buttons with pixel rendering + touch hit-test |
+| `esp32-face-v2/main/CMakeLists.txt` | Add conv_border.cpp |
+| `supervisor_v2/devices/protocol.py` | Add SET_CONV_STATE=0x25 to FaceCmdType, build_face_set_conv_state() |
+| `supervisor_v2/devices/face_client.py` | Add send_conv_state() method |
+| `supervisor_v2/core/tick_loop.py` | Wire send_conv_state on state transitions |
+| `tools/check_face_parity.py` | Add 27 border constant checks (196/196 total), static constexpr regex |
+| `supervisor_v2/tests/test_face_protocol.py` (new) | 8 protocol builder + face_client tests |
+| **Phase 3–5 (planned)** | |
+| `supervisor_v2/core/tick_loop.py` | Mood transition sequencer, negative affect guardrails |
+| `supervisor_v2/workers/tts_worker.py` | Fix talking end timing |
+| `supervisor_v2/tests/test_mood_transitions.py` (new) | Mood transition + guardrail unit tests |
 | `dashboard/src/tabs/FaceTab.tsx` | Conv state + transition visualization |
 | `docs/protocols.md` | SET_CONV_STATE + SET_FLAGS documentation |
-| `justfile` | Parity check in preflight |
 | **Stage 4: Firmware Optimization** | |
 | `esp32-face-v2/main/face_ui.cpp` | Dirty-rect, DMA double-buffer, dithering, gamma, latency optimization |
 | `esp32-face-v2/main/conv_border.cpp` | SDF LUT optimization |

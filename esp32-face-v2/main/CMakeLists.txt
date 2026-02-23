@@ -9,6 +9,7 @@ idf_component_register(
          "face_state.cpp"
          "system_overlay_v2.cpp"
          "face_ui.cpp"
+         "conv_border.cpp"
          "led.cpp"
     INCLUDE_DIRS "."
     REQUIRES "esp_lcd" "esp_timer" "driver" "esp_system"

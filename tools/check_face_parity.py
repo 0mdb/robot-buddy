@@ -21,6 +21,7 @@ CONFIG_H = MCU_DIR / "config.h"
 FACE_STATE_CPP = MCU_DIR / "face_state.cpp"
 FACE_STATE_H = MCU_DIR / "face_state.h"
 PROTOCOL_H = MCU_DIR / "protocol.h"
+CONV_BORDER_CPP = MCU_DIR / "conv_border.cpp"
 
 
 def extract_define(text: str, name: str) -> str | None:
@@ -33,7 +34,9 @@ def extract_define(text: str, name: str) -> str | None:
 
 def extract_const(text: str, name: str) -> str | None:
     """Extract a constexpr/const value from C/C++ source."""
-    m = re.search(rf"(?:constexpr|const)\s+\w+\s+{name}\s*=\s*([^;]+)", text)
+    m = re.search(
+        rf"(?:static\s+)?(?:constexpr|const)\s+\w+\s+{name}\s*=\s*([^;]+)", text
+    )
     if m:
         return m.group(1).strip().rstrip("f").rstrip("F")
     return None
@@ -127,6 +130,35 @@ def main() -> int:
         TALKING_WIDTH_MOD,
         Mood,
     )
+    from tools.face_sim_v3.state.constants import (
+        ATTENTION_DEPTH,
+        ATTENTION_DURATION,
+        BORDER_BLEND_RATE,
+        BORDER_CORNER_R,
+        BORDER_FRAME_W,
+        BORDER_GLOW_W,
+        BTN_CORNER_H,
+        BTN_CORNER_INNER_R,
+        BTN_CORNER_W,
+        BTN_ICON_SIZE,
+        DONE_FADE_SPEED,
+        ERROR_DECAY_RATE,
+        ERROR_FLASH_DURATION,
+        LED_SCALE,
+        LISTENING_ALPHA_BASE,
+        LISTENING_ALPHA_MOD,
+        LISTENING_BREATH_FREQ,
+        PTT_ALPHA_BASE,
+        PTT_ALPHA_MOD,
+        PTT_PULSE_FREQ,
+        SPEAKING_ALPHA_BASE,
+        SPEAKING_ALPHA_MOD,
+        THINKING_BORDER_ALPHA,
+        THINKING_ORBIT_DOT_R,
+        THINKING_ORBIT_DOTS,
+        THINKING_ORBIT_SPACING,
+        THINKING_ORBIT_SPEED,
+    )
 
     # Read MCU source files
     if not CONFIG_H.exists():
@@ -138,6 +170,7 @@ def main() -> int:
     state_cpp = FACE_STATE_CPP.read_text() if FACE_STATE_CPP.exists() else ""
     state_h = FACE_STATE_H.read_text() if FACE_STATE_H.exists() else ""
     protocol_text = PROTOCOL_H.read_text() if PROTOCOL_H.exists() else ""
+    border_cpp = CONV_BORDER_CPP.read_text() if CONV_BORDER_CPP.exists() else ""
 
     all_text = config_text + "\n" + state_h + "\n" + protocol_text
 
@@ -258,6 +291,46 @@ def main() -> int:
             check(cname, mcu_val, sval)
         else:
             check(cname, None, sval)
+
+    # ── Conversation border ──────────────────────────────────────
+    print("-- Conversation border --")
+    if border_cpp:
+        for cname, sval, is_float in [
+            ("BORDER_FRAME_W", BORDER_FRAME_W, False),
+            ("BORDER_GLOW_W", BORDER_GLOW_W, False),
+            ("BORDER_CORNER_R", BORDER_CORNER_R, True),
+            ("BORDER_BLEND_RATE", BORDER_BLEND_RATE, True),
+            ("ATTENTION_DURATION", ATTENTION_DURATION, True),
+            ("ATTENTION_DEPTH", ATTENTION_DEPTH, False),
+            ("LISTENING_BREATH_FREQ", LISTENING_BREATH_FREQ, True),
+            ("LISTENING_ALPHA_BASE", LISTENING_ALPHA_BASE, True),
+            ("LISTENING_ALPHA_MOD", LISTENING_ALPHA_MOD, True),
+            ("PTT_PULSE_FREQ", PTT_PULSE_FREQ, True),
+            ("PTT_ALPHA_BASE", PTT_ALPHA_BASE, True),
+            ("PTT_ALPHA_MOD", PTT_ALPHA_MOD, True),
+            ("THINKING_ORBIT_DOTS", THINKING_ORBIT_DOTS, False),
+            ("THINKING_ORBIT_SPACING", THINKING_ORBIT_SPACING, True),
+            ("THINKING_ORBIT_SPEED", THINKING_ORBIT_SPEED, True),
+            ("THINKING_ORBIT_DOT_R", THINKING_ORBIT_DOT_R, True),
+            ("THINKING_BORDER_ALPHA", THINKING_BORDER_ALPHA, True),
+            ("SPEAKING_ALPHA_BASE", SPEAKING_ALPHA_BASE, True),
+            ("SPEAKING_ALPHA_MOD", SPEAKING_ALPHA_MOD, True),
+            ("ERROR_FLASH_DURATION", ERROR_FLASH_DURATION, True),
+            ("ERROR_DECAY_RATE", ERROR_DECAY_RATE, True),
+            ("DONE_FADE_SPEED", DONE_FADE_SPEED, True),
+            ("LED_SCALE", LED_SCALE, True),
+            ("BTN_CORNER_W", BTN_CORNER_W, False),
+            ("BTN_CORNER_H", BTN_CORNER_H, False),
+            ("BTN_CORNER_INNER_R", BTN_CORNER_INNER_R, False),
+            ("BTN_ICON_SIZE", BTN_ICON_SIZE, False),
+        ]:
+            v = extract_value(border_cpp, cname)
+            if is_float:
+                check(cname, parse_float(v) if v else None, sval)
+            else:
+                check(cname, parse_int(v) if v else None, sval)
+    else:
+        print("  SKIP  conv_border.cpp not found")
 
     # ── Mood colors ──────────────────────────────────────────────
     print("-- Mood colors --")

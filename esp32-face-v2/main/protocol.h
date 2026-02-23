@@ -31,11 +31,12 @@ enum class CommonTelId : uint8_t {
 };
 
 enum class FaceCmdId : uint8_t {
-    SET_STATE = 0x20,   // mood + gaze + brightness
-    GESTURE = 0x21,     // trigger one-shot gesture
-    SET_SYSTEM = 0x22,  // system mode overlay
-    SET_TALKING = 0x23, // speaking animation state + energy
-    SET_FLAGS = 0x24,   // renderer/animation feature toggles
+    SET_STATE = 0x20,      // mood + gaze + brightness
+    GESTURE = 0x21,        // trigger one-shot gesture
+    SET_SYSTEM = 0x22,     // system mode overlay
+    SET_TALKING = 0x23,    // speaking animation state + energy
+    SET_FLAGS = 0x24,      // renderer/animation feature toggles
+    SET_CONV_STATE = 0x25, // conversation phase (border driver)
 };
 
 enum class FaceTelId : uint8_t {
@@ -97,6 +98,22 @@ constexpr uint8_t FACE_FLAGS_ALL =
 
 struct __attribute__((packed)) FaceSetFlagsPayload {
     uint8_t flags; // bitfield, see FACE_FLAG_* constants
+};
+
+// Conversation phase — drives border animation + gaze/flag overrides.
+enum class FaceConvState : uint8_t {
+    IDLE = 0,
+    ATTENTION = 1,
+    LISTENING = 2,
+    PTT = 3,
+    THINKING = 4,
+    SPEAKING = 5,
+    ERROR = 6,
+    DONE = 7,
+};
+
+struct __attribute__((packed)) FaceSetConvStatePayload {
+    uint8_t conv_state; // FaceConvState (0-7)
 };
 
 struct __attribute__((packed)) FaceStatusPayload {

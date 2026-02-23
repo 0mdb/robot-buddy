@@ -213,6 +213,16 @@ static void handle_packet(const ParsedPacket& pkt)
         break;
     }
 
+    case FaceCmdId::SET_CONV_STATE: {
+        if (pkt.data_len < sizeof(FaceSetConvStatePayload)) break;
+        FaceSetConvStatePayload csp;
+        memcpy(&csp, pkt.data, sizeof(csp));
+        const uint32_t now_us = static_cast<uint32_t>(esp_timer_get_time());
+        g_cmd_conv_state.store(csp.conv_state, std::memory_order_relaxed);
+        g_cmd_conv_state_us.store(now_us, std::memory_order_release);
+        break;
+    }
+
     default:
         ESP_LOGD(TAG, "unknown cmd type 0x%02X", pkt.type);
         break;

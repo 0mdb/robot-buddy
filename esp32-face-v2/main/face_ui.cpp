@@ -1,6 +1,7 @@
 #include "face_ui.h"
 #include "config.h"
 #include "shared_state.h"
+#include "conv_border.h"
 #include "display.h"
 #include "led.h"
 #include "protocol.h"
@@ -37,9 +38,6 @@ static float clampf(float v, float lo, float hi);
 static lv_obj_t* canvas_obj = nullptr;
 static pixel_t*  canvas_buf = nullptr;
 static pixel_t*  afterglow_buf = nullptr;
-static lv_obj_t* ptt_btn = nullptr;
-static lv_obj_t* ptt_label = nullptr;
-static lv_obj_t* action_btn = nullptr;
 static lv_obj_t* calib_header_bg = nullptr;
 static lv_obj_t* calib_label_touch = nullptr;
 static lv_obj_t* calib_label_tf = nullptr;
@@ -52,10 +50,7 @@ static bool    s_last_touch_active = false;
 
 static void publish_touch_sample(uint8_t event_type, int x, int y);
 static void publish_button_event(FaceButtonId button_id, FaceButtonEventType event_type, uint8_t state);
-static void update_ptt_button_visual(bool listening);
 static void root_touch_event_cb(lv_event_t* e);
-static void ptt_button_event_cb(lv_event_t* e);
-static void action_button_event_cb(lv_event_t* e);
 static void render_calibration(pixel_t* buf);
 static void update_calibration_labels(uint32_t now_ms, uint32_t next_switch_ms);
 
@@ -481,19 +476,6 @@ static void publish_button_event(FaceButtonId button_id, FaceButtonEventType eve
     g_button.publish();
 }
 
-static void update_ptt_button_visual(bool listening)
-{
-    if (!ptt_btn || !ptt_label) {
-        return;
-    }
-    if (listening) {
-        lv_obj_set_style_bg_color(ptt_btn, lv_color_hex(0x2F80ED), LV_PART_MAIN);
-    } else {
-        lv_obj_set_style_bg_color(ptt_btn, lv_color_hex(0x2A6A4A), LV_PART_MAIN);
-    }
-    lv_label_set_text(ptt_label, LV_SYMBOL_AUDIO);
-}
-
 static void root_touch_event_cb(lv_event_t* e)
 {
     if (!e) {
@@ -515,6 +497,14 @@ static void root_touch_event_cb(lv_event_t* e)
         s_last_touch_active = true;
         g_touch_active.store(true, std::memory_order_relaxed);
         publish_touch_sample(0, p.x, p.y);
+
+        // Corner button hit-testing (pixel-rendered buttons replace LVGL overlay)
+        if (conv_border_hit_test_left(p.x, p.y)) {
+            publish_button_event(FaceButtonId::PTT, FaceButtonEventType::PRESS,
+                                 g_ptt_listening.load(std::memory_order_relaxed) ? 1 : 0);
+        } else if (conv_border_hit_test_right(p.x, p.y)) {
+            publish_button_event(FaceButtonId::ACTION, FaceButtonEventType::PRESS, 0);
+        }
     } else if (code == LV_EVENT_PRESSING) {
         s_last_touch_x = p.x;
         s_last_touch_y = p.y;
@@ -523,49 +513,27 @@ static void root_touch_event_cb(lv_event_t* e)
         g_touch_active.store(true, std::memory_order_relaxed);
         publish_touch_sample(2, p.x, p.y);
     } else if (code == LV_EVENT_RELEASED) {
+        const int press_x = s_last_touch_x;
+        const int press_y = s_last_touch_y;
         s_last_touch_x = p.x;
         s_last_touch_y = p.y;
         s_last_touch_evt = 1;
         s_last_touch_active = false;
         g_touch_active.store(false, std::memory_order_relaxed);
         publish_touch_sample(1, p.x, p.y);
-    }
-}
 
-static void ptt_button_event_cb(lv_event_t* e)
-{
-    if (!e) {
-        return;
-    }
-
-    const lv_event_code_t code = lv_event_get_code(e);
-    if (code == LV_EVENT_PRESSED) {
-        publish_button_event(FaceButtonId::PTT, FaceButtonEventType::PRESS,
-                             g_ptt_listening.load(std::memory_order_relaxed) ? 1 : 0);
-    } else if (code == LV_EVENT_RELEASED) {
-        publish_button_event(FaceButtonId::PTT, FaceButtonEventType::RELEASE,
-                             g_ptt_listening.load(std::memory_order_relaxed) ? 1 : 0);
-    } else if (code == LV_EVENT_CLICKED) {
-        const bool listening = !g_ptt_listening.load(std::memory_order_relaxed);
-        g_ptt_listening.store(listening, std::memory_order_relaxed);
-        update_ptt_button_visual(listening);
-        publish_button_event(FaceButtonId::PTT, FaceButtonEventType::TOGGLE, listening ? 1 : 0);
-    }
-}
-
-static void action_button_event_cb(lv_event_t* e)
-{
-    if (!e) {
-        return;
-    }
-
-    const lv_event_code_t code = lv_event_get_code(e);
-    if (code == LV_EVENT_PRESSED) {
-        publish_button_event(FaceButtonId::ACTION, FaceButtonEventType::PRESS, 0);
-    } else if (code == LV_EVENT_RELEASED) {
-        publish_button_event(FaceButtonId::ACTION, FaceButtonEventType::RELEASE, 0);
-    } else if (code == LV_EVENT_CLICKED) {
-        publish_button_event(FaceButtonId::ACTION, FaceButtonEventType::CLICK, 0);
+        // Corner button release + click detection (use press origin for zone match)
+        if (conv_border_hit_test_left(press_x, press_y) && conv_border_hit_test_left(p.x, p.y)) {
+            publish_button_event(FaceButtonId::PTT, FaceButtonEventType::RELEASE,
+                                 g_ptt_listening.load(std::memory_order_relaxed) ? 1 : 0);
+            // Toggle PTT on click (press+release in same zone)
+            const bool listening = !g_ptt_listening.load(std::memory_order_relaxed);
+            g_ptt_listening.store(listening, std::memory_order_relaxed);
+            publish_button_event(FaceButtonId::PTT, FaceButtonEventType::TOGGLE, listening ? 1 : 0);
+        } else if (conv_border_hit_test_right(press_x, press_y) && conv_border_hit_test_right(p.x, p.y)) {
+            publish_button_event(FaceButtonId::ACTION, FaceButtonEventType::RELEASE, 0);
+            publish_button_event(FaceButtonId::ACTION, FaceButtonEventType::CLICK, 0);
+        }
     }
 }
 
@@ -599,44 +567,8 @@ void face_ui_create(lv_obj_t* parent)
     lv_obj_add_event_cb(parent, root_touch_event_cb, LV_EVENT_PRESSING, nullptr);
     lv_obj_add_event_cb(parent, root_touch_event_cb, LV_EVENT_RELEASED, nullptr);
 
-    // Discreet corner icon controls.
-    ptt_btn = lv_button_create(parent);
-    lv_obj_set_size(ptt_btn, UI_ICON_HITBOX, UI_ICON_HITBOX);
-    lv_obj_align(ptt_btn, LV_ALIGN_BOTTOM_LEFT, UI_ICON_MARGIN, -UI_ICON_MARGIN);
-    lv_obj_set_style_radius(ptt_btn, UI_ICON_HITBOX / 2, LV_PART_MAIN);
-    lv_obj_set_style_border_width(ptt_btn, 1, LV_PART_MAIN);
-    lv_obj_set_style_border_color(ptt_btn, lv_color_hex(0x54C896), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(ptt_btn, UI_ICON_IDLE_OPA,
-                            static_cast<lv_style_selector_t>(LV_PART_MAIN) |
-                                static_cast<lv_style_selector_t>(LV_STATE_DEFAULT));
-    lv_obj_set_style_bg_opa(ptt_btn, UI_ICON_PRESSED_OPA,
-                            static_cast<lv_style_selector_t>(LV_PART_MAIN) |
-                                static_cast<lv_style_selector_t>(LV_STATE_PRESSED));
-    lv_obj_add_event_cb(ptt_btn, ptt_button_event_cb, LV_EVENT_ALL, nullptr);
-    ptt_label = lv_label_create(ptt_btn);
-    lv_obj_set_style_text_color(ptt_label, lv_color_hex(0xF4FFFF), LV_PART_MAIN);
-    lv_obj_center(ptt_label);
-
-    action_btn = lv_button_create(parent);
-    lv_obj_set_size(action_btn, UI_ICON_HITBOX, UI_ICON_HITBOX);
-    lv_obj_align(action_btn, LV_ALIGN_BOTTOM_RIGHT, -UI_ICON_MARGIN, -UI_ICON_MARGIN);
-    lv_obj_set_style_radius(action_btn, UI_ICON_HITBOX / 2, LV_PART_MAIN);
-    lv_obj_set_style_border_width(action_btn, 1, LV_PART_MAIN);
-    lv_obj_set_style_border_color(action_btn, lv_color_hex(0xFFBE8B), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(action_btn, UI_ICON_IDLE_OPA,
-                            static_cast<lv_style_selector_t>(LV_PART_MAIN) |
-                                static_cast<lv_style_selector_t>(LV_STATE_DEFAULT));
-    lv_obj_set_style_bg_opa(action_btn, UI_ICON_PRESSED_OPA,
-                            static_cast<lv_style_selector_t>(LV_PART_MAIN) |
-                                static_cast<lv_style_selector_t>(LV_STATE_PRESSED));
-    lv_obj_set_style_bg_color(action_btn, lv_color_hex(0xB66A3A), LV_PART_MAIN);
-    lv_obj_add_event_cb(action_btn, action_button_event_cb, LV_EVENT_ALL, nullptr);
-    lv_obj_t* action_label = lv_label_create(action_btn);
-    lv_label_set_text(action_label, LV_SYMBOL_CHARGE);
-    lv_obj_set_style_text_color(action_label, lv_color_hex(0xFFF7EA), LV_PART_MAIN);
-    lv_obj_center(action_label);
-
-    update_ptt_button_visual(false);
+    // Corner button zones are now pixel-rendered by conv_border_render_buttons().
+    // Touch hit-testing is handled in root_touch_event_cb via conv_border_hit_test_*.
 
     if (FACE_CALIBRATION_MODE) {
         calib_header_bg = lv_obj_create(parent);
@@ -691,6 +623,10 @@ void face_ui_update(const FaceState& fs)
             apply_afterglow(canvas_buf, fs);
         }
 
+        // Conversation border overlay + corner buttons (drawn on top of everything)
+        conv_border_render(canvas_buf);
+        conv_border_render_buttons(canvas_buf);
+
         if ((fs.system.mode != SystemMode::NONE || !fs.fx.afterglow) && afterglow_buf) {
             memcpy(afterglow_buf, canvas_buf, CANVAS_BYTES);
         }
@@ -733,6 +669,9 @@ std::atomic<uint32_t> g_cmd_talking_us{0};
 std::atomic<uint8_t>  g_cmd_flags{static_cast<uint8_t>(FACE_FLAGS_ALL & ~FACE_FLAG_AFTERGLOW)};
 std::atomic<uint32_t> g_cmd_flags_us{0};
 
+std::atomic<uint8_t>  g_cmd_conv_state{0};
+std::atomic<uint32_t> g_cmd_conv_state_us{0};
+
 GestureQueue g_gesture_queue;
 
 TouchBuffer           g_touch;
@@ -755,6 +694,7 @@ void face_ui_task(void* arg)
     uint32_t  last_system_cmd_us = 0;
     uint32_t  last_talking_cmd_us = 0;
     uint32_t  last_flags_cmd_us = 0;
+    uint32_t  last_conv_state_cmd_us = 0;
     bool      last_led_talking = false;
     bool      last_led_listening = false;
     uint32_t  next_touch_cycle_ms = 0;
@@ -859,6 +799,19 @@ void face_ui_task(void* arg)
             }
         }
 
+        // 5b. Apply latest latched conv_state command.
+        const uint32_t conv_state_cmd_us = g_cmd_conv_state_us.load(std::memory_order_acquire);
+        if (conv_state_cmd_us != 0 && conv_state_cmd_us != last_conv_state_cmd_us) {
+            last_conv_state_cmd_us = conv_state_cmd_us;
+            conv_border_set_state(g_cmd_conv_state.load(std::memory_order_relaxed));
+        }
+
+        // Feed talking energy to border for SPEAKING reactivity.
+        conv_border_set_energy(fs.talking_energy);
+
+        // Advance border animation.
+        conv_border_update(1.0f / ANIM_FPS);
+
         if (FACE_CALIBRATION_MODE && CALIB_TOUCH_AUTOCYCLE_MS > 0) {
             const int32_t delta_ms = static_cast<int32_t>(now_ms - next_touch_cycle_ms);
             if (delta_ms >= 0) {
@@ -881,7 +834,11 @@ void face_ui_task(void* arg)
         g_talking_active.store(fs.talking, std::memory_order_relaxed);
 
         const bool listening = g_ptt_listening.load(std::memory_order_relaxed);
-        if (fs.talking != last_led_talking || listening != last_led_listening) {
+        if (conv_border_active()) {
+            uint8_t led_r, led_g, led_b;
+            conv_border_get_led(led_r, led_g, led_b);
+            led_set_rgb(led_r, led_g, led_b);
+        } else if (fs.talking != last_led_talking || listening != last_led_listening) {
             if (fs.talking) {
                 led_set_rgb(180, 80, 0); // talking
             } else if (listening) {
