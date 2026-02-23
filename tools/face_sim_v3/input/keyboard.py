@@ -72,6 +72,14 @@ class KeyboardHandler:
             self.bus.push(GestureCmd(GestureId.BLINK))
             return
 
+        # ── Holiday modes (Shift + 1-4, Shift+` to disable) ──
+        if shift:
+            holiday = _key_to_holiday(key)
+            if holiday is not None:
+                fs.holiday_mode = holiday
+                fs._holiday_timer = 0.0  # Reset periodic gesture timer
+                return
+
         # ── Moods (routed through mood sequencer) ────────────
         mood = _key_to_mood(key, shift)
         if mood is not None:
@@ -198,6 +206,13 @@ def _key_to_gesture(key: int) -> GestureId | None:
         pygame.K_d: GestureId.HEADSHAKE,
         pygame.K_j: GestureId.WIGGLE,
         pygame.K_u: GestureId.SURPRISE,
+        pygame.K_p: GestureId.PEEK_A_BOO,
+        pygame.K_y: GestureId.SHY,
+        pygame.K_o: GestureId.EYE_ROLL,
+        pygame.K_a: GestureId.DIZZY,
+        pygame.K_v: GestureId.CELEBRATE,
+        pygame.K_PERIOD: GestureId.STARTLE_RELIEF,
+        pygame.K_COMMA: GestureId.THINKING_HARD,
     }.get(key)
 
 
@@ -240,6 +255,19 @@ def _key_to_conv_state(key: int, shift: bool) -> ConvState | None:
         pygame.K_F10: ConvState.THINKING,
         pygame.K_F11: ConvState.SPEAKING,
         pygame.K_F12: ConvState.ERROR,
+    }.get(key)
+
+
+def _key_to_holiday(key: int) -> int | None:
+    """Map Shift+number keys to HolidayMode values."""
+    from tools.face_sim_v3.state.constants import HolidayMode
+
+    return {
+        pygame.K_1: HolidayMode.BIRTHDAY,
+        pygame.K_2: HolidayMode.HALLOWEEN,
+        pygame.K_3: HolidayMode.CHRISTMAS,
+        pygame.K_4: HolidayMode.NEW_YEAR,
+        pygame.K_BACKQUOTE: HolidayMode.NONE,
     }.get(key)
 
 

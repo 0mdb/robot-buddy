@@ -130,6 +130,27 @@ TALKING_WIDTH_MOD = 0.3
 TALKING_BOUNCE_MOD = 0.05
 TALKING_TIMEOUT_MS = 450  # MCU auto-stops after 450ms with no update
 
+# Speech rhythm sync (driven by existing talking_energy field)
+SPEECH_EYE_PULSE_THRESHOLD = 0.7  # Energy above this triggers eye pulse
+SPEECH_EYE_PULSE_FRAMES = 3  # Consecutive frames above threshold to trigger
+SPEECH_EYE_PULSE_AMOUNT = 0.04  # Eye height boost per pulse
+SPEECH_EYE_PULSE_DECAY = 0.85  # Per-frame decay of pulse
+
+SPEECH_BREATH_MOD = 0.8  # Breath speed modulation range during talking
+SPEECH_BREATH_MIN = 1.5  # Minimum breath speed during talking
+SPEECH_BREATH_MAX = 2.2  # Maximum breath speed during talking
+
+SPEECH_PAUSE_THRESHOLD = 0.05  # Energy below this = silence/pause
+SPEECH_PAUSE_FRAMES = 15  # ~500ms at 30 FPS before triggering pause gaze
+SPEECH_PAUSE_GAZE_SHIFT = 2.0  # Gaze nudge amount (±units)
+
+# Idle micro-expressions (subtle hints at "internal thoughts")
+MICRO_EXPR_MIN_INTERVAL = 30.0  # Min seconds between micro-expressions
+MICRO_EXPR_RANGE = 60.0  # Random extra seconds (total: 30-90s)
+MICRO_EXPR_CURIOUS_DUR = 0.5  # Curious glance duration
+MICRO_EXPR_SIGH_DUR = 0.8  # Content sigh duration
+MICRO_EXPR_FIDGET_DUR = 0.4  # Fidget duration
+
 # ══════════════════════════════════════════════════════════════════════
 # MOODS
 # ══════════════════════════════════════════════════════════════════════
@@ -274,6 +295,13 @@ class GestureId(IntEnum):
     NOD = 10
     HEADSHAKE = 11
     WIGGLE = 12
+    PEEK_A_BOO = 13
+    SHY = 14
+    EYE_ROLL = 15
+    DIZZY = 16
+    CELEBRATE = 17
+    STARTLE_RELIEF = 18
+    THINKING_HARD = 19
 
 
 # Default durations in seconds
@@ -291,6 +319,13 @@ GESTURE_DURATIONS: dict[GestureId, float] = {
     GestureId.NOD: 0.35,
     GestureId.HEADSHAKE: 0.35,
     GestureId.WIGGLE: 0.60,
+    GestureId.PEEK_A_BOO: 1.50,
+    GestureId.SHY: 2.00,
+    GestureId.EYE_ROLL: 1.00,
+    GestureId.DIZZY: 2.00,
+    GestureId.CELEBRATE: 2.50,
+    GestureId.STARTLE_RELIEF: 1.50,
+    GestureId.THINKING_HARD: 3.00,
 }
 
 # Gesture-specific animation constants
@@ -316,6 +351,8 @@ SLEEPY_MOUTH_WIDTH = 0.7
 X_EYES_MOUTH_OPEN = 0.8
 X_EYES_MOUTH_WIDTH = 0.5
 HEART_MOUTH_CURVE = 1.0
+HEART_SOLID_SCALE = 1.0  # Heart size as fraction of min(eye_w, eye_h) half-extents
+HEART_PUPIL_SCALE = 2.5  # Heart size as multiple of PUPIL_R for pupil-mode hearts
 FLICKER_AMP = 1.5
 NOD_GAZE_Y_AMP = 4.0  # Vertical gaze displacement
 NOD_FREQ = 12.0  # rad/s — ~2 nods in 350ms
@@ -323,6 +360,42 @@ NOD_LID_TOP_OFFSET = 0.15  # Slight upper lid follows gaze
 HEADSHAKE_GAZE_X_AMP = 5.0  # Horizontal gaze displacement
 HEADSHAKE_FREQ = 14.0  # rad/s — ~2.5 sweeps in 350ms
 HEADSHAKE_MOUTH_CURVE = -0.2  # Slight frown during headshake
+
+# New gesture constants
+PEEK_A_BOO_CLOSE_TIME = 0.3  # Time eyes stay closed (fraction of duration)
+PEEK_A_BOO_PEAK_W = 1.2
+PEEK_A_BOO_PEAK_H = 1.2
+
+SHY_GAZE_X = -5.0  # Down-left aversion
+SHY_GAZE_Y = 3.0
+SHY_LID_BOT = 0.2
+SHY_MOUTH_CURVE = 0.4
+SHY_PEEK_FRAC = 0.6  # When peek-up starts (fraction of duration)
+GESTURE_COLOR_SHY = (255, 180, 200)  # Light pink
+
+EYE_ROLL_GAZE_R = 5.0  # Radius of circular gaze path
+EYE_ROLL_LID_PEAK = 0.15  # Lid droop at top of arc
+
+DIZZY_GAZE_R_MAX = 4.0  # Max spiral radius
+DIZZY_FREQ = 10.0  # rad/s for circular motion
+DIZZY_MOUTH_WAVE = 0.4
+
+CELEBRATE_EYE_SCALE = 1.15
+CELEBRATE_MOUTH_CURVE = 0.9
+CELEBRATE_SPARKLE_BOOST = 0.4  # Per-frame sparkle chance during celebrate
+GESTURE_COLOR_CELEBRATE_A = (0, 255, 200)  # Teal
+GESTURE_COLOR_CELEBRATE_B = (100, 255, 100)  # Green
+GESTURE_COLOR_CELEBRATE_C = (255, 255, 200)  # Warm white
+
+STARTLE_PEAK_TIME = 0.15  # Seconds for startle peak
+STARTLE_PEAK_W = 1.3
+STARTLE_PEAK_H = 1.25
+
+THINKING_HARD_GAZE_A = (6.0, -4.0)  # Up-right
+THINKING_HARD_GAZE_B = (-6.0, -4.0)  # Up-left
+THINKING_HARD_FREQ = 3.0  # rad/s for gaze oscillation
+THINKING_HARD_LID_SLOPE = 0.5
+THINKING_HARD_MOUTH_OFFSET_FREQ = 2.0  # rad/s
 
 # ══════════════════════════════════════════════════════════════════════
 # CONVERSATION STATES
@@ -430,6 +503,13 @@ ERROR_AVERSION_GAZE_X = -0.3  # Look-away direction (normalized)
 DONE_FADE_DURATION = 0.5  # 500 ms
 DONE_FADE_SPEED = 2.0  # Alpha per second
 
+# Conversation backchannel
+BACKCHANNEL_NOD_MIN = 3.0  # Min seconds between nods during LISTENING
+BACKCHANNEL_NOD_RANGE = 2.0  # Random range (total: 3-5s)
+BACKCHANNEL_INTEREST_ONSET = 10.0  # Seconds of LISTENING before eye widening
+BACKCHANNEL_INTEREST_MAX_SCALE = 1.05  # Max eye scale from interest
+BACKCHANNEL_INTEREST_RAMP = 20.0  # Seconds from onset to reach max scale
+
 # LED scaling
 LED_SCALE = 0.16  # border_color * 0.16
 
@@ -509,17 +589,91 @@ class SystemMode(IntEnum):
     SHUTTING_DOWN = 5
 
 
+class HolidayMode(IntEnum):
+    NONE = 0
+    BIRTHDAY = 1
+    HALLOWEEN = 2
+    CHRISTMAS = 3
+    NEW_YEAR = 4
+
+
+# ── Birthday mode ───────────────────────────────────────────────
+HOLIDAY_BIRTHDAY_SPARKLE = 0.3
+HOLIDAY_BIRTHDAY_CELEBRATE_INTERVAL = 5.0  # Seconds between CELEBRATE gestures
+HOLIDAY_BIRTHDAY_COLOR_A = (255, 100, 150)  # Pink
+HOLIDAY_BIRTHDAY_COLOR_B = (0, 255, 200)  # Teal
+
+# ── Halloween mode ──────────────────────────────────────────────
+HOLIDAY_HALLOWEEN_COLOR = (255, 140, 0)  # Orange
+HOLIDAY_HALLOWEEN_FLICKER = 0.15  # Brightness variation ±15%
+HOLIDAY_HALLOWEEN_LID_SLOPE = -0.8  # Inverted-V eyes
+
+# ── Christmas mode ──────────────────────────────────────────────
+HOLIDAY_CHRISTMAS_COLOR = (255, 220, 180)  # Warm white
+HOLIDAY_CHRISTMAS_BREATH_SPEED = 1.2
+HOLIDAY_SNOW_SPAWN_CHANCE = 0.15
+HOLIDAY_SNOW_LIFE_MIN = 30
+HOLIDAY_SNOW_LIFE_MAX = 60
+HOLIDAY_SNOW_FALL_SPEED = 2.0
+HOLIDAY_SNOW_DRIFT_AMP = 1.5
+
+# ── New Year's mode ─────────────────────────────────────────────
+HOLIDAY_CONFETTI_SPAWN_CHANCE = 0.2
+HOLIDAY_CONFETTI_LIFE_MIN = 20
+HOLIDAY_CONFETTI_LIFE_MAX = 40
+HOLIDAY_CONFETTI_FALL_SPEED = 3.0
+HOLIDAY_CONFETTI_DRIFT = 1.0
+HOLIDAY_CONFETTI_COLORS = (
+    (255, 50, 50),
+    (50, 255, 50),
+    (50, 100, 255),
+    (255, 255, 50),
+    (255, 50, 255),
+)
+
+# ── Rosy cheeks (Christmas) ────────────────────────────────────
+ROSY_CHEEK_R = 12.0
+ROSY_CHEEK_Y_OFFSET = 35.0
+ROSY_CHEEK_X_OFFSET = 10.0
+ROSY_CHEEK_COLOR = (255, 150, 180)
+ROSY_CHEEK_ALPHA = 0.3
+
+
 # ══════════════════════════════════════════════════════════════════════
-# BUTTON GEOMETRY (sim rendering)
+# BUTTON CORNER ZONES (sim rendering)
 # ══════════════════════════════════════════════════════════════════════
-BTN_VISIBLE = 36
-BTN_HITBOX = 48
-BTN_MARGIN = 6
-BTN_RADIUS = BTN_VISIBLE // 2
-PTT_CX = BTN_MARGIN + BTN_HITBOX // 2  # 30
-PTT_CY = SCREEN_H - BTN_MARGIN - BTN_HITBOX // 2  # 210
-CANCEL_CX = SCREEN_W - BTN_MARGIN - BTN_HITBOX // 2  # 290
-CANCEL_CY = SCREEN_H - BTN_MARGIN - BTN_HITBOX // 2  # 210
+
+
+class ButtonIcon(IntEnum):
+    NONE = 0  # No button / invisible
+    MIC = 1  # Microphone (PTT)
+    X_MARK = 2  # Cancel / dismiss
+    CHECK = 3  # Confirm / done
+    REPEAT = 4  # Say again / retry
+    STAR = 5  # Fun / favorite
+    SPEAKER = 6  # Audio / volume
+
+
+class ButtonState(IntEnum):
+    IDLE = 0  # Subtle, semi-transparent
+    ACTIVE = 1  # Colored, prominent
+    PRESSED = 2  # Bright flash (auto-decays to ACTIVE)
+
+
+# Corner zone dimensions
+BTN_CORNER_W = 60  # Zone width from screen edge
+BTN_CORNER_H = 46  # Zone height from screen bottom
+BTN_CORNER_INNER_R = 8  # Rounded inner corner radius
+BTN_ICON_SIZE = 18  # Icon half-extent (~36px total)
+
+# Derived positions
+BTN_ZONE_Y_TOP = SCREEN_H - BTN_CORNER_H  # 194
+BTN_LEFT_ZONE_X1 = BTN_CORNER_W  # 60
+BTN_RIGHT_ZONE_X0 = SCREEN_W - BTN_CORNER_W  # 260
+BTN_LEFT_ICON_CX = BTN_CORNER_W // 2  # 30
+BTN_LEFT_ICON_CY = SCREEN_H - BTN_CORNER_H // 2  # 217
+BTN_RIGHT_ICON_CX = SCREEN_W - BTN_CORNER_W // 2  # 290
+BTN_RIGHT_ICON_CY = BTN_LEFT_ICON_CY  # 217
 
 # ══════════════════════════════════════════════════════════════════════
 # BRIGHTNESS

@@ -39,20 +39,47 @@ def sd_equilateral_triangle(
 
 
 def sd_heart(px: float, py: float, cx: float, cy: float, size: float) -> float:
-    """Heart shape SDF. size = scale factor. Negative = inside."""
-    x = (px - cx) / size
-    y = (cy - py) / size
-    ax = abs(x)
-    # Circle lobes
-    d_circ = math.sqrt((ax - 0.42) ** 2 + (y - 0.32) ** 2) - 0.55
-    # V-taper: perpendicular distance to line from (0.97, 0.32) to (0, -0.85)
-    if y < 0.32:
-        d_taper = 0.769 * ax - 0.638 * (y + 0.85)  # pre-normalized normal
-        if y < -0.85:
-            d_taper = max(d_taper, -0.85 - y)
+    """Exact heart shape SDF (Inigo Quilez construction).
+
+    Proper signed distance field — smooth everywhere, no cusp singularities.
+    Returns negative inside, positive outside.
+    size = half-extent; the heart fills roughly ±size pixels from center.
+
+    The IQ heart has tip at origin and lobes at y≈1.1.  We shift by +0.5
+    so the heart is vertically centered on (cx, cy), and rescale x by 1/0.6
+    so the width fills the size box.
+    """
+    # Map pixel coords to IQ heart coords (y-flipped, centered, scaled)
+    # IQ heart: tip at (0,0), lobes at y≈1.1, width ±0.6
+    # Shift +0.5 centers the heart vertically on (cx, cy)
+    x = abs(px - cx) / size
+    y = (cy - py) / size + 0.5
+
+    # Two regions split by the line x + y = 1
+    if y + x > 1.0:
+        # Upper/outer region: distance to circle lobe center (0.25, 0.75)
+        dx = x - 0.25
+        dy = y - 0.75
+        d = math.sqrt(dx * dx + dy * dy) - 0.35355339  # sqrt(2)/4
     else:
-        d_taper = 100.0
-    return min(d_circ, d_taper)
+        # Lower/inner region: min of distance to tip and distance to edge line
+        # Distance to bottom tip (0, 1)
+        dy1 = y - 1.0
+        d1 = x * x + dy1 * dy1
+
+        # Distance to diagonal edge (projection onto x+y=0 half-plane)
+        t = max(x + y, 0.0) * 0.5
+        dx2 = x - t
+        dy2 = y - t
+        d2 = dx2 * dx2 + dy2 * dy2
+
+        d = math.sqrt(min(d1, d2))
+        # Sign: inside when x < y (left of the diagonal)
+        if x < y:
+            d = -d
+
+    # Scale back to pixel space
+    return d * size
 
 
 def sd_cross(

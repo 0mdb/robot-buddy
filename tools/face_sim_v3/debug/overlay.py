@@ -119,10 +119,11 @@ class DebugOverlay:
 
         # Key help lines
         help_lines = [
-            "1-0,-,=,BS:moods  SPACE:blink  C L W E H X Z R N D J U:gestures",
+            "1-0,-,=,BS:moods  SPACE:blink  C L W E H X Z R N D J U P Y O A V . ,:gestures",
             "I:idle B:blink S:style M:mouth G:glow K:sparkle F:afterglow T:talk [/]:energy",
-            "F7:attention F8:listen F9:ptt F10:think F11:speak F12:error  Sh+F7:done Sh+F8:idle  TAB:walkthrough",
+            "F7:attn F8:listen F9:ptt F10:think F11:speak F12:error  Sh+F7:done Sh+F8:idle  TAB:walk",
             "F1:boot F2:error F3:battery F4:update F5:shutdown F6:clear  +/-:brightness  Q/Esc:quit",
+            "Sh+1:birthday Sh+2:halloween Sh+3:christmas Sh+4:newyear Sh+`:off",
         ]
         for line in help_lines:
             self._draw(surface, font, line, (80, 85, 95), 10, y)

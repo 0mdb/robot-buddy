@@ -41,6 +41,7 @@ from tools.face_sim_v3.state.face_state import (
     face_set_flags,
     face_set_gaze,
     face_state_update,
+    face_trigger_gesture,
 )
 from tools.face_sim_v3.state.guardrails import Guardrails
 from tools.face_sim_v3.state.mood_sequencer import MoodSequencer
@@ -286,6 +287,42 @@ def _apply_conv_effects(
         flags = CONV_FLAGS.get(state, -1)
         if flags != -1:
             face_set_flags(fs, flags)
+
+    # Backchannel — NOD during LISTENING + interest escalation
+    if conv_sm.nod_pending:
+        from tools.face_sim_v3.state.constants import GestureId
+
+        face_trigger_gesture(fs, GestureId.NOD)
+        conv_sm.nod_pending = False
+
+    if conv_sm.interest_scale > 1.001:
+        fs.eye_l.width_scale_target = max(
+            fs.eye_l.width_scale_target, conv_sm.interest_scale
+        )
+        fs.eye_r.width_scale_target = max(
+            fs.eye_r.width_scale_target, conv_sm.interest_scale
+        )
+
+    # Drive corner button visuals from conversation state
+    from tools.face_sim_v3.state.constants import (
+        ButtonIcon,
+        ButtonState,
+        CONV_COLORS,
+    )
+
+    if state in (ConvState.PTT, ConvState.LISTENING):
+        border.set_button_left(ButtonIcon.MIC, ButtonState.ACTIVE, CONV_COLORS[state])
+        border.set_button_right(
+            ButtonIcon.X_MARK, ButtonState.ACTIVE, CONV_COLORS[state]
+        )
+    elif state in (ConvState.THINKING, ConvState.SPEAKING):
+        border.set_button_left(ButtonIcon.MIC, ButtonState.IDLE)
+        border.set_button_right(
+            ButtonIcon.X_MARK, ButtonState.ACTIVE, CONV_COLORS[state]
+        )
+    else:
+        border.set_button_left(ButtonIcon.MIC, ButtonState.IDLE)
+        border.set_button_right(ButtonIcon.X_MARK, ButtonState.IDLE)
 
 
 if __name__ == "__main__":

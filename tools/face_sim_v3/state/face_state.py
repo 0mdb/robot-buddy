@@ -117,7 +117,71 @@ from tools.face_sim_v3.state.constants import (
     TWEEN_OPENNESS,
     X_EYES_MOUTH_OPEN,
     X_EYES_MOUTH_WIDTH,
+    CELEBRATE_EYE_SCALE,
+    CELEBRATE_MOUTH_CURVE,
+    CELEBRATE_SPARKLE_BOOST,
+    DIZZY_FREQ,
+    DIZZY_GAZE_R_MAX,
+    DIZZY_MOUTH_WAVE,
+    EYE_ROLL_GAZE_R,
+    EYE_ROLL_LID_PEAK,
+    GESTURE_COLOR_CELEBRATE_A,
+    GESTURE_COLOR_CELEBRATE_B,
+    GESTURE_COLOR_CELEBRATE_C,
+    GESTURE_COLOR_SHY,
+    PEEK_A_BOO_CLOSE_TIME,
+    PEEK_A_BOO_PEAK_H,
+    PEEK_A_BOO_PEAK_W,
+    SHY_GAZE_X,
+    SHY_GAZE_Y,
+    SHY_LID_BOT,
+    SHY_MOUTH_CURVE,
+    SHY_PEEK_FRAC,
+    STARTLE_PEAK_H,
+    STARTLE_PEAK_TIME,
+    STARTLE_PEAK_W,
+    THINKING_HARD_FREQ,
+    THINKING_HARD_GAZE_A,
+    THINKING_HARD_GAZE_B,
+    THINKING_HARD_LID_SLOPE,
+    THINKING_HARD_MOUTH_OFFSET_FREQ,
+    SPEECH_BREATH_MAX,
+    SPEECH_BREATH_MIN,
+    SPEECH_BREATH_MOD,
+    SPEECH_EYE_PULSE_AMOUNT,
+    SPEECH_EYE_PULSE_DECAY,
+    SPEECH_EYE_PULSE_FRAMES,
+    SPEECH_EYE_PULSE_THRESHOLD,
+    SPEECH_PAUSE_FRAMES,
+    SPEECH_PAUSE_GAZE_SHIFT,
+    SPEECH_PAUSE_THRESHOLD,
+    MICRO_EXPR_CURIOUS_DUR,
+    MICRO_EXPR_FIDGET_DUR,
+    MICRO_EXPR_MIN_INTERVAL,
+    MICRO_EXPR_RANGE,
+    MICRO_EXPR_SIGH_DUR,
+    HOLIDAY_BIRTHDAY_CELEBRATE_INTERVAL,
+    HOLIDAY_BIRTHDAY_COLOR_A,
+    HOLIDAY_BIRTHDAY_COLOR_B,
+    HOLIDAY_BIRTHDAY_SPARKLE,
+    HOLIDAY_CHRISTMAS_BREATH_SPEED,
+    HOLIDAY_CHRISTMAS_COLOR,
+    HOLIDAY_CONFETTI_COLORS,
+    HOLIDAY_CONFETTI_DRIFT,
+    HOLIDAY_CONFETTI_FALL_SPEED,
+    HOLIDAY_CONFETTI_LIFE_MAX,
+    HOLIDAY_CONFETTI_LIFE_MIN,
+    HOLIDAY_CONFETTI_SPAWN_CHANCE,
+    HOLIDAY_HALLOWEEN_COLOR,
+    HOLIDAY_HALLOWEEN_FLICKER,
+    HOLIDAY_HALLOWEEN_LID_SLOPE,
+    HOLIDAY_SNOW_DRIFT_AMP,
+    HOLIDAY_SNOW_FALL_SPEED,
+    HOLIDAY_SNOW_LIFE_MAX,
+    HOLIDAY_SNOW_LIFE_MIN,
+    HOLIDAY_SNOW_SPAWN_CHANCE,
     GestureId,
+    HolidayMode,
     Mood,
     SystemMode,
 )
@@ -200,6 +264,40 @@ class AnimTimers:
     headshake_timer: float = 0.0
     headshake_duration: float = 0.35
 
+    peek_a_boo: bool = False
+    peek_a_boo_timer: float = 0.0
+    peek_a_boo_duration: float = 1.50
+
+    shy: bool = False
+    shy_timer: float = 0.0
+    shy_duration: float = 2.00
+
+    eye_roll: bool = False
+    eye_roll_timer: float = 0.0
+    eye_roll_duration: float = 1.00
+
+    dizzy: bool = False
+    dizzy_timer: float = 0.0
+    dizzy_duration: float = 2.00
+
+    celebrate: bool = False
+    celebrate_timer: float = 0.0
+    celebrate_duration: float = 2.50
+
+    startle_relief: bool = False
+    startle_relief_timer: float = 0.0
+    startle_relief_duration: float = 1.50
+
+    thinking_hard: bool = False
+    thinking_hard_timer: float = 0.0
+    thinking_hard_duration: float = 3.00
+
+    # Idle micro-expressions
+    micro_expr_next: float = 0.0  # Monotonic time of next trigger
+    micro_expr_type: int = 0  # 0=none, 1=curious, 2=sigh, 3=fidget
+    micro_expr_timer: float = 0.0
+    micro_expr_active: bool = False
+
     h_flicker: bool = False
     h_flicker_alt: bool = False
     h_flicker_amp: float = FLICKER_AMP
@@ -221,6 +319,8 @@ class EffectsState:
     afterglow: bool = False  # Off by default (matches MCU)
     afterglow_buf: list | None = None
     edge_glow: bool = True
+    snow_pixels: list = field(default_factory=list)  # (x, y, life, phase)
+    confetti_pixels: list = field(default_factory=list)  # (x, y, life, color_idx)
 
 
 @dataclass
@@ -245,10 +345,19 @@ class FaceState:
     brightness: float = 1.0
     solid_eye: bool = True
     show_mouth: bool = True
+    mood_color_override: tuple[int, int, int] | None = None  # System mode color
+    holiday_mode: int = 0  # HolidayMode.NONE
+    _holiday_timer: float = 0.0  # For periodic gesture triggers
 
     talking: bool = False
     talking_energy: float = 0.0
     talking_phase: float = 0.0
+
+    # Speech rhythm sync state
+    _speech_high_frames: int = 0
+    _speech_eye_pulse: float = 0.0
+    _speech_low_frames: int = 0
+    _speech_pause_fired: bool = False
 
     mouth_curve: float = 0.1
     mouth_curve_target: float = 0.1
@@ -305,6 +414,9 @@ def face_state_update(fs: FaceState) -> None:
         if fs.active_gesture != 0xFF and now > fs.active_gesture_until:
             fs.active_gesture = 0xFF
         return
+
+    # ── 0b. HOLIDAY MODE TICK ──────────────────────────────────────
+    _update_holiday(fs, now)
 
     # ── 1. MOOD TARGETS with intensity blending ──────────────────
     targets = MOOD_TARGETS.get(fs.mood, MOOD_TARGETS[Mood.NEUTRAL])
@@ -435,6 +547,125 @@ def face_state_update(fs: FaceState) -> None:
         fs.mouth_curve_target = CONFUSED_MOUTH_CURVE
         fs.mouth_open_target = 0.0
 
+    if fs.anim.peek_a_boo:
+        elapsed_g = now - fs.anim.peek_a_boo_timer
+        dur = max(0.01, fs.anim.peek_a_boo_duration)
+        frac = elapsed_g / dur
+        if frac < PEEK_A_BOO_CLOSE_TIME:
+            # Eyes shutting — force lids closed
+            t_lid_top = 1.0
+        elif frac < PEEK_A_BOO_CLOSE_TIME + 0.2:
+            # Pop open — surprise-scale eyes
+            fs.eye_l.width_scale_target = PEEK_A_BOO_PEAK_W
+            fs.eye_l.height_scale_target = PEEK_A_BOO_PEAK_H
+            fs.eye_r.width_scale_target = PEEK_A_BOO_PEAK_W
+            fs.eye_r.height_scale_target = PEEK_A_BOO_PEAK_H
+            fs.mouth_open_target = 0.4
+            fs.mouth_curve_target = 0.0
+        # else: settling back (tweens return to 1.0)
+
+    if fs.anim.shy:
+        elapsed_g = now - fs.anim.shy_timer
+        dur = max(0.01, fs.anim.shy_duration)
+        frac = elapsed_g / dur
+        fs.eye_l.gaze_x_target = SHY_GAZE_X
+        fs.eye_l.gaze_y_target = SHY_GAZE_Y
+        fs.eye_r.gaze_x_target = SHY_GAZE_X
+        fs.eye_r.gaze_y_target = SHY_GAZE_Y
+        t_lid_bot = max(t_lid_bot, SHY_LID_BOT)
+        fs.mouth_curve_target = SHY_MOUTH_CURVE
+        # Brief peek-up glance
+        if SHY_PEEK_FRAC < frac < SHY_PEEK_FRAC + 0.15:
+            fs.eye_l.gaze_y_target = -2.0
+            fs.eye_r.gaze_y_target = -2.0
+
+    if fs.anim.eye_roll:
+        # Lid droop when looking up (gaze is post-spring)
+        elapsed_g = now - fs.anim.eye_roll_timer
+        dur = max(0.01, fs.anim.eye_roll_duration)
+        frac = elapsed_g / dur
+        if frac < 0.8:
+            angle = (frac / 0.8) * 2.0 * math.pi
+            gy = -EYE_ROLL_GAZE_R * math.cos(angle)
+            if gy < -EYE_ROLL_GAZE_R * 0.5:
+                t_lid_top = max(t_lid_top, EYE_ROLL_LID_PEAK)
+
+    if fs.anim.dizzy:
+        # Mouth wave (gaze is post-spring)
+        fs.mouth_wave_target = DIZZY_MOUTH_WAVE
+
+    if fs.anim.celebrate:
+        elapsed_g = now - fs.anim.celebrate_timer
+        dur = max(0.01, fs.anim.celebrate_duration)
+        frac = elapsed_g / dur
+        # Big eyes
+        fs.eye_l.width_scale_target = CELEBRATE_EYE_SCALE
+        fs.eye_l.height_scale_target = CELEBRATE_EYE_SCALE
+        fs.eye_r.width_scale_target = CELEBRATE_EYE_SCALE
+        fs.eye_r.height_scale_target = CELEBRATE_EYE_SCALE
+        # Big smile
+        fs.mouth_curve_target = CELEBRATE_MOUTH_CURVE
+        # Rapid alternating winks (L-R-L at 0.2, 0.4, 0.6)
+        for idx, wf in enumerate([0.2, 0.4, 0.6]):
+            if wf <= frac < wf + 0.05:
+                if idx % 2 == 0 and fs.eye_l.is_open:
+                    fs.eye_l.is_open = False
+                    fs.eye_l.openness_target = 0.0
+                elif idx % 2 == 1 and fs.eye_r.is_open:
+                    fs.eye_r.is_open = False
+                    fs.eye_r.openness_target = 0.0
+
+    if fs.anim.startle_relief:
+        elapsed_g = now - fs.anim.startle_relief_timer
+        dur = max(0.01, fs.anim.startle_relief_duration)
+        frac = elapsed_g / dur
+        startle_frac = STARTLE_PEAK_TIME / dur
+        if frac < startle_frac:
+            # Phase 1: Startle — wide eyes, O mouth
+            fs.eye_l.width_scale_target = STARTLE_PEAK_W
+            fs.eye_l.height_scale_target = STARTLE_PEAK_H
+            fs.eye_r.width_scale_target = STARTLE_PEAK_W
+            fs.eye_r.height_scale_target = STARTLE_PEAK_H
+            fs.mouth_curve_target = 0.0
+            fs.mouth_open_target = 0.6
+            fs.mouth_width_target = 0.5
+        else:
+            # Phase 2: Relief — happy squint, big smile, gaze down
+            fs.mouth_curve_target = 0.8
+            fs.eye_l.width_scale_target = 1.05
+            fs.eye_l.height_scale_target = 0.9
+            fs.eye_r.width_scale_target = 1.05
+            fs.eye_r.height_scale_target = 0.9
+            t_lid_bot = max(t_lid_bot, 0.3)
+            fs.eye_l.gaze_y_target = 2.0
+            fs.eye_r.gaze_y_target = 2.0
+
+    if fs.anim.thinking_hard:
+        elapsed_g = now - fs.anim.thinking_hard_timer
+        # Gaze oscillates between up-right and up-left
+        t_osc = (math.sin(elapsed_g * THINKING_HARD_FREQ) + 1.0) * 0.5
+        gx = (
+            THINKING_HARD_GAZE_A[0]
+            + (THINKING_HARD_GAZE_B[0] - THINKING_HARD_GAZE_A[0]) * t_osc
+        )
+        gy = (
+            THINKING_HARD_GAZE_A[1]
+            + (THINKING_HARD_GAZE_B[1] - THINKING_HARD_GAZE_A[1]) * t_osc
+        )
+        fs.eye_l.gaze_x_target = gx
+        fs.eye_r.gaze_x_target = gx
+        fs.eye_l.gaze_y_target = gy
+        fs.eye_r.gaze_y_target = gy
+        # Brow furrow
+        fs.eyelids.slope_target = THINKING_HARD_LID_SLOPE
+        # Mouth offset oscillation
+        fs.mouth_offset_x_target = 2.0 * math.sin(
+            elapsed_g * THINKING_HARD_MOUTH_OFFSET_FREQ
+        )
+        # Eyes narrow slightly
+        fs.eye_l.height_scale_target = 0.9
+        fs.eye_r.height_scale_target = 0.9
+
     if fs.anim.nod:
         # Lid droop stays pre-spring (eyelid tweens, not spring-driven)
         elapsed_g = now - fs.anim.nod_timer
@@ -489,6 +720,36 @@ def face_state_update(fs: FaceState) -> None:
             fs.anim.laugh = False
             fs.anim.v_flicker = False
             fs.anim.laugh_toggle = True
+
+    if (
+        fs.anim.peek_a_boo
+        and now > fs.anim.peek_a_boo_timer + fs.anim.peek_a_boo_duration
+    ):
+        fs.anim.peek_a_boo = False
+
+    if fs.anim.shy and now > fs.anim.shy_timer + fs.anim.shy_duration:
+        fs.anim.shy = False
+
+    if fs.anim.eye_roll and now > fs.anim.eye_roll_timer + fs.anim.eye_roll_duration:
+        fs.anim.eye_roll = False
+
+    if fs.anim.dizzy and now > fs.anim.dizzy_timer + fs.anim.dizzy_duration:
+        fs.anim.dizzy = False
+
+    if fs.anim.celebrate and now > fs.anim.celebrate_timer + fs.anim.celebrate_duration:
+        fs.anim.celebrate = False
+
+    if (
+        fs.anim.startle_relief
+        and now > fs.anim.startle_relief_timer + fs.anim.startle_relief_duration
+    ):
+        fs.anim.startle_relief = False
+
+    if (
+        fs.anim.thinking_hard
+        and now > fs.anim.thinking_hard_timer + fs.anim.thinking_hard_duration
+    ):
+        fs.anim.thinking_hard = False
 
     # ── 4. BLINK LOGIC ───────────────────────────────────────────
     if fs.anim.autoblink and now >= fs.anim.next_blink:
@@ -577,6 +838,68 @@ def face_state_update(fs: FaceState) -> None:
             SACCADE_INTERVAL_MIN, SACCADE_INTERVAL_MAX
         )
 
+    # ── 5b. IDLE MICRO-EXPRESSIONS ─────────────────────────────
+    # Only fire when idle (no gesture, no talking, no system mode)
+    if (
+        fs.anim.idle
+        and not fs.talking
+        and fs.active_gesture == 0xFF
+        and fs.system.mode == SystemMode.NONE
+    ):
+        if not fs.anim.micro_expr_active:
+            if fs.anim.micro_expr_next == 0.0:
+                fs.anim.micro_expr_next = (
+                    now + MICRO_EXPR_MIN_INTERVAL + random.random() * MICRO_EXPR_RANGE
+                )
+            elif now >= fs.anim.micro_expr_next:
+                fs.anim.micro_expr_type = random.randint(1, 3)
+                fs.anim.micro_expr_timer = now
+                fs.anim.micro_expr_active = True
+        else:
+            elapsed_m = now - fs.anim.micro_expr_timer
+            mtype = fs.anim.micro_expr_type
+            done = False
+
+            if mtype == 1:  # Curious glance
+                if elapsed_m < MICRO_EXPR_CURIOUS_DUR:
+                    # Brief asymmetric brow + quick gaze shift
+                    t_lid_top = max(t_lid_top, 0.0)
+                    # Right eye slightly hooded (curious brow)
+                    frac_m = elapsed_m / MICRO_EXPR_CURIOUS_DUR
+                    brow = CURIOUS_BROW_OFFSET * math.sin(frac_m * math.pi)
+                    fs.eyelids.top_r = max(fs.eyelids.top_r, brow)
+                    shift = 4.0 * math.sin(frac_m * math.pi)
+                    fs.eye_l.gaze_x_target += shift
+                    fs.eye_r.gaze_x_target += shift
+                else:
+                    done = True
+
+            elif mtype == 2:  # Content sigh
+                if elapsed_m < MICRO_EXPR_SIGH_DUR:
+                    frac_m = elapsed_m / MICRO_EXPR_SIGH_DUR
+                    droop = 0.3 * math.sin(frac_m * math.pi)
+                    t_lid_top = max(t_lid_top, droop)
+                    fs.mouth_curve_target = max(fs.mouth_curve_target, 0.3)
+                else:
+                    done = True
+
+            elif mtype == 3:  # Fidget (quick double-blink)
+                if elapsed_m < MICRO_EXPR_FIDGET_DUR:
+                    # Trigger blink at start and midpoint
+                    if elapsed_m < 0.05:
+                        face_blink(fs)
+                    elif 0.18 < elapsed_m < 0.22:
+                        face_blink(fs)
+                else:
+                    done = True
+
+            if done:
+                fs.anim.micro_expr_active = False
+                fs.anim.micro_expr_type = 0
+                fs.anim.micro_expr_next = (
+                    now + MICRO_EXPR_MIN_INTERVAL + random.random() * MICRO_EXPR_RANGE
+                )
+
     # ── 6. TALKING ───────────────────────────────────────────────
     if fs.talking:
         fs.talking_phase += TALKING_PHASE_SPEED * dt
@@ -595,6 +918,43 @@ def face_state_update(fs: FaceState) -> None:
         bounce = abs(math.sin(fs.talking_phase)) * TALKING_BOUNCE_MOD * e
         fs.eye_l.height_scale_target += bounce
         fs.eye_r.height_scale_target += bounce
+
+        # ── Speech rhythm: eye energy pulses ───────────────────
+        if e > SPEECH_EYE_PULSE_THRESHOLD:
+            fs._speech_high_frames += 1
+            if fs._speech_high_frames >= SPEECH_EYE_PULSE_FRAMES:
+                fs._speech_eye_pulse = SPEECH_EYE_PULSE_AMOUNT
+        else:
+            fs._speech_high_frames = 0
+
+        if fs._speech_eye_pulse > 0.001:
+            fs.eye_l.height_scale_target += fs._speech_eye_pulse
+            fs.eye_r.height_scale_target += fs._speech_eye_pulse
+            fs._speech_eye_pulse *= SPEECH_EYE_PULSE_DECAY
+
+        # ── Speech rhythm: pause gaze shift ────────────────────
+        if e < SPEECH_PAUSE_THRESHOLD:
+            fs._speech_low_frames += 1
+            if (
+                fs._speech_low_frames >= SPEECH_PAUSE_FRAMES
+                and not fs._speech_pause_fired
+            ):
+                # One-shot gaze micro-shift ("collecting a thought")
+                shift = SPEECH_PAUSE_GAZE_SHIFT * (
+                    1.0 if random.random() < 0.5 else -1.0
+                )
+                fs.eye_l.gaze_x_target += shift
+                fs.eye_r.gaze_x_target += shift
+                fs._speech_pause_fired = True
+        else:
+            fs._speech_low_frames = 0
+            fs._speech_pause_fired = False
+    else:
+        # Reset speech rhythm state when not talking
+        fs._speech_high_frames = 0
+        fs._speech_eye_pulse = 0.0
+        fs._speech_low_frames = 0
+        fs._speech_pause_fired = False
 
     # ── 7. UPDATE TWEENS + SPRING ────────────────────────────────
     for eye in (fs.eye_l, fs.eye_r):
@@ -646,9 +1006,43 @@ def face_state_update(fs: FaceState) -> None:
         fs.eye_l.gaze_x = gaze_x
         fs.eye_r.gaze_x = gaze_x
 
+    # EYE_ROLL / DIZZY post-spring gaze overrides (crisp circular/spiral motion)
+    if fs.anim.eye_roll:
+        elapsed_g = now - fs.anim.eye_roll_timer
+        dur = max(0.01, fs.anim.eye_roll_duration)
+        frac = elapsed_g / dur
+        if frac < 0.8:
+            angle = (frac / 0.8) * 2.0 * math.pi
+            gx = EYE_ROLL_GAZE_R * math.sin(angle)
+            gy = -EYE_ROLL_GAZE_R * math.cos(angle)
+            fs.eye_l.gaze_x = gx
+            fs.eye_r.gaze_x = gx
+            fs.eye_l.gaze_y = gy
+            fs.eye_r.gaze_y = gy
+
+    if fs.anim.dizzy:
+        elapsed_g = now - fs.anim.dizzy_timer
+        dur = max(0.01, fs.anim.dizzy_duration)
+        frac = elapsed_g / dur
+        # Spiral: growing then shrinking amplitude
+        if frac < 0.5:
+            amp = DIZZY_GAZE_R_MAX * (frac / 0.5)
+        else:
+            amp = DIZZY_GAZE_R_MAX * (1.0 - (frac - 0.5) / 0.5)
+        angle = elapsed_g * DIZZY_FREQ
+        gx = amp * math.sin(angle)
+        gy = amp * math.cos(angle)
+        # Slight cross-eye wobble: offset per eye
+        fs.eye_l.gaze_x = gx + 1.0
+        fs.eye_r.gaze_x = gx - 1.0
+        fs.eye_l.gaze_y = gy
+        fs.eye_r.gaze_y = gy
+
     _update_breathing(fs)
     _update_sparkle(fs)
     _update_fire(fs)
+    _update_snow(fs)
+    _update_confetti(fs)
 
     # Expire active gesture
     if fs.active_gesture != 0xFF and now > fs.active_gesture_until:
@@ -671,7 +1065,16 @@ def _update_boot(fs: FaceState) -> None:
 
 def _update_breathing(fs: FaceState) -> None:
     if fs.fx.breathing:
-        fs.fx.breath_phase += BREATH_SPEED / 30.0
+        # During talking, modulate breath speed by energy
+        if fs.talking:
+            e = max(0.0, min(1.0, fs.talking_energy))
+            speed = BREATH_SPEED + (e - 0.5) * SPEECH_BREATH_MOD
+            speed = max(SPEECH_BREATH_MIN, min(SPEECH_BREATH_MAX, speed))
+        elif fs.holiday_mode == HolidayMode.CHRISTMAS:
+            speed = HOLIDAY_CHRISTMAS_BREATH_SPEED
+        else:
+            speed = BREATH_SPEED
+        fs.fx.breath_phase += speed / 30.0
         if fs.fx.breath_phase > 6.28:
             fs.fx.breath_phase -= 6.28
 
@@ -683,7 +1086,13 @@ def _update_sparkle(fs: FaceState) -> None:
     fs.fx.sparkle_pixels = [
         (x, y, life - 1) for x, y, life in fs.fx.sparkle_pixels if life > 0
     ]
-    if random.random() < SPARKLE_CHANCE:
+    if fs.anim.celebrate:
+        chance = CELEBRATE_SPARKLE_BOOST
+    elif fs.holiday_mode == HolidayMode.BIRTHDAY:
+        chance = HOLIDAY_BIRTHDAY_SPARKLE
+    else:
+        chance = SPARKLE_CHANCE
+    if random.random() < chance:
         fs.fx.sparkle_pixels.append(
             (
                 random.randint(0, SCREEN_W),
@@ -723,6 +1132,115 @@ def _update_fire(fs: FaceState) -> None:
 
 def _update_system(fs: FaceState) -> bool:
     return fs.system.mode != SystemMode.NONE
+
+
+def _update_holiday(fs: FaceState, now: float) -> None:
+    """Apply holiday mode overrides to face state (pre-mood-targets)."""
+    mode = fs.holiday_mode
+    if mode == HolidayMode.NONE:
+        return
+
+    if mode == HolidayMode.BIRTHDAY:
+        fs.mood = Mood.HAPPY
+        fs.expression_intensity = 1.0
+        # Pink/teal color alternation
+        cycle = int(now * 1.5) % 2
+        fs.mood_color_override = (
+            HOLIDAY_BIRTHDAY_COLOR_A if cycle == 0 else HOLIDAY_BIRTHDAY_COLOR_B
+        )
+        # Periodic CELEBRATE gesture
+        if fs._holiday_timer == 0.0:
+            fs._holiday_timer = now + HOLIDAY_BIRTHDAY_CELEBRATE_INTERVAL
+        elif now >= fs._holiday_timer:
+            face_trigger_gesture(fs, GestureId.CELEBRATE)
+            fs._holiday_timer = now + HOLIDAY_BIRTHDAY_CELEBRATE_INTERVAL
+
+    elif mode == HolidayMode.HALLOWEEN:
+        # Orange with candlelight flicker
+        flicker = 1.0 + random.uniform(
+            -HOLIDAY_HALLOWEEN_FLICKER, HOLIDAY_HALLOWEEN_FLICKER
+        )
+        r = min(255, int(HOLIDAY_HALLOWEEN_COLOR[0] * flicker))
+        g = min(255, int(HOLIDAY_HALLOWEEN_COLOR[1] * flicker))
+        b = min(255, int(HOLIDAY_HALLOWEEN_COLOR[2] * flicker))
+        fs.mood_color_override = (r, g, b)
+        # Inverted-V eyes + mouth wave (jack-o-lantern)
+        fs.eyelids.slope_target = HOLIDAY_HALLOWEEN_LID_SLOPE
+        fs.mouth_wave_target = 1.0
+        fs.mouth_curve_target = -0.3
+        fs.mouth_open_target = 0.4
+
+    elif mode == HolidayMode.CHRISTMAS:
+        fs.mood = Mood.HAPPY
+        fs.expression_intensity = 0.5
+        fs.mood_color_override = HOLIDAY_CHRISTMAS_COLOR
+
+    elif mode == HolidayMode.NEW_YEAR:
+        fs.mood = Mood.EXCITED
+        fs.expression_intensity = 1.0
+        fs.fx.afterglow = True
+        # Periodic CELEBRATE gesture
+        if fs._holiday_timer == 0.0:
+            fs._holiday_timer = now + 4.0
+        elif now >= fs._holiday_timer:
+            face_trigger_gesture(fs, GestureId.CELEBRATE)
+            fs._holiday_timer = now + 4.0 + random.random() * 3.0
+
+
+def _update_snow(fs: FaceState) -> None:
+    """Update snowfall particles (Christmas mode)."""
+    if fs.holiday_mode != HolidayMode.CHRISTMAS:
+        fs.fx.snow_pixels.clear()
+        return
+    # Update existing snow
+    fs.fx.snow_pixels = [
+        (
+            x + math.sin(phase + y * 0.05) * HOLIDAY_SNOW_DRIFT_AMP,
+            y + HOLIDAY_SNOW_FALL_SPEED,
+            life - 1,
+            phase,
+        )
+        for x, y, life, phase in fs.fx.snow_pixels
+        if life > 0 and y < SCREEN_H
+    ]
+    # Spawn new snow at top
+    if random.random() < HOLIDAY_SNOW_SPAWN_CHANCE:
+        fs.fx.snow_pixels.append(
+            (
+                random.randint(0, SCREEN_W),
+                0.0,
+                random.randint(HOLIDAY_SNOW_LIFE_MIN, HOLIDAY_SNOW_LIFE_MAX),
+                random.uniform(0, 6.28),
+            )
+        )
+
+
+def _update_confetti(fs: FaceState) -> None:
+    """Update confetti particles (New Year's mode)."""
+    if fs.holiday_mode != HolidayMode.NEW_YEAR:
+        fs.fx.confetti_pixels.clear()
+        return
+    # Update existing confetti
+    fs.fx.confetti_pixels = [
+        (
+            x + random.uniform(-HOLIDAY_CONFETTI_DRIFT, HOLIDAY_CONFETTI_DRIFT),
+            y + HOLIDAY_CONFETTI_FALL_SPEED,
+            life - 1,
+            ci,
+        )
+        for x, y, life, ci in fs.fx.confetti_pixels
+        if life > 0 and y < SCREEN_H
+    ]
+    # Spawn new confetti at top
+    if random.random() < HOLIDAY_CONFETTI_SPAWN_CHANCE:
+        fs.fx.confetti_pixels.append(
+            (
+                random.randint(0, SCREEN_W),
+                0.0,
+                random.randint(HOLIDAY_CONFETTI_LIFE_MIN, HOLIDAY_CONFETTI_LIFE_MAX),
+                random.randint(0, len(HOLIDAY_CONFETTI_COLORS) - 1),
+            )
+        )
 
 
 def _set_active_gesture(fs: FaceState, gesture: GestureId, duration: float) -> None:
@@ -846,6 +1364,41 @@ def face_trigger_gesture(
         fs.anim.surprise_timer = now
         fs.anim.surprise_duration = dur
         _set_active_gesture(fs, gesture, dur)
+    elif gesture == GestureId.PEEK_A_BOO:
+        fs.anim.peek_a_boo = True
+        fs.anim.peek_a_boo_timer = now
+        fs.anim.peek_a_boo_duration = dur
+        _set_active_gesture(fs, gesture, dur)
+    elif gesture == GestureId.SHY:
+        fs.anim.shy = True
+        fs.anim.shy_timer = now
+        fs.anim.shy_duration = dur
+        _set_active_gesture(fs, gesture, dur)
+    elif gesture == GestureId.EYE_ROLL:
+        fs.anim.eye_roll = True
+        fs.anim.eye_roll_timer = now
+        fs.anim.eye_roll_duration = dur
+        _set_active_gesture(fs, gesture, dur)
+    elif gesture == GestureId.DIZZY:
+        fs.anim.dizzy = True
+        fs.anim.dizzy_timer = now
+        fs.anim.dizzy_duration = dur
+        _set_active_gesture(fs, gesture, dur)
+    elif gesture == GestureId.CELEBRATE:
+        fs.anim.celebrate = True
+        fs.anim.celebrate_timer = now
+        fs.anim.celebrate_duration = dur
+        _set_active_gesture(fs, gesture, dur)
+    elif gesture == GestureId.STARTLE_RELIEF:
+        fs.anim.startle_relief = True
+        fs.anim.startle_relief_timer = now
+        fs.anim.startle_relief_duration = dur
+        _set_active_gesture(fs, gesture, dur)
+    elif gesture == GestureId.THINKING_HARD:
+        fs.anim.thinking_hard = True
+        fs.anim.thinking_hard_timer = now
+        fs.anim.thinking_hard_duration = dur
+        _set_active_gesture(fs, gesture, dur)
 
 
 def face_set_system_mode(fs: FaceState, mode: SystemMode, param: float = 0.0) -> None:
@@ -897,6 +1450,10 @@ def face_get_breath_scale(fs: FaceState) -> float:
 
 def face_get_emotion_color(fs: FaceState) -> tuple[int, int, int]:
     """Get current face color with intensity blending (MCU-accurate)."""
+    # System mode color override (bypasses mood entirely)
+    if fs.mood_color_override is not None:
+        return fs.mood_color_override
+
     # Gesture overrides take priority
     if fs.anim.rage:
         mood_color = GESTURE_COLOR_RAGE
@@ -904,6 +1461,17 @@ def face_get_emotion_color(fs: FaceState) -> tuple[int, int, int]:
         mood_color = GESTURE_COLOR_HEART
     elif fs.anim.x_eyes:
         mood_color = GESTURE_COLOR_X_EYES
+    elif fs.anim.shy:
+        mood_color = GESTURE_COLOR_SHY
+    elif fs.anim.celebrate:
+        # Color cycling through teal → green → warm white
+        elapsed_g = time.monotonic() - fs.anim.celebrate_timer
+        cycle = int(elapsed_g * 3.0) % 3
+        mood_color = (
+            GESTURE_COLOR_CELEBRATE_A,
+            GESTURE_COLOR_CELEBRATE_B,
+            GESTURE_COLOR_CELEBRATE_C,
+        )[cycle]
     else:
         mood_color = MOOD_COLORS.get(fs.mood, NEUTRAL_COLOR)
 

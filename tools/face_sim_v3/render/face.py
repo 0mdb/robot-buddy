@@ -7,12 +7,10 @@ Port from face_render_v2.py with all constants from constants.py.
 from __future__ import annotations
 
 import math
-import random
 import time
 
 from tools.face_sim_v3.render.effects import (
     apply_afterglow,
-    clamp_color,
     render_fire,
     render_sparkles,
     set_px_blend,
@@ -33,6 +31,8 @@ from tools.face_sim_v3.state.constants import (
     EYE_WIDTH,
     GAZE_EYE_SHIFT,
     GAZE_PUPIL_SHIFT,
+    HEART_PUPIL_SCALE,
+    HEART_SOLID_SCALE,
     LEFT_EYE_CX,
     LEFT_EYE_CY,
     MOUTH_CX,
@@ -61,223 +61,299 @@ def _clamp(x: float, a: float, b: float) -> float:
     return max(a, min(b, x))
 
 
-# ── System overlay screens ───────────────────────────────────────────
+# ── System animation face drivers ────────────────────────────────────
+# These modify FaceState so the normal renderer draws Buddy's face in
+# system-appropriate poses.  Small SDF icons overlay afterward.
 
 
-def _apply_scanlines(buf: list) -> None:
-    for y in range(0, SCREEN_H, 2):
-        row = y * SCREEN_W
-        for x in range(SCREEN_W):
-            c = buf[row + x]
-            buf[row + x] = (int(c[0] * 0.8), int(c[1] * 0.8), int(c[2] * 0.8))
-
-
-def _draw_vignette(buf: list) -> None:
-    cx, cy = SCREEN_W / 2, SCREEN_H / 2
-    max_dist = math.sqrt(cx * cx + cy * cy)
-    for y in range(SCREEN_H):
-        row = y * SCREEN_W
-        for x in range(SCREEN_W):
-            dx, dy = x - cx, y - cy
-            dist = math.sqrt(dx * dx + dy * dy)
-            vignette = 1.0 - smoothstep(max_dist * 0.5, max_dist, dist)
-            old = buf[row + x]
-            buf[row + x] = (
-                int(old[0] * vignette),
-                int(old[1] * vignette),
-                int(old[2] * vignette),
-            )
-
-
-def _render_booting(buf: list, fs: FaceState) -> None:
+def _sys_booting(fs: FaceState) -> None:
+    """'Waking up' — eyes open from sleepy slits, yawn, settle to neutral."""
     elapsed = time.monotonic() - fs.system.timer
-    cx, cy = SCREEN_W / 2, SCREEN_H / 2
-    grid_col = (0, 50, 100)
-    for y in range(SCREEN_H):
-        row = y * SCREEN_W
-        for x in range(SCREEN_W):
-            if x % 40 == 0 or y % 40 == 0:
-                set_px_blend(buf, row + x, grid_col, 0.2)
-    angle = (elapsed * 3.0) % 6.28
-    radar_r = 90.0
-    for y in range(int(cy - radar_r), int(cy + radar_r)):
-        row = y * SCREEN_W
-        for x in range(int(cx - radar_r), int(cx + radar_r)):
-            dx, dy = x - cx, y - cy
-            dist = math.sqrt(dx * dx + dy * dy)
-            ring_sdf = abs(dist - radar_r)
-            alpha_ring = 1.0 - smoothstep(1.0, 3.0, ring_sdf)
-            if alpha_ring > 0:
-                set_px_blend(buf, row + x, (0, 200, 255), alpha_ring)
-            if dist < radar_r:
-                pixel_angle = math.atan2(dy, dx)
-                diff = (pixel_angle - angle + 3.14159) % 6.28 - 3.14159
-                if diff < 0:
-                    diff += 6.28
-                if 0 < diff < 1.0:
-                    intensity = (1.0 - diff) * 0.6
-                    if (x * y) % 43 == 0 and random.random() < 0.1:
-                        intensity = 1.0
-                    set_px_blend(
-                        buf,
-                        row + x,
-                        (0, int(255 * intensity), int(200 * intensity)),
-                        intensity,
-                    )
-    bar_w, bar_h, bar_y = 200, 10, cy + 60
-    prog = min(1.0, elapsed / 3.0)
-    for y in range(int(bar_y), int(bar_y + bar_h)):
-        row = y * SCREEN_W
-        for x in range(int(cx - bar_w / 2), int(cx + bar_w / 2)):
-            if (
-                x == int(cx - bar_w / 2)
-                or x == int(cx + bar_w / 2 - 1)
-                or y == int(bar_y)
-                or y == int(bar_y + bar_h - 1)
-            ):
-                buf[row + x] = (0, 150, 255)
-            elif x < (cx - bar_w / 2) + (bar_w * prog):
-                buf[row + x] = (0, 200, 255)
+    BOOT_DUR = 3.0  # total duration
+    t = _clamp(elapsed / BOOT_DUR, 0.0, 1.0)
 
+    # Phase 1 (0-40%): sleepy slits slowly opening
+    # Phase 2 (40-65%): yawn (mouth opens wide, slight eye squeeze)
+    # Phase 3 (65-85%): eyes open fully, blink
+    # Phase 4 (85-100%): settle to neutral with happy bounce
 
-def _render_error(buf: list, fs: FaceState) -> None:
-    elapsed = time.monotonic() - fs.system.timer
-    cx, cy = SCREEN_W / 2, SCREEN_H / 2
-    pulse = (math.sin(elapsed * 8.0) + 1.0) * 0.5
-    bg_c = (int(40 * pulse), 0, 0)
-    tri_r = 70.0
-    for y in range(SCREEN_H):
-        row = y * SCREEN_W
-        off_x = random.randint(-10, 10) if random.random() < 0.05 else 0
-        for x in range(SCREEN_W):
-            buf[row + x] = bg_c
-            sx = x + off_x
-            d_tri = sd_equilateral_triangle(sx, y, cx, cy, tri_r)
-            d_in = sd_equilateral_triangle(sx, y, cx, cy + 5, tri_r - 15)
-            d_mark = min(
-                sd_rounded_box(sx, y, cx, cy - 10, 6, 20, 2),
-                sd_circle(sx, y, cx, cy + 25, 6),
-            )
-            a_tri = 1.0 - smoothstep(0.0, 2.0, min(d_tri, -d_in))
-            a_mark = 1.0 - smoothstep(0.0, 2.0, d_mark)
-
-            # Chromatic aberration (split R/G/B channels)
-            sx_r = x + off_x - 4
-            d_tri_r = sd_equilateral_triangle(sx_r, y, cx, cy, tri_r)
-            d_in_r = sd_equilateral_triangle(sx_r, y, cx, cy + 5, tri_r - 15)
-            d_mark_r = min(
-                sd_rounded_box(sx_r, y, cx, cy - 10, 6, 20, 2),
-                sd_circle(sx_r, y, cx, cy + 25, 6),
-            )
-            ay_r = 1.0 - smoothstep(0.0, 2.0, min(d_tri_r, -d_in_r))
-            am_r = 1.0 - smoothstep(0.0, 2.0, d_mark_r)
-
-            sx_b = x + off_x + 4
-            d_tri_b = sd_equilateral_triangle(sx_b, y, cx, cy, tri_r)
-            d_in_b = sd_equilateral_triangle(sx_b, y, cx, cy + 5, tri_r - 15)
-            d_mark_b = min(
-                sd_rounded_box(sx_b, y, cx, cy - 10, 6, 20, 2),
-                sd_circle(sx_b, y, cx, cy + 25, 6),
-            )
-            ay_b = 1.0 - smoothstep(0.0, 2.0, min(d_tri_b, -d_in_b))
-            am_b = 1.0 - smoothstep(0.0, 2.0, d_mark_b)
-
-            r = 255 if ay_r > 0 else bg_c[0]
-            if am_r > 0:
-                r = 10
-            g = 200 if a_tri > 0 else bg_c[1]
-            if a_mark > 0:
-                g = 0
-            b = 0 if ay_b > 0 else bg_c[2]
-            if am_b > 0:
-                b = 0
-            buf[row + x] = clamp_color((r, g, b))
-
-
-def _render_battery(buf: list, fs: FaceState) -> None:
-    lvl = fs.system.param
-    el = time.monotonic() - fs.system.timer
-    cx, cy = SCREEN_W / 2, SCREEN_H / 2
-    col = (0, 220, 100) if lvl > 0.5 else (220, 180, 0) if lvl > 0.2 else (220, 40, 40)
-    bw, bh = 80, 40
-    for y in range(int(cy - 60), int(cy + 60)):
-        row = y * SCREEN_W
-        for x in range(int(cx - 100), int(cx + 100)):
-            px, py = x + 0.5, y + 0.5
-            d_out = sd_rounded_box(px, py, cx, cy, bw, bh, 6)
-            d_in = sd_rounded_box(px, py, cx, cy, bw - 4, bh - 4, 4)
-            d_tip = sd_rounded_box(px, py, cx + bw + 8, cy, 6, 15, 2)
-            d_shell = min(max(d_out, -d_in), d_tip)
-            alpha_shell = 1.0 - smoothstep(-1.0, 1.0, d_shell)
-            if alpha_shell > 0:
-                set_px_blend(buf, row + x, (200, 200, 210), alpha_shell)
-            fill_max = (cx - bw + 4) + (2 * (bw - 4) * lvl)
-            if d_in < 0:
-                wave = math.sin(x * 0.1 + el * 5.0) * 3.0
-                if px < fill_max + wave:
-                    gloss = (py - (cy - bh)) / (2 * bh)
-                    r, g, b = (
-                        int(col[0] * (0.8 + 0.4 * gloss)),
-                        int(col[1] * (0.8 + 0.4 * gloss)),
-                        int(col[2] * (0.8 + 0.4 * gloss)),
-                    )
-                    if (
-                        int(x / 20) * int(y / 20) + int(el * 2)
-                    ) % 13 == 0 and random.random() < 0.2:
-                        r, g, b = 255, 255, 255
-                    set_px_blend(buf, row + x, (r, g, b), 1.0)
-            if lvl < 0.2 and (int(el * 4) % 2 == 0):
-                if (
-                    abs(px - cx) < 10
-                    and abs(py - cy) < 20
-                    and abs((px - cx) + (py - cy) * 0.4) < 4
-                ):
-                    set_px_blend(buf, row + x, (255, 255, 255), 1.0)
-
-
-def _render_updating(buf: list, fs: FaceState) -> None:
-    el = time.monotonic() - fs.system.timer
-    cx, cy = SCREEN_W / 2, SCREEN_H / 2
-    for y in range(int(cy - 60), int(cy + 60)):
-        row = y * SCREEN_W
-        for x in range(int(cx - 60), int(cx + 60)):
-            dx, dy = x - cx, y - cy
-            dist = math.sqrt(dx * dx + dy * dy)
-            angle = math.atan2(dy, dx)
-            a1 = (angle + el * 2.0) % 6.28
-            if abs(dist - 50.0) < 3.0 and 0 < a1 < 4.0:
-                set_px_blend(buf, row + x, (0, 255, 100), 1.0)
-            a2 = (angle - el * 5.0) % 1.5
-            if abs(dist - 35.0) < 4.0 and a2 < 1.0:
-                set_px_blend(buf, row + x, (0, 200, 255), 1.0)
-            alpha_dot = 1.0 - smoothstep(
-                -1.0,
-                1.0,
-                sd_circle(x + 0.5, y + 0.5, cx, cy, 8.0 + math.sin(el * 10) * 2),
-            )
-            if alpha_dot > 0:
-                set_px_blend(buf, row + x, (255, 255, 255), alpha_dot)
-
-
-def _render_shutdown(buf: list, fs: FaceState) -> None:
-    el = time.monotonic() - fs.system.timer
-    cx, cy = SCREEN_W / 2, SCREEN_H / 2
-    if el < 0.4:
-        vs, hs, br = 1.0 - (el / 0.4), 1.0, 1.0 + el
-    elif el < 0.6:
-        vs, hs, br = 0.005, 1.0 - ((el - 0.4) / 0.2), 2.0
-    elif el < 0.8:
-        vs, hs, br = 0.002, 0.002, 1.0 - ((el - 0.6) / 0.2)
+    if t < 0.4:
+        # Sleepy slits opening
+        p = t / 0.4  # 0→1
+        droop = 0.6 * (1.0 - p)
+        fs.eyelids.top_l = droop
+        fs.eyelids.top_r = droop
+        fs.eye_l.height_scale = 0.7 + 0.15 * p
+        fs.eye_r.height_scale = 0.7 + 0.15 * p
+        fs.eyelids.slope = -0.2 * (1.0 - p)
+        # Color: navy → transitioning
+        frac = p
+        fs.mood_color_override = (
+            int(70 + (50 - 70) * frac),
+            int(90 + (150 - 90) * frac),
+            int(140 + (255 - 140) * frac),
+        )
+    elif t < 0.65:
+        # Yawn: mouth opens wide, eyes squeeze slightly
+        p = (t - 0.4) / 0.25
+        yawn = math.sin(p * 3.14159)  # peaks at p=0.5
+        fs.mouth_open = 0.6 * yawn
+        fs.mouth_width = 1.0 + 0.2 * yawn
+        fs.mouth_curve = -0.1 * yawn
+        fs.eyelids.top_l = 0.15 * yawn
+        fs.eyelids.top_r = 0.15 * yawn
+        fs.eye_l.height_scale = 0.85 - 0.1 * yawn
+        fs.eye_r.height_scale = 0.85 - 0.1 * yawn
+        fs.mood_color_override = (50, 150, 255)
+    elif t < 0.85:
+        # Eyes open fully, quick blink at 75%
+        p = (t - 0.65) / 0.2
+        blink_p = abs(p - 0.5) * 2.0  # V-shape: 1→0→1
+        fs.eyelids.top_l = 0.7 * (1.0 - blink_p) if p > 0.4 and p < 0.6 else 0.0
+        fs.eyelids.top_r = fs.eyelids.top_l
+        fs.eye_l.height_scale = 1.0
+        fs.eye_r.height_scale = 1.0
+        fs.mood_color_override = (50, 150, 255)
     else:
-        return
-    bw, bh = int(SCREEN_W * hs), int(SCREEN_H * vs)
-    bw = max(1, bw)
-    bh = max(1, bh)
-    col = (int(255 * min(1.0, br)), int(255 * min(1.0, br)), 255)
-    for y in range(max(0, int(cy - bh / 2)), min(SCREEN_H, int(cy + bh / 2))):
+        # Happy bounce settle
+        p = (t - 0.85) / 0.15
+        bounce = math.sin(p * 3.14159) * 0.05
+        fs.eye_l.height_scale = 1.0 + bounce
+        fs.eye_r.height_scale = 1.0 + bounce
+        fs.mouth_curve = 0.3 * math.sin(p * 3.14159)
+        fs.mood_color_override = (
+            int(50 + (0 - 50) * p),
+            int(150 + (255 - 150) * p),
+            int(255 + (200 - 255) * p),
+        )
+    # Breathing ramps in over last 30%
+    fs.fx.breathing = t > 0.7
+
+
+def _sys_shutdown(fs: FaceState) -> None:
+    """'Going to sleep' — yawn, droop, close eyes, fade to black."""
+    elapsed = time.monotonic() - fs.system.timer
+    SHUT_DUR = 2.5
+    t = _clamp(elapsed / SHUT_DUR, 0.0, 1.0)
+
+    # Phase 1 (0-30%): yawn
+    # Phase 2 (30-60%): eyes droop, gaze sways
+    # Phase 3 (60-85%): eyes close with small smile
+    # Phase 4 (85-100%): fade to black
+
+    if t < 0.3:
+        p = t / 0.3
+        yawn = math.sin(p * 3.14159)
+        fs.mouth_open = 0.5 * yawn
+        fs.mouth_width = 1.0 + 0.15 * yawn
+        fs.eyelids.top_l = 0.1 * yawn
+        fs.eyelids.top_r = 0.1 * yawn
+        fs.eye_l.height_scale = 1.0 - 0.1 * yawn
+        fs.eye_r.height_scale = 1.0 - 0.1 * yawn
+    elif t < 0.6:
+        p = (t - 0.3) / 0.3
+        droop = 0.15 + 0.35 * p
+        fs.eyelids.top_l = droop
+        fs.eyelids.top_r = droop
+        fs.eye_l.height_scale = 0.9 - 0.15 * p
+        fs.eye_r.height_scale = 0.9 - 0.15 * p
+        fs.eyelids.slope = -0.2 * p
+        # Gentle side-to-side sway, slowing down
+        sway_amp = 3.0 * (1.0 - p)
+        sway = math.sin(elapsed * 2.0) * sway_amp
+        fs.eye_l.gaze_x = sway
+        fs.eye_r.gaze_x = sway
+    elif t < 0.85:
+        p = (t - 0.6) / 0.25
+        fs.eyelids.top_l = 0.5 + 0.5 * p
+        fs.eyelids.top_r = 0.5 + 0.5 * p
+        fs.eye_l.height_scale = 0.75 - 0.35 * p
+        fs.eye_r.height_scale = 0.75 - 0.35 * p
+        fs.eyelids.slope = -0.2
+        # Small content smile as eyes close
+        fs.mouth_curve = 0.3 * p
+    else:
+        # Fully closed, fade brightness
+        p = (t - 0.85) / 0.15
+        fs.eyelids.top_l = 1.0
+        fs.eyelids.top_r = 1.0
+        fs.eye_l.height_scale = 0.4
+        fs.eye_r.height_scale = 0.4
+        fs.mouth_curve = 0.3
+        fs.brightness = 1.0 - p
+
+    # Color fades from cyan to navy to black
+    if t < 0.6:
+        frac = t / 0.6
+        fs.mood_color_override = (
+            int(50 * (1.0 - frac) + 70 * frac),
+            int(150 * (1.0 - frac) + 90 * frac),
+            int(255 * (1.0 - frac) + 140 * frac),
+        )
+    else:
+        frac = (t - 0.6) / 0.4
+        fs.mood_color_override = (
+            int(70 * (1.0 - frac)),
+            int(90 * (1.0 - frac)),
+            int(140 * (1.0 - frac)),
+        )
+    fs.fx.breathing = t < 0.5
+
+
+def _sys_error(fs: FaceState) -> None:
+    """'Confused Buddy' — worried expression + slow headshake."""
+    elapsed = time.monotonic() - fs.system.timer
+
+    # CONFUSED expression: asymmetric mouth, inner brow furrow
+    fs.eyelids.slope = 0.2  # inner furrow
+    fs.eyelids.top_l = 0.1
+    fs.eyelids.top_r = 0.1
+    fs.mouth_curve = -0.2
+    fs.mouth_offset_x = 2.0 * math.sin(elapsed * 3.0)  # slight wobble
+
+    # Slow headshake
+    shake = math.sin(elapsed * 4.0) * 3.0
+    fs.eye_l.gaze_x = shake
+    fs.eye_r.gaze_x = shake
+
+    # Warm orange/amber color
+    fs.mood_color_override = (220, 160, 60)
+    fs.expression_intensity = 0.7
+
+
+def _sys_error_icon(buf: list) -> None:
+    """Draw tiny warning icon in lower-right corner (20px triangle + !)."""
+    # Icon position: lower-right corner with margin
+    icon_cx = SCREEN_W - 22
+    icon_cy = SCREEN_H - 22
+    icon_r = 10.0
+    icon_col = (255, 180, 50)
+
+    x0 = max(0, icon_cx - 14)
+    x1 = min(SCREEN_W, icon_cx + 14)
+    y0 = max(0, icon_cy - 14)
+    y1 = min(SCREEN_H, icon_cy + 14)
+
+    for y in range(y0, y1):
         row = y * SCREEN_W
-        for x in range(max(0, int(cx - bw / 2)), min(SCREEN_W, int(cx + bw / 2))):
-            buf[row + x] = col
+        for x in range(x0, x1):
+            px, py = x + 0.5, y + 0.5
+            d_tri = sd_equilateral_triangle(px, py, icon_cx, icon_cy, icon_r)
+            alpha = 1.0 - smoothstep(0.0, 1.5, d_tri)
+            if alpha > 0.01:
+                set_px_blend(buf, row + x, icon_col, alpha)
+            # Exclamation mark: small bar + dot
+            d_bar = sd_rounded_box(px, py, icon_cx, icon_cy - 2, 1.5, 4.0, 0.5)
+            d_dot = sd_circle(px, py, icon_cx, icon_cy + 4.5, 1.5)
+            d_mark = min(d_bar, d_dot)
+            alpha_m = 1.0 - smoothstep(0.0, 1.0, d_mark)
+            if alpha_m > 0.01:
+                set_px_blend(buf, row + x, (0, 0, 0), alpha_m)
+
+
+def _sys_battery(fs: FaceState) -> None:
+    """'Sleepy Buddy' — heavy eyelids, slow blinks, drowsy."""
+    elapsed = time.monotonic() - fs.system.timer
+    lvl = _clamp(fs.system.param, 0.0, 1.0)
+
+    # Sleepy expression
+    droop = 0.4 + 0.2 * (1.0 - lvl)  # more droop at lower battery
+    fs.eyelids.top_l = droop
+    fs.eyelids.top_r = droop
+    fs.eyelids.slope = -0.2
+    fs.eye_l.height_scale = 0.75
+    fs.eye_r.height_scale = 0.75
+
+    # Periodic yawns at low battery
+    if lvl < 0.2:
+        yawn_cycle = elapsed % 6.0  # yawn every 6 seconds
+        if yawn_cycle < 1.5:
+            yawn = math.sin(yawn_cycle / 1.5 * 3.14159)
+            fs.mouth_open = 0.5 * yawn
+            fs.mouth_width = 1.0 + 0.1 * yawn
+            fs.eyelids.top_l = min(0.8, droop + 0.2 * yawn)
+            fs.eyelids.top_r = min(0.8, droop + 0.2 * yawn)
+
+    # Slow breathing
+    fs.fx.breathing = True
+
+    # Navy/deep blue color, dimmer at lower battery
+    dim = 0.6 + 0.4 * lvl
+    fs.mood_color_override = (int(70 * dim), int(90 * dim), int(140 * dim))
+    fs.brightness = 0.7 + 0.3 * lvl
+
+
+def _sys_battery_icon(buf: list, lvl: float) -> None:
+    """Draw tiny battery icon in lower-right corner."""
+    bx = SCREEN_W - 24
+    by = SCREEN_H - 18
+    bw, bh = 16, 10  # half-dims for SDF
+    col = (0, 220, 100) if lvl > 0.5 else (220, 180, 0) if lvl > 0.2 else (220, 40, 40)
+
+    x0 = max(0, bx - 12)
+    x1 = min(SCREEN_W, bx + 18)
+    y0 = max(0, by - 8)
+    y1 = min(SCREEN_H, by + 8)
+
+    for y in range(y0, y1):
+        row = y * SCREEN_W
+        for x in range(x0, x1):
+            px, py = x + 0.5, y + 0.5
+            # Battery shell (outline)
+            d_out = sd_rounded_box(px, py, bx, by, bw / 2, bh / 2, 1.5)
+            d_in = sd_rounded_box(px, py, bx, by, bw / 2 - 1.5, bh / 2 - 1.5, 0.5)
+            d_tip = sd_rounded_box(px, py, bx + bw / 2 + 2, by, 1.5, 3.0, 0.5)
+            d_shell = min(max(d_out, -d_in), d_tip)
+            alpha_s = 1.0 - smoothstep(0.0, 1.0, d_shell)
+            if alpha_s > 0.01:
+                set_px_blend(buf, row + x, (180, 180, 190), alpha_s)
+            # Fill level
+            fill_right = (bx - bw / 2 + 1.5) + (bw - 3) * lvl
+            if d_in < 0 and px < fill_right:
+                set_px_blend(buf, row + x, col, 0.9)
+
+
+def _sys_updating(fs: FaceState) -> None:
+    """'Thinking hard' — gaze drifts up-right, brow furrow, sparkle boost."""
+    elapsed = time.monotonic() - fs.system.timer
+
+    # THINKING expression
+    fs.eyelids.slope = 0.4
+    fs.eyelids.top_l = 0.2
+    fs.eyelids.top_r = 0.2
+    fs.mouth_curve = -0.1
+    fs.mouth_offset_x = 1.5
+
+    # Gaze drifts up-right with slow wander
+    base_gx = 6.0
+    base_gy = -4.0
+    drift_x = math.sin(elapsed * 0.8) * 2.0
+    drift_y = math.cos(elapsed * 0.6) * 1.5
+    fs.eye_l.gaze_x = base_gx + drift_x
+    fs.eye_r.gaze_x = base_gx + drift_x
+    fs.eye_l.gaze_y = base_gy + drift_y
+    fs.eye_r.gaze_y = base_gy + drift_y
+
+    # Blue-violet color
+    fs.mood_color_override = (80, 135, 220)
+    fs.expression_intensity = 0.6
+
+
+def _sys_updating_bar(buf: list, progress: float) -> None:
+    """Thin progress bar at bottom of screen."""
+    bar_y = SCREEN_H - 4
+    bar_h = 2
+    bar_x0 = 20
+    bar_x1 = SCREEN_W - 20
+    fill_x = bar_x0 + int((bar_x1 - bar_x0) * _clamp(progress, 0.0, 1.0))
+    col_fill = (80, 135, 220)
+    col_bg = (30, 40, 60)
+
+    for y in range(bar_y, min(SCREEN_H, bar_y + bar_h)):
+        row = y * SCREEN_W
+        for x in range(bar_x0, bar_x1):
+            c = col_fill if x < fill_x else col_bg
+            set_px_blend(buf, row + x, c, 0.8)
 
 
 # ── Eye rendering ────────────────────────────────────────────────────
@@ -315,7 +391,13 @@ def _render_eye(buf: list, fs: FaceState, is_left: bool) -> None:
 
     # Solid-mode heart override
     if fs.solid_eye and fs.anim.heart:
-        heart_size = min(w, h) * 0.7
+        heart_size = min(w, h) * HEART_SOLID_SCALE
+        br = fs.brightness
+        br_color = (
+            int(base_color[0] * br),
+            int(base_color[1] * br),
+            int(base_color[2] * br),
+        )
         for y in range(y0, y1):
             row_idx = y * SCREEN_W
             for x in range(x0, x1):
@@ -323,17 +405,7 @@ def _render_eye(buf: list, fs: FaceState, is_left: bool) -> None:
                 val = sd_heart(px, py, cx_base, cy_base, heart_size)
                 alpha = 1.0 - smoothstep(-0.5, 0.5, val)
                 if alpha > 0.01:
-                    br = fs.brightness
-                    set_px_blend(
-                        buf,
-                        row_idx + x,
-                        (
-                            int(base_color[0] * br),
-                            int(base_color[1] * br),
-                            int(base_color[2] * br),
-                        ),
-                        alpha,
-                    )
+                    set_px_blend(buf, row_idx + x, br_color, alpha)
         return
 
     # Solid-mode X-eyes override
@@ -406,7 +478,9 @@ def _render_eye(buf: list, fs: FaceState, is_left: bool) -> None:
 
             if not fs.solid_eye and lid_vis > 0.01:
                 if fs.anim.heart:
-                    val = sd_heart(px, py, pupil_cx, pupil_cy, PUPIL_R * 1.5)
+                    val = sd_heart(
+                        px, py, pupil_cx, pupil_cy, PUPIL_R * HEART_PUPIL_SCALE
+                    )
                     alpha_pupil = 1.0 - smoothstep(-0.5, 0.5, val)
                 elif fs.anim.x_eyes:
                     dist_x = sd_cross(px, py, pupil_cx, pupil_cy, PUPIL_R, 6.0)
@@ -480,22 +554,21 @@ def render_face(
     """
     buf: list[tuple[int, int, int]] = [BG_COLOR] * (SCREEN_W * SCREEN_H)
 
-    # System overlay check
+    # System mode: drive face state (system animations use Buddy's face,
+    # not custom full-screen SDF scenes)
     mode = fs.system.mode
+    fs.mood_color_override = None  # reset each frame
     if mode != SystemMode.NONE:
         if mode == SystemMode.BOOTING:
-            _render_booting(buf, fs)
+            _sys_booting(fs)
         elif mode == SystemMode.ERROR_DISPLAY:
-            _render_error(buf, fs)
+            _sys_error(fs)
         elif mode == SystemMode.LOW_BATTERY:
-            _render_battery(buf, fs)
+            _sys_battery(fs)
         elif mode == SystemMode.UPDATING:
-            _render_updating(buf, fs)
+            _sys_updating(fs)
         elif mode == SystemMode.SHUTTING_DOWN:
-            _render_shutdown(buf, fs)
-        _apply_scanlines(buf)
-        _draw_vignette(buf)
-        return buf
+            _sys_shutdown(fs)
 
     # Border background layer (behind eyes)
     if border_renderer is not None and hasattr(border_renderer, "render"):
@@ -513,9 +586,34 @@ def render_face(
         render_fire(buf, fs)
     render_sparkles(buf, fs)
 
-    # Buttons foreground layer (on top of everything)
+    # Holiday rendering overlays
+    from tools.face_sim_v3.state.constants import HolidayMode
+
+    if fs.holiday_mode == HolidayMode.CHRISTMAS:
+        from tools.face_sim_v3.render.effects import render_rosy_cheeks, render_snow
+
+        render_snow(buf, fs)
+        render_rosy_cheeks(buf)
+    elif fs.holiday_mode == HolidayMode.NEW_YEAR:
+        from tools.face_sim_v3.render.effects import render_confetti
+
+        render_confetti(buf, fs)
+
+    # System mode icon overlays (drawn on top of face)
+    if mode == SystemMode.ERROR_DISPLAY:
+        _sys_error_icon(buf)
+    elif mode == SystemMode.LOW_BATTERY:
+        _sys_battery_icon(buf, _clamp(fs.system.param, 0.0, 1.0))
+    elif mode == SystemMode.UPDATING:
+        _sys_updating_bar(buf, _clamp(fs.system.param, 0.0, 1.0))
+
+    # Corner buttons (rendered before border so the ring overlaps them)
     if border_renderer is not None and hasattr(border_renderer, "render_buttons"):
         border_renderer.render_buttons(buf)  # type: ignore[attr-defined]
+
+    # Border ring re-pass over corner buttons for clean overlap
+    if border_renderer is not None and hasattr(border_renderer, "render"):
+        border_renderer.render(buf)  # type: ignore[attr-defined]
 
     # Store frame for afterglow
     if fs.fx.afterglow:
