@@ -18,8 +18,8 @@ Living section — reorder as priorities shift. Current recommended sequence:
 ### Track A: Face Communication (firmware + supervisor)
 1. Phase 5 polish (talking sync, protocol docs, dashboard viz)
 2. Phase 0 remaining gaps (system logos, thinking face)
-3. Sim↔MCU divergence fixes
-4. Stage 4 firmware optimization
+3. Stage 4.0 parity work (system overlays, corner buttons, semantic gaps, gesture gap analysis)
+4. Stage 4.1–4.2 firmware optimization (profiling → targeted optimizations)
 5. T1–T4 evaluation
 
 ### Track B: Personality Engine (server + supervisor)
@@ -47,24 +47,37 @@ _(all items completed)_
 ### Face Communication System
 
 **Phase 0 — Remaining Gaps** `[sonnet]`
-- [ ] System logos on device not updated to V3 design
 - [ ] Thinking face looks angry on hardware — needs refinement (may defer to Stage 4)
 - [ ] Visual review: V3 sim vs MCU side-by-side on hardware for all 13 moods
 
 **Phase 5 — Polish** `[sonnet]`
 - [ ] Tune timing values on hardware: ramp durations, hold times, border alpha curves
 
-**Stage 4 — Firmware Display Optimization** `[opus]`
-- [ ] Profile current render loop (esp_timer instrumentation, 1000-frame stats)
-- [ ] Profile border SDF render cost for all 8 conv states
-- [ ] Implement dirty-rectangle tracking (ILI9341 CASET/RASET window commands)
-- [ ] Implement DMA double-buffering (render to back buffer during SPI transfer)
-- [ ] Optimize border SDF with precomputed lookup table
-- [ ] Audit 13 mood colors for RGB565 fidelity — corrected palette
-- [ ] Temporal dithering for smooth gradients at RGB565 depth
-- [ ] Gamma correction for SDF antialiasing
-- [ ] Profile command-to-pixel latency end-to-end
-- [ ] Profile sparkle/fire/afterglow effects budget
+**Stage 4 — Parity + Firmware Display Optimization** `[opus]`
+- [ ] Stage 4.0: Update `specs/face-communication-spec-stage2.md` + `docs/protocols.md` to match chosen behavior:
+  - System overlays = Sim V3 “face-based” screens + hide border/buttons while SystemMode != NONE
+  - PTT semantics = tap-toggle (not strict press/hold)
+  - Corner button hitboxes = `BTN_CORNER_*` constants (not stale 48×48 numbers)
+- [ ] Stage 4.0: Port Sim V3 system screens to firmware (`tools/face_sim_v3/render/face.py` → `esp32-face`)
+- [ ] Stage 4.0: Suppress conversation border + corner buttons during system overlays (sim + firmware)
+- [ ] Stage 4.0: Fix corner button visuals parity (MIC/X icons + ACTIVE/IDLE mapping matches `tools/face_sim_v3/__main__.py`)
+- [ ] Stage 4.0: Disable corner-button hit-testing + button telemetry during system overlays (buttons hidden)
+- [ ] Stage 4.0: Fix firmware to accept Mood.CONFUSED (mood_id 12) in `SET_STATE`
+- [ ] Stage 4.0: Gesture gap analysis: Sim V3 gestures 13–19 exist; defer + gate in sim, keep firmware/protocol at 13 for now
+- [ ] Stage 4.0: Expand `tools/check_face_parity.py` to catch semantic mismatches (not just constants):
+  - CONFUSED mood acceptance, system-mode suppression of border/buttons, corner icon mapping defaults
+- [ ] Stage 4.0: Supervisor: send LOW_BATTERY param (0–255) derived from `battery_mv` (battery fill/progress)
+- [ ] Stage 4.0: Doc parity cleanup: reconcile `esp32-face/README.md` with current renderer + corner button semantics
+- [ ] Stage 4.1: Profile current render loop (esp_timer instrumentation, 1000-frame stats)
+- [ ] Stage 4.1: Profile border SDF render cost for all 8 conv states
+- [ ] Stage 4.1: Profile command-to-pixel latency end-to-end (button/wake/PTT → first pixel)
+- [ ] Stage 4.1: Profile sparkle/fire/afterglow effects budget
+- [ ] Stage 4.2: Implement dirty-rectangle tracking (LVGL invalidation areas and/or ILI9341 CASET/RASET windowing)
+- [ ] Stage 4.2: Evaluate/implement DMA overlap + buffering strategy (LVGL flush + SPI transfer overlap)
+- [ ] Stage 4.2: Optimize border SDF with precomputed lookup table / SDF map
+- [ ] Stage 4.2: Audit 13 mood colors for RGB565 fidelity — corrected palette
+- [ ] Stage 4.2: Temporal dithering + gamma correction (only if gradients/banding are visible on hardware)
+- [ ] Stage 4.2: Add “perf headroom” knobs (feature kill switches: afterglow/sparkle/edge_glow)
 
 **Evaluation** `[opus]`
 - [ ] T1: Automated CI tests (parity check, unit tests, linting)
@@ -114,14 +127,17 @@ _(all items completed)_
 
 **Prerequisite**: ESP-IDF environment, USB-C cable, hardware on breadboard.
 
-**Firmware change required first** `[sonnet]`:
-- [ ] Update `pin_map.h`: TRIG GPIO1→GPIO21, VBAT GPIO14→GPIO1 (per `docs/reflex-wiring.md`)
+**Firmware** `[sonnet]`:
+- [x] Pin map verified — GPIO 17/18 (SDA/SCL) confirmed correct; TRIG→GPIO21 and VBAT→GPIO1 already in `pin_map.h`. No firmware change needed.
 
-**Phase 1: IMU (BMI270) — I2C Validation** `[sonnet]`
-- [ ] I2C bus scan (verify BMI270 at 0x68 or 0x69)
-- [ ] BMI270 init: CHIP_ID=0x24, INTERNAL_STATUS=0x01, ODR 400 Hz
-- [ ] Live data validation: flat=1g Z, rotate=gyro deflection, tilt=0.7g shift
-- [ ] Pass: no IMU_FAIL fault, no I2C recovery in first 60s
+**Phase 1: IMU (BMI270) — Hardware Validation** `[sonnet]`
+- [ ] Hardware bring-up: SSH → supervisor logs → `/status` poll → dashboard Telemetry tab → physical tilt/rotate tests
+  - Pass criteria: `BMI270 CHIP_ID=0x24 OK`, `INTERNAL_STATUS=0x01`, no `IMU_FAIL` in first 60 s
+  - Flat at rest: `accel_z ≈ 1000 mg`, `accel_x ≈ 0`, `gyro_z ≈ 0`
+  - Rotate robot ~45°: `gyro_z` deflects, returns to ~0
+  - Tilt ~45°: `accel_x` shifts ~700 mg (0.7g)
+- [x] Supervisor derived fields: `tilt_angle_deg` + `accel_magnitude_mg` computed in tick loop, serialized in telemetry (17 unit tests pass)
+- [x] Dashboard: "IMU Derived" chart (tilt °, accel |g| mg) in TelemetryTab; accel_z sparkline + tilt readout in MonitorTab IMU card
 
 **Phase 2: Motors + Encoders — Open-Loop Test** `[sonnet]`
 - [ ] Enable `BRINGUP_OPEN_LOOP_TEST 1` in `app_main.cpp`
@@ -147,8 +163,11 @@ _(all items completed)_
 
 **Post-Commissioning** `[sonnet]`
 - [ ] Battery voltage sense (ADC) + sag-aware limiting
-- [ ] Odometry integration (x, y, theta)
-- [ ] Full IMU heading hold PID (currently gyro damping only)
+- [ ] Odometry integration (x, y, theta) — integrate `w_meas_mrad_s` → heading θ + `v_meas_mm_s` → x/y
+- [ ] Gyro-accel complementary filter — supervisor-side; fuse gyro integral + accel correction for stable heading (prerequisite for heading PID)
+- [ ] Full IMU heading hold PID (currently gyro damping only; requires complementary filter first)
+- [ ] Accel magnitude shock detection — if `accel_magnitude_mg` spikes >2500 mg, emit `SHOCK` event on event bus (collision awareness) `[sonnet]`
+- [ ] Motor-IMU correlation diagnostic — dashboard view comparing `gyro_z` vs `w_cmd` to surface motor/encoder faults `[sonnet]`
 
 ---
 
@@ -195,8 +214,8 @@ _(all items completed)_
 - [x] `supervisor/personality/affect.py`: sigmoid_map, TraitParameters, AffectVector, Impulse, PersonalitySnapshot, update_affect, apply_impulse, project_mood, enforce_context_gate
 - [x] `supervisor/workers/personality_worker.py`: L0 rules 01–13, duration caps, idle rules, fast path, all event handlers
 - [x] `supervisor/core/event_router.py` + `state.py` + `tick_loop.py`: full PE integration (event forwarding + snapshot → WorldState)
-- [x] `supervisor/tests/test_affect.py`: 31 tests covering all affect model math
-- [x] `supervisor/tests/test_personality_worker.py`: worker unit tests covering all L0 rules
+- [x] `supervisor/tests/test_affect.py`: 47 tests covering all affect model math
+- [x] `supervisor/tests/test_personality_worker.py`: 44 tests covering all L0 rules, idle rules, duration caps, context gate
 
 ### Dashboard
 - [x] Per-device clock health panel (`DeviceClockPanel` in `MonitorTab.tsx`): RTT, offset, drift, samples, data age, last seq per MCU
@@ -284,19 +303,19 @@ _(all items completed)_
 
 ## Model Assignment Guide
 
-| Task Type | Model | Rationale |
-|-----------|-------|-----------|
-| Spec writing & interpretation | Opus 4.6 | Requires deep understanding of multi-document specs |
-| Architecture decisions | Opus 4.6 | Trade-off analysis, system-level reasoning |
-| Complex debugging | Opus 4.6 | Multi-system causality tracing |
-| Personality engine design | Opus 4.6 | Psychology-informed design, prompt engineering |
-| PID tuning & control theory | Opus 4.6 | Mathematical reasoning, parameter sensitivity |
-| Mechanical refactors | Sonnet 4.6 | Pattern-apply across files (rename, import updates) |
-| Test writing | Sonnet 4.6 | Well-scoped, pattern-following |
-| README/doc updates | Sonnet 4.6 | Factual updates, no design decisions |
-| Parity checks | Sonnet 4.6 | Systematic comparison, no judgment calls |
-| Protocol documentation | Sonnet 4.6 | Transcribe from code to docs |
-| Linter/config fixes | Sonnet 4.6 | Mechanical, well-defined |
+| Task Type                     | Model      | Rationale                                           |
+| ----------------------------- | ---------- | --------------------------------------------------- |
+| Spec writing & interpretation | Opus 4.6   | Requires deep understanding of multi-document specs |
+| Architecture decisions        | Opus 4.6   | Trade-off analysis, system-level reasoning          |
+| Complex debugging             | Opus 4.6   | Multi-system causality tracing                      |
+| Personality engine design     | Opus 4.6   | Psychology-informed design, prompt engineering      |
+| PID tuning & control theory   | Opus 4.6   | Mathematical reasoning, parameter sensitivity       |
+| Mechanical refactors          | Sonnet 4.6 | Pattern-apply across files (rename, import updates) |
+| Test writing                  | Sonnet 4.6 | Well-scoped, pattern-following                      |
+| README/doc updates            | Sonnet 4.6 | Factual updates, no design decisions                |
+| Parity checks                 | Sonnet 4.6 | Systematic comparison, no judgment calls            |
+| Protocol documentation        | Sonnet 4.6 | Transcribe from code to docs                        |
+| Linter/config fixes           | Sonnet 4.6 | Mechanical, well-defined                            |
 
 ---
 
