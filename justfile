@@ -82,7 +82,15 @@ build-dashboard:
 
 # Run face simulator V3
 sim:
-    cd {{project}} && uv run --project tools python -m tools.face_sim_v3
+    cd {{project}} && uv run --project tools --extra sim python -m tools.face_sim_v3
+
+# Run a tool script (e.g. just tool serial_diag --all)
+tool script *args:
+    uv run --project {{project}}/tools python {{project}}/tools/{{script}}.py {{args}}
+
+# Run serial diagnostics on connected MCUs
+serial-diag *args:
+    uv run --project {{project}}/tools python {{project}}/tools/serial_diag.py {{args}}
 
 # ── ESP32 Firmware ───────────────────────────────────────
 

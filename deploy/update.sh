@@ -37,12 +37,20 @@ cd "$SUPERVISOR_DIR"
 uv pip install --python "$SUPERVISOR_DIR/.venv/bin/python" -e .  # base deps only; no extras
 ok "dependencies up to date"
 
-# ── 3. Restart the supervisor service ─────────────────────────────────────────
+# ── 3. Sync tools dependencies ───────────────────────────────────────────────
+TOOLS_DIR="$REPO_ROOT/tools"
+if [[ -d "$TOOLS_DIR/.venv" ]]; then
+    info "Syncing tools dependencies..."
+    uv pip install --python "$TOOLS_DIR/.venv/bin/python" -e "$TOOLS_DIR"
+    ok "tools dependencies up to date"
+fi
+
+# ── 4. Restart the supervisor service ─────────────────────────────────────────
 info "Restarting $SERVICE_NAME..."
 sudo systemctl restart "$SERVICE_NAME"
 sleep 2  # brief pause so the service has time to crash if something is wrong
 
-# ── 4. Show status ────────────────────────────────────────────────────────────
+# ── 5. Show status ────────────────────────────────────────────────────────────
 echo ""
 sudo systemctl status "$SERVICE_NAME" --no-pager -l || true
 echo ""

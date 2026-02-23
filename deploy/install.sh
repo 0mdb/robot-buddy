@@ -82,7 +82,15 @@ cd "$SUPERVISOR_DIR"
 uv pip install --python "$VENV/bin/python" -e .
 ok "dependencies installed"
 
-# ── 5. Patch service file with the actual user/home and install it ────────────
+# ── 5. Create tools venv + install dependencies ─────────────────────────────
+TOOLS_DIR="$REPO_ROOT/tools"
+TOOLS_VENV="$TOOLS_DIR/.venv"
+info "Setting up tools environment..."
+uv venv --python python3 --seed --allow-existing "$TOOLS_VENV"
+uv pip install --python "$TOOLS_VENV/bin/python" -e "$TOOLS_DIR"
+ok "tools environment at $TOOLS_VENV"
+
+# ── 6. Patch service file with the actual user/home and install it ────────────
 info "Installing systemd service..."
 # Substitute placeholder paths if the service file uses /home/pi and the real
 # user is different (e.g. ubuntu on RPi).
@@ -96,7 +104,7 @@ echo "$PATCHED_SERVICE" | sudo tee "$SYSTEMD_DEST" > /dev/null
 sudo chmod 644 "$SYSTEMD_DEST"
 ok "service file at $SYSTEMD_DEST"
 
-# ── 6. Install environment file ───────────────────────────────────────────────
+# ── 7. Install environment file ───────────────────────────────────────────────
 sudo mkdir -p /etc/robot-buddy
 if [[ -f "$ENV_DEST" ]]; then
     info "Environment file already exists at $ENV_DEST — not overwriting."
@@ -107,7 +115,7 @@ else
     ok "environment file at $ENV_DEST"
 fi
 
-# ── 7. Make sure user is in dialout + video groups ────────────────────────────
+# ── 8. Make sure user is in dialout + video groups ────────────────────────────
 for grp in dialout video; do
     if ! groups "$SERVICE_USER" | grep -qw "$grp"; then
         sudo usermod -aG "$grp" "$SERVICE_USER"
@@ -115,7 +123,7 @@ for grp in dialout video; do
     fi
 done
 
-# ── 8. Install udev rules for stable device naming ─────────────────────────────
+# ── 9. Install udev rules for stable device naming ─────────────────────────────
 UDEV_SRC="$DEPLOY_DIR/99-robot-buddy.rules"
 UDEV_DEST="/etc/udev/rules.d/99-robot-buddy.rules"
 if [[ -f "$UDEV_SRC" ]]; then
@@ -133,12 +141,12 @@ if [[ -f "$UDEV_SRC" ]]; then
     info "or 'python3 tools/serial_diag.py --all' to find port paths."
 fi
 
-# ── 9. Enable and (re)start the service ───────────────────────────────────────
+# ── 10. Enable and (re)start the service ──────────────────────────────────────
 sudo systemctl daemon-reload
 sudo systemctl enable "$SERVICE_NAME"
 sudo systemctl restart "$SERVICE_NAME"
 
-# ── 10. Status ────────────────────────────────────────────────────────────────
+# ── 11. Status ────────────────────────────────────────────────────────────────
 echo ""
 echo "═══════════════════════════════════════════════════════"
 sudo systemctl status "$SERVICE_NAME" --no-pager -l || true
