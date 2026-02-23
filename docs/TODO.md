@@ -6,12 +6,12 @@
 - Upgrade the camera and adjust settings.
 - Add camera calibration/mask/cv settings in supervisor dash.
 - ~~Fix server issue when trying to run better TTS model.~~ Fixed — persistent event loop for Orpheus vLLM engine + proper GPU memory cleanup on reset.
-- Don't send planner updates so often.
 - Add LLM history so conversations feel more natural.
 - TTS from non-button press (deterministic sources) either cut off or not firing at all.
+- work through reflex comissioning plan, all hardware has arrived and ready on the bread board
 - Face stops talking before speech stops playing, needs better sync.
+- camera replaced with Arducam for Raspberry Pi Camera Module 3, 12MP IMX708 75°(D) Autofocus Pi Camera V3.  This needs to be properly integrated into the stack and set up correctly for the robot.
 - ~~Should play a sound when listening for command is active (either by button press or keyword).~~ Done — ear worker plays `assets/chimes/listening.wav` on wake word detection.
-- Face stuck displaying "booting" system mode — can't override expression from dashboard panel even though telemetry shows face MCU is connected.
 
 ---
 
@@ -33,7 +33,7 @@ Face Sim V3 (`tools/face_sim_v3/`, ~2600 lines, 16 modules) is the canonical des
 
 ### Remaining (Phase 0–5)
 - [ ] Phase 0: Sync MCU constants to match V3 sim (the new canonical source)
-- [ ] Phase 1: Supervisor conversation state machine in tick_loop
+- [x] Phase 1: Supervisor conversation state machine in tick_loop — `ConvStateTracker` module + tick_loop wiring + 39 tests
 - [ ] Phase 2: Firmware border rendering + SET_CONV_STATE (0x25)
 - [ ] Phase 3: Supervisor mood transition sequencer + guardrails
 - [ ] Phase 4: Conversation phase transition choreography
