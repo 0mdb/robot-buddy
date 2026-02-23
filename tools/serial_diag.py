@@ -103,7 +103,7 @@ def find_kernels_path(dev: str) -> str:
     return "(unknown)"
 
 
-def test_device(dev: str, duration_s: float = 5.0) -> None:
+def test_device(dev: str, duration_s: float = 5.0, info_only: bool = False) -> None:
     """Run diagnostics on a single serial device."""
     import serial
 
@@ -126,6 +126,9 @@ def test_device(dev: str, duration_s: float = 5.0) -> None:
         print(f"USB Manufact: {usb_info.get('manufacturer', '?')}")
         print(f"USB Serial:   {usb_info.get('serial', '?')}")
     print(f"{'=' * 60}")
+
+    if info_only:
+        return
 
     # Test open
     print("\n--- Open test ---")
@@ -196,10 +199,15 @@ def test_device(dev: str, duration_s: float = 5.0) -> None:
     # Collect first N bytes for hex dump
     hex_buf = bytearray()
     hex_limit = 256
+    read_error = None
 
     while time.monotonic() - start < duration_s:
         t0 = time.monotonic()
-        data = ser.read(256)
+        try:
+            data = ser.read(256)
+        except serial.SerialException as e:
+            read_error = str(e)
+            break
         t1 = time.monotonic()
         total_reads += 1
 
@@ -215,29 +223,33 @@ def test_device(dev: str, duration_s: float = 5.0) -> None:
         if read_ms > 100:
             print(f"  WARNING: read blocked for {read_ms:.1f}ms (expected ≤50ms)")
 
-    elapsed = time.monotonic() - start
-    print(f"  Duration:    {elapsed:.1f}s")
-    print(f"  Total bytes: {total_bytes}")
-    print(f"  Total reads: {total_reads} ({empty_reads} empty)")
-    print(f"  Throughput:  {total_bytes / elapsed:.0f} bytes/s")
-
-    if hex_buf:
-        print(f"\n  First {len(hex_buf)} bytes (hex):")
-        for offset in range(0, len(hex_buf), 16):
-            chunk = hex_buf[offset : offset + 16]
-            hex_str = " ".join(f"{b:02x}" for b in chunk)
-            ascii_str = "".join(chr(b) if 32 <= b < 127 else "." for b in chunk)
-            print(f"    {offset:04x}: {hex_str:<48s} {ascii_str}")
-
-        # Check for text in data (sign of console leaking into protocol)
-        text_bytes = sum(1 for b in hex_buf if 32 <= b < 127)
-        text_pct = text_bytes / len(hex_buf) * 100
-        if text_pct > 50:
-            print(
-                f"\n  WARNING: {text_pct:.0f}% printable ASCII — console text may be leaking into protocol!"
-            )
+    if read_error:
+        print(f"  ERROR: {read_error}")
+        print("  (Is another process using this port? Stop the supervisor first.)")
     else:
-        print("  No data received!")
+        elapsed = time.monotonic() - start
+        print(f"  Duration:    {elapsed:.1f}s")
+        print(f"  Total bytes: {total_bytes}")
+        print(f"  Total reads: {total_reads} ({empty_reads} empty)")
+        print(f"  Throughput:  {total_bytes / elapsed:.0f} bytes/s")
+
+        if hex_buf:
+            print(f"\n  First {len(hex_buf)} bytes (hex):")
+            for offset in range(0, len(hex_buf), 16):
+                chunk = hex_buf[offset : offset + 16]
+                hex_str = " ".join(f"{b:02x}" for b in chunk)
+                ascii_str = "".join(chr(b) if 32 <= b < 127 else "." for b in chunk)
+                print(f"    {offset:04x}: {hex_str:<48s} {ascii_str}")
+
+            # Check for text in data (sign of console leaking into protocol)
+            text_bytes = sum(1 for b in hex_buf if 32 <= b < 127)
+            text_pct = text_bytes / len(hex_buf) * 100
+            if text_pct > 50:
+                print(
+                    f"\n  WARNING: {text_pct:.0f}% printable ASCII — console text may be leaking into protocol!"
+                )
+        else:
+            print("  No data received!")
 
     ser.close()
     print()
@@ -255,6 +267,11 @@ def main() -> None:
         "--all",
         action="store_true",
         help="Scan all ttyACM devices",
+    )
+    parser.add_argument(
+        "--info-only",
+        action="store_true",
+        help="Only show device info (no open/read/write tests). Safe when supervisor is running.",
     )
     parser.add_argument(
         "--duration",
@@ -276,17 +293,17 @@ def main() -> None:
             print("No /dev/ttyACM* devices found.")
             sys.exit(1)
         for dev in devices:
-            test_device(dev, args.duration)
+            test_device(dev, args.duration, info_only=args.info_only)
     elif args.device:
         if not os.path.exists(args.device):
             print(f"ERROR: {args.device} does not exist")
             sys.exit(1)
-        test_device(args.device, args.duration)
+        test_device(args.device, args.duration, info_only=args.info_only)
     else:
         # Try default robot devices, fall back to scanning
         for default in ("/dev/robot_reflex", "/dev/robot_face"):
             if os.path.exists(default):
-                test_device(default, args.duration)
+                test_device(default, args.duration, info_only=args.info_only)
         else:
             devices = sorted(glob.glob("/dev/ttyACM*"))
             if devices:
@@ -294,7 +311,7 @@ def main() -> None:
                     f"No default devices found. Scanning {len(devices)} ttyACM device(s)..."
                 )
                 for dev in devices:
-                    test_device(dev, args.duration)
+                    test_device(dev, args.duration, info_only=args.info_only)
             else:
                 print("No serial devices found. Is an MCU plugged in?")
                 sys.exit(1)
