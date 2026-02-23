@@ -51,19 +51,48 @@ Applies to current face display backend (`esp32-face-v2`).
 
 ### Commands (supervisor → MCU)
 
-| Command     | ID   | Payload                                                                  |
-| ----------- | ---- | ------------------------------------------------------------------------ |
-| SET_STATE   | 0x20 | mood_id(u8) intensity(u8) gaze_x(i8) gaze_y(i8) brightness(u8) — 5 bytes |
-| GESTURE     | 0x21 | gesture_id(u8) duration_ms(u16) — 3 bytes                                |
-| SET_SYSTEM  | 0x22 | mode(u8) phase(u8) param(u8) — 3 bytes                                   |
-| SET_TALKING | 0x23 | talking(u8) energy(u8) — 2 bytes                                         |
+| Command       | ID   | Payload                                                                    |
+| ------------- | ---- | -------------------------------------------------------------------------- |
+| SET_STATE     | 0x20 | mood_id(u8) intensity(u8) gaze_x(i8) gaze_y(i8) brightness(u8) — 5 bytes  |
+| GESTURE       | 0x21 | gesture_id(u8) duration_ms(u16) — 3 bytes                                 |
+| SET_SYSTEM    | 0x22 | mode(u8) phase(u8) param(u8) — 3 bytes                                    |
+| SET_TALKING   | 0x23 | talking(u8) energy(u8) — 2 bytes                                          |
+| SET_FLAGS     | 0x24 | flags(u8) — 1 byte                                                        |
+| SET_CONV_STATE| 0x25 | conv_state(u8) — 1 byte                                                   |
 
 SET_TALKING controls the "speaking" animation state. The supervisor sends
 `talking=1` during local speaker playback with periodic energy updates and sends
 `talking=0` when playback ends.
 
+SET_FLAGS controls renderer/animation feature toggles. The `flags` byte is a
+bitfield; unset bits disable the corresponding feature:
+
+| Bit | Constant          | Description                              |
+| --- | ----------------- | ---------------------------------------- |
+| 0   | IDLE_WANDER       | Idle gaze wander animation               |
+| 1   | AUTOBLINK         | Autonomous blink timing                  |
+| 2   | SOLID_EYE         | Solid fill eyes (no gradient)            |
+| 3   | SHOW_MOUTH        | Render mouth feature                     |
+| 4   | EDGE_GLOW         | Edge glow effect                         |
+| 5   | SPARKLE           | Sparkle particle effect                  |
+| 6   | AFTERGLOW         | Afterglow trail effect                   |
+
+SET_CONV_STATE sets the current conversation phase, which drives the border
+animation rendered around the face display:
+
+| Value | Name      | Border Effect                             |
+| ----- | --------- | ----------------------------------------- |
+| 0     | IDLE      | No border                                 |
+| 1     | ATTENTION | Pulse on                                  |
+| 2     | LISTENING | Steady colored frame                      |
+| 3     | PTT       | PTT-color frame                           |
+| 4     | THINKING  | Animated shimmer                          |
+| 5     | SPEAKING  | Ripple/pulse driven by speech energy      |
+| 6     | ERROR     | Red flash                                 |
+| 7     | DONE      | Fade out                                  |
+
 Command channel semantics in `esp32-face-v2`:
-- `SET_STATE`, `SET_SYSTEM`, `SET_TALKING` are latched last-value channels.
+- `SET_STATE`, `SET_SYSTEM`, `SET_TALKING`, `SET_FLAGS`, `SET_CONV_STATE` are latched last-value channels.
 - `GESTURE` is a FIFO one-shot queue.
 - High-rate `SET_TALKING` updates must not overwrite queued gestures or latched mood/system.
 
@@ -104,6 +133,7 @@ UI note: face-v2 renders these as small bottom-corner icon controls; telemetry I
 | 9   | LOVE      | Heart-shaped / warm glow          |
 | 10  | SILLY     | Cross-eyed or asymmetric          |
 | 11  | THINKING  | Looking up/aside                  |
+| 12  | CONFUSED  | Head-tilt, questioning look       |
 
 ### Gesture IDs
 

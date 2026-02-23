@@ -44,6 +44,7 @@ export const MOODS = [
   'love',
   'silly',
   'thinking',
+  'confused',
 ] as const
 
 // ---- Face gestures ----

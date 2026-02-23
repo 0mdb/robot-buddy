@@ -54,22 +54,10 @@ Living section — reorder as priorities shift. Current recommended sequence:
 - [ ] Thinking face looks angry on hardware — needs refinement (may defer to Stage 4)
 - [ ] Visual review: V3 sim vs MCU side-by-side on hardware for all 13 moods
 
-**Phase 5 — Polish** `[opus]` for sync fix, `[sonnet]` for protocol docs
-- [ ] Fix talking-stops-before-speech-ends bug: supervisor sends `SET_TALKING(false)` before TTS audio fully finishes (not on last chunk). Files: `supervisor_v2/workers/tts_worker.py`, `supervisor_v2/core/tick_loop.py`
-- [ ] Dashboard conversation state visualization (state indicator, border color preview, timeline). File: `dashboard/src/tabs/FaceTab.tsx`
-- [ ] Dashboard mood transition visualization (ramp state, intensity, hold timer). File: `dashboard/src/tabs/FaceTab.tsx`
-- [ ] Document SET_FLAGS (0x24) in `docs/protocols.md` — currently undocumented, firmware-only
-- [ ] Document SET_CONV_STATE (0x25) in `docs/protocols.md` — implemented but not in protocol spec
+**Phase 5 — Polish** `[sonnet]`
 - [ ] Tune timing values on hardware: ramp durations, hold times, border alpha curves
 
-**Sim↔MCU Divergences** (from baseline inventory audit) `[sonnet]`
-- [ ] Blink interval: sim 3.0–7.0s vs MCU 2.0–5.0s
-- [ ] Idle gaze interval: sim 1.0–3.0s vs MCU 1.5–4.0s
-- [ ] SURPRISE gesture duration: sim 1.0s vs MCU 0.8s
-- [ ] X_EYES gesture duration: sim 2.5s vs MCU 1.5s
-- [ ] Talking phase speed: sim energy-dependent (12–18 rad/s) vs MCU fixed 15 rad/s
-- [ ] Background color: sim (10,10,14) vs MCU (0,0,0)
-- [ ] Neutral mouth curve: sim 0.2 vs MCU 0.1
+**LOW_BATTERY supervisor trigger** `[sonnet]`
 - [ ] LOW_BATTERY mode exists in protocol but no supervisor trigger wired
 
 **Stage 4 — Firmware Display Optimization** `[opus]`
@@ -173,7 +161,6 @@ Living section — reorder as priorities shift. Current recommended sequence:
 ### Conversation & Voice
 
 - [ ] `[opus]` LLM conversation history/memory — server-side session context
-- [ ] `[opus]` Face-speech timing sync fix — face stops talking before speech ends
 - [ ] `[sonnet]` TTS from deterministic sources (non-button press) either cut off or not firing
 - [ ] `[sonnet]` Wake word model: increase recall from 42%→80%+ (n_samples 15k→50k+, augmentation rounds 3→5, speech-heavy negative data, layer_size 64)
 - [ ] `[sonnet]` Wake word: record 20–50 real "hey buddy" utterances from family
@@ -201,8 +188,6 @@ Living section — reorder as priorities shift. Current recommended sequence:
 ### Infrastructure & Tooling
 
 **Protocol Documentation** `[sonnet]`
-- [ ] Add SET_FLAGS (0x24) to `docs/protocols.md`
-- [ ] Add SET_CONV_STATE (0x25) to `docs/protocols.md`
 - [ ] Extend parity check for new border constants
 
 **Rename: Remove -v2 Suffixes** `[sonnet]` — do as a single dedicated commit
@@ -259,11 +244,12 @@ Living section — reorder as priorities shift. Current recommended sequence:
 - [x] Visual language remediation (G1-G7) + review cycles (R1-R5, D1-D5, B1-B3)
 
 ### Face Implementation (Phases 0–4)
-- [x] Phase 0: Sim/MCU parity sync (17 divergences ported, 196/196 parity, CONFUSED mood end-to-end)
+- [x] Phase 0: Sim/MCU parity sync (17 divergences ported, 196/196 parity, CONFUSED mood end-to-end; blink interval, idle gaze, gesture durations, talking speed, BG color, mouth curve all confirmed synced)
 - [x] Phase 1: Supervisor conversation state machine (ConvStateTracker + tick_loop wiring + 39 tests)
 - [x] Phase 2: Firmware border rendering + SET_CONV_STATE 0x25 (~700 lines C++, corner buttons, LED sync + 8 protocol tests)
 - [x] Phase 3: Mood transition sequencer + guardrails (MoodSequencer 4-phase ~470ms + Guardrails + tick_loop + 58 tests)
 - [x] Phase 4: Conversation phase transitions (ConvTransitionChoreographer: gaze ramps, anticipation blink, re-engagement nod, mood settle + 51 tests)
+- [x] Phase 5: Talking sync fix (300ms POST_TALKING_GRACE_TICKS in tick_loop.py), dashboard Face State panel (conv state badge + intensity bar + sequencer phase), SET_FLAGS/SET_CONV_STATE/CONFUSED documented in protocols.md
 
 ### Timestamps & Deterministic Telemetry
 - [x] Protocol v2 envelope: seq (u32) + t_src_us (u64) for all MCU packets

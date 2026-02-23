@@ -6,6 +6,50 @@ import { debounce } from '../lib/debounce'
 import styles from '../styles/global.module.css'
 
 // ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+const CONV_STATE_NAMES = [
+  'IDLE',
+  'ATTENTION',
+  'LISTENING',
+  'PTT',
+  'THINKING',
+  'SPEAKING',
+  'ERROR',
+  'DONE',
+]
+const CONV_STATE_COLORS = [
+  '#444',
+  '#ff9800',
+  '#2196f3',
+  '#42a5f5',
+  '#9c27b0',
+  '#4caf50',
+  '#f44336',
+  '#444',
+]
+
+const SEQ_PHASE_NAMES = ['IDLE', 'ANTICIPATION', 'RAMP_DOWN', 'SWITCH', 'RAMP_UP']
+
+// Mood ID → name (must match FaceMood enum in protocol.py)
+const MOOD_ID_NAMES = [
+  'neutral',
+  'happy',
+  'excited',
+  'curious',
+  'sad',
+  'scared',
+  'angry',
+  'surprised',
+  'sleepy',
+  'love',
+  'silly',
+  'thinking',
+  'confused',
+]
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
@@ -43,6 +87,21 @@ export default function FaceTab() {
   const currentManualLock = useTelemetry((s) => s.snapshot.face_manual_lock)
   const currentTalking = useTelemetry((s) => s.snapshot.face_talking)
   const currentTalkingEnergy = useTelemetry((s) => s.snapshot.face_talking_energy)
+
+  // Conversation state + mood sequencer (read-only display)
+  // snapshot is Record<string, unknown>, so narrow each field to its expected type.
+  const convStateRaw = useTelemetry((s) => s.snapshot.face_conv_state)
+  const convTimerMsRaw = useTelemetry((s) => s.snapshot.face_conv_timer_ms)
+  const seqPhaseRaw = useTelemetry((s) => s.snapshot.face_seq_phase)
+  const seqMoodIdRaw = useTelemetry((s) => s.snapshot.face_seq_mood_id)
+  const seqIntensityRaw = useTelemetry((s) => s.snapshot.face_seq_intensity)
+  const choreoActiveRaw = useTelemetry((s) => s.snapshot.face_choreo_active)
+  const convState = typeof convStateRaw === 'number' ? convStateRaw : 0
+  const convTimerMs = typeof convTimerMsRaw === 'number' ? convTimerMsRaw : null
+  const seqPhase = typeof seqPhaseRaw === 'number' ? seqPhaseRaw : 0
+  const seqMoodId = typeof seqMoodIdRaw === 'number' ? seqMoodIdRaw : 0
+  const seqIntensity = typeof seqIntensityRaw === 'number' ? seqIntensityRaw : 0
+  const choreoActive = choreoActiveRaw === true
 
   // -- Local state: mood/gaze/brightness --
   const [face, setFace] = useState<FaceState>({
@@ -184,6 +243,72 @@ export default function FaceTab() {
             {ageMs.toFixed(0)} ms ago
           </span>
         )}
+      </div>
+
+      {/* Face State — read-only conversation + sequencer display */}
+      <div className={styles.card}>
+        <h3>Face State</h3>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
+          {/* Conversation state */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ color: 'var(--text-dim)', fontSize: 11, width: 52 }}>Conv</span>
+            <span
+              className={styles.badge}
+              style={{
+                background: CONV_STATE_COLORS[convState] ?? '#444',
+                color: '#fff',
+              }}
+            >
+              {CONV_STATE_NAMES[convState] ?? '?'}
+            </span>
+            <span className={styles.mono} style={{ color: '#888', fontSize: 11 }}>
+              {convTimerMs !== null ? `${convTimerMs} ms` : '—'}
+            </span>
+          </div>
+
+          {/* Mood sequencer */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ color: 'var(--text-dim)', fontSize: 11, width: 52 }}>Mood</span>
+            <span className={styles.mono} style={{ minWidth: 72 }}>
+              {MOOD_ID_NAMES[seqMoodId] ?? '?'}
+            </span>
+            <div
+              style={{
+                flex: 1,
+                height: 6,
+                background: '#333',
+                borderRadius: 3,
+                overflow: 'hidden',
+              }}
+            >
+              <div
+                style={{
+                  width: `${(seqIntensity * 100).toFixed(0)}%`,
+                  height: '100%',
+                  background: 'var(--accent)',
+                  transition: 'width 80ms linear',
+                }}
+              />
+            </div>
+            <span
+              className={styles.mono}
+              style={{ color: '#888', fontSize: 11, width: 32, textAlign: 'right' }}
+            >
+              {`${(seqIntensity * 100).toFixed(0)}%`}
+            </span>
+          </div>
+
+          {/* Sequencer phase + choreography */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ color: 'var(--text-dim)', fontSize: 11, width: 52 }}>Phase</span>
+            <span className={styles.mono}>{SEQ_PHASE_NAMES[seqPhase] ?? '?'}</span>
+            {choreoActive && (
+              <span className={styles.badge} style={{ background: '#9c27b0', color: '#fff' }}>
+                choreo
+              </span>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Mood section */}

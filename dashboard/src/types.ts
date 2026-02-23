@@ -53,6 +53,16 @@ export interface TelemetryPayload {
   face_last_button_event: string
   face_last_button_state: number
 
+  // Face conversation state (conv_state.py FaceConvState, 0–7)
+  face_conv_state: number
+  face_conv_timer_ms: number
+
+  // Mood sequencer (mood_sequencer.py, 0–4 phase)
+  face_seq_phase: number
+  face_seq_mood_id: number
+  face_seq_intensity: number
+  face_choreo_active: boolean
+
   // Clock sync
   clock_sync: {
     reflex: ClockSyncInfo

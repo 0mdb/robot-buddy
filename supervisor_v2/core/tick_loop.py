@@ -81,6 +81,10 @@ _PLAN_RETRY_S = 5.0
 class TickLoop:
     """The v2 50 Hz control loop."""
 
+    # After TTS finishes, keep talking animation alive for this many ticks so it
+    # trails OS/hardware audio buffer drain (~300 ms at 50 Hz).
+    _POST_TALKING_GRACE_TICKS: int = 15
+
     def __init__(
         self,
         *,
@@ -158,6 +162,9 @@ class TickLoop:
         # Face flags sent on reconnect
         self._face_flags_sent = False
         self._last_face_system_mode: int | None = None
+
+        # Ticks remaining to hold talking animation after TTS_EVENT_FINISHED
+        self._talking_grace_ticks: int = 0
 
         # Wire MCU callbacks
         if self._reflex:
@@ -450,6 +457,10 @@ class TickLoop:
                     self._queued_intensity = 0.0
         elif env.type in (TTS_EVENT_FINISHED, TTS_EVENT_CANCELLED):
             asyncio.ensure_future(self._workers.send_to("ear", EAR_CMD_RESUME_VAD))
+            if env.type == TTS_EVENT_FINISHED:
+                # Trail the talking animation to cover OS/hardware audio buffer drain.
+                # CANCELLED stops immediately (user interrupted), so no grace needed.
+                self._talking_grace_ticks = self._POST_TALKING_GRACE_TICKS
             if self._conv.session_active:
                 if self.world.session_id:
                     # Multi-turn: return to LISTENING
@@ -481,11 +492,19 @@ class TickLoop:
                 self._face.send_system_mode(desired_sys, 0)
                 self._last_face_system_mode = desired_sys
 
-        # Talking layer — driven by TTS energy
+        # Talking layer — driven by TTS energy with post-drain grace period.
+        # Grace holds the animation alive for _POST_TALKING_GRACE_TICKS after
+        # TTS_EVENT_FINISHED so it trails OS/hardware audio buffer drain.
         if self.world.speaking:
             self._face.send_talking(True, self.world.current_energy)
             self.robot.face_talking = True
             self.robot.face_talking_energy = self.world.current_energy
+            self._talking_grace_ticks = 0
+        elif self._talking_grace_ticks > 0:
+            self._talking_grace_ticks -= 1
+            self._face.send_talking(True, 0)
+            self.robot.face_talking = True
+            self.robot.face_talking_energy = 0
         elif self.robot.face_talking:
             self._face.send_talking(False, 0)
             self.robot.face_talking = False
