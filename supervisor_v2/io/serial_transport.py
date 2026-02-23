@@ -164,13 +164,18 @@ class SerialTransport:
                 log.warning("%s: read error: %s", self.label, e)
                 self._handle_disconnect()
 
+            # Always yield so the event loop can process HTTP, tick loop,
+            # and other tasks.  Without this, fast-returning reads (data
+            # always available) can starve uvicorn's socket accept loop.
+            await asyncio.sleep(0)
+
     def _try_open(self) -> bool:
         try:
             self._ser = serial.Serial(
                 self.port,
                 self.baudrate,
                 timeout=0.05,  # 50ms blocking read timeout
-                write_timeout=0.1,  # bounded write latency; avoid indefinite event-loop stalls
+                write_timeout=0,  # non-blocking writes; called from event loop thread
             )
             # Keep CDC host line-state asserted; some device stacks gate OUT traffic on DTR/RTS.
             try:
