@@ -4,20 +4,38 @@ ESP32-S3 firmware for Robot Buddy face rendering + supervisor link.
 
 ## Scope
 
-- Face animation renderer (landscape 320x240)
-- Python-v2 animation parity target (moods, gestures, system overlays, talking modulation)
+- Face animation renderer (landscape 320×240, ILI9341)
+- Sim V3 animation parity target (13 moods, gestures, system face screens, talking modulation)
 - USB CDC command/telemetry protocol
-- Touch telemetry
-- Discreet corner icon controls:
-  - bottom-left `PTT` (`LV_SYMBOL_AUDIO`, tap-toggle listening state)
-  - bottom-right `ACTION` (`LV_SYMBOL_CHARGE`, click event)
-  - visual diameter `32px`, hitbox `40px`, margin `8px`
+- Touch telemetry + corner button hit-testing
+- Pixel-rendered corner button controls (SDF icons, not LVGL widgets):
+  - bottom-left `PTT` (MIC icon, 60×46 px zone, tap-toggle listening)
+  - bottom-right `ACTION` (X_MARK icon, 60×46 px zone, click event)
+  - Icon/state/color driven automatically by conversation state
+  - Suppressed (hidden + hit-testing disabled) during system overlays
+- Conversation border renderer (SDF frame + glow, 8 conv states)
 - WS2812 status LED:
   - talking: orange
   - listening: blue
   - idle: green
 
 Audio codec/microphone handling was removed from this firmware. Audio is owned by supervisor-side USB devices.
+
+## System Screens
+
+System modes drive Buddy's face expression (eyes, mouth, eyelids, color) rather than abstract overlays — matching the Sim V3 approach. Implemented in `system_face.cpp`:
+
+| Mode | Expression | Color | Duration |
+|------|-----------|-------|----------|
+| BOOTING | Sleepy slits → yawn → blink → happy bounce | Navy → cyan | 3.0 s |
+| ERROR_DISPLAY | Confused face + slow headshake | Warm orange | Continuous |
+| LOW_BATTERY | Sleepy with droopy eyelids + periodic yawns | Navy (dims with charge) | Continuous |
+| UPDATING | Thinking expression, gaze drifts up-right | Blue-violet | Continuous |
+| SHUTTING_DOWN | Yawn → droop → eyes close → fade to black | Cyan → navy → black | 2.5 s |
+
+Small SDF icon overlays appear in the lower-right corner: warning triangle (error), battery bar (low battery), progress bar (updating).
+
+The legacy abstract overlay renderer (`system_overlay_v2.cpp`) is retained but no longer called from the render path.
 
 ## Command Path Reliability
 
@@ -29,9 +47,6 @@ Audio codec/microphone handling was removed from this firmware. Audio is owned b
 
 - The face canvas uses explicit `LV_COLOR_FORMAT_RGB888` to match `lv_color_t` buffer layout.
 - This removed the earlier garbled text/color corruption seen with native-format assumptions.
-- System overlays are rendered through `system_overlay_v2.cpp` for Python-v2 parity:
-  - booting/error/low-battery/updating/shutdown visual modes
-  - scanlines + vignette post FX (config-gated in `main/config.h`)
 
 ## Current Parity Gaps
 
@@ -41,16 +56,16 @@ Audio codec/microphone handling was removed from this firmware. Audio is owned b
 
 ## Protocol
 
-Commands (host -> face):
+Commands (host → face):
 
 - `0x20` `SET_STATE` — mood, intensity, gaze, brightness
 - `0x21` `GESTURE` — one-shot animation (FIFO queue)
-- `0x22` `SET_SYSTEM` — system overlays (boot, error, battery)
+- `0x22` `SET_SYSTEM` — system mode + param (boot, error, battery, updating, shutdown)
 - `0x23` `SET_TALKING` — lip sync (talking flag + energy)
-- `0x24` `SET_FLAGS` — feature toggles (blink, wander, sparkle)
-- `0x25` `SET_CONV_STATE` — conversation border state
+- `0x24` `SET_FLAGS` — feature toggles (blink, wander, sparkle, afterglow, edge glow)
+- `0x25` `SET_CONV_STATE` — conversation border state (0–7)
 
-Telemetry (face -> host):
+Telemetry (face → host):
 
 - `0x90` `FACE_STATUS` (20 Hz)
 - `0x91` `TOUCH_EVENT` (on change)
