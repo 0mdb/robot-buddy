@@ -27,7 +27,6 @@ SKILL.md
 build/
 dist/
 node_modules/
-supervisor/static/
 
 # ESP-IDF
 sdkconfig

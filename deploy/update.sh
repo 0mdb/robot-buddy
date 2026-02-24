@@ -45,22 +45,12 @@ if [[ -d "$TOOLS_DIR/.venv" ]]; then
     ok "tools dependencies up to date"
 fi
 
-# ── 4. Build dashboard ──────────────────────────────────────────────────────
-DASHBOARD_DIR="$REPO_ROOT/dashboard"
-if [[ -f "$DASHBOARD_DIR/package.json" ]]; then
-    info "Building dashboard..."
-    cd "$DASHBOARD_DIR"
-    npm install --silent 2>/dev/null || warn "npm install failed — dashboard may be stale"
-    npm run build 2>/dev/null && ok "dashboard built" || warn "dashboard build failed — using stale assets"
-    cd "$REPO_ROOT"
-fi
-
-# ── 5. Restart the supervisor service ─────────────────────────────────────────
+# ── 4. Restart the supervisor service ─────────────────────────────────────────
 info "Restarting $SERVICE_NAME..."
 sudo systemctl restart "$SERVICE_NAME"
 sleep 2  # brief pause so the service has time to crash if something is wrong
 
-# ── 6. Show status ────────────────────────────────────────────────────────────
+# ── 5. Show status ────────────────────────────────────────────────────────────
 echo ""
 sudo systemctl status "$SERVICE_NAME" --no-pager -l || true
 echo ""
