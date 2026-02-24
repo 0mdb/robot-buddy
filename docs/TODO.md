@@ -147,10 +147,10 @@ _10 items complete (Stage 4.0 spec/port/parity/buttons/gestures/docs) — see ar
 
 - [x] `[sonnet]` Camera settings panel
 - [ ] `[opus]` **Tuning Studio (expand Face tab; consolidate dashboard; built to complete B6)** — one place to tune face parameters (mouth sync), personality, models, server settings, and the full voice pipeline
-  - [ ] **Dashboard consolidation (no redundant tuning UI)**
+  - [x] **Dashboard consolidation (no redundant tuning UI)**
     - [x] Re-scope existing `dashboard/src/tabs/FaceTab.tsx` into “Tuning Studio” (keep tab id `face`; rename tab label to “Tuning”)
-    - [ ] Keep `Monitor` = health overview, `Protocol` = raw packets, `Params` = param registry; avoid duplicating controls across tabs
-    - [ ] Fold the previously-planned “Personality engine visualization” into this Studio (no separate dashboard feature)
+    - [x] Keep `Monitor` = health overview, `Protocol` = raw packets, `Params` = param registry; avoid duplicating controls across tabs
+    - [x] Fold the previously-planned “Personality engine visualization” into this Studio (no separate dashboard feature)
   - [ ] **Accurate Face Mirror (TypeScript port; protocol-driven)**
     - [x] Phase 1-3: Port core sim to `dashboard/src/face_sim/*` — constants, types, SDF, moods, render (eyes+mouth+sparkles), animation state machine (tweens, spring gaze, blink, breathing, idle wander, talking), protocol bridge (SET_STATE/SET_FLAGS/SET_TALKING/GESTURE/SET_CONV_STATE/SET_SYSTEM → FaceState)
     - [x] `FaceMirrorCanvas.tsx` — 320×240 canvas (2x CSS), 30fps rAF loop, live protocol packet ingestion from useProtocolStore
