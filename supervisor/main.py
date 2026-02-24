@@ -11,6 +11,73 @@ from pathlib import Path
 log = logging.getLogger(__name__)
 
 
+def _get_int(registry: object, name: str, default: int) -> int:
+    """Best-effort int read from ParamRegistry-like object."""
+    try:
+        value = registry.get_value(name, default)  # type: ignore[attr-defined]
+        return int(value)
+    except Exception:
+        return int(default)
+
+
+def _get_float(registry: object, name: str, default: float) -> float:
+    """Best-effort float read from ParamRegistry-like object."""
+    try:
+        value = registry.get_value(name, default)  # type: ignore[attr-defined]
+        return float(value)
+    except Exception:
+        return float(default)
+
+
+def _build_vision_worker_config(registry: object) -> dict[str, object]:
+    """Build a complete vision.config.update payload from registry values.
+
+    Does not include mjpeg_enabled (owned by /video client presence).
+    """
+    floor_hsv_low = [
+        _get_int(registry, "vision.floor_hsv_h_low", 0),
+        _get_int(registry, "vision.floor_hsv_s_low", 0),
+        _get_int(registry, "vision.floor_hsv_v_low", 50),
+    ]
+    floor_hsv_high = [
+        _get_int(registry, "vision.floor_hsv_h_high", 180),
+        _get_int(registry, "vision.floor_hsv_s_high", 80),
+        _get_int(registry, "vision.floor_hsv_v_high", 220),
+    ]
+    ball_hsv_low = [
+        _get_int(registry, "vision.ball_hsv_h_low", 170),
+        _get_int(registry, "vision.ball_hsv_s_low", 80),
+        _get_int(registry, "vision.ball_hsv_v_low", 40),
+    ]
+    ball_hsv_high = [
+        _get_int(registry, "vision.ball_hsv_h_high", 15),
+        _get_int(registry, "vision.ball_hsv_s_high", 255),
+        _get_int(registry, "vision.ball_hsv_v_high", 255),
+    ]
+    min_ball_radius = _get_int(registry, "vision.min_ball_radius_px", 8)
+
+    return {
+        "floor_hsv_low": floor_hsv_low,
+        "floor_hsv_high": floor_hsv_high,
+        "ball_hsv_low": ball_hsv_low,
+        "ball_hsv_high": ball_hsv_high,
+        "min_ball_radius": min_ball_radius,
+    }
+
+
+def _configure_vision_policy_from_registry(registry: object) -> None:
+    from supervisor.core.safety import configure_vision_policy
+
+    stale_ms = _get_float(registry, "vision.stale_ms", 500.0)
+    clear_low = _get_float(registry, "vision.clear_low", 0.3)
+    clear_high = _get_float(registry, "vision.clear_high", 0.6)
+    configure_vision_policy(
+        stale_ms=stale_ms,
+        clear_low=clear_low,
+        clear_high=clear_high,
+    )
+
+
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Robot Buddy Supervisor")
     p.add_argument(
@@ -158,11 +225,15 @@ async def async_main(args: argparse.Namespace) -> None:
 
         # Send init configs to workers
         if not args.no_vision:
+            # Apply initial safety policy thresholds (vision.* params)
+            _configure_vision_policy_from_registry(registry)
+
             await workers.send_to(
                 "vision",
                 "vision.config.update",
                 {
                     "mjpeg_enabled": False,
+                    **_build_vision_worker_config(registry),
                 },
             )
 
@@ -221,18 +292,57 @@ async def async_main(args: argparse.Namespace) -> None:
             },
         )
 
-        # Wire param changes to vision worker
-        def _on_param_change(name: str, value: object) -> None:
-            if name.startswith("vision.") and workers.worker_alive("vision"):
-                asyncio.ensure_future(
-                    workers.send_to(
-                        "vision",
-                        "vision.config.update",
-                        {
-                            _vision_param_to_key(name): value,
-                        },
-                    )
-                )
+        # Wire param changes to vision worker + safety policy
+        _VISION_WORKER_PARAMS = {
+            "vision.floor_hsv_h_low",
+            "vision.floor_hsv_h_high",
+            "vision.floor_hsv_s_low",
+            "vision.floor_hsv_s_high",
+            "vision.floor_hsv_v_low",
+            "vision.floor_hsv_v_high",
+            "vision.ball_hsv_h_low",
+            "vision.ball_hsv_h_high",
+            "vision.ball_hsv_s_low",
+            "vision.ball_hsv_s_high",
+            "vision.ball_hsv_v_low",
+            "vision.ball_hsv_v_high",
+            "vision.min_ball_radius_px",
+        }
+        _VISION_POLICY_PARAMS = {
+            "vision.stale_ms",
+            "vision.clear_low",
+            "vision.clear_high",
+        }
+
+        vision_cfg_scheduled = False
+        vision_policy_scheduled = False
+
+        async def _flush_vision_worker_config() -> None:
+            nonlocal vision_cfg_scheduled
+            await asyncio.sleep(0)  # coalesce multiple updates in one event loop tick
+            vision_cfg_scheduled = False
+            if not workers.worker_alive("vision"):
+                return
+            await workers.send_to(
+                "vision",
+                "vision.config.update",
+                _build_vision_worker_config(registry),
+            )
+
+        async def _flush_vision_policy() -> None:
+            nonlocal vision_policy_scheduled
+            await asyncio.sleep(0)  # coalesce multiple updates in one event loop tick
+            vision_policy_scheduled = False
+            _configure_vision_policy_from_registry(registry)
+
+        def _on_param_change(name: str, _value: object) -> None:
+            nonlocal vision_cfg_scheduled, vision_policy_scheduled
+            if name in _VISION_WORKER_PARAMS and not vision_cfg_scheduled:
+                vision_cfg_scheduled = True
+                asyncio.create_task(_flush_vision_worker_config())
+            if name in _VISION_POLICY_PARAMS and not vision_policy_scheduled:
+                vision_policy_scheduled = True
+                asyncio.create_task(_flush_vision_policy())
 
         registry.on_change(_on_param_change)
 
@@ -291,26 +401,6 @@ async def async_main(args: argparse.Namespace) -> None:
             await face._transport.stop()
         if mock_reflex:
             mock_reflex.stop()
-
-
-def _vision_param_to_key(name: str) -> str:
-    """Map registry param name → vision worker config key."""
-    mapping = {
-        "vision.floor_hsv_h_low": "floor_hsv_low",
-        "vision.floor_hsv_h_high": "floor_hsv_high",
-        "vision.floor_hsv_s_low": "floor_hsv_low",
-        "vision.floor_hsv_s_high": "floor_hsv_high",
-        "vision.floor_hsv_v_low": "floor_hsv_low",
-        "vision.floor_hsv_v_high": "floor_hsv_high",
-        "vision.ball_hsv_h_low": "ball_hsv_low",
-        "vision.ball_hsv_h_high": "ball_hsv_high",
-        "vision.ball_hsv_s_low": "ball_hsv_low",
-        "vision.ball_hsv_s_high": "ball_hsv_high",
-        "vision.ball_hsv_v_low": "ball_hsv_low",
-        "vision.ball_hsv_v_high": "ball_hsv_high",
-        "vision.min_ball_radius_px": "min_ball_radius",
-    }
-    return mapping.get(name, name.replace("vision.", ""))
 
 
 def main() -> None:

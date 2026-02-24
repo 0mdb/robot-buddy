@@ -641,9 +641,9 @@ def create_default_registry() -> ParamRegistry:
             min=0,
             max=180,
             step=1,
-            default=0,
+            default=170,
             owner="vision",
-            doc="Ball HSV hue lower bound",
+            doc="Ball HSV hue lower bound (wrap-around allowed: low > high)",
         )
     )
     reg.register(
@@ -655,7 +655,7 @@ def create_default_registry() -> ParamRegistry:
             step=1,
             default=15,
             owner="vision",
-            doc="Ball HSV hue upper bound",
+            doc="Ball HSV hue upper bound (wrap-around allowed: low > high)",
         )
     )
     reg.register(
@@ -665,7 +665,7 @@ def create_default_registry() -> ParamRegistry:
             min=0,
             max=255,
             step=1,
-            default=120,
+            default=80,
             owner="vision",
             doc="Ball HSV saturation lower bound",
         )
@@ -689,7 +689,7 @@ def create_default_registry() -> ParamRegistry:
             min=0,
             max=255,
             step=1,
-            default=70,
+            default=40,
             owner="vision",
             doc="Ball HSV value lower bound",
         )
@@ -713,7 +713,7 @@ def create_default_registry() -> ParamRegistry:
             min=1,
             max=100,
             step=1,
-            default=10,
+            default=8,
             owner="vision",
             doc="Minimum ball contour radius in pixels",
         )

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { CameraSettingsPanel } from '../components/CameraSettingsPanel'
 import { Sparkline } from '../components/Sparkline'
 import { useParamsList, useUpdateParams } from '../hooks/useParams'
 import { useTelemetry } from '../hooks/useTelemetry'
@@ -14,6 +15,11 @@ function paramMap(params: ParamDef[] | undefined): Map<string, ParamDef> {
   const m = new Map<string, ParamDef>()
   if (params) for (const p of params) m.set(p.name, p)
   return m
+}
+
+function shortParamName(name: string): string {
+  const i = name.lastIndexOf('.')
+  return i >= 0 ? name.slice(i + 1) : name
 }
 
 /** Labelled number input */
@@ -85,29 +91,15 @@ function RangeField({
 // Static key arrays (outside components to avoid re-creation on render)
 // ---------------------------------------------------------------------------
 
-const PID_KEYS = ['kV', 'kS', 'Kp', 'Ki', 'K_yaw'] as const
-const LIMITS_KEYS = ['max_v_mm_s', 'max_a_mm_s2', 'max_w_mrad_s', 'max_aw_mrad_s2'] as const
-const PWM_KEYS = ['min_pwm', 'max_pwm'] as const
+const PID_KEYS = ['reflex.kV', 'reflex.kS', 'reflex.Kp', 'reflex.Ki', 'reflex.K_yaw'] as const
+const LIMITS_KEYS = [
+  'reflex.max_v_mm_s',
+  'reflex.max_a_mm_s2',
+  'reflex.max_w_mrad_s',
+  'reflex.max_aw_mrad_s2',
+] as const
+const PWM_KEYS = ['reflex.min_pwm', 'reflex.max_pwm'] as const
 const PID_ALL_KEYS = [...PID_KEYS, ...LIMITS_KEYS, ...PWM_KEYS]
-
-const FLOOR_KEYS = [
-  'floor_hsv_h_low',
-  'floor_hsv_h_high',
-  'floor_hsv_s_low',
-  'floor_hsv_s_high',
-  'floor_hsv_v_low',
-  'floor_hsv_v_high',
-] as const
-const BALL_KEYS = [
-  'ball_hsv_h_low',
-  'ball_hsv_h_high',
-  'ball_hsv_s_low',
-  'ball_hsv_s_high',
-  'ball_hsv_v_low',
-  'ball_hsv_v_high',
-  'min_ball_radius_px',
-] as const
-const VISION_ALL_KEYS = [...FLOOR_KEYS, ...BALL_KEYS]
 
 // ---------------------------------------------------------------------------
 // Section components
@@ -145,7 +137,7 @@ function PIDSection({
         {PID_KEYS.map((k) => (
           <NumField
             key={k}
-            label={k}
+            label={shortParamName(k)}
             value={local[k] ?? 0}
             step={pmap.get(k)?.step}
             min={pmap.get(k)?.min}
@@ -160,7 +152,7 @@ function PIDSection({
         {LIMITS_KEYS.map((k) => (
           <NumField
             key={k}
-            label={k}
+            label={shortParamName(k)}
             value={local[k] ?? 0}
             step={pmap.get(k)?.step ?? 1}
             min={pmap.get(k)?.min}
@@ -175,7 +167,7 @@ function PIDSection({
         {PWM_KEYS.map((k) => (
           <NumField
             key={k}
-            label={k}
+            label={shortParamName(k)}
             value={local[k] ?? 0}
             step={pmap.get(k)?.step ?? 1}
             min={pmap.get(k)?.min}
@@ -210,94 +202,6 @@ function PIDSection({
   )
 }
 
-function VisionSection({
-  pmap,
-  onApply,
-  applying,
-}: {
-  pmap: Map<string, ParamDef>
-  onApply: (patch: Record<string, number>) => void
-  applying: boolean
-}) {
-  const allKeys = VISION_ALL_KEYS
-
-  const initialValues = useMemo(() => {
-    const v: Record<string, number> = {}
-    for (const k of allKeys) v[k] = pmap.get(k)?.value ?? 0
-    return v
-  }, [pmap])
-
-  const [local, setLocal] = useState<Record<string, number>>(initialValues)
-
-  useEffect(() => {
-    setLocal(initialValues)
-  }, [initialValues])
-
-  const set = (key: string, v: number) => setLocal((prev) => ({ ...prev, [key]: v }))
-
-  const hsvMax = (k: string) => (k.includes('_h_') ? 179 : 255)
-
-  return (
-    <>
-      <h3>Floor HSV</h3>
-      <div className={styles.grid2}>
-        {FLOOR_KEYS.map((k) => (
-          <RangeField
-            key={k}
-            label={k}
-            value={local[k] ?? 0}
-            min={pmap.get(k)?.min ?? 0}
-            max={pmap.get(k)?.max ?? hsvMax(k)}
-            step={pmap.get(k)?.step ?? 1}
-            onChange={(v) => set(k, v)}
-          />
-        ))}
-      </div>
-
-      <h3 style={{ marginTop: 12 }}>Ball HSV</h3>
-      <div className={styles.grid2}>
-        {BALL_KEYS.map((k) => (
-          <RangeField
-            key={k}
-            label={k}
-            value={local[k] ?? 0}
-            min={pmap.get(k)?.min ?? 0}
-            max={pmap.get(k)?.max ?? (k === 'min_ball_radius_px' ? 200 : hsvMax(k))}
-            step={pmap.get(k)?.step ?? 1}
-            onChange={(v) => set(k, v)}
-          />
-        ))}
-      </div>
-
-      <div style={{ marginTop: 12 }}>
-        <h3>Video Preview</h3>
-        <img
-          src="/video"
-          alt="Vision preview"
-          style={{ maxWidth: 320, borderRadius: 6, border: '1px solid #333' }}
-        />
-      </div>
-
-      <div style={{ marginTop: 12 }}>
-        <button
-          type="button"
-          className={styles.btnPrimary}
-          disabled={applying}
-          onClick={() => {
-            const patch: Record<string, number> = {}
-            for (const k of allKeys) {
-              if (local[k] !== undefined) patch[k] = local[k]
-            }
-            onApply(patch)
-          }}
-        >
-          {applying ? 'Applying...' : 'Apply'}
-        </button>
-      </div>
-    </>
-  )
-}
-
 function RangeSection({
   pmap,
   onApply,
@@ -307,7 +211,7 @@ function RangeSection({
   onApply: (patch: Record<string, number>) => void
   applying: boolean
 }) {
-  const keys = ['range_stop_mm', 'range_release_mm'] as const
+  const keys = ['reflex.range_stop_mm', 'reflex.range_release_mm'] as const
 
   const initialValues = useMemo(() => {
     const v: Record<string, number> = {}
@@ -330,19 +234,19 @@ function RangeSection({
     <>
       <RangeField
         label="range_stop_mm"
-        value={local.range_stop_mm ?? 250}
-        min={pmap.get('range_stop_mm')?.min ?? 100}
-        max={pmap.get('range_stop_mm')?.max ?? 500}
-        step={pmap.get('range_stop_mm')?.step ?? 10}
-        onChange={(v) => set('range_stop_mm', v)}
+        value={local['reflex.range_stop_mm'] ?? 250}
+        min={pmap.get('reflex.range_stop_mm')?.min ?? 100}
+        max={pmap.get('reflex.range_stop_mm')?.max ?? 500}
+        step={pmap.get('reflex.range_stop_mm')?.step ?? 10}
+        onChange={(v) => set('reflex.range_stop_mm', v)}
       />
       <RangeField
         label="range_release_mm"
-        value={local.range_release_mm ?? 400}
-        min={pmap.get('range_release_mm')?.min ?? 200}
-        max={pmap.get('range_release_mm')?.max ?? 800}
-        step={pmap.get('range_release_mm')?.step ?? 10}
-        onChange={(v) => set('range_release_mm', v)}
+        value={local['reflex.range_release_mm'] ?? 400}
+        min={pmap.get('reflex.range_release_mm')?.min ?? 200}
+        max={pmap.get('reflex.range_release_mm')?.max ?? 800}
+        step={pmap.get('reflex.range_release_mm')?.step ?? 10}
+        onChange={(v) => set('reflex.range_release_mm', v)}
       />
 
       <div style={{ marginTop: 8 }}>
@@ -381,8 +285,16 @@ function IMUSection({
   onApply: (patch: Record<string, number>) => void
   applying: boolean
 }) {
-  const readOnlyKeys = ['imu_odr_hz', 'imu_gyro_range_dps', 'imu_accel_range_g'] as const
-  const editKeys = ['tilt_thresh_deg', 'tilt_hold_ms', 'stall_thresh_ms'] as const
+  const readOnlyKeys = [
+    'reflex.imu_odr_hz',
+    'reflex.imu_gyro_range_dps',
+    'reflex.imu_accel_range_g',
+  ] as const
+  const editKeys = [
+    'reflex.tilt_thresh_deg',
+    'reflex.tilt_hold_ms',
+    'reflex.stall_thresh_ms',
+  ] as const
 
   const initialValues = useMemo(() => {
     const v: Record<string, number> = {}
@@ -409,7 +321,7 @@ function IMUSection({
           const p = pmap.get(k)
           return (
             <div key={k}>
-              <label>{k}</label>
+              <label>{shortParamName(k)}</label>
               <div className={styles.mono} style={{ fontSize: 16, fontWeight: 600 }}>
                 {p?.value ?? '--'}
               </div>
@@ -421,27 +333,27 @@ function IMUSection({
       <h3 style={{ marginTop: 12 }}>Thresholds</h3>
       <RangeField
         label="tilt_thresh_deg"
-        value={local.tilt_thresh_deg ?? 30}
-        min={pmap.get('tilt_thresh_deg')?.min ?? 10}
-        max={pmap.get('tilt_thresh_deg')?.max ?? 60}
-        step={pmap.get('tilt_thresh_deg')?.step ?? 1}
-        onChange={(v) => set('tilt_thresh_deg', v)}
+        value={local['reflex.tilt_thresh_deg'] ?? 30}
+        min={pmap.get('reflex.tilt_thresh_deg')?.min ?? 10}
+        max={pmap.get('reflex.tilt_thresh_deg')?.max ?? 60}
+        step={pmap.get('reflex.tilt_thresh_deg')?.step ?? 1}
+        onChange={(v) => set('reflex.tilt_thresh_deg', v)}
       />
       <RangeField
         label="tilt_hold_ms"
-        value={local.tilt_hold_ms ?? 500}
-        min={pmap.get('tilt_hold_ms')?.min ?? 100}
-        max={pmap.get('tilt_hold_ms')?.max ?? 2000}
-        step={pmap.get('tilt_hold_ms')?.step ?? 50}
-        onChange={(v) => set('tilt_hold_ms', v)}
+        value={local['reflex.tilt_hold_ms'] ?? 500}
+        min={pmap.get('reflex.tilt_hold_ms')?.min ?? 100}
+        max={pmap.get('reflex.tilt_hold_ms')?.max ?? 2000}
+        step={pmap.get('reflex.tilt_hold_ms')?.step ?? 50}
+        onChange={(v) => set('reflex.tilt_hold_ms', v)}
       />
       <RangeField
         label="stall_thresh_ms"
-        value={local.stall_thresh_ms ?? 1000}
-        min={pmap.get('stall_thresh_ms')?.min ?? 200}
-        max={pmap.get('stall_thresh_ms')?.max ?? 5000}
-        step={pmap.get('stall_thresh_ms')?.step ?? 100}
-        onChange={(v) => set('stall_thresh_ms', v)}
+        value={local['reflex.stall_thresh_ms'] ?? 1000}
+        min={pmap.get('reflex.stall_thresh_ms')?.min ?? 200}
+        max={pmap.get('reflex.stall_thresh_ms')?.max ?? 5000}
+        step={pmap.get('reflex.stall_thresh_ms')?.step ?? 100}
+        onChange={(v) => set('reflex.stall_thresh_ms', v)}
       />
 
       <div style={{ marginTop: 8 }}>
@@ -501,9 +413,9 @@ export default function CalibrationTab() {
       {/* Vision / HSV Tuner */}
       <details className={styles.card}>
         <summary style={{ cursor: 'pointer', fontWeight: 600, fontSize: 14, marginBottom: 8 }}>
-          Vision / HSV Tuner
+          Camera / Vision
         </summary>
-        <VisionSection pmap={pmap} onApply={handleApply} applying={updateParams.isPending} />
+        <CameraSettingsPanel pmap={pmap} onApply={handleApply} applying={updateParams.isPending} />
       </details>
 
       {/* Range Sensor */}
