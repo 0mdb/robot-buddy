@@ -61,7 +61,7 @@ enum class FaceButtonEventType : uint8_t {
 // ---- Payload structs (packed, little-endian) ----
 
 struct __attribute__((packed)) FaceSetStatePayload {
-    uint8_t mood_id;    // Mood enum (0-11, see face_state.h)
+    uint8_t mood_id;    // Mood enum (0-12, see face_state.h)
     uint8_t intensity;  // 0-255
     int8_t  gaze_x;     // -128..+127, scaled to +-MAX_GAZE
     int8_t  gaze_y;     // -128..+127, scaled to +-MAX_GAZE

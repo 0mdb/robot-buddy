@@ -55,7 +55,7 @@ _(all items completed)_
 - [ ] Stage 4.0: Suppress conversation border + corner buttons during system overlays (sim + firmware)
 - [ ] Stage 4.0: Fix corner button visuals parity (MIC/X icons + ACTIVE/IDLE mapping matches `tools/face_sim_v3/__main__.py`)
 - [ ] Stage 4.0: Disable corner-button hit-testing + button telemetry during system overlays (buttons hidden)
-- [ ] Stage 4.0: Fix firmware to accept Mood.CONFUSED (mood_id 12) in `SET_STATE`
+- [x] Stage 4.0: Fix firmware to accept Mood.CONFUSED (mood_id 12) in `SET_STATE`
 - [ ] Stage 4.0: Gesture gap analysis: Sim V3 gestures 13–19 exist; defer + gate in sim, keep firmware/protocol at 13 for now
 - [ ] Stage 4.0: Expand `tools/check_face_parity.py` to catch semantic mismatches (not just constants):
   - CONFUSED mood acceptance, system-mode suppression of border/buttons, corner icon mapping defaults
