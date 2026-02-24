@@ -153,6 +153,10 @@ setup-training:
 train-wakeword *phase:
     cd {{project}}/training && bash train.sh {{phase}}
 
+# Retrain wake word model (augment + train only, skip clip generation)
+retrain-wakeword:
+    cd {{project}}/training && bash train.sh augment && bash train.sh train
+
 # Deploy trained model to supervisor
 deploy-wakeword:
     cp {{project}}/training/output/hey_buddy.onnx {{project}}/supervisor/models/hey_buddy.onnx

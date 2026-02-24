@@ -20,14 +20,19 @@ source .venv/bin/activate
 # ── 2. Clone repos ──────────────────────────────────────────
 echo "[2/5] Cloning repos..."
 
+OPENWAKEWORD_COMMIT="368c037"   # 2025-12-30 — tflite conversion behind flag
+PIPER_SAMPLER_COMMIT="f1988a4"  # 2023-09-11
+
 if [ ! -d "openWakeWord" ]; then
     git clone https://github.com/dscripka/openWakeWord.git
+    git -C openWakeWord checkout "$OPENWAKEWORD_COMMIT"
 else
     echo "  openWakeWord already cloned."
 fi
 
 if [ ! -d "piper-sample-generator" ]; then
     git clone https://github.com/dscripka/piper-sample-generator.git
+    git -C piper-sample-generator checkout "$PIPER_SAMPLER_COMMIT"
 else
     echo "  piper-sample-generator already cloned."
 fi
@@ -67,8 +72,8 @@ pip install \
     'scipy<1.15' \
     'setuptools<70'
 
-# TensorFlow for ONNX-to-TFLite export (CPU-only, just for model conversion)
-pip install tensorflow-cpu tensorflow_probability onnx_tf
+# NOTE: TFLite conversion is not used (ONNX-only). Skipping tensorflow-cpu,
+# tensorflow_probability, and onnx_tf (~1.5 GB saved).
 
 # ── 4. Download Piper TTS model ─────────────────────────────
 echo "[4/5] Downloading Piper TTS model..."

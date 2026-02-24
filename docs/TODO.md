@@ -130,7 +130,7 @@ _10 items complete (Stage 4.0 spec/port/parity/buttons/gestures/docs) — see ar
 - [ ] `[sonnet]` Wake word model: increase recall from 42%→80%+ (n_samples 15k→50k+, augmentation rounds 3→5, speech-heavy negative data, layer_size 64)
 - [ ] `[sonnet]` Wake word: record 20–50 real "hey buddy" utterances from family
 - [ ] `[sonnet]` Wake word: soak test 1+ hours idle with household noise
-- [ ] `[sonnet]` Wake word: pin openWakeWord commit, skip tflite, add `just retrain-wakeword`
+- [x] `[sonnet]` Wake word: pin openWakeWord commit, skip tflite, add `just retrain-wakeword`
 
 ---
 
