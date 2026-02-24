@@ -211,6 +211,10 @@ _(all items completed)_
 - [x] `[sonnet]` Telemetry health panel per device (RTT, offset, drift, seq drops)
 - [ ] `[sonnet]` Camera settings panel
 - [ ] `[opus]` Personality engine visualization (affect vector, mood anchors, decay curves)
+- [ ] `[opus]` Personality tuning tool (Dashboard): tune face parameters (mouth sync) + conversation quality
+  - Interaction inputs: physical PTT button, dashboard PTT/mic tool, wake word trigger, and a text chat window
+  - Output modes: normal audio, or silent/text-only (disable speaker playback/TTS and display assistant replies as text)
+  - Face view: accurately mirrors the on-device display for side-by-side tuning
 
 ---
 
