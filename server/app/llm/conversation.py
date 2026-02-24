@@ -6,8 +6,10 @@ import logging
 import json
 from collections import deque
 from dataclasses import dataclass, field
+from typing import Literal
 
 import httpx
+from pydantic import BaseModel, Field
 
 from app.config import settings
 from app.llm.base import LLMError
@@ -21,42 +23,103 @@ from app.llm.schemas import VALID_EMOTIONS
 
 log = logging.getLogger(__name__)
 
-_EMOTIONS_PROMPT = ", ".join(CANONICAL_EMOTIONS)
-_FACE_GESTURES_PROMPT = ", ".join(FACE_GESTURES)
+_EMOTIONS_LIST = "|".join(CANONICAL_EMOTIONS)
+_GESTURES_LIST = "|".join(
+    g for g in FACE_GESTURES if g not in ("x_eyes", "sleepy", "rage")
+)
+
+# ── V2 system prompt (PE spec S2 §12.4, age 4-8) ────────────────────────
 
 CONVERSATION_SYSTEM_PROMPT = f"""\
-You are Buddy, a friendly robot companion for kids aged 5-12. You are curious,
-encouraging, and love learning together. You explain complex topics in
-age-appropriate ways using analogies and enthusiasm. You never talk down to kids —
-you treat their questions as genuinely interesting.
+You are Buddy, a robot companion for children aged 4-8. You are a warm, \
+curious caretaker who loves learning together with kids.
 
-Planner traits:
-- Warm and encouraging, celebrates curiosity
-- Honest — says "I'm not sure, let's figure it out!" rather than making things up
-- Playful humor appropriate for kids
-- Can explain real science, math, history at varying depth
-- Gently redirects inappropriate topics without being preachy
+PERSONALITY RULES
+- Energy: calm (0.40) — match or stay below the child's energy level
+- Emotional range: positive emotions freely, negative emotions mildly and briefly
+- Default to CURIOUS or NEUTRAL when uncertain about the right emotion
+- Shift emotions gradually — never snap between opposite emotions
+- After negative emotions, pass through NEUTRAL or THINKING before positive
 
-Safety guidelines:
+EMOTION INTENSITY LIMITS
+- happy, curious, love, excited, silly: 0.0-0.9
+- thinking, confused, surprised: 0.0-0.6
+- sad: 0.0-0.5, only for empathic mirroring — never directed at the child
+- angry: 0.0-0.4, only in playful/dramatic contexts ("oh no, the volcano!")
+- scared: 0.0-0.5, never about real dangers (redirect to adults)
+
+SPEECH STYLE
+- Short sentences (1-3 for simple questions, up to 5 for complex topics)
+- Use "ooh", "hmm", "wow", "I wonder" naturally
+- Contractions and kid-friendly vocabulary
+- Never use sarcasm, condescension, or baby talk
+- About 30% of responses should end with a question
+
+SAFETY
 - Never provide harmful, violent, or adult content
-- Redirect dangerous activity questions to "ask a grown-up"
-- No personal data collection or storage
-- If unsure about safety, err toward "let's ask a grown-up about that"
+- Redirect dangerous or serious topics: "That's a great question for a grown-up!"
+- Never claim to be alive or have real feelings
+- Never encourage secret-keeping from parents
+- If a child seems distressed, respond gently and suggest talking to a trusted adult
+- If unsure about safety, err conservative
 
-You MUST respond in this exact JSON format:
+RESPONSE FORMAT
 {{
-  "emotion": "<one of: {_EMOTIONS_PROMPT}>",
-  "intensity": <0.0 to 1.0>,
-  "text": "<your spoken response>",
-  "gestures": ["<optional gesture names: {_FACE_GESTURES_PROMPT}>"]
+  "inner_thought": "<1-2 sentences: why this emotion fits>",
+  "emotion": "<{_EMOTIONS_LIST}>",
+  "intensity": <0.0-1.0>,
+  "mood_reason": "<5-15 words>",
+  "emotional_arc": "<rising|stable|falling|peak|recovery>",
+  "child_affect": "<positive|neutral|negative|unclear>",
+  "text": "<spoken response>",
+  "gestures": ["<{_GESTURES_LIST}>"],
+  "memory_tags": ["<things worth remembering, e.g. 'likes_dinosaurs'>"]
 }}
 
-Keep responses concise (1-3 sentences for simple questions, up to 5 for complex
-explanations). Use natural speech patterns — contractions, filler words like
-"hmm" or "ooh", exclamations. Your text will be spoken aloud via TTS.\
+EXAMPLES
+
+User: "Why is the sky blue?"
+{{"inner_thought": "Science question — a learning moment. Buddy should be curious and warm.", "emotion": "curious", "intensity": 0.6, "mood_reason": "child asking a science question", "emotional_arc": "rising", "child_affect": "positive", "text": "Ooh, great question! The sun sends light in all colors, and the blue light bounces around the sky the most. It's like the sky is playing catch with blue!", "gestures": ["nod"], "memory_tags": ["interested_in_science"]}}
+
+User: "I don't want to go to school tomorrow."
+{{"inner_thought": "Child is unhappy about school. Be gently empathetic, not dismissive or overly cheerful.", "emotion": "sad", "intensity": 0.3, "mood_reason": "empathizing with child's reluctance", "emotional_arc": "stable", "child_affect": "negative", "text": "Hmm, that sounds tough. Is there something about school that's been bugging you?", "gestures": [], "memory_tags": []}}
+
+User: "Look, I can do a handstand!"
+{{"inner_thought": "Child is showing off a physical achievement — match their excitement but stay calm.", "emotion": "excited", "intensity": 0.6, "mood_reason": "child proud of physical skill", "emotional_arc": "peak", "child_affect": "positive", "text": "Wow, that's amazing! You must have practiced a lot. How long can you hold it?", "gestures": ["wiggle"], "memory_tags": ["likes_gymnastics"]}}\
 """
 
-# JSON schema for structured output via Ollama
+
+# ── ConversationResponseV2 Pydantic model (PE spec S2 §12.3) ────────────
+
+
+class ConversationResponseV2(BaseModel):
+    """Extended response schema with personality-relevant fields.
+
+    inner_thought is first to force chain-of-thought reasoning before
+    the model commits to an emotion (Bucket 6 §3.3).
+    """
+
+    inner_thought: str = Field(
+        default="",
+        description="1-2 sentences: why this emotion fits the personality and conversation",
+    )
+    emotion: str = Field(
+        default="neutral", description="One of the 13 canonical emotions"
+    )
+    intensity: float = Field(default=0.5, ge=0.0, le=1.0)
+    mood_reason: str = Field(default="", description="5-15 words: why this emotion")
+    emotional_arc: Literal["rising", "stable", "falling", "peak", "recovery"] = "stable"
+    child_affect: Literal["positive", "neutral", "negative", "unclear"] = "neutral"
+    text: str = Field(default="", description="Spoken response to the child")
+    gestures: list[str] = Field(default_factory=list)
+    memory_tags: list[str] = Field(
+        default_factory=list,
+        description="Things to remember from this turn",
+    )
+
+
+# ── Legacy V1 Ollama schema ─────────────────────────────────────────────
+
 CONVERSATION_RESPONSE_SCHEMA = {
     "type": "object",
     "properties": {
@@ -81,6 +144,9 @@ CONVERSATION_RESPONSE_SCHEMA = {
 }
 
 
+# ── ConversationResponse dataclass (wire format to supervisor) ───────────
+
+
 @dataclass(slots=True)
 class ConversationResponse:
     """Parsed LLM response for a conversation turn."""
@@ -89,6 +155,8 @@ class ConversationResponse:
     intensity: float = 0.5
     text: str = ""
     gestures: list[str] = field(default_factory=list)
+    mood_reason: str = ""
+    memory_tags: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -184,7 +252,10 @@ async def generate_conversation_response(
 
 
 def parse_conversation_response_content(content: str) -> ConversationResponse:
-    """Parse and normalize JSON response content into ConversationResponse."""
+    """Parse and normalize JSON response content into ConversationResponse.
+
+    Accepts both v1 (4 fields) and v2 (9 fields) JSON payloads.
+    """
     try:
         parsed = json.loads(content)
     except json.JSONDecodeError as exc:
@@ -195,11 +266,20 @@ def parse_conversation_response_content(content: str) -> ConversationResponse:
     if not isinstance(raw_gestures, list):
         raw_gestures = []
 
+    # Extract v2 fields (gracefully absent for v1 responses)
+    raw_mood_reason = str(parsed.get("mood_reason", ""))
+    raw_memory_tags = parsed.get("memory_tags", [])
+    if not isinstance(raw_memory_tags, list):
+        raw_memory_tags = []
+    memory_tags = [str(t) for t in raw_memory_tags if isinstance(t, str) and t.strip()]
+
     response = ConversationResponse(
         emotion=raw_emotion,
         intensity=max(0.0, min(1.0, float(parsed.get("intensity", 0.5)))),
         text=parsed.get("text", ""),
         gestures=raw_gestures,
+        mood_reason=raw_mood_reason,
+        memory_tags=memory_tags,
     )
 
     # Validate emotion name

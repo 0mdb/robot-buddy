@@ -23,8 +23,8 @@ Living section — reorder as priorities shift. Current recommended sequence:
 ### Track B: Personality Engine (server + supervisor)
 1. ~~PE↔Face spec compliance fixes~~ ✅ + ~~Server emotion vocab alignment~~ ✅ (B1 complete)
 2. ~~Guardrail config + safety timers~~ ✅ (B1b: GuardrailConfig, RS-1/RS-2 session/daily limits, persistence, parent override)
-3. Conversation response schema v2 + prompt v2 (bucket-6 v2 skeleton, mood_reason, memory_tags)
-4. vLLM guided JSON decoding + model config defaults (Qwen3-8B-AWQ)
+3. ~~Conversation response schema v2 + prompt v2 + guided decoding + model defaults~~ ✅ (B2 core: v2 schema, age 4-8 prompt, Qwen3-8B-AWQ, mood_reason forwarding)
+4. Conversation hardening (context-budget, audio overflow, privacy, L1 mood_reason validation, chat templates)
 5. Personality profile injection (`personality.llm.profile` → `/converse` prompt injection + anchor cadence)
 6. Memory system (local JSON, consent gate, dashboard viewer + forget)
 7. Prosody routing (TTS emotion from PE mood; optional VA→prosody later)
@@ -104,35 +104,34 @@ _(all items completed)_
 - [x] Implement RS-1 session time limit (900 s) + RS-2 daily time limit (2700 s): enforcement behavior + “daily” semantics + persistence/reset strategy (PE spec S2 §9.3)
 - [x] Expose time-limit state via telemetry + add a child-safe UX path (stop-and-redirect + cooldown) + parent override controls
 
-**B2 — Conversation Schema V2 + Prompt V2 (Layer 1)** `[opus]`
-- [ ] Implement ConversationResponse v2 schema (PE spec S2 §12.3): `inner_thought`, `emotion`, `intensity`, `mood_reason`, `emotional_arc`, `child_affect`, `text`, `gestures`, `memory_tags`
-- [ ] Normalize target child age range across prompts/specs/eval docs (avoid mixed 4–6 vs 5–12 messaging; pick canonical and enforce in system prompt)
+**B2 — Conversation Schema V2 + Prompt V2 (Layer 1)** `[opus]` _(core schema + guided decoding done)_
+- [x] Implement ConversationResponse v2 schema (PE spec S2 §12.3): `inner_thought`, `emotion`, `intensity`, `mood_reason`, `emotional_arc`, `child_affect`, `text`, `gestures`, `memory_tags`
+- [x] Normalize target child age range across prompts/specs/eval docs to **age 4–8** (canonical; enforce in system prompt)
+- [x] Rewrite CONVERSATION_SYSTEM_PROMPT v2 (PE spec S2 §12.4): 6 sections (personality rules, emotion intensity limits, speech style, safety, response format, examples)
+- [x] vLLM schema-guided decoding (PE spec S2 §12.2) for conversation via `GuidedDecodingParams`; eliminates JSON repair loop for conversation
+- [x] Set server defaults: `VLLM_MODEL_NAME=Qwen/Qwen3-8B-Instruct-AWQ` and `VLLM_DTYPE=auto` (PE spec S2 §12.1)
+- [x] `/converse` websocket protocol: include `mood_reason` with emotion metadata; `ai_worker.py` parsing + forwarding
 - [ ] Implement conversation history context-budget enforcement (PE spec S2 §12.6): deterministic truncation + rolling summary/compression
-- [ ] `/converse` websocket protocol: include `mood_reason` (+ `memory_tags`) with emotion metadata; update `supervisor/workers/ai_worker.py` parsing + forwarding
 - [ ] Harden `/converse` websocket: cap per-utterance `audio_buffer` bytes + max utterance seconds; reject/clear on overflow; add overflow/timeout telemetry (server `routers/converse.py`)
 - [ ] Privacy hardening: disable transcript logging by default (no user/assistant text in logs); add redaction hooks + retention note (server `llm/conversation.py`)
 - [ ] Update PersonalityWorker L1 pipeline (PE spec S2 §13): `mood_reason` validation + modulation factor; rejected reasons substitute THINKING and emit guardrail-trigger event
 - [ ] Extend `personality.event.ai_emotion` payload forwarding: include `session_id`, `turn_id`, `mood_reason`; add `personality.event.memory_extract` emission per turn
-
-**B3 — vLLM Guided Decoding + Model Defaults** `[sonnet]`
-- [ ] Set server defaults: `VLLM_MODEL_NAME=Qwen/Qwen3-8B-Instruct-AWQ` and `VLLM_DTYPE=auto` (PE spec S2 §12.1)
-- [ ] Implement vLLM schema-guided decoding (PE spec S2 §12.2) for conversation (+ planner where applicable); remove JSON repair loop
 - [ ] Use model chat templates (Qwen) instead of ad-hoc `ROLE: ...` prompting to avoid behavior drift between backends (quality + token efficiency)
 
-**B4 — Personality Profile Injection (server conditioning)** `[opus]`
+**B3 — Personality Profile Injection (server conditioning)** `[opus]`
 - [ ] Add outbound `personality.llm.profile` from PersonalityWorker (conv start + 1 Hz during conv) and route it to AI worker
-- [ ] Extend `/converse` protocol to accept `{"type":"profile","profile":{...}}`; server injects “CURRENT STATE …” system block each turn + anchor reminder every 5 turns (PE spec S2 §12.5, §12.7)
+- [ ] Extend `/converse` protocol to accept `{“type”:”profile”,”profile”:{...}}`; server injects “CURRENT STATE …” system block each turn + anchor reminder every 5 turns (PE spec S2 §12.5, §12.7)
 
-**B5 — Memory System (COPPA)** `[opus]`
+**B4 — Memory System (COPPA)** `[opus]`
 - [ ] Implement local memory store per PE spec S2 §8: decay tiers, max 50 entries, eviction, local-only JSON, consent gate default false
 - [ ] Memory timestamps: clarify/resolve monotonic-vs-wall-clock for persistence across reboots; implement `boot_id` + wall-clock fallback if needed (may require spec amendment)
 - [ ] Dashboard: parent memory viewer + “Forget everything” button (`personality.cmd.reset_memory`) (PE spec S2 §8.5)
 - [ ] Apply memory bias term in affect update (step 3) (PE spec S2 §8.3)
 
-**B6 — Prosody** `[sonnet]`
-- [ ] Route TTS emotion tag from `world.personality_mood` (PE spec S2 §11.5) instead of hardcoding `"neutral"`
+**B5 — Prosody** `[sonnet]`
+- [ ] Route TTS emotion tag from `world.personality_mood` (PE spec S2 §11.5) instead of hardcoding `”neutral”`
 
-**B7 — Evaluation** `[opus]`
+**B6 — Evaluation** `[opus]`
 - [ ] Add/extend tests: clamping behavior, worker intensity caps, planner-emote impulse routing, conv-ended teardown coverage, `confused` server vocab, schema-v2 parsing, guided decoding compliance
 - [ ] Add tests for RS-1/RS-2 time limits, `/converse` overflow/timeouts/disconnects, and “no transcript logs by default” privacy policy
 - [ ] PE evaluation checklist: emotional coherence, guardrail compliance, child-safety validation (PE spec S2 §13 + §9 HC/RS)
@@ -250,6 +249,16 @@ _(all items completed)_
 - [x] Session/daily time state in personality snapshot → WorldState → telemetry (dashboard-visible)
 - [x] Tick loop enforces daily limit gate on `_start_conversation` + session limit wind-down via delayed teardown
 - [x] 30 new unit tests: config parsing, guardrail toggles, session/daily timer increments, limit events, persistence, set_guardrail command
+
+### Personality Engine — B2 Conversation Schema V2 + Guided Decoding
+- [x] `ConversationResponseV2` Pydantic model (9 fields: inner_thought, emotion, intensity, mood_reason, emotional_arc, child_affect, text, gestures, memory_tags)
+- [x] `CONVERSATION_SYSTEM_PROMPT` v2 rewrite: 6 sections (personality rules, emotion intensity limits, speech style, safety, response format with v2 JSON, 3 examples), target age 4-8
+- [x] vLLM guided JSON decoding via `GuidedDecodingParams(json_object=schema)` — eliminates repair loop for conversation; graceful fallback if `GuidedDecodingParams` unavailable
+- [x] Server config defaults updated: `Qwen/Qwen3-8B-Instruct-AWQ`, `dtype=auto` (PE spec S2 §12.1)
+- [x] `/converse` WebSocket emotion message includes `mood_reason` field
+- [x] `ai_worker.py` parses and forwards `mood_reason` from server emotion messages
+- [x] `ConversationResponse` dataclass extended with `mood_reason` + `memory_tags` fields
+- [x] `parse_conversation_response_content()` accepts both v1 (4 fields) and v2 (9 fields) JSON payloads
 
 ### Personality Engine — B1 PE↔Face Compliance
 - [x] Tick loop conversation clamping: LISTENING/PTT → NEUTRAL@0.3, THINKING → THINKING@0.5 (overrides PE snapshot)

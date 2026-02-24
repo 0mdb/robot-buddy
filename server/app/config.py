@@ -32,8 +32,10 @@ class Settings:
     llm_backend: str = os.environ.get("LLM_BACKEND", "vllm").strip().lower()
     ollama_url: str = os.environ.get("OLLAMA_URL", "http://localhost:11434")
     model_name: str = os.environ.get("MODEL_NAME", "qwen3:14b")
-    vllm_model_name: str = os.environ.get("VLLM_MODEL_NAME", "Qwen/Qwen2.5-3B-Instruct")
-    vllm_dtype: str = os.environ.get("VLLM_DTYPE", "bfloat16")
+    vllm_model_name: str = os.environ.get(
+        "VLLM_MODEL_NAME", "Qwen/Qwen3-8B-Instruct-AWQ"
+    )
+    vllm_dtype: str = os.environ.get("VLLM_DTYPE", "auto")
     vllm_gpu_memory_utilization: float = float(
         os.environ.get("VLLM_GPU_MEMORY_UTILIZATION", "0.35")
     )

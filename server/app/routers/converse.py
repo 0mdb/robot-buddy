@@ -10,7 +10,7 @@ Protocol:
     Server → Client:
         {"type": "listening"}
         {"type": "transcription", "text": "..."}
-        {"type": "emotion", "emotion": "excited", "intensity": 0.8}
+        {"type": "emotion", "emotion": "excited", "intensity": 0.8, "mood_reason": "..."}
         {"type": "gestures", "names": ["nod"]}
         {"type": "audio", "data": "<base64 PCM 16kHz 16-bit mono>", "chunk_index": N}
         {"type": "done"}
@@ -186,13 +186,14 @@ async def _generate_and_stream(
         return
 
     # 1. Send emotion immediately (face changes before speech)
-    await ws.send_json(
-        {
-            "type": "emotion",
-            "emotion": response.emotion,
-            "intensity": response.intensity,
-        }
-    )
+    emotion_msg: dict[str, object] = {
+        "type": "emotion",
+        "emotion": response.emotion,
+        "intensity": response.intensity,
+    }
+    if response.mood_reason:
+        emotion_msg["mood_reason"] = response.mood_reason
+    await ws.send_json(emotion_msg)
 
     # 2. Send gestures if any
     if response.gestures:

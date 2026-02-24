@@ -326,15 +326,16 @@ class AIWorker(BaseWorker):
                     )
 
                 elif msg_type == "emotion":
-                    self.send(
-                        AI_CONVERSATION_EMOTION,
-                        {
-                            "session_id": self._session_id,
-                            "turn_id": self._turn_id,
-                            "emotion": msg.get("emotion", ""),
-                            "intensity": float(msg.get("intensity", 0.7)),
-                        },
-                    )
+                    emotion_payload: dict[str, object] = {
+                        "session_id": self._session_id,
+                        "turn_id": self._turn_id,
+                        "emotion": msg.get("emotion", ""),
+                        "intensity": float(msg.get("intensity", 0.7)),
+                    }
+                    mood_reason = msg.get("mood_reason", "")
+                    if mood_reason:
+                        emotion_payload["mood_reason"] = str(mood_reason)
+                    self.send(AI_CONVERSATION_EMOTION, emotion_payload)
 
                 elif msg_type == "gestures":
                     self.send(

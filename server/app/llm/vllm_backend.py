@@ -19,9 +19,9 @@ from app.llm.base import (
     PlannerLLMBackend,
 )
 from app.llm.conversation import (
-    CONVERSATION_SYSTEM_PROMPT,
     ConversationHistory,
     ConversationResponse,
+    ConversationResponseV2,
     parse_conversation_response_content,
 )
 from app.llm.prompts import SYSTEM_PROMPT, format_user_prompt
@@ -35,8 +35,15 @@ _JSON_REPAIR_SUFFIX = (
 
 _VLLM_DTYPE = Literal["auto", "half", "float16", "bfloat16", "float", "float32"]
 
+# Cached V2 JSON schema for guided decoding (generated once from Pydantic model).
+_CONVERSATION_V2_JSON_SCHEMA = ConversationResponseV2.model_json_schema()
+
 
 def _extract_json_object(text: str) -> str:
+    """Best-effort extraction of the first JSON object from free-form text.
+
+    Used for plan generation (which doesn't use guided decoding yet).
+    """
     if not isinstance(text, str):
         return ""
     raw = text.strip()
@@ -66,6 +73,7 @@ class VLLMBackend(PlannerLLMBackend):
         self._model_name = settings.vllm_model_name
         self._engine: Any = None
         self._SamplingParams: Any = None
+        self._GuidedDecodingParams: Any = None
         self._loaded = False
 
         self._max_inflight = max(1, int(settings.llm_max_inflight))
@@ -88,6 +96,15 @@ class VLLMBackend(PlannerLLMBackend):
                 "vllm backend requested but vllm is not installed"
             ) from exc
 
+        # GuidedDecodingParams may not exist in older vLLM versions.
+        try:
+            from vllm.sampling_params import GuidedDecodingParams
+        except ImportError:
+            GuidedDecodingParams = None
+            log.warning(
+                "vLLM GuidedDecodingParams not available — falling back to unguided"
+            )
+
         dtype = cast(_VLLM_DTYPE, settings.vllm_dtype)
         engine_args = AsyncEngineArgs(
             model=self._model_name,
@@ -99,13 +116,14 @@ class VLLMBackend(PlannerLLMBackend):
         )
         self._engine = AsyncLLMEngine.from_engine_args(engine_args)
         self._SamplingParams = SamplingParams
+        self._GuidedDecodingParams = GuidedDecodingParams
         self._loaded = True
         log.info(
-            "vLLM Qwen backend loaded (%s, gpu_mem=%.2f, max_len=%d, max_num_seqs=%d)",
+            "vLLM Qwen backend loaded (%s, gpu_mem=%.2f, max_len=%d, guided=%s)",
             self._model_name,
             settings.vllm_gpu_memory_utilization,
             settings.vllm_max_model_len,
-            settings.vllm_max_num_seqs,
+            GuidedDecodingParams is not None,
         )
 
     async def close(self) -> None:
@@ -122,6 +140,7 @@ class VLLMBackend(PlannerLLMBackend):
         finally:
             self._engine = None
             self._SamplingParams = None
+            self._GuidedDecodingParams = None
             self._loaded = False
 
     async def health_check(self) -> bool:
@@ -176,6 +195,20 @@ class VLLMBackend(PlannerLLMBackend):
         await self._acquire_generation_slot()
         try:
             prompt = self._build_conversation_prompt(history)
+
+            # With guided decoding, the output is guaranteed valid JSON matching
+            # the V2 schema — no repair loop needed.
+            if self._GuidedDecodingParams is not None:
+                text = await self._generate_text(
+                    prompt,
+                    request_tag=f"conv-{history.turn_count}-1",
+                    guided_json_schema=_CONVERSATION_V2_JSON_SCHEMA,
+                )
+                response = parse_conversation_response_content(text)
+                history.add_assistant(response.text)
+                return response
+
+            # Fallback: unguided generation with JSON repair loop.
             for attempt in (1, 2):
                 text = await self._generate_text(
                     prompt,
@@ -210,16 +243,31 @@ class VLLMBackend(PlannerLLMBackend):
             "max_model_len": settings.vllm_max_model_len,
             "max_num_seqs": settings.vllm_max_num_seqs,
             "max_num_batched_tokens": settings.vllm_max_num_batched_tokens,
+            "guided_decoding": self._GuidedDecodingParams is not None,
         }
 
-    async def _generate_text(self, prompt: str, *, request_tag: str) -> str:
+    async def _generate_text(
+        self,
+        prompt: str,
+        *,
+        request_tag: str,
+        guided_json_schema: dict[str, Any] | None = None,
+    ) -> str:
         if self._engine is None or self._SamplingParams is None:
             raise LLMUnavailableError("vllm backend not initialized")
 
-        sampling_params = self._SamplingParams(
-            temperature=settings.vllm_temperature,
-            max_tokens=settings.vllm_max_output_tokens,
-        )
+        sp_kwargs: dict[str, Any] = {
+            "temperature": settings.vllm_temperature,
+            "max_tokens": settings.vllm_max_output_tokens,
+        }
+
+        # Attach guided decoding if schema provided and vLLM supports it.
+        if guided_json_schema is not None and self._GuidedDecodingParams is not None:
+            sp_kwargs["guided_decoding"] = self._GuidedDecodingParams(
+                json_object=guided_json_schema,
+            )
+
+        sampling_params = self._SamplingParams(**sp_kwargs)
         request_id = f"{request_tag}-{int(time.time() * 1000)}-{uuid.uuid4().hex[:8]}"
         agen = self._engine.generate(prompt, sampling_params, request_id=request_id)
 
@@ -265,10 +313,8 @@ class VLLMBackend(PlannerLLMBackend):
             if not content:
                 continue
             lines.append(f"{role}: {content}")
-        lines.append(
-            "ASSISTANT: Return only one valid JSON object with keys emotion, intensity, text, gestures."
-        )
-        return f"{CONVERSATION_SYSTEM_PROMPT}\n\n" + "\n\n".join(lines)
+        lines.append("ASSISTANT:")
+        return "\n\n".join(lines)
 
     async def _acquire_generation_slot(self) -> None:
         async with self._generation_lock:
