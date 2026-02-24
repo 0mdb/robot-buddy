@@ -18,6 +18,7 @@ import { debounce } from '../lib/debounce'
 import { type ConversationEvent, useConversationStore } from '../lib/wsConversation'
 import { type CapturedPacket, useProtocolStore } from '../lib/wsProtocol'
 import styles from '../styles/global.module.css'
+import ft from './FaceTab.module.css'
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -120,23 +121,6 @@ interface FlagState {
   edge_glow: boolean
   sparkle: boolean
   afterglow: boolean
-}
-
-// Segmented button style helper
-const segBtnBase: React.CSSProperties = {
-  padding: '3px 10px',
-  fontSize: 11,
-  border: '1px solid #333',
-  background: '#1a1a2e',
-  color: '#888',
-  cursor: 'pointer',
-}
-const segBtnActive: React.CSSProperties = {
-  ...segBtnBase,
-  border: '1px solid var(--accent)',
-  background: 'rgba(100,180,255,0.12)',
-  color: '#ccc',
-  fontWeight: 600,
 }
 
 // ---------------------------------------------------------------------------
@@ -443,16 +427,9 @@ export default function FaceTab() {
           </span>
           <button
             type="button"
+            className={`${ft.segBtn} ${protoPaused ? ft.segBtnActive : ''}`}
             onClick={() => setProtoPaused(!protoPaused)}
-            style={{
-              padding: '3px 10px',
-              fontSize: 11,
-              border: `1px solid ${protoPaused ? '#ff9800' : '#333'}`,
-              borderRadius: 4,
-              background: protoPaused ? 'rgba(255,152,0,0.15)' : '#1a1a2e',
-              color: protoPaused ? '#ff9800' : '#888',
-              cursor: 'pointer',
-            }}
+            style={{ borderRadius: 4 }}
           >
             {protoPaused ? 'Paused' : 'Live'}
           </button>
@@ -465,34 +442,22 @@ export default function FaceTab() {
       </div>
 
       {/* Mirror controls (Phase 6) */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 12,
-          flexWrap: 'wrap',
-        }}
-      >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         {/* Mode toggle: Live | Sandbox */}
         <div style={{ display: 'flex' }}>
           <button
             type="button"
+            className={`${ft.segBtn} ${mirrorMode === 'live' ? ft.segBtnActive : ''}`}
             onClick={() => setMirrorMode('live')}
-            style={{
-              ...(mirrorMode === 'live' ? segBtnActive : segBtnBase),
-              borderRadius: '4px 0 0 4px',
-            }}
+            style={{ borderRadius: '4px 0 0 4px' }}
           >
             Live
           </button>
           <button
             type="button"
+            className={`${ft.segBtn} ${mirrorMode === 'sandbox' ? ft.segBtnActive : ''}`}
             onClick={() => setMirrorMode('sandbox')}
-            style={{
-              ...(mirrorMode === 'sandbox' ? segBtnActive : segBtnBase),
-              borderRadius: '0 4px 4px 0',
-              borderLeft: 'none',
-            }}
+            style={{ borderRadius: '0 4px 4px 0', borderLeft: 'none' }}
           >
             Sandbox
           </button>
@@ -504,9 +469,9 @@ export default function FaceTab() {
             <button
               type="button"
               key={fpsOpt}
+              className={`${ft.segBtn} ${mirrorFps === fpsOpt ? ft.segBtnActive : ''}`}
               onClick={() => setMirrorFps(fpsOpt)}
               style={{
-                ...(mirrorFps === fpsOpt ? segBtnActive : segBtnBase),
                 borderRadius:
                   i === 0 ? '4px 0 0 4px' : i === ANIM_FPS_OPTIONS.length - 1 ? '0 4px 4px 0' : '0',
                 borderLeft: i > 0 ? 'none' : undefined,
@@ -540,30 +505,317 @@ export default function FaceTab() {
         {isSandbox && sandboxRef.current && (
           <button
             type="button"
+            className={ft.segBtn}
             onClick={() => sandboxRef.current?.reset()}
-            style={{
-              ...segBtnBase,
-              borderRadius: 4,
-              color: '#ff5252',
-              borderColor: '#ff5252',
-            }}
+            style={{ borderRadius: 4, color: '#ff5252', borderColor: '#ff5252' }}
           >
             Reset
           </button>
         )}
       </div>
 
-      {/* Face Mirror Canvas */}
-      <div className={styles.card}>
-        <FaceMirrorCanvas
-          mode={mirrorMode}
-          fps={mirrorFps}
-          deterministic={mirrorDet}
-          onSandboxDispatch={handleSandboxDispatch}
-        />
+      {/* ── SECTION: Face Controls ──────────────────────────────── */}
+      <div className={ft.sectionHeader}>Face Controls</div>
+
+      {/* Phase 1: Two-column layout — Mirror (sticky left) + Controls (right) */}
+      <div className={ft.faceArea}>
+        {/* Left: Face Mirror Canvas (sticky) */}
+        <div className={ft.mirrorCol}>
+          <div className={styles.card}>
+            <FaceMirrorCanvas
+              mode={mirrorMode}
+              fps={mirrorFps}
+              deterministic={mirrorDet}
+              onSandboxDispatch={handleSandboxDispatch}
+            />
+          </div>
+        </div>
+
+        {/* Right: Scrollable face controls */}
+        <div className={ft.controlsCol}>
+          {/* Face State — read-only conversation + sequencer display */}
+          <div className={styles.card}>
+            <h3>Face State</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {/* Conversation state */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ color: 'var(--text-dim)', fontSize: 11, width: 52 }}>Conv</span>
+                <span
+                  className={styles.badge}
+                  style={{
+                    background: CONV_STATE_COLORS[convState] ?? '#444',
+                    color: '#fff',
+                  }}
+                >
+                  {CONV_STATE_NAMES[convState] ?? '?'}
+                </span>
+                <span className={styles.mono} style={{ color: '#888', fontSize: 11 }}>
+                  {convTimerMs !== null ? `${convTimerMs} ms` : '\u2014'}
+                </span>
+              </div>
+
+              {/* Mood sequencer */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ color: 'var(--text-dim)', fontSize: 11, width: 52 }}>Mood</span>
+                <span className={styles.mono} style={{ minWidth: 72 }}>
+                  {MOOD_ID_NAMES[seqMoodId] ?? '?'}
+                </span>
+                <div
+                  style={{
+                    flex: 1,
+                    height: 6,
+                    background: '#333',
+                    borderRadius: 3,
+                    overflow: 'hidden',
+                  }}
+                >
+                  <div
+                    style={{
+                      width: `${(seqIntensity * 100).toFixed(0)}%`,
+                      height: '100%',
+                      background: 'var(--accent)',
+                      transition: 'width 80ms linear',
+                    }}
+                  />
+                </div>
+                <span
+                  className={styles.mono}
+                  style={{ color: '#888', fontSize: 11, width: 32, textAlign: 'right' }}
+                >
+                  {`${(seqIntensity * 100).toFixed(0)}%`}
+                </span>
+              </div>
+
+              {/* Sequencer phase + choreography */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ color: 'var(--text-dim)', fontSize: 11, width: 52 }}>Phase</span>
+                <span className={styles.mono}>{SEQ_PHASE_NAMES[seqPhase] ?? '?'}</span>
+                {choreoActive && (
+                  <span className={styles.badge} style={{ background: '#9c27b0', color: '#fff' }}>
+                    choreo
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Mood section */}
+          <div className={styles.card}>
+            <h3>Mood</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <label>
+                Emotion
+                <select
+                  value={face.mood}
+                  onChange={(e) => updateFace({ mood: e.target.value })}
+                  style={{ marginLeft: 8, minWidth: 140 }}
+                >
+                  {MOODS.map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                Intensity: {face.intensity}
+                <input
+                  type="range"
+                  min={0}
+                  max={255}
+                  value={face.intensity}
+                  onChange={(e) => updateFace({ intensity: Number(e.target.value) })}
+                />
+              </label>
+
+              <label>
+                Brightness: {face.brightness}
+                <input
+                  type="range"
+                  min={0}
+                  max={255}
+                  value={face.brightness}
+                  onChange={(e) => updateFace({ brightness: Number(e.target.value) })}
+                />
+              </label>
+
+              <label>
+                Gaze X: {face.gazeX}
+                <input
+                  type="range"
+                  min={-128}
+                  max={127}
+                  value={face.gazeX}
+                  onChange={(e) => updateFace({ gazeX: Number(e.target.value) })}
+                />
+              </label>
+
+              <label>
+                Gaze Y: {face.gazeY}
+                <input
+                  type="range"
+                  min={-128}
+                  max={127}
+                  value={face.gazeY}
+                  onChange={(e) => updateFace({ gazeY: Number(e.target.value) })}
+                />
+              </label>
+
+              <button
+                type="button"
+                style={{ alignSelf: 'flex-start' }}
+                onClick={() => updateFace({ gazeX: 0, gazeY: 0 })}
+              >
+                Center Gaze
+              </button>
+            </div>
+          </div>
+
+          {/* Gestures — Phase 1: compact 4-column grid */}
+          <div className={styles.card}>
+            <h3>Gestures</h3>
+            <div className={ft.gestureGrid}>
+              {GESTURES.map((g) => (
+                <button
+                  type="button"
+                  key={g}
+                  className={ft.gestureBtn}
+                  onClick={() => {
+                    send({ type: 'face_gesture', name: g, duration_ms: 500 })
+                    const gid = GESTURE_NAME_TO_ID[g]
+                    if (gid !== undefined && sandboxRef.current) {
+                      sandboxRef.current.triggerGesture(gid, 500)
+                    }
+                  }}
+                >
+                  {g}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* System Mode */}
+          <div className={`${styles.card} ${isSandbox ? ft.cardDisabled : ''}`}>
+            <h3>System Mode</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <label>
+                Mode
+                <select
+                  value={sysMode}
+                  onChange={(e) => {
+                    const mode = e.target.value
+                    setSysMode(mode)
+                    debouncedSysMode(mode, sysParam)
+                  }}
+                  style={{ marginLeft: 8, minWidth: 160 }}
+                >
+                  {SYSTEM_MODES.map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                Param: {sysParam}
+                <input
+                  type="range"
+                  min={0}
+                  max={255}
+                  value={sysParam}
+                  onChange={(e) => {
+                    const val = Number(e.target.value)
+                    setSysParam(val)
+                    debouncedSysMode(sysMode, val)
+                  }}
+                />
+              </label>
+            </div>
+          </div>
+
+          {/* Phase 1: Merged "Face Options" — Talking + Flags + Manual Lock */}
+          <div className={`${styles.card} ${isSandbox ? ft.cardDisabled : ''}`}>
+            <h3>Face Options</h3>
+            <div className={ft.faceOptionsGrid}>
+              {/* Talking */}
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input
+                  type="checkbox"
+                  checked={talking}
+                  onChange={(e) => {
+                    const t = e.target.checked
+                    setTalking(t)
+                    debouncedTalking(t, talkEnergy)
+                    if (sandboxRef.current) {
+                      sandboxRef.current.setTalking(t, talkEnergy)
+                    }
+                  }}
+                />
+                Talking
+              </label>
+              <label>
+                Energy: {talkEnergy}
+                <input
+                  type="range"
+                  min={0}
+                  max={255}
+                  value={talkEnergy}
+                  onChange={(e) => {
+                    const val = Number(e.target.value)
+                    setTalkEnergy(val)
+                    debouncedTalking(talking, val)
+                    if (sandboxRef.current) {
+                      sandboxRef.current.setTalking(talking, val)
+                    }
+                  }}
+                />
+              </label>
+
+              {/* Flags */}
+              {FACE_FLAGS.map((f) => {
+                const flagKey = f.name as keyof FlagState
+                return (
+                  <label key={f.bit} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={flags[flagKey] ?? false}
+                      onChange={(e) => {
+                        const next = { ...flags, [flagKey]: e.target.checked }
+                        setFlags(next)
+                        sendFlags(next)
+                      }}
+                    />
+                    {f.label}
+                    <span style={{ color: '#666', fontSize: 11 }}>(bit {f.bit})</span>
+                  </label>
+                )
+              })}
+
+              {/* Manual Lock */}
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input
+                  type="checkbox"
+                  checked={manualLock}
+                  onChange={(e) => {
+                    const enabled = e.target.checked
+                    setManualLock(enabled)
+                    send({ type: 'face_manual_lock', enabled })
+                  }}
+                />
+                Manual Lock
+                <span style={{ color: '#666', fontSize: 11 }}>(prevents autonomous updates)</span>
+              </label>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* Conversation capture (Tuning Studio) */}
+      {/* ── SECTION: Conversation ───────────────────────────────── */}
+      <div className={ft.sectionHeader}>Conversation</div>
+
+      {/* Conversation Studio */}
       <div className={styles.card}>
         <div
           style={{
@@ -582,38 +834,25 @@ export default function FaceTab() {
             </span>
             <button
               type="button"
+              className={`${ft.segBtn} ${convPaused ? ft.segBtnActive : ''}`}
               onClick={() => setConvPaused(!convPaused)}
-              style={{
-                padding: '3px 10px',
-                fontSize: 11,
-                border: `1px solid ${convPaused ? '#ff9800' : '#333'}`,
-                borderRadius: 4,
-                background: convPaused ? 'rgba(255,152,0,0.15)' : '#1a1a2e',
-                color: convPaused ? '#ff9800' : '#888',
-                cursor: 'pointer',
-              }}
+              style={{ borderRadius: 4 }}
             >
               {convPaused ? 'Paused' : 'Live'}
             </button>
             <button
               type="button"
+              className={ft.segBtn}
               onClick={() => useConversationStore.getState().clear()}
-              style={{
-                padding: '3px 10px',
-                fontSize: 11,
-                border: '1px solid #333',
-                borderRadius: 4,
-                background: '#1a1a2e',
-                color: '#888',
-                cursor: 'pointer',
-              }}
+              style={{ borderRadius: 4 }}
             >
               Clear
             </button>
           </div>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
+        {/* Phase 3: Inputs section */}
+        <div className={ft.convInputs} style={{ marginTop: 10 }}>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button type="button" onClick={startWakeWord} style={{ padding: '6px 10px' }}>
               Sim Wake Word
@@ -656,7 +895,7 @@ export default function FaceTab() {
               onKeyDown={(e) => {
                 if (e.key === 'Enter') sendChat()
               }}
-              placeholder="Type message…"
+              placeholder="Type message\u2026"
               style={{
                 flex: 1,
                 minWidth: 180,
@@ -671,13 +910,25 @@ export default function FaceTab() {
               Send
             </button>
           </div>
+        </div>
 
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+        {/* Phase 3: Outputs section — divider, then status rows */}
+        <hr
+          style={{
+            border: 'none',
+            borderTop: '1px solid rgba(255,255,255,0.06)',
+            margin: '10px 0',
+          }}
+        />
+
+        <div className={ft.convStatus}>
+          {/* Device badges */}
+          <div className={ft.convStatusRow}>
             <span className={styles.mono} style={{ color: '#888', fontSize: 11 }}>
-              session {sessionId ? sessionId : '—'}
+              session {sessionId ? sessionId : '\u2014'}
             </span>
             <span className={styles.mono} style={{ color: '#888', fontSize: 11 }}>
-              ai_state {aiState ? aiState : '—'}
+              ai_state {aiState ? aiState : '\u2014'}
             </span>
             <span className={`${styles.badge} ${micLinkUp ? styles.badgeGreen : styles.badgeRed}`}>
               {micLinkUp ? 'mic up' : 'mic down'}
@@ -688,7 +939,10 @@ export default function FaceTab() {
             <span className={`${styles.badge} ${speaking ? styles.badgeGreen : styles.badgeRed}`}>
               {speaking ? 'speaking' : 'not speaking'}
             </span>
+          </div>
 
+          {/* Mute toggles */}
+          <div className={ft.convToggles}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#aaa' }}>
               <input
                 type="checkbox"
@@ -736,340 +990,68 @@ export default function FaceTab() {
           <PipelineTimeline />
         </div>
 
-        <div
-          style={{
-            maxHeight: 220,
-            overflow: 'auto',
-            border: '1px solid rgba(255,255,255,0.06)',
-            borderRadius: 6,
-            padding: 8,
-            background: 'rgba(0,0,0,0.12)',
-            marginTop: 8,
-          }}
-        >
-          {convRecent.length === 0 ? (
-            <span className={styles.mono} style={{ color: '#888', fontSize: 12 }}>
-              No conversation events yet.
-            </span>
-          ) : (
-            convRecent.map((e) => (
-              <div
-                key={`${e.ts_mono_ms}-${e.type}-${String(e.turn_id ?? '')}`}
-                className={styles.mono}
-              >
-                <span style={{ color: '#777' }}>{e.type}</span>{' '}
-                <span style={{ color: '#aaa' }}>{compactConvEvent(e)}</span>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-
-      {/* Personality Engine */}
-      <PersonalityPanel />
-
-      {/* B6 Scenario Suite */}
-      <ScenarioRunner />
-
-      {/* Server Health + Model Config + Generation Overrides */}
-      <ServerHealthPanel />
-
-      {/* TTS Benchmark */}
-      <TtsBenchmark />
-
-      {/* Wake Word Workbench */}
-      <WakeWordWorkbench />
-
-      {/* Face State — read-only conversation + sequencer display */}
-      <div className={styles.card}>
-        <h3>Face State</h3>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
-          {/* Conversation state */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ color: 'var(--text-dim)', fontSize: 11, width: 52 }}>Conv</span>
-            <span
-              className={styles.badge}
-              style={{
-                background: CONV_STATE_COLORS[convState] ?? '#444',
-                color: '#fff',
-              }}
-            >
-              {CONV_STATE_NAMES[convState] ?? '?'}
-            </span>
-            <span className={styles.mono} style={{ color: '#888', fontSize: 11 }}>
-              {convTimerMs !== null ? `${convTimerMs} ms` : '—'}
-            </span>
-          </div>
-
-          {/* Mood sequencer */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ color: 'var(--text-dim)', fontSize: 11, width: 52 }}>Mood</span>
-            <span className={styles.mono} style={{ minWidth: 72 }}>
-              {MOOD_ID_NAMES[seqMoodId] ?? '?'}
-            </span>
-            <div
-              style={{
-                flex: 1,
-                height: 6,
-                background: '#333',
-                borderRadius: 3,
-                overflow: 'hidden',
-              }}
-            >
-              <div
-                style={{
-                  width: `${(seqIntensity * 100).toFixed(0)}%`,
-                  height: '100%',
-                  background: 'var(--accent)',
-                  transition: 'width 80ms linear',
-                }}
-              />
-            </div>
-            <span
-              className={styles.mono}
-              style={{ color: '#888', fontSize: 11, width: 32, textAlign: 'right' }}
-            >
-              {`${(seqIntensity * 100).toFixed(0)}%`}
-            </span>
-          </div>
-
-          {/* Sequencer phase + choreography */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ color: 'var(--text-dim)', fontSize: 11, width: 52 }}>Phase</span>
-            <span className={styles.mono}>{SEQ_PHASE_NAMES[seqPhase] ?? '?'}</span>
-            {choreoActive && (
-              <span className={styles.badge} style={{ background: '#9c27b0', color: '#fff' }}>
-                choreo
+        {/* Phase 3: Event log — collapsed by default */}
+        <details className={ft.eventLogDetails}>
+          <summary>Show events ({convRecent.length})</summary>
+          <div
+            style={{
+              maxHeight: 220,
+              overflow: 'auto',
+              border: '1px solid rgba(255,255,255,0.06)',
+              borderRadius: 6,
+              padding: 8,
+              background: 'rgba(0,0,0,0.12)',
+              marginTop: 4,
+            }}
+          >
+            {convRecent.length === 0 ? (
+              <span className={styles.mono} style={{ color: '#888', fontSize: 12 }}>
+                No conversation events yet.
               </span>
+            ) : (
+              convRecent.map((e) => (
+                <div
+                  key={`${e.ts_mono_ms}-${e.type}-${String(e.turn_id ?? '')}`}
+                  className={styles.mono}
+                >
+                  <span style={{ color: '#777' }}>{e.type}</span>{' '}
+                  <span style={{ color: '#aaa' }}>{compactConvEvent(e)}</span>
+                </div>
+              ))
             )}
           </div>
-        </div>
+        </details>
       </div>
 
-      {/* Mood section */}
-      <div className={styles.card}>
-        <h3>Mood</h3>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
-          <label>
-            Emotion
-            <select
-              value={face.mood}
-              onChange={(e) => updateFace({ mood: e.target.value })}
-              style={{ marginLeft: 8, minWidth: 140 }}
-            >
-              {MOODS.map((m) => (
-                <option key={m} value={m}>
-                  {m}
-                </option>
-              ))}
-            </select>
-          </label>
+      {/* ── SECTION: Personality ────────────────────────────────── */}
+      <div className={ft.sectionHeader}>Personality</div>
 
-          <label>
-            Intensity: {face.intensity}
-            <input
-              type="range"
-              min={0}
-              max={255}
-              value={face.intensity}
-              onChange={(e) => updateFace({ intensity: Number(e.target.value) })}
-            />
-          </label>
+      {/* Phase 3: PE moved here — immediately after face controls + conversation */}
+      <PersonalityPanel />
 
-          <label>
-            Brightness: {face.brightness}
-            <input
-              type="range"
-              min={0}
-              max={255}
-              value={face.brightness}
-              onChange={(e) => updateFace({ brightness: Number(e.target.value) })}
-            />
-          </label>
+      {/* ── SECTION: Diagnostics ───────────────────────────────── */}
+      <div className={ft.sectionHeader}>Diagnostics</div>
 
-          <label>
-            Gaze X: {face.gazeX}
-            <input
-              type="range"
-              min={-128}
-              max={127}
-              value={face.gazeX}
-              onChange={(e) => updateFace({ gazeX: Number(e.target.value) })}
-            />
-          </label>
+      {/* B6 Scenario Suite (already collapsible) */}
+      <ScenarioRunner />
 
-          <label>
-            Gaze Y: {face.gazeY}
-            <input
-              type="range"
-              min={-128}
-              max={127}
-              value={face.gazeY}
-              onChange={(e) => updateFace({ gazeY: Number(e.target.value) })}
-            />
-          </label>
+      {/* Phase 2: Server Health — collapsible, default closed */}
+      <details className={ft.detailsSection}>
+        <summary>Server Health</summary>
+        <ServerHealthPanel />
+      </details>
 
-          <button
-            type="button"
-            style={{ alignSelf: 'flex-start' }}
-            onClick={() => updateFace({ gazeX: 0, gazeY: 0 })}
-          >
-            Center Gaze
-          </button>
-        </div>
-      </div>
+      {/* Phase 2: TTS Benchmark — collapsible, default closed */}
+      <details className={ft.detailsSection}>
+        <summary>TTS Benchmark</summary>
+        <TtsBenchmark />
+      </details>
 
-      {/* Gestures section */}
-      <div className={styles.card}>
-        <h3>Gestures</h3>
-        <div className={styles.grid3} style={{ marginTop: 4 }}>
-          {GESTURES.map((g) => (
-            <button
-              type="button"
-              key={g}
-              onClick={() => {
-                send({ type: 'face_gesture', name: g, duration_ms: 500 })
-                const gid = GESTURE_NAME_TO_ID[g]
-                if (gid !== undefined && sandboxRef.current) {
-                  sandboxRef.current.triggerGesture(gid, 500)
-                }
-              }}
-              style={{ padding: '8px 0', fontSize: 13, fontWeight: 500 }}
-            >
-              {g}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* System Mode section */}
-      <div
-        className={styles.card}
-        style={isSandbox ? { opacity: 0.5, pointerEvents: 'none' } : undefined}
-      >
-        <h3>System Mode</h3>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
-          <label>
-            Mode
-            <select
-              value={sysMode}
-              onChange={(e) => {
-                const mode = e.target.value
-                setSysMode(mode)
-                debouncedSysMode(mode, sysParam)
-              }}
-              style={{ marginLeft: 8, minWidth: 160 }}
-            >
-              {SYSTEM_MODES.map((m) => (
-                <option key={m} value={m}>
-                  {m}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label>
-            Param: {sysParam}
-            <input
-              type="range"
-              min={0}
-              max={255}
-              value={sysParam}
-              onChange={(e) => {
-                const val = Number(e.target.value)
-                setSysParam(val)
-                debouncedSysMode(sysMode, val)
-              }}
-            />
-          </label>
-        </div>
-      </div>
-
-      {/* Talking section */}
-      <div className={styles.card}>
-        <h3>Talking</h3>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <input
-              type="checkbox"
-              checked={talking}
-              onChange={(e) => {
-                const t = e.target.checked
-                setTalking(t)
-                debouncedTalking(t, talkEnergy)
-                if (sandboxRef.current) {
-                  sandboxRef.current.setTalking(t, talkEnergy)
-                }
-              }}
-            />
-            Talking
-          </label>
-
-          <label>
-            Energy: {talkEnergy}
-            <input
-              type="range"
-              min={0}
-              max={255}
-              value={talkEnergy}
-              onChange={(e) => {
-                const val = Number(e.target.value)
-                setTalkEnergy(val)
-                debouncedTalking(talking, val)
-                if (sandboxRef.current) {
-                  sandboxRef.current.setTalking(talking, val)
-                }
-              }}
-            />
-          </label>
-        </div>
-      </div>
-
-      {/* Flags section */}
-      <div className={styles.card}>
-        <h3>Flags</h3>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
-          {FACE_FLAGS.map((f) => {
-            const flagKey = f.name as keyof FlagState
-            return (
-              <label key={f.bit} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <input
-                  type="checkbox"
-                  checked={flags[flagKey] ?? false}
-                  onChange={(e) => {
-                    const next = { ...flags, [flagKey]: e.target.checked }
-                    setFlags(next)
-                    sendFlags(next)
-                  }}
-                />
-                {f.label}
-                <span style={{ color: '#666', fontSize: 11 }}>(bit {f.bit})</span>
-              </label>
-            )
-          })}
-        </div>
-      </div>
-
-      {/* Manual Lock */}
-      <div
-        className={styles.card}
-        style={isSandbox ? { opacity: 0.5, pointerEvents: 'none' } : undefined}
-      >
-        <h3>Manual Lock</h3>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
-          <input
-            type="checkbox"
-            checked={manualLock}
-            onChange={(e) => {
-              const enabled = e.target.checked
-              setManualLock(enabled)
-              send({ type: 'face_manual_lock', enabled })
-            }}
-          />
-          face_manual_lock
-          <span style={{ color: '#666', fontSize: 11 }}>(prevents autonomous face updates)</span>
-        </label>
-      </div>
+      {/* Phase 2: Wake Word Workbench — collapsible, default closed */}
+      <details className={ft.detailsSection}>
+        <summary>Wake Word Workbench</summary>
+        <WakeWordWorkbench />
+      </details>
     </div>
   )
 }

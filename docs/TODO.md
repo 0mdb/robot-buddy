@@ -156,12 +156,18 @@ _10 items complete (Stage 4.0 spec/port/parity/buttons/gestures/docs) — see ar
     - [x] Fold the previously-planned “Personality engine visualization” into this Studio (no separate dashboard feature)
   - [ ] **Face tuning controls (hardware)**
     - [ ] `[sonnet]` Bug: changing gaze in dashboard Tuning tab does not shift face gaze on device
-  - [ ] **Tuning Studio layout / UX polish**
-    - [ ] `[sonnet]` Re-layout Face controls to sit tightly around the Face mirror (face state, mood, gestures, system mode, talking, flags, manual lock)
-    - [ ] `[sonnet]` Consider aligning Personality Engine controls closer to the Face area (reduce eye travel; improve tuning workflow)
-    - [ ] `[sonnet]` Move planner server health UI to a better location (less central; still visible when needed)
-    - [ ] `[sonnet]` Conversation Studio: cleaner, more professional layout (inputs/outputs grouping, density, spacing, scroll)
-    - [ ] `[opus]` UX agent review of Tuning Studio (layout, info architecture, accessibility, responsiveness)
+  - [x] **Tuning Studio layout / UX polish** _(UX review complete; all phases implemented)_
+    - [x] `[sonnet]` Phase 1: Two-column face tuning layout — Face Mirror (sticky, left) + scrollable face controls column (Face State, Mood, Gestures, System Mode, Talking, Flags, Manual Lock) on right; CSS grid with `@media` breakpoint at ~1024px collapsing to single-column
+    - [x] `[sonnet]` Phase 1: Merge Talking + Flags + Manual Lock into a single "Face Options" card (3 cards → 1)
+    - [x] `[sonnet]` Phase 1: Compact gesture grid — 4-column layout with smaller buttons; reduce ~200px to ~120px vertical footprint
+    - [x] `[sonnet]` Phase 2: Wrap Server Health, TTS Benchmark, Wake Word Workbench in collapsible `<details>` (default closed); Scenario Runner already collapsible
+    - [x] `[sonnet]` Phase 2: Add section group headers — "Face Controls", "Conversation", "Personality", "Diagnostics" — with subtle dividers for visual hierarchy
+    - [x] `[sonnet]` Phase 2: Extract FaceTab inline styles → `FaceTab.module.css`; add `:hover`/`:focus` states to buttons
+    - [x] `[sonnet]` Phase 3: Conversation Studio restructure — separate inputs from outputs (divider or sub-columns); collapse raw event log behind "Show events" toggle (default closed); group device badges and mute toggles on separate lines
+    - [x] `[sonnet]` Phase 3: Move Personality Engine closer to Face Mirror area (immediately after face controls, before diagnostics)
+    - [x] `[sonnet]` Phase 4: Sticky Face Mirror in single-column mode (`position: sticky; top: 0`) so it stays visible while scrolling controls
+    - [x] `[sonnet]` Phase 4: Wide-viewport 3-column layout at >=1440px (mirror | face controls | personality VA scatter)
+    - [x] `[opus]` Phase 4: Evaluate sub-tab navigation — not needed; collapsible diagnostics + two-column layout brings visible content well under 1500px threshold
   - [ ] **Accurate Face Mirror (TypeScript port; protocol-driven)**
     - [x] Phase 1-3: Port core sim to `dashboard/src/face_sim/*` — constants, types, SDF, moods, render (eyes+mouth+sparkles), animation state machine (tweens, spring gaze, blink, breathing, idle wander, talking), protocol bridge (SET_STATE/SET_FLAGS/SET_TALKING/GESTURE/SET_CONV_STATE/SET_SYSTEM → FaceState)
     - [x] `FaceMirrorCanvas.tsx` — 320×240 canvas (2x CSS), 30fps rAF loop, live protocol packet ingestion from useProtocolStore

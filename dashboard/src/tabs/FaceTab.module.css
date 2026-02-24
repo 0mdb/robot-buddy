@@ -1,0 +1,213 @@
+/* ── Tuning Studio layout ─────────────────────────────────────────── */
+
+/* Phase 1: Two-column face tuning area */
+.faceArea {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12px;
+  align-items: start;
+}
+
+@media (max-width: 1024px) {
+  .faceArea {
+    grid-template-columns: 1fr;
+  }
+}
+
+.mirrorCol {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+/* Phase 4: Wide-viewport 3-column layout */
+@media (min-width: 1440px) {
+  .wideLayout {
+    display: grid;
+    grid-template-columns: auto 1fr 1fr;
+    gap: 12px;
+    align-items: start;
+  }
+  .wideLayout .mirrorCol {
+    grid-row: 1 / 3;
+  }
+}
+
+.controlsCol {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+/* Phase 1: Compact gesture grid — 4 columns */
+.gestureGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+}
+
+.gestureBtn {
+  padding: 4px 2px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.gestureBtn:hover {
+  border-color: var(--accent);
+  background: rgba(233, 69, 96, 0.08);
+}
+
+/* Phase 1: Face Options merged card */
+.faceOptionsGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 16px;
+  align-items: center;
+}
+
+@media (max-width: 600px) {
+  .faceOptionsGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Phase 2: Section group headers */
+.sectionHeader {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  margin-top: 8px;
+}
+
+/* Phase 2: Collapsible details — lightweight wrapper; inner components have their own .card */
+.detailsSection {
+  /* No border/bg — the child component supplies its own .card chrome */
+}
+
+.detailsSection > summary {
+  padding: 8px 4px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-dim);
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  user-select: none;
+}
+
+.detailsSection > summary::-webkit-details-marker {
+  display: none;
+}
+
+.detailsSection > summary::before {
+  content: "\25b6";
+  font-size: 10px;
+  color: var(--text-dim);
+  transition: transform 0.15s ease;
+}
+
+.detailsSection[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.detailsSection > summary:hover {
+  color: var(--accent);
+}
+
+/* Phase 2: Button hover/focus states */
+.segBtn {
+  padding: 3px 10px;
+  font-size: 11px;
+  border: 1px solid #333;
+  background: #1a1a2e;
+  color: #888;
+  cursor: pointer;
+  transition:
+    border-color 0.12s,
+    background 0.12s,
+    color 0.12s;
+}
+
+.segBtn:hover {
+  border-color: var(--accent-dim);
+  color: #aaa;
+}
+
+.segBtn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.segBtnActive {
+  border: 1px solid var(--accent);
+  background: rgba(100, 180, 255, 0.12);
+  color: #ccc;
+  font-weight: 600;
+}
+
+.segBtnActive:hover {
+  background: rgba(100, 180, 255, 0.18);
+}
+
+/* Phase 3: Conversation Studio layout */
+.convInputs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.convStatus {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.convStatusRow {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.convToggles {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* Phase 3: Event log toggle */
+.eventLogDetails {
+  margin-top: 8px;
+}
+
+.eventLogDetails > summary {
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  user-select: none;
+  padding: 4px 0;
+}
+
+.eventLogDetails > summary:hover {
+  color: var(--accent);
+}
+
+/* Phase 4: Personality column on wide screens */
+.personalityCol {
+  min-width: 0;
+}
+
+/* Disabled card overlay for sandbox */
+.cardDisabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
