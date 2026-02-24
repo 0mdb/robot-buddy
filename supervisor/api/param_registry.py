@@ -558,6 +558,188 @@ def create_default_registry() -> ParamRegistry:
 
     # -- Vision parameters (runtime-tunable, applied live to vision worker) --
 
+    # Camera / ISP settings (Picamera2/libcamera)
+    reg.register(
+        ParamDef(
+            name="vision.rotate_deg",
+            type="int",
+            min=0,
+            max=270,
+            step=90,
+            default=180,
+            owner="vision",
+            doc="Rotate captured frames before CV/video (0/90/180/270)",
+        )
+    )
+    reg.register(
+        ParamDef(
+            name="vision.hfov_deg",
+            type="float",
+            min=30.0,
+            max=120.0,
+            step=1.0,
+            default=66.0,
+            owner="vision",
+            doc="Horizontal field of view (deg) used for ball bearing estimation",
+        )
+    )
+    reg.register(
+        ParamDef(
+            name="vision.af_mode",
+            type="int",
+            min=0,
+            max=2,
+            step=1,
+            default=2,
+            owner="vision",
+            doc="Autofocus mode: 0=manual, 1=auto, 2=continuous",
+        )
+    )
+    reg.register(
+        ParamDef(
+            name="vision.lens_position",
+            type="float",
+            min=0.0,
+            max=10.0,
+            step=0.1,
+            default=1.0,
+            owner="vision",
+            doc="Manual focus lens position (only when af_mode=0)",
+        )
+    )
+    reg.register(
+        ParamDef(
+            name="vision.ae_enable",
+            type="int",
+            min=0,
+            max=1,
+            step=1,
+            default=1,
+            owner="vision",
+            doc="Auto exposure enable: 0=manual, 1=auto",
+        )
+    )
+    reg.register(
+        ParamDef(
+            name="vision.exposure_time_us",
+            type="int",
+            min=100,
+            max=1_000_000,
+            step=100,
+            default=10_000,
+            owner="vision",
+            doc="Manual exposure time (us) when ae_enable=0",
+        )
+    )
+    reg.register(
+        ParamDef(
+            name="vision.analogue_gain",
+            type="float",
+            min=1.0,
+            max=16.0,
+            step=0.1,
+            default=1.0,
+            owner="vision",
+            doc="Manual analogue gain when ae_enable=0",
+        )
+    )
+    reg.register(
+        ParamDef(
+            name="vision.awb_enable",
+            type="int",
+            min=0,
+            max=1,
+            step=1,
+            default=1,
+            owner="vision",
+            doc="Auto white balance enable: 0=manual, 1=auto",
+        )
+    )
+    reg.register(
+        ParamDef(
+            name="vision.colour_gain_r",
+            type="float",
+            min=0.1,
+            max=8.0,
+            step=0.1,
+            default=1.0,
+            owner="vision",
+            doc="Manual white balance red gain when awb_enable=0",
+        )
+    )
+    reg.register(
+        ParamDef(
+            name="vision.colour_gain_b",
+            type="float",
+            min=0.1,
+            max=8.0,
+            step=0.1,
+            default=1.0,
+            owner="vision",
+            doc="Manual white balance blue gain when awb_enable=0",
+        )
+    )
+    reg.register(
+        ParamDef(
+            name="vision.brightness",
+            type="float",
+            min=-1.0,
+            max=1.0,
+            step=0.05,
+            default=0.0,
+            owner="vision",
+            doc="Image brightness (libcamera control)",
+        )
+    )
+    reg.register(
+        ParamDef(
+            name="vision.contrast",
+            type="float",
+            min=0.0,
+            max=2.0,
+            step=0.05,
+            default=1.0,
+            owner="vision",
+            doc="Image contrast (libcamera control)",
+        )
+    )
+    reg.register(
+        ParamDef(
+            name="vision.saturation",
+            type="float",
+            min=0.0,
+            max=2.0,
+            step=0.05,
+            default=1.0,
+            owner="vision",
+            doc="Image saturation (libcamera control)",
+        )
+    )
+    reg.register(
+        ParamDef(
+            name="vision.sharpness",
+            type="float",
+            min=0.0,
+            max=2.0,
+            step=0.05,
+            default=1.0,
+            owner="vision",
+            doc="Image sharpness (libcamera control)",
+        )
+    )
+    reg.register(
+        ParamDef(
+            name="vision.jpeg_quality",
+            type="int",
+            min=10,
+            max=95,
+            step=1,
+            default=50,
+            owner="vision",
+            doc="MJPEG /video JPEG quality (10-95)",
+        )
+    )
+
     # Floor HSV thresholds — tune these to match your actual floor color.
     # Use a colour-picker on a /video frame to find the right HSV range.
     reg.register(

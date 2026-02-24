@@ -343,7 +343,7 @@ All types follow `domain.entity.verb`:
 | Type | Direction | Description |
 |------|-----------|-------------|
 | `vision.detection.snapshot` | Vision → Core | Per-frame detection results |
-| `vision.config.update` | Core → Vision | HSV thresholds, MJPEG toggle |
+| `vision.config.update` | Core → Vision | HSV thresholds, camera/ISP settings, MJPEG toggle |
 | `vision.frame.jpeg` | Vision → Core | MJPEG frame (on request) |
 | `vision.status.health` | Vision → Core | FPS, drops, errors |
 | `vision.lifecycle.started` | Vision → Core | Worker ready |
@@ -627,9 +627,30 @@ Each worker has its own stdout pipe to Core (§6.1). Within a single worker's pi
     "mjpeg_enabled": false,
     "floor_hsv_low": [0, 0, 50],
     "floor_hsv_high": [180, 80, 220],
-    "ball_hsv_low": [0, 120, 70],
+    "ball_hsv_low": [170, 80, 40],
     "ball_hsv_high": [15, 255, 255],
-    "min_ball_radius": 10
+    "min_ball_radius": 8,
+
+    "rotate_deg": 180,
+    "hfov_deg": 66.0,
+
+    "af_mode": 2,
+    "lens_position": 1.0,
+
+    "ae_enable": 1,
+    "exposure_time_us": 10000,
+    "analogue_gain": 1.0,
+
+    "awb_enable": 1,
+    "colour_gain_r": 1.0,
+    "colour_gain_b": 1.0,
+
+    "brightness": 0.0,
+    "contrast": 1.0,
+    "saturation": 1.0,
+    "sharpness": 1.0,
+
+    "jpeg_quality": 50
 }
 ```
 

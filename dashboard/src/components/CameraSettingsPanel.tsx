@@ -15,6 +15,30 @@ const FLOOR_KEYS = [
   'vision.floor_hsv_v_high',
 ] as const
 
+const CAMERA_KEYS = [
+  // Geometry / mapping
+  'vision.rotate_deg',
+  'vision.hfov_deg',
+  // Autofocus
+  'vision.af_mode',
+  'vision.lens_position',
+  // Auto exposure / manual exposure
+  'vision.ae_enable',
+  'vision.exposure_time_us',
+  'vision.analogue_gain',
+  // Auto white balance / manual gains
+  'vision.awb_enable',
+  'vision.colour_gain_r',
+  'vision.colour_gain_b',
+  // Image “look” (ISP tuning)
+  'vision.brightness',
+  'vision.contrast',
+  'vision.saturation',
+  'vision.sharpness',
+  // Preview quality
+  'vision.jpeg_quality',
+] as const
+
 const BALL_KEYS = [
   'vision.ball_hsv_h_low',
   'vision.ball_hsv_h_high',
@@ -27,7 +51,7 @@ const BALL_KEYS = [
 
 const SAFETY_KEYS = ['vision.stale_ms', 'vision.clear_low', 'vision.clear_high'] as const
 
-const ALL_KEYS = [...FLOOR_KEYS, ...BALL_KEYS, ...SAFETY_KEYS] as const
+const ALL_KEYS = [...CAMERA_KEYS, ...FLOOR_KEYS, ...BALL_KEYS, ...SAFETY_KEYS] as const
 
 function getNumber(p: ParamDef | undefined, fallback = 0): number {
   const v = p?.value
@@ -56,19 +80,28 @@ function SliderField({
   value,
   p,
   onChange,
+  disabled = false,
 }: {
   name: string
   label: string
   value: number
   p: ParamDef | undefined
   onChange: (value: number) => void
+  disabled?: boolean
 }) {
   const min = typeof p?.min === 'number' ? p.min : 0
   const max = typeof p?.max === 'number' ? p.max : 255
   const step = typeof p?.step === 'number' ? p.step : 1
 
   return (
-    <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+    <label
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 4,
+        opacity: disabled ? 0.6 : 1,
+      }}
+    >
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
         <span>{label}</span>
         <span className={styles.mono} style={{ color: 'var(--text)', fontWeight: 700 }}>
@@ -81,6 +114,7 @@ function SliderField({
         min={min}
         max={max}
         step={step}
+        disabled={disabled}
         onChange={(e) => onChange(Number(e.target.value))}
       />
       <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-dim)' }}>
@@ -108,6 +142,56 @@ function Toggle({
     <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#aaa' }}>
       <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
       {label}
+    </label>
+  )
+}
+
+function SelectField({
+  name,
+  label,
+  value,
+  options,
+  onChange,
+  disabled = false,
+}: {
+  name: string
+  label: string
+  value: number
+  options: Array<{ value: number; label: string }>
+  onChange: (value: number) => void
+  disabled?: boolean
+}) {
+  return (
+    <label
+      style={{ display: 'flex', flexDirection: 'column', gap: 6, opacity: disabled ? 0.6 : 1 }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+        <span>{label}</span>
+        <span className={styles.mono} style={{ color: 'var(--text)', fontWeight: 700 }}>
+          {value}
+        </span>
+      </div>
+      <select
+        disabled={disabled}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        style={{
+          padding: '6px 10px',
+          borderRadius: 6,
+          border: '1px solid var(--border)',
+          background: 'var(--panel)',
+          color: 'var(--text)',
+        }}
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+      <div className={styles.mono} style={{ fontSize: 11, color: 'var(--text-dim)' }}>
+        {name}
+      </div>
     </label>
   )
 }
@@ -269,6 +353,9 @@ export function CameraSettingsPanel({
   )
 
   const ballHueWrap = (local['vision.ball_hsv_h_low'] ?? 0) > (local['vision.ball_hsv_h_high'] ?? 0)
+  const afMode = local['vision.af_mode'] ?? getNumber(pmap.get('vision.af_mode'), 2)
+  const aeEnable = local['vision.ae_enable'] ?? getNumber(pmap.get('vision.ae_enable'), 1)
+  const awbEnable = local['vision.awb_enable'] ?? getNumber(pmap.get('vision.awb_enable'), 1)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -438,6 +525,168 @@ export function CameraSettingsPanel({
               )}
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* Camera / ISP */}
+      <div className={styles.card}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+          <h3 style={{ marginBottom: 6 }}>Camera / ISP</h3>
+          <button type="button" disabled={applying} onClick={() => resetGroup(CAMERA_KEYS)}>
+            Reset to defaults
+          </button>
+        </div>
+
+        <div className={styles.grid3}>
+          <SelectField
+            name="vision.rotate_deg"
+            label="Rotate"
+            value={local['vision.rotate_deg'] ?? getNumber(pmap.get('vision.rotate_deg'), 180)}
+            options={[
+              { value: 0, label: '0°' },
+              { value: 90, label: '90°' },
+              { value: 180, label: '180°' },
+              { value: 270, label: '270°' },
+            ]}
+            onChange={(v) => setField('vision.rotate_deg', v)}
+          />
+
+          <SliderField
+            name="vision.hfov_deg"
+            label="hfov_deg"
+            value={local['vision.hfov_deg'] ?? getNumber(pmap.get('vision.hfov_deg'), 66)}
+            p={pmap.get('vision.hfov_deg')}
+            onChange={(v) => setField('vision.hfov_deg', v)}
+          />
+
+          <SelectField
+            name="vision.af_mode"
+            label="Autofocus"
+            value={afMode}
+            options={[
+              { value: 2, label: 'Continuous' },
+              { value: 1, label: 'Auto' },
+              { value: 0, label: 'Manual' },
+            ]}
+            onChange={(v) => setField('vision.af_mode', v)}
+          />
+
+          <SliderField
+            name="vision.lens_position"
+            label="lens_position"
+            value={local['vision.lens_position'] ?? getNumber(pmap.get('vision.lens_position'), 1)}
+            p={pmap.get('vision.lens_position')}
+            onChange={(v) => setField('vision.lens_position', v)}
+            disabled={afMode !== 0}
+          />
+
+          <SelectField
+            name="vision.ae_enable"
+            label="Auto exposure"
+            value={aeEnable}
+            options={[
+              { value: 1, label: 'Auto' },
+              { value: 0, label: 'Manual' },
+            ]}
+            onChange={(v) => setField('vision.ae_enable', v)}
+          />
+
+          <SliderField
+            name="vision.exposure_time_us"
+            label="exposure_us"
+            value={
+              local['vision.exposure_time_us'] ??
+              getNumber(pmap.get('vision.exposure_time_us'), 10000)
+            }
+            p={pmap.get('vision.exposure_time_us')}
+            onChange={(v) => setField('vision.exposure_time_us', v)}
+            disabled={aeEnable !== 0}
+          />
+
+          <SliderField
+            name="vision.analogue_gain"
+            label="analogue_gain"
+            value={local['vision.analogue_gain'] ?? getNumber(pmap.get('vision.analogue_gain'), 1)}
+            p={pmap.get('vision.analogue_gain')}
+            onChange={(v) => setField('vision.analogue_gain', v)}
+            disabled={aeEnable !== 0}
+          />
+
+          <SelectField
+            name="vision.awb_enable"
+            label="Auto white balance"
+            value={awbEnable}
+            options={[
+              { value: 1, label: 'Auto' },
+              { value: 0, label: 'Manual' },
+            ]}
+            onChange={(v) => setField('vision.awb_enable', v)}
+          />
+
+          <SliderField
+            name="vision.colour_gain_r"
+            label="wb_gain_r"
+            value={local['vision.colour_gain_r'] ?? getNumber(pmap.get('vision.colour_gain_r'), 1)}
+            p={pmap.get('vision.colour_gain_r')}
+            onChange={(v) => setField('vision.colour_gain_r', v)}
+            disabled={awbEnable !== 0}
+          />
+
+          <SliderField
+            name="vision.colour_gain_b"
+            label="wb_gain_b"
+            value={local['vision.colour_gain_b'] ?? getNumber(pmap.get('vision.colour_gain_b'), 1)}
+            p={pmap.get('vision.colour_gain_b')}
+            onChange={(v) => setField('vision.colour_gain_b', v)}
+            disabled={awbEnable !== 0}
+          />
+
+          <SliderField
+            name="vision.brightness"
+            label="brightness"
+            value={local['vision.brightness'] ?? getNumber(pmap.get('vision.brightness'), 0)}
+            p={pmap.get('vision.brightness')}
+            onChange={(v) => setField('vision.brightness', v)}
+          />
+
+          <SliderField
+            name="vision.contrast"
+            label="contrast"
+            value={local['vision.contrast'] ?? getNumber(pmap.get('vision.contrast'), 1)}
+            p={pmap.get('vision.contrast')}
+            onChange={(v) => setField('vision.contrast', v)}
+          />
+
+          <SliderField
+            name="vision.saturation"
+            label="saturation"
+            value={local['vision.saturation'] ?? getNumber(pmap.get('vision.saturation'), 1)}
+            p={pmap.get('vision.saturation')}
+            onChange={(v) => setField('vision.saturation', v)}
+          />
+
+          <SliderField
+            name="vision.sharpness"
+            label="sharpness"
+            value={local['vision.sharpness'] ?? getNumber(pmap.get('vision.sharpness'), 1)}
+            p={pmap.get('vision.sharpness')}
+            onChange={(v) => setField('vision.sharpness', v)}
+          />
+
+          <SliderField
+            name="vision.jpeg_quality"
+            label="jpeg_quality"
+            value={local['vision.jpeg_quality'] ?? getNumber(pmap.get('vision.jpeg_quality'), 50)}
+            p={pmap.get('vision.jpeg_quality')}
+            onChange={(v) => setField('vision.jpeg_quality', v)}
+          />
+        </div>
+
+        <div
+          className={styles.mono}
+          style={{ color: 'var(--text-dim)', fontSize: 11, marginTop: 8 }}
+        >
+          Note: ball bearing uses hfov_deg; /video quality uses jpeg_quality.
         </div>
       </div>
 

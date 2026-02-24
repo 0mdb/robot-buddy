@@ -11,7 +11,9 @@ from typing import Tuple
 import cv2
 import numpy as np
 
-# RPi Camera Module 1.3 (OV5647) horizontal FOV ~ 54 degrees
+# Default horizontal FOV (deg) used for bearing mapping when not provided.
+# Historically tuned for older Raspberry Pi camera modules; prefer passing
+# an explicit hfov_deg from camera hardware settings.
 HFOV_DEG = 54.0
 
 
@@ -130,6 +132,8 @@ def detect_ball(
     min_radius_px: int = 8,
     good_radius_px: int = 35,
     blur_ksize: int = 5,
+    *,
+    hfov_deg: float = HFOV_DEG,
 ) -> tuple[float, float] | None:
     """
     Forgiving red ball detector for variable lighting.
@@ -226,6 +230,6 @@ def detect_ball(
         return None
 
     normalized_x = (best_cx - frame_w / 2.0) / (frame_w / 2.0)
-    bearing_deg = float(normalized_x * (HFOV_DEG / 2.0))
+    bearing_deg = float(normalized_x * (float(hfov_deg) / 2.0))
 
     return (best_conf, bearing_deg)

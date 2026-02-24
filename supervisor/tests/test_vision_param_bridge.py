@@ -28,6 +28,22 @@ def test_build_vision_worker_config_has_expected_shapes() -> None:
         "vision.ball_hsv_v_high": 253,
         # Other
         "vision.min_ball_radius_px": 12,
+        # Camera / ISP
+        "vision.rotate_deg": 90,
+        "vision.hfov_deg": 70.0,
+        "vision.af_mode": 1,
+        "vision.lens_position": 2.5,
+        "vision.ae_enable": 0,
+        "vision.exposure_time_us": 20_000,
+        "vision.analogue_gain": 3.2,
+        "vision.awb_enable": 0,
+        "vision.colour_gain_r": 1.2,
+        "vision.colour_gain_b": 1.3,
+        "vision.brightness": -0.1,
+        "vision.contrast": 1.1,
+        "vision.saturation": 0.9,
+        "vision.sharpness": 1.5,
+        "vision.jpeg_quality": 60,
     }
 
     for name, value in updates.items():
@@ -43,6 +59,21 @@ def test_build_vision_worker_config_has_expected_shapes() -> None:
     assert cfg["ball_hsv_low"] == [171, 81, 41]
     assert cfg["ball_hsv_high"] == [14, 254, 253]
     assert cfg["min_ball_radius"] == 12
+    assert cfg["rotate_deg"] == 90
+    assert cfg["hfov_deg"] == 70.0
+    assert cfg["af_mode"] == 1
+    assert cfg["lens_position"] == 2.5
+    assert cfg["ae_enable"] == 0
+    assert cfg["exposure_time_us"] == 20_000
+    assert cfg["analogue_gain"] == 3.2
+    assert cfg["awb_enable"] == 0
+    assert cfg["colour_gain_r"] == 1.2
+    assert cfg["colour_gain_b"] == 1.3
+    assert cfg["brightness"] == -0.1
+    assert cfg["contrast"] == 1.1
+    assert cfg["saturation"] == 0.9
+    assert cfg["sharpness"] == 1.5
+    assert cfg["jpeg_quality"] == 60
 
     for k in ("floor_hsv_low", "floor_hsv_high", "ball_hsv_low", "ball_hsv_high"):
         v = cfg[k]

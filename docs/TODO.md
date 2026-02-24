@@ -89,6 +89,7 @@ _10 items complete (Stage 4.0 spec/port/parity/buttons/gestures/docs) — see ar
   - Tilt ~45°: `accel_x` shifts ~700 mg (0.7g)
 - [x] Supervisor derived fields: `tilt_angle_deg` + `accel_magnitude_mg` computed in tick loop, serialized in telemetry (17 unit tests pass)
 - [x] Dashboard: "IMU Derived" chart (tilt °, accel |g| mg) in TelemetryTab; accel_z sparkline + tilt readout in MonitorTab IMU card
+- [ ] Dashboard: CalibrationTab IMU — add a “bubble level” / balance graphic (pitch/roll + `tilt_thresh_deg` overlay) to illustrate what the IMU tuning is doing `[sonnet]`
 
 **Phase 2: Motors + Encoders — Open-Loop Test** `[sonnet]`
 - [ ] Enable `BRINGUP_OPEN_LOOP_TEST 1` in `app_main.cpp`
@@ -135,10 +136,10 @@ _10 items complete (Stage 4.0 spec/port/parity/buttons/gestures/docs) — see ar
 
 ### Camera & Vision
 
-- [ ] `[sonnet]` Arducam IMX708 integration — proper V4L2/Picamera2 setup, autofocus config
+- [ ] `[sonnet]` Arducam IMX708 integration — proper V4L2/Picamera2 setup, autofocus config (needs on-hardware validation)
 - [x] `[sonnet]` Camera calibration/mask/CV settings in dashboard (MVP: HSV + min radius + safety thresholds + /video preview + eyedropper; mask editor deferred)
 - [ ] `[sonnet]` Mask editor + camera calibration tooling in dashboard
-- [ ] `[sonnet]` Upgrade camera settings for new hardware
+- [x] `[sonnet]` Upgrade camera settings for new hardware (camera/ISP params + dashboard UI; Picamera2 controls + rotate/FOV/JPEG quality)
 
 ---
 

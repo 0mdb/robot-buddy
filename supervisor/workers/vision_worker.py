@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import concurrent.futures
 import logging
+import threading
 import time
 from typing import Any
 
@@ -43,6 +45,27 @@ class VisionWorker(BaseWorker):
         self._capture_size = (640, 480)
         self._process_size = (320, 240)
 
+        # Camera / ISP config (Picamera2/libcamera) — updated via vision.config.update
+        self._rotate_deg = 180
+        self._hfov_deg = 66.0
+        self._af_mode = 2
+        self._lens_position = 1.0
+        self._ae_enable = 1
+        self._exposure_time_us = 10_000
+        self._analogue_gain = 1.0
+        self._awb_enable = 1
+        self._colour_gain_r = 1.0
+        self._colour_gain_b = 1.0
+        self._brightness = 0.0
+        self._contrast = 1.0
+        self._saturation = 1.0
+        self._sharpness = 1.0
+        self._jpeg_quality = 50
+
+        # Controls are applied from the camera thread to avoid racing capture_request().
+        self._pending_controls: dict[str, Any] = {}
+        self._pending_controls_lock = threading.Lock()
+
         # Stats
         self._frame_count = 0
         self._frame_seq = 0
@@ -55,6 +78,45 @@ class VisionWorker(BaseWorker):
         # Rate limiting
         self._last_snapshot_t = 0.0
         self._last_jpeg_t = 0.0
+
+        # Camera format ("BGR888" preferred; fallback to "RGB888" + convert)
+        self._camera_main_format = "RGB888"
+
+    def _build_libcamera_controls(self) -> dict[str, Any]:
+        """Return libcamera control dict for current camera/ISP settings."""
+        controls: dict[str, Any] = {}
+
+        af_mode = int(self._af_mode)
+        controls["AfMode"] = af_mode
+        if af_mode == 0:
+            controls["LensPosition"] = float(self._lens_position)
+
+        ae_enable = bool(int(self._ae_enable))
+        controls["AeEnable"] = ae_enable
+        if not ae_enable:
+            controls["ExposureTime"] = int(self._exposure_time_us)
+            controls["AnalogueGain"] = float(self._analogue_gain)
+
+        awb_enable = bool(int(self._awb_enable))
+        controls["AwbEnable"] = awb_enable
+        if not awb_enable:
+            controls["ColourGains"] = (
+                float(self._colour_gain_r),
+                float(self._colour_gain_b),
+            )
+
+        controls["Brightness"] = float(self._brightness)
+        controls["Contrast"] = float(self._contrast)
+        controls["Saturation"] = float(self._saturation)
+        controls["Sharpness"] = float(self._sharpness)
+
+        return controls
+
+    def _queue_controls_apply(self) -> None:
+        """Schedule camera controls to be applied on the camera thread."""
+        controls = self._build_libcamera_controls()
+        with self._pending_controls_lock:
+            self._pending_controls = controls
 
     async def on_message(self, envelope: Envelope) -> None:
         if envelope.type == VISION_CONFIG_UPDATE:
@@ -70,6 +132,54 @@ class VisionWorker(BaseWorker):
                 self._ball_hsv_high = tuple(p["ball_hsv_high"])
             if "min_ball_radius" in p:
                 self._min_ball_radius = int(p["min_ball_radius"])
+
+            # Camera / ISP
+            controls_changed = False
+            if "rotate_deg" in p:
+                self._rotate_deg = int(p["rotate_deg"])
+            if "hfov_deg" in p:
+                self._hfov_deg = float(p["hfov_deg"])
+            if "af_mode" in p:
+                self._af_mode = int(p["af_mode"])
+                controls_changed = True
+            if "lens_position" in p:
+                self._lens_position = float(p["lens_position"])
+                controls_changed = True
+            if "ae_enable" in p:
+                self._ae_enable = int(p["ae_enable"])
+                controls_changed = True
+            if "exposure_time_us" in p:
+                self._exposure_time_us = int(p["exposure_time_us"])
+                controls_changed = True
+            if "analogue_gain" in p:
+                self._analogue_gain = float(p["analogue_gain"])
+                controls_changed = True
+            if "awb_enable" in p:
+                self._awb_enable = int(p["awb_enable"])
+                controls_changed = True
+            if "colour_gain_r" in p:
+                self._colour_gain_r = float(p["colour_gain_r"])
+                controls_changed = True
+            if "colour_gain_b" in p:
+                self._colour_gain_b = float(p["colour_gain_b"])
+                controls_changed = True
+            if "brightness" in p:
+                self._brightness = float(p["brightness"])
+                controls_changed = True
+            if "contrast" in p:
+                self._contrast = float(p["contrast"])
+                controls_changed = True
+            if "saturation" in p:
+                self._saturation = float(p["saturation"])
+                controls_changed = True
+            if "sharpness" in p:
+                self._sharpness = float(p["sharpness"])
+                controls_changed = True
+            if "jpeg_quality" in p:
+                self._jpeg_quality = int(p["jpeg_quality"])
+
+            if controls_changed:
+                self._queue_controls_apply()
             log.info("config updated")
 
     def health_payload(self) -> dict[str, Any]:
@@ -103,15 +213,23 @@ class VisionWorker(BaseWorker):
             from picamera2 import Picamera2
 
             cam = Picamera2(0)
-            cam.configure(
-                cam.create_video_configuration(
-                    main={"size": self._capture_size, "format": "RGB888"},
+            try:
+                cam.configure(
+                    cam.create_video_configuration(
+                        main={"size": self._capture_size, "format": "BGR888"},
+                    )
                 )
-            )
+                self._camera_main_format = "BGR888"
+            except Exception:
+                cam.configure(
+                    cam.create_video_configuration(
+                        main={"size": self._capture_size, "format": "RGB888"},
+                    )
+                )
+                self._camera_main_format = "RGB888"
             cam.start()
-            cam.capture_array()  # warm up
             self._camera_ok = True
-            log.info("camera opened")
+            log.info("camera opened (format=%s)", self._camera_main_format)
         except Exception as e:
             self._last_error = str(e)
             self._camera_ok = False
@@ -123,11 +241,22 @@ class VisionWorker(BaseWorker):
 
         self._fps_t0 = time.monotonic()
         loop = asyncio.get_running_loop()
+        cam_executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="vision-cam"
+        )
 
         try:
 
             def _capture_with_metadata() -> tuple[Any, int]:
-                """Blocking capture that returns (rgb_array, t_cam_ns)."""
+                """Blocking capture that returns (frame_array, t_cam_ns)."""
+                with self._pending_controls_lock:
+                    controls = self._pending_controls
+                    self._pending_controls = {}
+                if controls:
+                    try:
+                        cam.set_controls(controls)
+                    except Exception as e:
+                        self._last_error = f"set_controls: {e}"
                 request = cam.capture_request()
                 try:
                     arr = request.make_array("main")
@@ -137,11 +266,18 @@ class VisionWorker(BaseWorker):
                 finally:
                     request.release()
 
+            # Apply default controls once and warm up the pipeline
+            self._queue_controls_apply()
+            try:
+                await loop.run_in_executor(cam_executor, _capture_with_metadata)
+            except Exception:
+                pass
+
             while self.running:
                 # Capture in executor to avoid blocking the event loop
                 try:
-                    rgb, t_cam_ns = await loop.run_in_executor(
-                        None, _capture_with_metadata
+                    frame, t_cam_ns = await loop.run_in_executor(
+                        cam_executor, _capture_with_metadata
                     )
                 except Exception as e:
                     self._last_error = str(e)
@@ -151,8 +287,17 @@ class VisionWorker(BaseWorker):
                     continue
 
                 # Process
-                rgb = cv2.rotate(rgb, cv2.ROTATE_180)
-                small = cv2.resize(rgb, self._process_size)
+                if self._camera_main_format == "RGB888":
+                    frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+
+                if self._rotate_deg == 90:
+                    frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
+                elif self._rotate_deg == 180:
+                    frame = cv2.rotate(frame, cv2.ROTATE_180)
+                elif self._rotate_deg == 270:
+                    frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
+
+                small = cv2.resize(frame, self._process_size)
 
                 clear_conf = detect_clear_path(
                     small, self._floor_hsv_low, self._floor_hsv_high
@@ -162,6 +307,7 @@ class VisionWorker(BaseWorker):
                     self._ball_hsv_low,
                     self._ball_hsv_high,
                     self._min_ball_radius,
+                    hfov_deg=self._hfov_deg,
                 )
 
                 # FPS tracking
@@ -201,8 +347,9 @@ class VisionWorker(BaseWorker):
                     and now - self._last_jpeg_t >= _JPEG_MIN_INTERVAL_S
                 ):
                     self._last_jpeg_t = now
+                    quality = max(10, min(95, int(self._jpeg_quality)))
                     _, jpeg = cv2.imencode(
-                        ".jpg", small, [cv2.IMWRITE_JPEG_QUALITY, 50]
+                        ".jpg", small, [cv2.IMWRITE_JPEG_QUALITY, quality]
                     )
                     self.send(
                         VISION_FRAME_JPEG,
@@ -215,6 +362,7 @@ class VisionWorker(BaseWorker):
         except asyncio.CancelledError:
             pass
         finally:
+            cam_executor.shutdown(wait=False, cancel_futures=True)
             if cam:
                 try:
                     cam.stop()
