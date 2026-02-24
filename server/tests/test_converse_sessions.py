@@ -157,3 +157,44 @@ async def test_snapshot_includes_stash_fields():
     assert "stashed" in snap
     assert "stash_hits" in snap
     assert "stash_expired" in snap
+
+
+# ── Max-turns overflow (B6) ──────────────────────────────────────────
+
+
+def test_converse_history_survives_max_turns_overflow():
+    """History compresses rather than crashing when turns exceed max_turns."""
+    h = ConversationHistory(max_turns=5)
+    # Add more turns than the max — should not raise
+    for i in range(10):
+        h.add_user(f"question {i}")
+        h.add_assistant(f"answer {i}", emotion="happy")
+
+    msgs = h.to_ollama_messages()
+    # Should have system + summary + recent window — not crash
+    assert len(msgs) >= 3
+    assert msgs[0]["role"] == "system"
+
+
+# ── Disconnect cleanup (B6) ──────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_disconnect_cleanup_leaves_clean_state():
+    """After unregister, the robot_id slot is free for a new connection."""
+    reg = ConverseSessionRegistry()
+    ws = object()
+
+    await reg.register(robot_id="r1", websocket=ws)
+    snap = reg.snapshot()
+    assert snap["active_sessions"] == 1
+
+    await reg.unregister(robot_id="r1", websocket=ws)
+    snap = reg.snapshot()
+    assert snap["active_sessions"] == 0
+
+    # Can register again without preemption
+    ws2 = object()
+    await reg.register(robot_id="r1", websocket=ws2)
+    snap = reg.snapshot()
+    assert snap["active_sessions"] == 1

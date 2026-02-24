@@ -220,6 +220,44 @@ class TestParseV2Response:
         resp = parse_conversation_response_content(content)
         assert resp.memory_tags == [{"tag": "some_tag", "category": "topic"}]
 
+    def test_confused_emotion_round_trip(self):
+        """'confused' is a canonical emotion — should not be defaulted to neutral."""
+        content = json.dumps(
+            {
+                "emotion": "confused",
+                "intensity": 0.5,
+                "text": "Hmm, I'm not sure about that.",
+                "mood_reason": "child asked ambiguous question",
+            }
+        )
+        resp = parse_conversation_response_content(content)
+        assert resp.emotion == "confused"
+        assert resp.mood_reason == "child asked ambiguous question"
+
+    def test_v2_full_payload_parses_without_error(self):
+        """A full v2 payload (with emotional_arc/child_affect) parses gracefully.
+
+        emotional_arc and child_affect live on the Pydantic ConversationResponseV2
+        model for guided decoding; parse_conversation_response_content extracts the
+        subset that ConversationResponse carries — ensure no crash on extra fields.
+        """
+        content = json.dumps(
+            {
+                "inner_thought": "They seem upset",
+                "emotion": "sad",
+                "intensity": 0.4,
+                "mood_reason": "child expressed frustration",
+                "emotional_arc": "falling",
+                "child_affect": "negative",
+                "text": "I'm sorry you feel that way.",
+                "gestures": [],
+                "memory_tags": [],
+            }
+        )
+        resp = parse_conversation_response_content(content)
+        assert resp.emotion == "sad"
+        assert resp.mood_reason == "child expressed frustration"
+
 
 # ── ConversationResponseV2 Schema ──────────────────────────────────────
 
@@ -255,6 +293,30 @@ class TestConversationResponseV2:
         for arc in ("rising", "stable", "falling", "peak", "recovery"):
             r = ConversationResponseV2(emotional_arc=arc)
             assert r.emotional_arc == arc
+
+    def test_guided_decoding_schema_structure(self):
+        """JSON schema has all 9 v2 fields with correct types for guided decoding."""
+        schema = ConversationResponseV2.model_json_schema()
+        props = schema["properties"]
+        # All 9 fields present
+        expected_fields = {
+            "inner_thought",
+            "emotion",
+            "intensity",
+            "mood_reason",
+            "emotional_arc",
+            "child_affect",
+            "text",
+            "gestures",
+            "memory_tags",
+        }
+        assert expected_fields.issubset(set(props.keys()))
+        # Type spot-checks
+        assert props["emotion"]["type"] == "string"
+        assert props["intensity"]["type"] == "number"
+        assert props["text"]["type"] == "string"
+        assert props["gestures"]["type"] == "array"
+        assert props["memory_tags"]["type"] == "array"
 
 
 # ── Personality Profile Injection (PE spec S2 §12.5, §12.7) ────────────

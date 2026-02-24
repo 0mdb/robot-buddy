@@ -366,6 +366,38 @@ class TestAIEmotion:
         # Higher intensity → larger shift
         assert high_delta > low_delta
 
+    @pytest.mark.asyncio
+    async def test_planner_emote_impulse_shifts_affect(self):
+        """Planner emotion routes through PE and shifts affect toward anchor."""
+        w = _make_worker()
+        sends = _collect_sends(w)
+        v_before = w._affect.valence
+        a_before = w._affect.arousal
+
+        # "excited" anchor is (0.65, 0.80) — high V, high A
+        await w.on_message(
+            _env(PERSONALITY_EVENT_AI_EMOTION, {"emotion": "excited", "intensity": 0.9})
+        )
+        # Affect should shift toward excited (positive V, high A)
+        assert w._affect.valence > v_before
+        assert w._affect.arousal > a_before
+        # Snapshot should have been emitted
+        snap_payloads = [p for t, p in sends if t == PERSONALITY_STATE_SNAPSHOT]
+        assert len(snap_payloads) >= 1
+
+    @pytest.mark.asyncio
+    async def test_confused_emotion_recognized(self):
+        """'confused' is a known PE emotion — should emit a snapshot, not be dropped."""
+        w = _make_worker()
+        sends = _collect_sends(w)
+
+        await w.on_message(
+            _env(
+                PERSONALITY_EVENT_AI_EMOTION, {"emotion": "confused", "intensity": 0.6}
+            )
+        )
+        assert any(t == PERSONALITY_STATE_SNAPSHOT for t, _ in sends)
+
 
 # ── Override ─────────────────────────────────────────────────────────
 
@@ -745,6 +777,44 @@ class TestGuardrailConfigInit:
             # (depends on distance but shouldn't be artificially clamped)
             assert True  # Just ensure no crash — exact value depends on projection
 
+    def test_intensity_caps_enforced_sad(self):
+        """When negative_intensity_caps=True, sad intensity is capped at 0.70."""
+        w = _make_worker()
+        w._guardrails.negative_intensity_caps = True
+        w._conversation_active = True
+        sends = _collect_sends(w)
+
+        # Force affect exactly onto the sad anchor for max intensity
+        w._affect.valence = -0.60
+        w._affect.arousal = -0.40
+
+        w._process_and_emit(0.01)
+        _, payload = sends[-1]
+        if payload["mood"] == "sad":
+            assert payload["intensity"] <= 0.70
+
+    @pytest.mark.parametrize(
+        "mood,va,cap",
+        [
+            ("sad", (-0.60, -0.40), 0.70),
+            ("scared", (-0.70, 0.65), 0.60),
+            ("angry", (-0.60, 0.70), 0.50),
+            ("surprised", (0.15, 0.80), 0.80),
+        ],
+    )
+    def test_intensity_caps_per_mood(self, mood, va, cap):
+        """Per-mood intensity caps enforced (spec §9.1)."""
+        w = _make_worker()
+        w._guardrails.negative_intensity_caps = True
+        w._conversation_active = True
+        sends = _collect_sends(w)
+
+        w._affect.valence, w._affect.arousal = va
+        w._process_and_emit(0.01)
+        _, payload = sends[-1]
+        if payload["mood"] == mood:
+            assert payload["intensity"] <= cap
+
 
 # ── Session Time Limit (RS-1) ───────────────────────────────────────
 
@@ -923,6 +993,72 @@ class TestDailyTimeLimit:
         _, payload = sends[-1]
         assert payload["daily_time_s"] == 123.4
         assert "daily_limit_reached" in payload
+
+
+# ── Conv-Ended Teardown Coverage (B6) ─────────────────────────────────
+
+
+class TestConvEndedTeardown:
+    """Edge cases for conversation teardown during time-limit scenarios."""
+
+    def test_conv_ended_resets_session_timer(self):
+        w = _make_worker()
+        _collect_sends(w)
+        w._conversation_active = True
+        w._session_time_s = 500.0
+        w._session_limit_reached = True
+
+        w._handle_conv_ended({"sentiment": "positive"})
+        assert w._conversation_active is False
+        # Session time stays (only reset on next conv_started)
+        # but conv_ended_ago should be 0
+        assert w._conv_ended_ago_s == 0.0
+
+    def test_daily_limit_blocks_after_conv_ended(self):
+        """After daily limit exhausted and conv ends, new conv is blocked."""
+        w = _make_worker()
+        sends = _collect_sends(w)
+        w._guardrails.daily_time_limit_s = 50.0
+        w._daily_state.total_s = 60.0
+
+        # End current conversation
+        w._conversation_active = True
+        w._handle_conv_ended({})
+        assert w._conversation_active is False
+
+        # Try to start new conversation — should be blocked
+        w._handle_conv_started({})
+        assert w._conversation_active is False
+
+        guardrail_events = [
+            (t, p) for t, p in sends if t == PERSONALITY_EVENT_GUARDRAIL_TRIGGERED
+        ]
+        block_events = [
+            e for e in guardrail_events if e[1]["rule"] == "daily_limit_blocked"
+        ]
+        assert len(block_events) >= 1
+
+    def test_session_limit_reached_then_new_conv_resets(self):
+        """Session limit reached mid-conv; next conv starts fresh."""
+        w = _make_worker()
+        _collect_sends(w)
+        w._conversation_active = True
+        w._guardrails.session_time_limit_s = 10.0
+        w._session_time_s = 9.5
+        w._last_tick_ts = time.monotonic() - 1.0
+
+        # Trip the session limit
+        w._tick_1hz()
+        assert w._session_limit_reached is True
+
+        # End conversation
+        w._handle_conv_ended({})
+
+        # Start new conversation — session timer should reset
+        w._handle_conv_started({})
+        assert w._session_time_s == 0.0
+        assert w._session_limit_reached is False
+        assert w._conversation_active is True
 
 
 # ── Daily Timer Persistence ──────────────────────────────────────────

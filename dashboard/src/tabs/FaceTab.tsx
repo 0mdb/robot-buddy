@@ -5,6 +5,7 @@ import FaceMirrorCanvas, {
 } from '../components/FaceMirrorCanvas'
 import PersonalityPanel from '../components/PersonalityPanel'
 import PipelineTimeline from '../components/PipelineTimeline'
+import ScenarioRunner from '../components/ScenarioRunner'
 import ServerHealthPanel from '../components/ServerHealthPanel'
 import TtsBenchmark from '../components/TtsBenchmark'
 import WakeWordWorkbench from '../components/WakeWordWorkbench'
@@ -751,6 +752,9 @@ export default function FaceTab() {
 
       {/* Personality Engine */}
       <PersonalityPanel />
+
+      {/* B6 Scenario Suite */}
+      <ScenarioRunner />
 
       {/* Server Health + Model Config + Generation Overrides */}
       <ServerHealthPanel />

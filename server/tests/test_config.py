@@ -33,3 +33,9 @@ def test_settings_allow_same_budget_when_backend_is_ollama() -> None:
         gpu_utilization_cap=0.80,
     )
     assert settings.llm_backend == "ollama"
+
+
+def test_log_transcripts_default_false() -> None:
+    """Privacy policy: no transcript logs by default (PE spec §9 HC/RS)."""
+    settings = Settings()
+    assert settings.log_transcripts is False

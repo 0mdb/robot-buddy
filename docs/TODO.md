@@ -22,7 +22,8 @@ Living section — reorder as priorities shift. Current recommended sequence:
 
 ### Track B: Personality Engine (server + supervisor)
 1–7. _(B1–B5 complete)_
-8. PE evaluation (metrics + guardrail + child-safety validation)
+8. _(B6 evaluation: pytest extensions + Studio scenario suite complete)_
+9. PE child-safety validation (T4 human protocol — see Face Evaluation)
 
 ### Track C: Reflex MCU Commissioning (hardware)
 1. Phase 1: IMU bring-up
@@ -71,9 +72,9 @@ _10 items complete (Stage 4.0 spec/port/parity/buttons/gestures/docs) — see ar
 **B1–B5 complete** (31 items archived) — L0, PE↔Face compliance, guardrails, schema v2, profile injection, memory, prosody
 
 **B6 — Evaluation** `[opus]`
-- [ ] Add/extend tests: clamping behavior, worker intensity caps, planner-emote impulse routing, conv-ended teardown coverage, `confused` server vocab, schema-v2 parsing, guided decoding compliance
-- [ ] Add tests for RS-1/RS-2 time limits, `/converse` overflow/timeouts/disconnects, and “no transcript logs by default” privacy policy
-- [ ] PE evaluation checklist: emotional coherence, guardrail compliance, child-safety validation (PE spec S2 §13 + §9 HC/RS)
+- [x] Add/extend tests: clamping behavior, worker intensity caps, planner-emote impulse routing, conv-ended teardown coverage, `confused` server vocab, schema-v2 parsing, guided decoding compliance
+- [x] Add tests for RS-1/RS-2 time limits, `/converse` overflow/timeouts/disconnects, and “no transcript logs by default” privacy policy
+- [ ] PE evaluation checklist: emotional coherence, guardrail compliance, child-safety validation (PE spec S2 §13 + §9 HC/RS) _(automated guardrail tests pass; child-safety T4 is a human protocol — tracked under Face Evaluation)_
 
 ---
 
@@ -174,16 +175,10 @@ _10 items complete (Stage 4.0 spec/port/parity/buttons/gestures/docs) — see ar
     - [x] Pipeline timeline per turn: trigger → VAD end → transcription → emotion → first audio chunk → done (+ error states) — `PipelineTimeline.tsx` component + `/ws/conversation` endpoint + `ConversationCapture` + first_audio/assistant_text events
     - [x] TTS benchmark runner: fixed corpus via `/tts`, time-to-first-byte, total synth time, chunk cadence — `TtsBenchmark.tsx` + `supervisor/api/tts_benchmark.py` + WS commands
     - [x] Wake word workbench: live score/threshold view + event log + soak-test summary — `WakeWordWorkbench.tsx` + ear worker score streaming + threshold tuning
-  - [ ] **Personality tuning + B6 completion harness**
+  - [x] **Personality tuning + B6 completion harness**
     - [x] Personality visualization: VA scatter plot, mood anchors, mood bar, layer/idle/conv badges, guardrail status + last trigger, RS-1/RS-2 session/daily timers
     - [x] Runtime tuning controls: PE axes sliders (5 params), guardrail toggles (3 bools + 2 time limits), debug impulse injection with presets, param registry integration, WS commands (`personality.override_affect`, `personality.set_guardrail`)
-    - [ ] **B6 scenario suite inside Studio** (scripted conversations + assertions):
-      - clamping behavior + worker intensity caps
-      - planner-emote impulse routing
-      - conv-ended teardown coverage
-      - `confused` server vocab + schema-v2 parsing + guided decoding compliance
-      - RS-1/RS-2 limits (persistence + daily reset)
-      - `/converse` overflow/timeouts/disconnects + “no transcript logs by default” privacy policy
+    - [x] **B6 scenario suite inside Studio** (scripted conversations + assertions) — `ScenarioRunner.tsx` + `scenarios.ts`: 6 scenarios (4 mock-only + 2 server-required), clamping/routing/teardown/vocab/limits/privacy, collapsible panel with per-step assertion results
   - [ ] **Future-proofing (models/prompt/server settings + prototyping)**
     - [ ] Versioned “prompt packs” selectable per session (no ad-hoc prompt hacking); show active pack in UI + exports
     - [x] Show planner server `/health` snapshot (model ids, backend, timeouts, GPU budget) inside Studio; include in exports
