@@ -91,7 +91,6 @@ log = logging.getLogger(__name__)
 TICK_HZ = 50
 _TICK_PERIOD_S = 1.0 / TICK_HZ
 _TELEM_EVERY_N = max(1, TICK_HZ // 20)  # 20 Hz telemetry
-_PLAN_PERIOD_S = 5.0
 _PLAN_RETRY_S = 5.0
 
 
@@ -932,10 +931,21 @@ class TickLoop:
             await self._enqueue_say(intent.text, source="speech_policy", priority=3)
 
         # Periodic plan requests
+        _plan_period_s = (
+            self._param_registry.get_value("planner.plan_period_s", 5.0)
+            if self._param_registry is not None
+            else 5.0
+        )
+        _planner_param_enabled = (
+            bool(self._param_registry.get_value("planner.enabled", True))
+            if self._param_registry is not None
+            else True
+        )
         if (
             self.world.planner_enabled
+            and _planner_param_enabled
             and self.world.planner_connected
-            and now_ms - self._last_plan_request_ms > _PLAN_PERIOD_S * 1000
+            and now_ms - self._last_plan_request_ms > float(_plan_period_s) * 1000
         ):
             self._last_plan_request_ms = now_ms
             await self._request_plan(now_ms)

@@ -48,6 +48,9 @@ const CONV_STATE_COLORS = [
 
 const SEQ_PHASE_NAMES = ['IDLE', 'ANTICIPATION', 'RAMP_DOWN', 'SWITCH', 'RAMP_UP']
 
+const CONV_PREFIXES = ['tts', 'personality', 'ear', 'ai', 'conv'] as const
+type ConvPrefix = (typeof CONV_PREFIXES)[number]
+
 // Mood ID → name (must match FaceMood enum in protocol.py)
 const MOOD_ID_NAMES = [
   'neutral',
@@ -184,16 +187,41 @@ export default function FaceTab() {
   const convConnected = useConversationStore((s) => s.connected)
   const convPaused = useConversationStore((s) => s.paused)
   const setConvPaused = useConversationStore((s) => s.setPaused)
-  const convRecentRef = useRef<ConversationEvent[]>([])
-  const convRecent = useConversationStore((s) => {
-    const next = s.events.slice(Math.max(0, s.events.length - 30))
-    const prev = convRecentRef.current
+  const convAllRef = useRef<ConversationEvent[]>([])
+  const convAll = useConversationStore((s) => {
+    const next = s.events
+    const prev = convAllRef.current
     if (next.length === prev.length && next.every((e, i) => e === prev[i])) {
       return prev
     }
-    convRecentRef.current = next
+    convAllRef.current = next
     return next
   })
+
+  // Event log filters
+  const [convEnabledPrefixes, setConvEnabledPrefixes] = useState<Set<ConvPrefix>>(
+    () => new Set<ConvPrefix>(['tts', 'ear', 'ai', 'conv']), // personality OFF — hides 1Hz snapshots
+  )
+  const [convSearch, setConvSearch] = useState('')
+  const [convNewest, setConvNewest] = useState(true)
+
+  const convFiltered = useMemo(() => {
+    const searchLower = convSearch.toLowerCase()
+    return convAll.filter((e) => {
+      const prefix = e.type.split('.')[0] as ConvPrefix
+      if (!convEnabledPrefixes.has(prefix)) return false
+      if (searchLower) {
+        const row = `${e.type} ${compactConvEvent(e)}`.toLowerCase()
+        if (!row.includes(searchLower)) return false
+      }
+      return true
+    })
+  }, [convAll, convEnabledPrefixes, convSearch])
+
+  const convDisplayed = useMemo(
+    () => (convNewest ? [...convFiltered].slice(-300).reverse() : convFiltered.slice(-300)),
+    [convFiltered, convNewest],
+  )
 
   // Conversation controls (Studio)
   const [dashPttHeld, setDashPttHeld] = useState(false)
@@ -1023,9 +1051,95 @@ export default function FaceTab() {
           <PipelineTimeline />
         </div>
 
-        {/* Phase 3: Event log — collapsed by default */}
-        <details className={ft.eventLogDetails}>
-          <summary>Show events ({convRecent.length})</summary>
+        {/* Phase 3: Event log with filters */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {/* Filter toolbar */}
+          <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
+            {CONV_PREFIXES.map((prefix) => {
+              const active = convEnabledPrefixes.has(prefix)
+              return (
+                <button
+                  type="button"
+                  key={prefix}
+                  onClick={() =>
+                    setConvEnabledPrefixes((prev) => {
+                      const next = new Set(prev)
+                      if (next.has(prefix)) next.delete(prefix)
+                      else next.add(prefix)
+                      return next
+                    })
+                  }
+                  style={{
+                    padding: '3px 8px',
+                    fontSize: 11,
+                    fontWeight: 600,
+                    fontFamily: 'var(--font-mono)',
+                    border: `1px solid ${active ? '#4fc3f7' : '#333'}`,
+                    borderRadius: 4,
+                    background: active ? '#4fc3f722' : '#1a1a2e',
+                    color: active ? '#4fc3f7' : '#555',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {prefix}
+                </button>
+              )
+            })}
+            <input
+              type="text"
+              placeholder="Search..."
+              value={convSearch}
+              onChange={(e) => setConvSearch(e.target.value)}
+              style={{
+                flex: 1,
+                maxWidth: 200,
+                padding: '4px 8px',
+                fontSize: 12,
+                fontFamily: 'var(--font-mono)',
+                background: '#1a1a2e',
+                border: '1px solid #0f3460',
+                borderRadius: 4,
+                color: '#eee',
+                outline: 'none',
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => setConvNewest((v) => !v)}
+              style={{
+                padding: '3px 8px',
+                fontSize: 11,
+                fontFamily: 'var(--font-mono)',
+                border: '1px solid #333',
+                borderRadius: 4,
+                background: '#1a1a2e',
+                color: '#888',
+                cursor: 'pointer',
+              }}
+            >
+              {convNewest ? 'newest' : 'oldest'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setConvPaused(!convPaused)}
+              style={{
+                padding: '3px 8px',
+                fontSize: 11,
+                fontFamily: 'var(--font-mono)',
+                border: `1px solid ${convPaused ? '#ff9800' : '#333'}`,
+                borderRadius: 4,
+                background: convPaused ? '#ff980022' : '#1a1a2e',
+                color: convPaused ? '#ff9800' : '#888',
+                cursor: 'pointer',
+              }}
+            >
+              {convPaused ? 'paused' : 'live'}
+            </button>
+            <span className={styles.mono} style={{ color: '#555', fontSize: 11, marginLeft: 4 }}>
+              {convFiltered.length}/{convAll.length}
+            </span>
+          </div>
+          {/* Event list */}
           <div
             style={{
               maxHeight: 220,
@@ -1034,15 +1148,14 @@ export default function FaceTab() {
               borderRadius: 6,
               padding: 8,
               background: 'rgba(0,0,0,0.12)',
-              marginTop: 4,
             }}
           >
-            {convRecent.length === 0 ? (
+            {convDisplayed.length === 0 ? (
               <span className={styles.mono} style={{ color: '#888', fontSize: 12 }}>
-                No conversation events yet.
+                No events match filters.
               </span>
             ) : (
-              convRecent.map((e) => (
+              convDisplayed.map((e) => (
                 <div
                   key={`${e.ts_mono_ms}-${e.type}-${String(e.turn_id ?? '')}`}
                   className={styles.mono}
@@ -1053,7 +1166,7 @@ export default function FaceTab() {
               ))
             )}
           </div>
-        </details>
+        </div>
       </div>
 
       {/* ── SECTION: Personality ────────────────────────────────── */}

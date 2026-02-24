@@ -1004,6 +1004,31 @@ def create_default_registry() -> ParamRegistry:
         )
     )
 
+    # -- Planner parameters --
+    reg.register(
+        ParamDef(
+            name="planner.enabled",
+            type="bool",
+            default=True,
+            owner="supervisor",
+            safety="safe",
+            doc="Enable periodic AI plan requests. False = pure speech/TTS mode.",
+        )
+    )
+    reg.register(
+        ParamDef(
+            name="planner.plan_period_s",
+            type="float",
+            min=1.0,
+            max=120.0,
+            step=1.0,
+            default=5.0,
+            owner="supervisor",
+            safety="safe",
+            doc="Seconds between AI plan requests when planner is connected and enabled.",
+        )
+    )
+
     # -- Personality parameters (PE spec S2 §14.3) --
     reg.register(
         ParamDef(

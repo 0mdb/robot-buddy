@@ -557,6 +557,21 @@ function GuardrailControls() {
         >
           Reset daily timer
         </button>
+        <button
+          type="button"
+          onClick={() => send({ type: 'personality.set_guardrail', reset_session: true })}
+          style={{
+            padding: '2px 8px',
+            fontSize: 10,
+            border: '1px solid #555',
+            borderRadius: 4,
+            background: '#1a1a2e',
+            color: '#888',
+            cursor: 'pointer',
+          }}
+        >
+          Reset session timer
+        </button>
       </div>
       {[
         { name: 'personality.guardrail.negative_duration_caps', label: 'Duration caps' },

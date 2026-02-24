@@ -840,6 +840,12 @@ class PersonalityWorker(BaseWorker):
             self._persist_daily_state()
             changed.append("daily_reset")
 
+        # Special command: reset session timer
+        if payload.get("reset_session", False):
+            self._session_time_s = 0.0
+            self._session_limit_reached = False
+            changed.append("session_reset")
+
         if changed:
             log.info("guardrail updated: %s", ", ".join(changed))
 

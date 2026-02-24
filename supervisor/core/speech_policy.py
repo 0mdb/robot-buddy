@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from supervisor.devices.protocol import FaceButtonId
+from supervisor.devices.protocol import Fault, FaceButtonId
 from supervisor.core.event_bus import PlannerEvent
 from supervisor.core.state import RobotState
+
+# Faults that warrant verbal announcement — matches _SEVERE_FAULTS in state_machine.py
+_SEVERE_FAULT_MASK = int(Fault.ESTOP | Fault.TILT | Fault.BROWNOUT)
 
 
 @dataclass(slots=True)
@@ -140,6 +143,9 @@ class SpeechPolicy:
         if evt.type == "vision.ball_acquired":
             return "vision.ball_acquired"
         if evt.type == "fault.raised":
+            fault_flags = int(evt.payload.get("fault_flags", 0))
+            if not (fault_flags & _SEVERE_FAULT_MASK):
+                return None  # Non-severe faults (e.g. CMD_TIMEOUT) don't warrant speech
             return "fault.raised"
         if evt.type == "face.button.click":
             return "face.button.click"
