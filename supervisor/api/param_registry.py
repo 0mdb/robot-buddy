@@ -1100,6 +1100,20 @@ def create_default_registry() -> ParamRegistry:
             doc="Block negative moods outside conversation (PE spec S2 §9.2)",
         )
     )
+    # -- TTS parameters --
+    reg.register(
+        ParamDef(
+            name="tts.speaker_volume",
+            type="int",
+            min=0,
+            max=100,
+            step=1,
+            default=80,
+            owner="supervisor",
+            doc="Speaker output volume (0–100, applied via PCM scaling)",
+        )
+    )
+
     reg.register(
         ParamDef(
             name="personality.guardrail.session_time_limit_s",

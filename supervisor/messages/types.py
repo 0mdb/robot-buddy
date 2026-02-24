@@ -111,6 +111,8 @@ AI_CMD_CLEAR_GENERATION_OVERRIDES = "ai.cmd.clear_generation_overrides"
 AI_CONVERSATION_AUDIO = "ai.conversation.audio"
 TTS_CMD_PLAY_AUDIO = "tts.cmd.play_audio"
 TTS_CMD_PLAY_CHIME = "tts.cmd.play_chime"
+TTS_CMD_SET_MUTE = "tts.cmd.set_mute"
+TTS_CMD_SET_VOLUME = "tts.cmd.set_volume"
 
 # ── Ear — wake word + VAD (§4.9) ─────────────────────────────────
 

@@ -12,6 +12,7 @@ import WakeWordWorkbench from '../components/WakeWordWorkbench'
 import { FACE_FLAGS, GESTURES, MOODS, SYSTEM_MODES } from '../constants'
 import type { AnimFps } from '../face_sim'
 import { ANIM_FPS_OPTIONS } from '../face_sim'
+import { useParamsList, useUpdateParams } from '../hooks/useParams'
 import { useSend } from '../hooks/useSend'
 import { useTelemetry } from '../hooks/useTelemetry'
 import { debounce } from '../lib/debounce'
@@ -200,6 +201,22 @@ export default function FaceTab() {
   const [muteSpeaker, setMuteSpeaker] = useState(false)
   const [muteChimes, setMuteChimes] = useState(false)
   const [noTtsGeneration, setNoTtsGeneration] = useState(false)
+  const [speakerVolume, setSpeakerVolume] = useState(80)
+
+  // Params for volume control
+  const { data: paramsList } = useParamsList()
+  const updateParams = useUpdateParams()
+  const volParam = paramsList?.find((p) => p.name === 'tts.speaker_volume')
+
+  useEffect(() => {
+    if (volParam?.value != null) setSpeakerVolume(Number(volParam.value))
+  }, [volParam?.value])
+
+  const debouncedVolume = useRef(
+    debounce((v: number) => {
+      updateParams.mutate({ 'tts.speaker_volume': v })
+    }, 150),
+  ).current
 
   const startWakeWord = useCallback(() => {
     send({ type: 'conversation.start', trigger: 'wake_word' })
@@ -978,6 +995,22 @@ export default function FaceTab() {
                 }}
               />
               No TTS generation
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#aaa' }}>
+              Vol {speakerVolume}%
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={speakerVolume}
+                onChange={(e) => {
+                  const v = Number(e.target.value)
+                  setSpeakerVolume(v)
+                  debouncedVolume(v)
+                }}
+                style={{ minWidth: 100 }}
+              />
             </label>
           </div>
         </div>

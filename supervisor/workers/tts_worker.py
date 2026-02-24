@@ -27,6 +27,8 @@ from supervisor.messages.types import (
     TTS_CMD_CANCEL,
     TTS_CMD_PLAY_AUDIO,
     TTS_CMD_PLAY_CHIME,
+    TTS_CMD_SET_MUTE,
+    TTS_CMD_SET_VOLUME,
     TTS_CMD_SPEAK,
     TTS_CONFIG_INIT,
     TTS_EVENT_CANCELLED,
@@ -97,6 +99,11 @@ class TTSWorker(BaseWorker):
         self._speaker_device = "default"
         self._tts_endpoint = ""
 
+        # Volume / mute
+        self._volume: float = 0.8  # 80% default; overridden by TTS_CMD_SET_VOLUME
+        self._muted: bool = False
+        self._mute_chimes: bool = False
+
         # State
         self._speaking = False
         self._cancel_event = asyncio.Event()
@@ -147,6 +154,16 @@ class TTSWorker(BaseWorker):
         elif t == TTS_CMD_PLAY_CHIME:
             chime_name = str(p.get("chime", "listening"))
             asyncio.create_task(self._play_chime(chime_name))
+
+        elif t == TTS_CMD_SET_VOLUME:
+            vol_int = int(p.get("volume", 80))
+            self._volume = max(0.0, min(1.0, vol_int / 100.0))
+            log.info("volume set to %d%% (scale=%.3f)", vol_int, self._volume)
+
+        elif t == TTS_CMD_SET_MUTE:
+            self._muted = bool(p.get("muted", False))
+            self._mute_chimes = bool(p.get("mute_chimes", False))
+            log.info("mute=%s mute_chimes=%s", self._muted, self._mute_chimes)
 
         elif t == TTS_CMD_PLAY_AUDIO:
             # Mode B: audio relay from Core
@@ -274,6 +291,8 @@ class TTSWorker(BaseWorker):
 
     async def _play_chime(self, name: str) -> None:
         """Play a short chime WAV file via aplay."""
+        if self._mute_chimes:
+            return
         chime_path = _CHIME_DIR / f"{name}.wav"
         if not chime_path.exists():
             log.warning("chime not found: %s", chime_path)
@@ -317,8 +336,24 @@ class TTSWorker(BaseWorker):
             stderr=asyncio.subprocess.DEVNULL,
         )
 
+    def _scale_pcm(self, pcm: bytes) -> bytes:
+        """Scale S16_LE PCM samples by self._volume (0.0–1.0)."""
+        n = len(pcm) // 2
+        if n == 0:
+            return pcm
+        samples = struct.unpack(f"<{n}h", pcm[: n * 2])
+        scaled = struct.pack(
+            f"<{n}h",
+            *(max(-32768, min(32767, int(s * self._volume))) for s in samples),
+        )
+        return scaled
+
     async def _play_pcm_chunk(self, pcm: bytes) -> None:
-        """Write a PCM chunk to the aplay subprocess."""
+        """Write a PCM chunk to the aplay subprocess (applies volume + mute)."""
+        if self._muted:
+            return
+        if self._volume < 0.999:
+            pcm = self._scale_pcm(pcm)
         if self._aplay_proc and self._aplay_proc.stdin:
             try:
                 self._aplay_proc.stdin.write(pcm)

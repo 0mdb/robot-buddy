@@ -23,6 +23,8 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
+from supervisor.api.param_persistence import load_params, on_param_changed
+from supervisor.messages.types import TTS_CMD_SET_MUTE, TTS_CMD_SET_VOLUME
 from supervisor.vision.mask_store import (
     default_mask,
     load_mask,
@@ -135,6 +137,18 @@ def create_app(
 
     # Prime psutil CPU measurement (first call always returns 0.0)
     psutil.cpu_percent(interval=None)
+
+    # -- Param persistence + worker notifications ----------------------------
+    load_params(registry)
+    registry.on_change(on_param_changed)
+
+    def _on_param_change(name: str, value: object) -> None:
+        if name == "tts.speaker_volume":
+            asyncio.ensure_future(
+                workers.send_to("tts", TTS_CMD_SET_VOLUME, {"volume": value})
+            )
+
+    registry.on_change(_on_param_change)
 
     # -- WebSocket logs ------------------------------------------------------
 
@@ -624,7 +638,7 @@ async def _handle_ws_cmd(
         asyncio.ensure_future(
             tick._workers.send_to(
                 "tts",
-                "tts.cmd.set_mute",
+                TTS_CMD_SET_MUTE,
                 {
                     "muted": bool(msg.get("muted", False)),
                     "mute_chimes": bool(msg.get("mute_chimes", False)),
