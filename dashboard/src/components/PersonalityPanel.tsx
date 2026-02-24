@@ -335,19 +335,21 @@ function SessionTimers() {
 
 function GuardrailStatus() {
   const [lastTrigger, setLastTrigger] = useState<{ rule: string; ts: number } | null>(null)
+  const lastTriggerRef = useRef(lastTrigger)
+  lastTriggerRef.current = lastTrigger
 
   useEffect(() => {
     return useConversationStore.subscribe((state) => {
       for (const e of state.events) {
         if (
           e.type === 'personality.event.guardrail_triggered' &&
-          (!lastTrigger || e.ts_mono_ms > lastTrigger.ts)
+          (!lastTriggerRef.current || e.ts_mono_ms > lastTriggerRef.current.ts)
         ) {
           setLastTrigger({ rule: String(e.rule ?? ''), ts: e.ts_mono_ms })
         }
       }
     })
-  }, [lastTrigger])
+  }, [])
 
   const agoS = lastTrigger != null ? Math.max(0, (performance.now() - lastTrigger.ts) / 1000) : null
 

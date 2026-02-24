@@ -180,12 +180,18 @@ export default function FaceTab() {
   const protoConnected = useProtocolStore((s) => s.connected)
   const protoPaused = useProtocolStore((s) => s.paused)
   const setProtoPaused = useProtocolStore((s) => s.setPaused)
+  const faceTxRecentRef = useRef<CapturedPacket[]>([])
   const faceTxRecent = useProtocolStore((s) => {
     const out: CapturedPacket[] = []
     for (let i = s.packets.length - 1; i >= 0 && out.length < 12; i--) {
       const p = s.packets[i]
       if (p.device === 'face' && p.direction === 'TX') out.push(p)
     }
+    const prev = faceTxRecentRef.current
+    if (out.length === prev.length && out.every((p, i) => p === prev[i])) {
+      return prev
+    }
+    faceTxRecentRef.current = out
     return out
   })
 
@@ -193,7 +199,16 @@ export default function FaceTab() {
   const convConnected = useConversationStore((s) => s.connected)
   const convPaused = useConversationStore((s) => s.paused)
   const setConvPaused = useConversationStore((s) => s.setPaused)
-  const convRecent = useConversationStore((s) => s.events.slice(Math.max(0, s.events.length - 30)))
+  const convRecentRef = useRef<ConversationEvent[]>([])
+  const convRecent = useConversationStore((s) => {
+    const next = s.events.slice(Math.max(0, s.events.length - 30))
+    const prev = convRecentRef.current
+    if (next.length === prev.length && next.every((e, i) => e === prev[i])) {
+      return prev
+    }
+    convRecentRef.current = next
+    return next
+  })
 
   // Conversation controls (Studio)
   const [dashPttHeld, setDashPttHeld] = useState(false)
