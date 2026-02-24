@@ -66,6 +66,7 @@ from supervisor.messages.types import (
     PERSONALITY_EVENT_BUTTON_PRESS,
     PERSONALITY_EVENT_CONV_ENDED,
     PERSONALITY_EVENT_CONV_STARTED,
+    PERSONALITY_EVENT_GUARDRAIL_TRIGGERED,
     PERSONALITY_EVENT_SPEECH_ACTIVITY,
     PERSONALITY_EVENT_SYSTEM_STATE,
     TTS_CMD_CANCEL,
@@ -532,6 +533,25 @@ class TickLoop:
             if self.world.conversation_trigger == "wake_word" and self.world.session_id:
                 self._finish_session()
 
+        # Guardrail events — session/daily time limits (PE spec S2 §9.3)
+        elif env.type == PERSONALITY_EVENT_GUARDRAIL_TRIGGERED:
+            rule = str(env.payload.get("rule", ""))
+            if rule == "session_time_limit" and self.world.session_id:
+                # RS-1: end conversation with gentle redirect
+                log.info("session time limit — ending conversation")
+                asyncio.ensure_future(
+                    self._enqueue_say(
+                        "Hey, we've been chatting for a while! "
+                        "Let's take a break and do something else for a bit.",
+                        source="guardrail",
+                        priority=1,
+                    )
+                )
+                # Delay teardown to let the wind-down message play
+                asyncio.ensure_future(self._delayed_end_conversation(4.0))
+            elif rule in ("daily_time_limit", "daily_limit_blocked"):
+                log.info("daily time limit — conversations blocked")
+
         # Ear worker events
         elif env.type == EAR_EVENT_WAKE_WORD:
             if not self.world.session_id and not self.world.speaking:
@@ -922,6 +942,11 @@ class TickLoop:
         if self.world.session_id:
             return
 
+        # RS-2: block new conversations when daily time limit reached
+        if self.world.personality_daily_limit_reached:
+            log.info("conversation blocked: daily time limit reached")
+            return
+
         import uuid
 
         self.world.session_id = f"sess-{uuid.uuid4().hex[:12]}"
@@ -984,6 +1009,15 @@ class TickLoop:
         )
         self.robot.face_listening = False
         self._finish_session()
+
+    async def _delayed_end_conversation(self, delay_s: float) -> None:
+        """End conversation after a delay (allows wind-down speech to play)."""
+        await asyncio.sleep(delay_s)
+        if self.world.session_id:
+            from supervisor.devices.protocol import FaceConvState
+
+            self._conv.set_state(FaceConvState.DONE)
+            self._end_conversation()
 
     def _finish_session(self) -> None:
         """Clean up conversation state (shared by PTT and wake word paths)."""

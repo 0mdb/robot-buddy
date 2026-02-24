@@ -22,7 +22,7 @@ Living section — reorder as priorities shift. Current recommended sequence:
 
 ### Track B: Personality Engine (server + supervisor)
 1. ~~PE↔Face spec compliance fixes~~ ✅ + ~~Server emotion vocab alignment~~ ✅ (B1 complete)
-2. Guardrail config + safety timers (B1b: config plumbing, RS-1/RS-2 session time limits)
+2. ~~Guardrail config + safety timers~~ ✅ (B1b: GuardrailConfig, RS-1/RS-2 session/daily limits, persistence, parent override)
 3. Conversation response schema v2 + prompt v2 (bucket-6 v2 skeleton, mood_reason, memory_tags)
 4. vLLM guided JSON decoding + model config defaults (Qwen3-8B-AWQ)
 5. Personality profile injection (`personality.llm.profile` → `/converse` prompt injection + anchor cadence)
@@ -99,10 +99,10 @@ _(all items completed)_
 - [x] Face send-rate discipline: dedup/throttle `SET_STATE`/`SET_CONV_STATE`/`SET_FLAGS` when unchanged; avoid serial/MCU spam (perf + face smoothness)
 - [x] Add `confused` to server canonical emotions and ensure it survives end-to-end (server → ai_worker → tick_loop → personality_worker → face)
 
-**B1b — Guardrail Config + Safety Timers** `[opus]`
-- [ ] Extend `personality.config.init` to include `{axes, guardrails, memory_path, memory_consent}` and plumb into PersonalityWorker (PE spec S2 §9.5, §14.1)
-- [ ] Implement RS-1 session time limit (900 s) + RS-2 daily time limit (2700 s): enforcement behavior + “daily” semantics + persistence/reset strategy (PE spec S2 §9.3)
-- [ ] Expose time-limit state via telemetry + add a child-safe UX path (stop-and-redirect + cooldown) + parent override controls
+**B1b — Guardrail Config + Safety Timers** `[opus]` ✅
+- [x] Extend `personality.config.init` to include `{axes, guardrails, memory_path, memory_consent}` and plumb into PersonalityWorker (PE spec S2 §9.5, §14.1)
+- [x] Implement RS-1 session time limit (900 s) + RS-2 daily time limit (2700 s): enforcement behavior + “daily” semantics + persistence/reset strategy (PE spec S2 §9.3)
+- [x] Expose time-limit state via telemetry + add a child-safe UX path (stop-and-redirect + cooldown) + parent override controls
 
 **B2 — Conversation Schema V2 + Prompt V2 (Layer 1)** `[opus]`
 - [ ] Implement ConversationResponse v2 schema (PE spec S2 §12.3): `inner_thought`, `emotion`, `intensity`, `mood_reason`, `emotional_arc`, `child_affect`, `text`, `gestures`, `memory_tags`
@@ -239,6 +239,17 @@ _(all items completed)_
 
 ### IMU Derived Fields
 - [x] `tilt_angle_deg` + `accel_magnitude_mg` computed in tick_loop, exposed in telemetry + dashboard
+
+### Personality Engine — B1b Guardrail Config + Safety Timers
+- [x] `GuardrailConfig` dataclass + `PersonalityConfig` section in `supervisor/config.py` (YAML-loadable)
+- [x] Extended `personality.config.init` payload: axes, guardrails, memory_path, memory_consent
+- [x] PersonalityWorker consumes guardrail config: toggleable duration caps, intensity caps, context gate
+- [x] RS-1 session time limit (900s default): per-conversation timer, guardrail_triggered event, tick_loop wind-down with gentle redirect speech
+- [x] RS-2 daily time limit (2700s default): persistent daily counter (JSON, resets on new day), blocks new conversations, guardrail_triggered event
+- [x] `personality.cmd.set_guardrail` handler: parent runtime override of limits + `reset_daily` command
+- [x] Session/daily time state in personality snapshot → WorldState → telemetry (dashboard-visible)
+- [x] Tick loop enforces daily limit gate on `_start_conversation` + session limit wind-down via delayed teardown
+- [x] 30 new unit tests: config parsing, guardrail toggles, session/daily timer increments, limit events, persistence, set_guardrail command
 
 ### Personality Engine — B1 PE↔Face Compliance
 - [x] Tick loop conversation clamping: LISTENING/PTT → NEUTRAL@0.3, THINKING → THINKING@0.5 (overrides PE snapshot)

@@ -270,6 +270,12 @@ class WorldState:
     personality_snapshot_ts_ms: float = 0.0
     personality_conversation_active: bool = False
 
+    # Session/daily time limits (PE spec S2 §9.3 RS-1/RS-2)
+    personality_session_time_s: float = 0.0
+    personality_daily_time_s: float = 0.0
+    personality_session_limit_reached: bool = False
+    personality_daily_limit_reached: bool = False
+
     @property
     def vision_age_ms(self) -> float:
         """Milliseconds since last vision snapshot, or -1 if no data."""
@@ -319,4 +325,8 @@ class WorldState:
             "personality_layer": self.personality_layer,
             "personality_idle_state": self.personality_idle_state,
             "personality_conversation_active": self.personality_conversation_active,
+            "personality_session_time_s": round(self.personality_session_time_s, 1),
+            "personality_daily_time_s": round(self.personality_daily_time_s, 1),
+            "personality_session_limit_reached": self.personality_session_limit_reached,
+            "personality_daily_limit_reached": self.personality_daily_limit_reached,
         }

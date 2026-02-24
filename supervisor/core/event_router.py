@@ -38,6 +38,7 @@ from supervisor.messages.types import (
     TTS_EVENT_MIC_DROPPED,
     TTS_EVENT_STARTED,
     TTS_STATUS_HEALTH,
+    PERSONALITY_EVENT_GUARDRAIL_TRIGGERED,
     PERSONALITY_STATE_SNAPSHOT,
     PERSONALITY_STATUS_HEALTH,
     VISION_DETECTION_SNAPSHOT,
@@ -193,6 +194,17 @@ class EventRouter:
             self._world.personality_conversation_active = bool(
                 p.get("conversation_active", False)
             )
+            self._world.personality_session_time_s = float(p.get("session_time_s", 0.0))
+            self._world.personality_daily_time_s = float(p.get("daily_time_s", 0.0))
+            self._world.personality_session_limit_reached = bool(
+                p.get("session_limit_reached", False)
+            )
+            self._world.personality_daily_limit_reached = bool(
+                p.get("daily_limit_reached", False)
+            )
+
+        elif t == PERSONALITY_EVENT_GUARDRAIL_TRIGGERED:
+            pass  # handled by tick_loop via world state flags
 
         elif t == PERSONALITY_STATUS_HEALTH:
             self._world.worker_last_heartbeat_ms["personality"] = now_ms

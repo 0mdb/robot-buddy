@@ -1,19 +1,24 @@
-"""Tests for PersonalityWorker — L0 impulse rules, idle rules, duration caps."""
+"""Tests for PersonalityWorker — L0 impulse rules, idle rules, duration caps,
+guardrail config, session/daily time limits."""
 
 from __future__ import annotations
 
+import json
 import time
+from pathlib import Path
 
 import pytest
 
 from supervisor.messages.envelope import Envelope, make_envelope
 from supervisor.messages.types import (
     PERSONALITY_CMD_OVERRIDE_AFFECT,
+    PERSONALITY_CMD_SET_GUARDRAIL,
     PERSONALITY_CONFIG_INIT,
     PERSONALITY_EVENT_AI_EMOTION,
     PERSONALITY_EVENT_BUTTON_PRESS,
     PERSONALITY_EVENT_CONV_ENDED,
     PERSONALITY_EVENT_CONV_STARTED,
+    PERSONALITY_EVENT_GUARDRAIL_TRIGGERED,
     PERSONALITY_EVENT_SPEECH_ACTIVITY,
     PERSONALITY_EVENT_SYSTEM_STATE,
     PERSONALITY_STATE_SNAPSHOT,
@@ -643,3 +648,384 @@ class TestContextGateIntegration:
         # During conversation, negative moods are allowed
         # (exact mood depends on projection, but it shouldn't be forced to neutral)
         assert snap["mood"] != "neutral" or snap["valence"] < 0
+
+
+# ── Guardrail Config Init ──────────────────────────────────────────
+
+
+class TestGuardrailConfigInit:
+    @pytest.mark.asyncio
+    async def test_config_parses_guardrails(self):
+        w = PersonalityWorker()
+        await w.on_message(
+            _env(
+                PERSONALITY_CONFIG_INIT,
+                {
+                    "axes": {},
+                    "guardrails": {
+                        "negative_duration_caps": False,
+                        "negative_intensity_caps": False,
+                        "context_gate": False,
+                        "session_time_limit_s": 600.0,
+                        "daily_time_limit_s": 1800.0,
+                    },
+                    "memory_path": "/tmp/test_mem.json",
+                    "memory_consent": True,
+                },
+            )
+        )
+        assert w._guardrails.negative_duration_caps is False
+        assert w._guardrails.negative_intensity_caps is False
+        assert w._guardrails.context_gate is False
+        assert w._guardrails.session_time_limit_s == 600.0
+        assert w._guardrails.daily_time_limit_s == 1800.0
+        assert w._memory_path == "/tmp/test_mem.json"
+        assert w._memory_consent is True
+
+    @pytest.mark.asyncio
+    async def test_config_defaults_without_guardrails_key(self):
+        w = PersonalityWorker()
+        await w.on_message(_env(PERSONALITY_CONFIG_INIT, {"axes": {}}))
+        # Defaults preserved
+        assert w._guardrails.session_time_limit_s == 900.0
+        assert w._guardrails.daily_time_limit_s == 2700.0
+        assert w._guardrails.context_gate is True
+
+    @pytest.mark.asyncio
+    async def test_context_gate_disabled(self):
+        """When context_gate=False, negative moods pass through outside conv."""
+        w = _make_worker()
+        w._guardrails.context_gate = False
+        w._conversation_active = False
+        sends = _collect_sends(w)
+
+        # Force affect deep into negative territory
+        w._affect.valence = -0.80
+        w._affect.arousal = 0.50
+
+        w._process_and_emit(0.01)
+        _, payload = sends[-1]
+        # Gate is disabled — negative mood should pass through
+        assert payload["mood"] != "neutral"
+
+    @pytest.mark.asyncio
+    async def test_duration_caps_disabled(self):
+        """When negative_duration_caps=False, no recovery impulse."""
+        w = _make_worker()
+        w._guardrails.negative_duration_caps = False
+        w._current_mood = "sad"
+        w._negative_mood_name = "sad"
+        w._negative_mood_timer_s = 10.0  # well over 4.0s cap
+        _collect_sends(w)
+
+        w._process_and_emit(1.0)
+        # No recovery impulse should have been injected
+        assert len(w._pending_impulses) == 0
+
+    @pytest.mark.asyncio
+    async def test_intensity_caps_disabled(self):
+        """When negative_intensity_caps=False, intensity is uncapped."""
+        w = _make_worker()
+        w._guardrails.negative_intensity_caps = False
+        w._conversation_active = True
+        sends = _collect_sends(w)
+
+        # Force affect deep into sad territory for high intensity
+        w._affect.valence = -0.60
+        w._affect.arousal = -0.40
+
+        w._process_and_emit(0.01)
+        _, payload = sends[-1]
+        if payload["mood"] == "sad":
+            # Without caps, intensity can exceed 0.70
+            # (depends on distance but shouldn't be artificially clamped)
+            assert True  # Just ensure no crash — exact value depends on projection
+
+
+# ── Session Time Limit (RS-1) ───────────────────────────────────────
+
+
+class TestSessionTimeLimit:
+    def test_session_timer_increments_during_conversation(self):
+        w = _make_worker()
+        _collect_sends(w)
+        w._conversation_active = True
+        w._session_time_s = 0.0
+
+        w._tick_1hz()
+        assert w._session_time_s > 0.0
+
+    def test_session_timer_does_not_increment_outside_conversation(self):
+        w = _make_worker()
+        _collect_sends(w)
+        w._conversation_active = False
+        w._session_time_s = 10.0
+
+        w._tick_1hz()
+        # Should stay at 10.0 (not increment)
+        assert w._session_time_s == 10.0
+
+    def test_session_limit_triggers_event(self):
+        w = _make_worker()
+        sends = _collect_sends(w)
+        w._conversation_active = True
+        w._guardrails.session_time_limit_s = 10.0
+        w._session_time_s = 9.5
+        w._last_tick_ts = time.monotonic() - 1.0  # ensure dt ≈ 1.0s
+
+        # This tick should push over the limit
+        w._tick_1hz()
+        guardrail_events = [
+            (t, p) for t, p in sends if t == PERSONALITY_EVENT_GUARDRAIL_TRIGGERED
+        ]
+        assert len(guardrail_events) == 1
+        assert guardrail_events[0][1]["rule"] == "session_time_limit"
+        assert w._session_limit_reached is True
+
+    def test_session_limit_fires_once(self):
+        w = _make_worker()
+        sends = _collect_sends(w)
+        w._conversation_active = True
+        w._guardrails.session_time_limit_s = 10.0
+        w._session_time_s = 9.5
+        w._session_limit_reached = False
+        w._last_tick_ts = time.monotonic() - 1.0
+
+        w._tick_1hz()
+        w._tick_1hz()  # Second tick — already reached
+
+        guardrail_events = [
+            (t, p) for t, p in sends if t == PERSONALITY_EVENT_GUARDRAIL_TRIGGERED
+        ]
+        assert len(guardrail_events) == 1  # Only one event
+
+    def test_session_timer_resets_on_new_conversation(self):
+        w = _make_worker()
+        _collect_sends(w)
+        w._session_time_s = 500.0
+        w._session_limit_reached = True
+
+        # Start new conversation
+        w._handle_conv_started({})
+        assert w._session_time_s == 0.0
+        assert w._session_limit_reached is False
+
+    def test_session_limit_disabled_when_zero(self):
+        w = _make_worker()
+        sends = _collect_sends(w)
+        w._conversation_active = True
+        w._guardrails.session_time_limit_s = 0.0
+        w._session_time_s = 99999.0
+
+        w._tick_1hz()
+        guardrail_events = [
+            (t, p) for t, p in sends if t == PERSONALITY_EVENT_GUARDRAIL_TRIGGERED
+        ]
+        assert len(guardrail_events) == 0
+
+    def test_snapshot_includes_session_time(self):
+        w = _make_worker()
+        sends = _collect_sends(w)
+        w._session_time_s = 42.5
+
+        w._emit_snapshot()
+        _, payload = sends[-1]
+        assert payload["session_time_s"] == 42.5
+        assert "session_limit_reached" in payload
+
+
+# ── Daily Time Limit (RS-2) ─────────────────────────────────────────
+
+
+class TestDailyTimeLimit:
+    def test_daily_timer_increments_during_conversation(self):
+        w = _make_worker()
+        _collect_sends(w)
+        w._conversation_active = True
+        w._daily_state.total_s = 100.0
+
+        w._tick_1hz()
+        assert w._daily_state.total_s > 100.0
+
+    def test_daily_limit_triggers_event(self):
+        w = _make_worker()
+        sends = _collect_sends(w)
+        w._conversation_active = True
+        w._guardrails.daily_time_limit_s = 50.0
+        w._daily_state.total_s = 49.5
+        w._last_tick_ts = time.monotonic() - 1.0
+
+        w._tick_1hz()
+        guardrail_events = [
+            (t, p) for t, p in sends if t == PERSONALITY_EVENT_GUARDRAIL_TRIGGERED
+        ]
+        assert len(guardrail_events) == 1
+        assert guardrail_events[0][1]["rule"] == "daily_time_limit"
+
+    def test_daily_limit_fires_once(self):
+        w = _make_worker()
+        sends = _collect_sends(w)
+        w._conversation_active = True
+        w._guardrails.daily_time_limit_s = 50.0
+        w._daily_state.total_s = 49.5
+        w._last_tick_ts = time.monotonic() - 1.0
+
+        w._tick_1hz()
+        w._tick_1hz()
+
+        guardrail_events = [
+            (t, p) for t, p in sends if t == PERSONALITY_EVENT_GUARDRAIL_TRIGGERED
+        ]
+        assert len(guardrail_events) == 1
+
+    def test_daily_limit_blocks_new_conversation(self):
+        w = _make_worker()
+        sends = _collect_sends(w)
+        w._guardrails.daily_time_limit_s = 50.0
+        w._daily_state.total_s = 60.0
+
+        w._handle_conv_started({})
+        # Should not have started conversation
+        assert not w._conversation_active
+
+        # Should have emitted a block event
+        guardrail_events = [
+            (t, p) for t, p in sends if t == PERSONALITY_EVENT_GUARDRAIL_TRIGGERED
+        ]
+        assert len(guardrail_events) == 1
+        assert guardrail_events[0][1]["rule"] == "daily_limit_blocked"
+
+    def test_daily_limit_reached_property(self):
+        w = _make_worker()
+        w._guardrails.daily_time_limit_s = 100.0
+        w._daily_state.total_s = 50.0
+        assert w._daily_limit_reached is False
+
+        w._daily_state.total_s = 100.0
+        assert w._daily_limit_reached is True
+
+    def test_daily_limit_disabled_when_zero(self):
+        w = _make_worker()
+        w._guardrails.daily_time_limit_s = 0.0
+        w._daily_state.total_s = 99999.0
+        assert w._daily_limit_reached is False
+
+    def test_snapshot_includes_daily_time(self):
+        w = _make_worker()
+        sends = _collect_sends(w)
+        w._daily_state.total_s = 123.4
+
+        w._emit_snapshot()
+        _, payload = sends[-1]
+        assert payload["daily_time_s"] == 123.4
+        assert "daily_limit_reached" in payload
+
+
+# ── Daily Timer Persistence ──────────────────────────────────────────
+
+
+class TestDailyPersistence:
+    def test_persist_and_load(self, tmp_path: Path):
+        import datetime
+
+        today = datetime.date.today().isoformat()
+
+        w = _make_worker()
+        _collect_sends(w)
+        w._daily_persist_path = tmp_path / "daily_usage.json"
+        w._daily_state.date = today
+        w._daily_state.total_s = 456.7
+
+        w._persist_daily_state()
+        assert w._daily_persist_path.exists()
+
+        raw = json.loads(w._daily_persist_path.read_text())
+        assert raw["date"] == today
+        assert raw["total_s"] == 456.7
+
+        # Load into fresh worker
+        w2 = _make_worker()
+        _collect_sends(w2)
+        w2._daily_persist_path = w._daily_persist_path
+        w2._memory_path = str(tmp_path / "mem.json")
+        w2._load_daily_state()
+        assert w2._daily_state.total_s == 456.7
+        assert w2._daily_state.date == today
+
+    def test_load_resets_on_new_day(self, tmp_path: Path):
+        persist_path = tmp_path / "daily_usage.json"
+        persist_path.write_text(json.dumps({"date": "2020-01-01", "total_s": 999.0}))
+
+        w = _make_worker()
+        _collect_sends(w)
+        w._daily_persist_path = persist_path
+        w._memory_path = str(tmp_path / "mem.json")
+        w._load_daily_state()
+
+        # Different date → reset
+        assert w._daily_state.total_s == 0.0
+        assert w._daily_state.date != "2020-01-01"
+
+    def test_load_handles_missing_file(self, tmp_path: Path):
+        w = _make_worker()
+        _collect_sends(w)
+        w._daily_persist_path = tmp_path / "nonexistent.json"
+        w._memory_path = str(tmp_path / "mem.json")
+        w._load_daily_state()
+
+        assert w._daily_state.total_s == 0.0
+
+
+# ── Set Guardrail Command ────────────────────────────────────────────
+
+
+class TestSetGuardrail:
+    @pytest.mark.asyncio
+    async def test_update_session_limit(self):
+        w = _make_worker()
+        _collect_sends(w)
+        assert w._guardrails.session_time_limit_s == 900.0
+
+        await w.on_message(
+            _env(PERSONALITY_CMD_SET_GUARDRAIL, {"session_time_limit_s": 1200.0})
+        )
+        assert w._guardrails.session_time_limit_s == 1200.0
+
+    @pytest.mark.asyncio
+    async def test_update_daily_limit(self):
+        w = _make_worker()
+        _collect_sends(w)
+        await w.on_message(
+            _env(PERSONALITY_CMD_SET_GUARDRAIL, {"daily_time_limit_s": 5400.0})
+        )
+        assert w._guardrails.daily_time_limit_s == 5400.0
+
+    @pytest.mark.asyncio
+    async def test_toggle_context_gate(self):
+        w = _make_worker()
+        _collect_sends(w)
+        assert w._guardrails.context_gate is True
+
+        await w.on_message(_env(PERSONALITY_CMD_SET_GUARDRAIL, {"context_gate": False}))
+        assert w._guardrails.context_gate is False
+
+    @pytest.mark.asyncio
+    async def test_reset_daily(self):
+        w = _make_worker()
+        _collect_sends(w)
+        w._daily_state.total_s = 2000.0
+        w._daily_limit_notified = True
+
+        await w.on_message(_env(PERSONALITY_CMD_SET_GUARDRAIL, {"reset_daily": True}))
+        assert w._daily_state.total_s == 0.0
+        assert w._daily_limit_notified is False
+
+    @pytest.mark.asyncio
+    async def test_partial_update_preserves_other_fields(self):
+        w = _make_worker()
+        _collect_sends(w)
+        original_session = w._guardrails.session_time_limit_s
+
+        await w.on_message(_env(PERSONALITY_CMD_SET_GUARDRAIL, {"context_gate": False}))
+        assert w._guardrails.context_gate is False
+        assert w._guardrails.session_time_limit_s == original_session

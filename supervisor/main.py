@@ -196,18 +196,28 @@ async def async_main(args: argparse.Namespace) -> None:
             }
             await workers.send_to("ai", "ai.config.init", ai_init)
 
-        # Personality worker config — canonical axis positions (PE spec §1.1)
+        # Personality worker config (PE spec S2 §14.3)
+        pe = cfg.personality
         await workers.send_to(
             "personality",
             "personality.config.init",
             {
                 "axes": {
-                    "energy": 0.40,
-                    "reactivity": 0.50,
-                    "initiative": 0.30,
-                    "vulnerability": 0.35,
-                    "predictability": 0.75,
+                    "energy": pe.energy,
+                    "reactivity": pe.reactivity,
+                    "initiative": pe.initiative,
+                    "vulnerability": pe.vulnerability,
+                    "predictability": pe.predictability,
                 },
+                "guardrails": {
+                    "negative_duration_caps": pe.guardrails.negative_duration_caps,
+                    "negative_intensity_caps": pe.guardrails.negative_intensity_caps,
+                    "context_gate": pe.guardrails.context_gate,
+                    "session_time_limit_s": pe.guardrails.session_time_limit_s,
+                    "daily_time_limit_s": pe.guardrails.daily_time_limit_s,
+                },
+                "memory_path": pe.memory_path,
+                "memory_consent": pe.memory_consent,
             },
         )
 

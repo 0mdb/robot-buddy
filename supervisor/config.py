@@ -74,6 +74,38 @@ class WorkerConfig:
 
 
 @dataclass
+class GuardrailConfig:
+    """Toggleable guardrails (PE spec S2 §9.5).
+
+    All on by default.  HC-1 through HC-10 are NOT toggleable and are
+    always enforced regardless of these settings.
+    """
+
+    negative_duration_caps: bool = True
+    negative_intensity_caps: bool = True
+    context_gate: bool = True
+    session_time_limit_s: float = 900.0  # RS-1: 15 min
+    daily_time_limit_s: float = 2700.0  # RS-2: 45 min
+
+
+@dataclass
+class PersonalityConfig:
+    """Personality engine configuration (PE spec S2 §14.3)."""
+
+    # Axis positions (spec §1.1)
+    energy: float = 0.40
+    reactivity: float = 0.50
+    initiative: float = 0.30
+    vulnerability: float = 0.35
+    predictability: float = 0.75
+
+    guardrails: GuardrailConfig = field(default_factory=GuardrailConfig)
+
+    memory_path: str = "./data/personality_memory.json"
+    memory_consent: bool = False  # COPPA default: opt-out
+
+
+@dataclass
 class SupervisorConfig:
     serial: SerialConfig = field(default_factory=SerialConfig)
     control: ControlConfig = field(default_factory=ControlConfig)
@@ -82,6 +114,7 @@ class SupervisorConfig:
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     vision: VisionConfig = field(default_factory=VisionConfig)
     workers: WorkerConfig = field(default_factory=WorkerConfig)
+    personality: PersonalityConfig = field(default_factory=PersonalityConfig)
     mock: bool = False
 
 
@@ -110,6 +143,7 @@ def load_config(path: str | Path | None = None) -> SupervisorConfig:
             "logging",
             "vision",
             "workers",
+            "personality",
         ):
             if section_name in raw:
                 section = getattr(cfg, section_name)
