@@ -4,12 +4,18 @@
  * Renders the face sim at 320x240 on an HTML5 Canvas, scaled 2x via CSS.
  * Subscribes to useProtocolStore for face TX packets and applies them to
  * a local FaceState, which is animated and rendered at 30fps.
+ * Includes conversation border + corner button rendering.
  */
 
 import { useCallback, useEffect, useRef } from 'react'
 import {
   ANIM_FPS,
   applyProtocolPacket,
+  type BorderState,
+  borderRender,
+  borderRenderButtons,
+  borderUpdate,
+  createBorderState,
   createFaceState,
   type FaceState,
   faceStateUpdate,
@@ -22,22 +28,24 @@ import { useProtocolStore } from '../lib/wsProtocol'
 export default function FaceMirrorCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const fsRef = useRef<FaceState>(createFaceState())
+  const bsRef = useRef<BorderState>(createBorderState())
   const imageDataRef = useRef<ImageData | null>(null)
   const rafRef = useRef<number>(0)
   const lastFrameRef = useRef<number>(0)
   const lastPacketIdxRef = useRef<number>(0)
+  const convTimerRef = useRef<number>(0)
 
   // Process new protocol packets each frame
   const processPackets = useCallback(() => {
     const fs = fsRef.current
+    const bs = bsRef.current
     const packets = useProtocolStore.getState().packets
     const startIdx = lastPacketIdxRef.current
 
-    // Process any new packets since last check
     for (let i = startIdx; i < packets.length; i++) {
       const pkt = packets[i]
       if (pkt.device === 'face' && pkt.direction === 'TX') {
-        applyProtocolPacket(fs, pkt)
+        applyProtocolPacket(fs, pkt, bs)
       }
     }
     lastPacketIdxRef.current = packets.length
@@ -52,7 +60,6 @@ export default function FaceMirrorCanvas() {
       if (elapsed >= frameDuration) {
         lastFrameRef.current = timestamp - (elapsed % frameDuration)
 
-        // Process protocol packets
         processPackets()
 
         const canvas = canvasRef.current
@@ -66,17 +73,26 @@ export default function FaceMirrorCanvas() {
           return
         }
 
-        // Lazy-init ImageData
         if (!imageDataRef.current) {
           imageDataRef.current = ctx.createImageData(SCREEN_W, SCREEN_H)
         }
 
         const fs = fsRef.current
+        const bs = bsRef.current
         const dt = 1.0 / ANIM_FPS
 
-        // Update state + render
+        // Update border state
+        convTimerRef.current += dt
+        borderUpdate(bs, bs._conv_state, convTimerRef.current, dt)
+
+        // Update face state + render with border callbacks
         faceStateUpdate(fs, dt)
-        renderFace(fs, imageDataRef.current)
+        renderFace(
+          fs,
+          imageDataRef.current,
+          (buf) => borderRender(bs, buf),
+          (buf) => borderRenderButtons(bs, buf),
+        )
         ctx.putImageData(imageDataRef.current, 0, 0)
       }
 
@@ -85,7 +101,6 @@ export default function FaceMirrorCanvas() {
     [processPackets],
   )
 
-  // Start/stop animation loop
   useEffect(() => {
     lastFrameRef.current = performance.now()
     rafRef.current = requestAnimationFrame(tick)
@@ -94,10 +109,8 @@ export default function FaceMirrorCanvas() {
     }
   }, [tick])
 
-  // Reset packet tracking when protocol store clears
   useEffect(() => {
     return useProtocolStore.subscribe((state) => {
-      // If packets were cleared, reset our index
       if (state.packets.length < lastPacketIdxRef.current) {
         lastPacketIdxRef.current = 0
       }

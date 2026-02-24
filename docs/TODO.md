@@ -136,14 +136,15 @@ _10 items complete (Stage 4.0 spec/port/parity/buttons/gestures/docs) — see ar
 ### Camera & Vision
 
 - [ ] `[sonnet]` Arducam IMX708 integration — proper V4L2/Picamera2 setup, autofocus config
-- [ ] `[sonnet]` Camera calibration/mask/CV settings in dashboard
+- [x] `[sonnet]` Camera calibration/mask/CV settings in dashboard (MVP: HSV + min radius + safety thresholds + /video preview + eyedropper; mask editor deferred)
+- [ ] `[sonnet]` Mask editor + camera calibration tooling in dashboard
 - [ ] `[sonnet]` Upgrade camera settings for new hardware
 
 ---
 
 ### Dashboard
 
-- [ ] `[sonnet]` Camera settings panel
+- [x] `[sonnet]` Camera settings panel
 - [ ] `[opus]` **Tuning Studio (expand Face tab; consolidate dashboard; built to complete B6)** — one place to tune face parameters (mouth sync), personality, models, server settings, and the full voice pipeline
   - [ ] **Dashboard consolidation (no redundant tuning UI)**
     - [x] Re-scope existing `dashboard/src/tabs/FaceTab.tsx` into “Tuning Studio” (keep tab id `face`; rename tab label to “Tuning”)
@@ -155,8 +156,8 @@ _10 items complete (Stage 4.0 spec/port/parity/buttons/gestures/docs) — see ar
     - [x] Integrated into FaceTab (Tuning Studio)
     - [x] Supervisor: extend `supervisor/api/protocol_capture.py` to name+decode Face `SET_CONV_STATE (0x25)` (required for border parity)
     - [x] Dashboard: allow protocol WS connection while Studio is open (not only on Protocol tab)
-    - [ ] Phase 4: Gestures & effects — sparkle animation, fire, afterglow buffer, holiday effects, confetti, snow; gesture visual overrides (heart eyes SDF, X-eyes cross SDF, rage shake, sleepy droop)
-    - [ ] Phase 5: Border renderer — conv-state-driven border (8 states: IDLE/LISTENING/THINKING/SPEAKING/etc.), border SDF + alpha curves, pulsing/breathing animations
+    - [x] Phase 4: Gestures & effects — 20 gesture visual overrides (heart eyes SDF, X-eyes cross, rage shake, sleepy droop, peek-a-boo, shy, dizzy, celebrate, etc.), fire particles, afterglow buffer, holiday effects (birthday/halloween/christmas/new year), snow, confetti, rosy cheeks, system mode animations (boot/shutdown/error/battery/updating)
+    - [x] Phase 5: Border renderer — conv-state-driven border (8 states: IDLE/ATTENTION/LISTENING/PTT/THINKING/SPEAKING/ERROR/DONE), border SDF frame + inner glow + attention sweep + thinking orbit dots, corner buttons with 6 icon types, energy sync from talking
     - [ ] Phase 6: Mirror modes (Sandbox / Replay) + deterministic toggle (disable idle wander + autoblink randomness) + FPS selector (30/60)
     - [ ] Phase 7: Parity harness — golden-state suite (mood sweep, conv states, system overlays, talking energy sweep) Python sim vs TS pixel-diff + `just check-face-mirror-parity` recipe
   - [ ] **Conversation harness (multi-input; addresses Conversation & Voice backlog)**

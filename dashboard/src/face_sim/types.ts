@@ -4,7 +4,7 @@
  * Ported from tools/face_sim_v3/state/face_state.py dataclasses.
  */
 
-import { Mood, type RGB, SystemMode } from './constants'
+import { type HolidayMode, Mood, type RGB, SystemMode } from './constants'
 
 export interface EyeState {
   openness: number
@@ -38,7 +38,7 @@ export interface AnimTimers {
   next_idle: number
   next_saccade: number
 
-  // Gesture flags + timers (minimal for Phase 1-3; full gestures deferred)
+  // Gesture flags + timers
   confused: boolean
   confused_timer: number
   confused_toggle: boolean
@@ -72,6 +72,26 @@ export interface AnimTimers {
   headshake_timer: number
   headshake_duration: number
 
+  // Sim-only gestures
+  peek_a_boo: boolean
+  peek_a_boo_timer: number
+  peek_a_boo_duration: number
+  eye_roll: boolean
+  eye_roll_timer: number
+  eye_roll_duration: number
+  dizzy: boolean
+  dizzy_timer: number
+  dizzy_duration: number
+  celebrate: boolean
+  celebrate_timer: number
+  celebrate_duration: number
+  startle_relief: boolean
+  startle_relief_timer: number
+  startle_relief_duration: number
+  thinking_hard: boolean
+  thinking_hard_timer: number
+  thinking_hard_duration: number
+
   // Flicker
   h_flicker: boolean
   h_flicker_alt: boolean
@@ -93,6 +113,11 @@ export interface EffectsState {
   sparkle: boolean
   sparkle_pixels: Array<[number, number, number]> // [x, y, life]
   edge_glow: boolean
+  afterglow: boolean
+  afterglow_buf: Uint8ClampedArray | null
+  fire_pixels: Array<[number, number, number, number]> // [x, y, life, heat]
+  snow_pixels: Array<[number, number, number, number]> // [x, y, life, phase]
+  confetti_pixels: Array<[number, number, number, number]> // [x, y, life, colorIdx]
 }
 
 export interface SystemState {
@@ -140,6 +165,9 @@ export interface FaceState {
 
   active_gesture: number
   active_gesture_until: number
+
+  holiday_mode: HolidayMode
+  _holiday_timer: number
 }
 
 function createEyeState(): EyeState {
@@ -210,6 +238,24 @@ function createAnimTimers(): AnimTimers {
     headshake: false,
     headshake_timer: 0.0,
     headshake_duration: 0.35,
+    peek_a_boo: false,
+    peek_a_boo_timer: 0.0,
+    peek_a_boo_duration: 1.5,
+    eye_roll: false,
+    eye_roll_timer: 0.0,
+    eye_roll_duration: 1.0,
+    dizzy: false,
+    dizzy_timer: 0.0,
+    dizzy_duration: 2.0,
+    celebrate: false,
+    celebrate_timer: 0.0,
+    celebrate_duration: 2.5,
+    startle_relief: false,
+    startle_relief_timer: 0.0,
+    startle_relief_duration: 1.5,
+    thinking_hard: false,
+    thinking_hard_timer: 0.0,
+    thinking_hard_duration: 3.0,
     h_flicker: false,
     h_flicker_alt: false,
     h_flicker_amp: 1.5,
@@ -230,6 +276,11 @@ function createEffectsState(): EffectsState {
     sparkle: true,
     sparkle_pixels: [],
     edge_glow: true,
+    afterglow: false,
+    afterglow_buf: null,
+    fire_pixels: [],
+    snow_pixels: [],
+    confetti_pixels: [],
   }
 }
 
@@ -280,5 +331,8 @@ export function createFaceState(): FaceState {
 
     active_gesture: 0xff,
     active_gesture_until: 0.0,
+
+    holiday_mode: 0, // HolidayMode.NONE
+    _holiday_timer: 0.0,
   }
 }

@@ -64,6 +64,26 @@ export function sdCross(
   return Math.min(d1, d2)
 }
 
+export function sdEquilateralTriangle(
+  px: number,
+  py: number,
+  cx: number,
+  cy: number,
+  r: number,
+): number {
+  const k = Math.sqrt(3.0)
+  let lx = Math.abs(px - cx) - r
+  let ly = py - cy + r / k
+  if (lx + k * ly > 0.0) {
+    const nx = (lx - k * ly) / 2.0
+    const ny = (-k * lx - ly) / 2.0
+    lx = nx
+    ly = ny
+  }
+  lx -= Math.max(-2.0 * r, Math.min(0.0, lx))
+  return -Math.sqrt(lx * lx + ly * ly) * (ly < 0.0 ? 1.0 : -1.0)
+}
+
 export function smoothstep(edge0: number, edge1: number, x: number): number {
   if (edge1 === edge0) return x < edge0 ? 0.0 : 1.0
   const t = Math.max(0.0, Math.min(1.0, (x - edge0) / (edge1 - edge0)))

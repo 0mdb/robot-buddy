@@ -1,4 +1,6 @@
-export { ANIM_FPS, SCREEN_H, SCREEN_W } from './constants'
+export type { BorderState } from './border'
+export { borderRender, borderRenderButtons, borderUpdate, createBorderState } from './border'
+export { ANIM_FPS, ConvState, SCREEN_H, SCREEN_W } from './constants'
 export { applyProtocolPacket } from './protocolBridge'
 export { renderFace } from './render'
 export { faceSetFlags, faceStateUpdate, faceTriggerGesture } from './state'

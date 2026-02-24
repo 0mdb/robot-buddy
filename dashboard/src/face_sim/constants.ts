@@ -101,6 +101,19 @@ export const SPARKLE_LIFE_MAX = 15
 export const EDGE_GLOW_FALLOFF = 0.4
 
 // ═══════════════════════════════════════════════════════════════════
+// FIRE PARTICLES (RAGE gesture)
+// ═══════════════════════════════════════════════════════════════════
+export const FIRE_SPAWN_CHANCE = 0.3
+export const FIRE_RISE_SPEED = 3.0
+export const FIRE_DRIFT = 1.5
+export const FIRE_HEAT_DECAY = 0.9
+
+// ═══════════════════════════════════════════════════════════════════
+// AFTERGLOW
+// ═══════════════════════════════════════════════════════════════════
+export const AFTERGLOW_DECAY = 0.4
+
+// ═══════════════════════════════════════════════════════════════════
 // TALKING
 // ═══════════════════════════════════════════════════════════════════
 export const TALKING_PHASE_SPEED = 15.0
@@ -127,6 +140,81 @@ export const MICRO_EXPR_RANGE = 60.0
 export const MICRO_EXPR_CURIOUS_DUR = 0.5
 export const MICRO_EXPR_SIGH_DUR = 0.8
 export const MICRO_EXPR_FIDGET_DUR = 0.4
+
+// ═══════════════════════════════════════════════════════════════════
+// GESTURE VISUAL OVERRIDES
+// ═══════════════════════════════════════════════════════════════════
+export const SURPRISE_PEAK_W = 1.3
+export const SURPRISE_PEAK_H = 1.25
+export const SURPRISE_PEAK_TIME = 0.15
+
+export const LAUGH_CHATTER_FREQ = 50.0
+export const LAUGH_CHATTER_BASE = 0.2
+export const LAUGH_CHATTER_AMP = 0.3
+
+export const RAGE_LID_SLOPE = 0.9
+export const RAGE_SHAKE_FREQ = 30.0
+export const RAGE_SHAKE_AMP = 0.4
+export const RAGE_MOUTH_CURVE = -1.0
+export const RAGE_MOUTH_OPEN = 0.3
+export const RAGE_MOUTH_WAVE = 0.7
+
+export const CONFUSED_OFFSET_FREQ = 12.0
+export const CONFUSED_OFFSET_AMP = 1.5
+export const CONFUSED_MOUTH_CURVE = -0.2
+
+export const SLEEPY_SWAY_FREQ = 2.0
+export const SLEEPY_SWAY_AMP = 6.0
+export const SLEEPY_LID_SLOPE = -0.2
+export const SLEEPY_MOUTH_WIDTH = 0.7
+
+export const X_EYES_MOUTH_OPEN = 0.8
+export const X_EYES_MOUTH_WIDTH = 0.5
+
+export const HEART_MOUTH_CURVE = 1.0
+export const HEART_SOLID_SCALE = 1.0
+export const HEART_PUPIL_SCALE = 2.5
+
+export const FLICKER_AMP = 1.5
+
+export const NOD_GAZE_Y_AMP = 4.0
+export const NOD_FREQ = 12.0
+export const NOD_LID_TOP_OFFSET = 0.15
+
+export const HEADSHAKE_GAZE_X_AMP = 5.0
+export const HEADSHAKE_FREQ = 14.0
+export const HEADSHAKE_MOUTH_CURVE = -0.2
+
+export const PEEK_A_BOO_CLOSE_TIME = 0.3
+export const PEEK_A_BOO_PEAK_W = 1.2
+export const PEEK_A_BOO_PEAK_H = 1.2
+
+export const SHY_GAZE_X = -5.0
+export const SHY_GAZE_Y = 3.0
+export const SHY_LID_BOT = 0.2
+export const SHY_MOUTH_CURVE = 0.4
+export const SHY_PEEK_FRAC = 0.6
+
+export const EYE_ROLL_GAZE_R = 5.0
+export const EYE_ROLL_LID_PEAK = 0.15
+
+export const DIZZY_GAZE_R_MAX = 4.0
+export const DIZZY_FREQ = 10.0
+export const DIZZY_MOUTH_WAVE = 0.4
+
+export const CELEBRATE_EYE_SCALE = 1.15
+export const CELEBRATE_MOUTH_CURVE = 0.9
+export const CELEBRATE_SPARKLE_BOOST = 0.4
+
+export const STARTLE_PEAK_TIME = 0.15
+export const STARTLE_PEAK_W = 1.3
+export const STARTLE_PEAK_H = 1.25
+
+export const THINKING_HARD_GAZE_A: [number, number] = [6.0, -4.0]
+export const THINKING_HARD_GAZE_B: [number, number] = [-6.0, -4.0]
+export const THINKING_HARD_FREQ = 3.0
+export const THINKING_HARD_LID_SLOPE = 0.5
+export const THINKING_HARD_MOUTH_OFFSET_FREQ = 2.0
 
 // ═══════════════════════════════════════════════════════════════════
 // ENUMS
@@ -181,6 +269,41 @@ export enum SystemMode {
   SHUTTING_DOWN = 5,
 }
 
+export enum HolidayMode {
+  NONE = 0,
+  BIRTHDAY = 1,
+  HALLOWEEN = 2,
+  CHRISTMAS = 3,
+  NEW_YEAR = 4,
+}
+
+export enum ConvState {
+  IDLE = 0,
+  ATTENTION = 1,
+  LISTENING = 2,
+  PTT = 3,
+  THINKING = 4,
+  SPEAKING = 5,
+  ERROR = 6,
+  DONE = 7,
+}
+
+export enum ButtonIcon {
+  NONE = 0,
+  MIC = 1,
+  X_MARK = 2,
+  CHECK = 3,
+  REPEAT = 4,
+  STAR = 5,
+  SPEAKER = 6,
+}
+
+export enum ButtonState {
+  IDLE = 0,
+  ACTIVE = 1,
+  PRESSED = 2,
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // FEATURE FLAGS (bitmask, matches protocol.h)
 // ═══════════════════════════════════════════════════════════════════
@@ -226,6 +349,112 @@ export const GESTURE_DURATIONS: Record<number, number> = {
   [GestureId.STARTLE_RELIEF]: 1.5,
   [GestureId.THINKING_HARD]: 3.0,
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// CONVERSATION BORDER
+// ═══════════════════════════════════════════════════════════════════
+export const CONV_COLORS: Record<number, RGB> = {
+  [ConvState.IDLE]: [0, 0, 0],
+  [ConvState.ATTENTION]: [180, 240, 255],
+  [ConvState.LISTENING]: [0, 200, 220],
+  [ConvState.PTT]: [255, 200, 80],
+  [ConvState.THINKING]: [120, 100, 255],
+  [ConvState.SPEAKING]: [200, 240, 255],
+  [ConvState.ERROR]: [255, 160, 60],
+  [ConvState.DONE]: [0, 0, 0],
+}
+
+export const BORDER_FRAME_W = 4
+export const BORDER_GLOW_W = 3
+export const BORDER_CORNER_R = 3.0
+export const BORDER_BLEND_RATE = 8.0
+
+export const ATTENTION_DEPTH = 20
+
+export const LISTENING_BREATH_FREQ = 1.5
+export const LISTENING_ALPHA_BASE = 0.6
+export const LISTENING_ALPHA_MOD = 0.3
+
+export const PTT_PULSE_FREQ = 0.8
+export const PTT_ALPHA_BASE = 0.8
+export const PTT_ALPHA_MOD = 0.1
+
+export const THINKING_ORBIT_DOTS = 3
+export const THINKING_ORBIT_SPACING = 0.12
+export const THINKING_ORBIT_SPEED = 0.5
+export const THINKING_ORBIT_DOT_R = 4.0
+export const THINKING_BORDER_ALPHA = 0.3
+
+export const SPEAKING_ALPHA_BASE = 0.3
+export const SPEAKING_ALPHA_MOD = 0.7
+
+export const ERROR_FLASH_DURATION = 0.1
+export const ERROR_DECAY_RATE = 5.0
+
+export const DONE_FADE_SPEED = 2.0
+
+export const LED_SCALE = 0.16
+
+// ═══════════════════════════════════════════════════════════════════
+// CORNER BUTTON ZONES
+// ═══════════════════════════════════════════════════════════════════
+export const BTN_CORNER_W = 60
+export const BTN_CORNER_H = 46
+export const BTN_CORNER_INNER_R = 8
+export const BTN_ICON_SIZE = 18
+
+export const BTN_ZONE_Y_TOP = SCREEN_H - BTN_CORNER_H
+export const BTN_LEFT_ZONE_X1 = BTN_CORNER_W
+export const BTN_RIGHT_ZONE_X0 = SCREEN_W - BTN_CORNER_W
+export const BTN_LEFT_ICON_CX = (BTN_CORNER_W / 2) | 0
+export const BTN_LEFT_ICON_CY = (SCREEN_H - BTN_CORNER_H / 2) | 0
+export const BTN_RIGHT_ICON_CX = (SCREEN_W - BTN_CORNER_W / 2) | 0
+export const BTN_RIGHT_ICON_CY = BTN_LEFT_ICON_CY
+
+// ═══════════════════════════════════════════════════════════════════
+// HOLIDAY MODES
+// ═══════════════════════════════════════════════════════════════════
+
+// Birthday
+export const HOLIDAY_BIRTHDAY_SPARKLE = 0.3
+export const HOLIDAY_BIRTHDAY_CELEBRATE_INTERVAL = 5.0
+export const HOLIDAY_BIRTHDAY_COLOR_A: RGB = [255, 100, 150]
+export const HOLIDAY_BIRTHDAY_COLOR_B: RGB = [0, 255, 200]
+
+// Halloween
+export const HOLIDAY_HALLOWEEN_COLOR: RGB = [255, 140, 0]
+export const HOLIDAY_HALLOWEEN_FLICKER = 0.15
+export const HOLIDAY_HALLOWEEN_LID_SLOPE = -0.8
+
+// Christmas
+export const HOLIDAY_CHRISTMAS_COLOR: RGB = [255, 220, 180]
+export const HOLIDAY_CHRISTMAS_BREATH_SPEED = 1.2
+export const HOLIDAY_SNOW_SPAWN_CHANCE = 0.15
+export const HOLIDAY_SNOW_LIFE_MIN = 30
+export const HOLIDAY_SNOW_LIFE_MAX = 60
+export const HOLIDAY_SNOW_FALL_SPEED = 2.0
+export const HOLIDAY_SNOW_DRIFT_AMP = 1.5
+
+// New Year's
+export const HOLIDAY_CONFETTI_SPAWN_CHANCE = 0.2
+export const HOLIDAY_CONFETTI_LIFE_MIN = 20
+export const HOLIDAY_CONFETTI_LIFE_MAX = 40
+export const HOLIDAY_CONFETTI_FALL_SPEED = 3.0
+export const HOLIDAY_CONFETTI_DRIFT = 1.0
+export const HOLIDAY_CONFETTI_COLORS: RGB[] = [
+  [255, 50, 50],
+  [50, 255, 50],
+  [50, 100, 255],
+  [255, 255, 50],
+  [255, 50, 255],
+]
+
+// Rosy cheeks (Christmas)
+export const ROSY_CHEEK_R = 12.0
+export const ROSY_CHEEK_Y_OFFSET = 35.0
+export const ROSY_CHEEK_X_OFFSET = 10.0
+export const ROSY_CHEEK_COLOR: RGB = [255, 150, 180]
+export const ROSY_CHEEK_ALPHA = 0.3
 
 // ═══════════════════════════════════════════════════════════════════
 // TYPES

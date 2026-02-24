@@ -5,7 +5,10 @@
  * corresponding command to the local FaceState mirror.
  */
 
+import type { BorderState } from './border'
+import { borderSetEnergy, borderUpdate } from './border'
 import {
+  type ConvState,
   FLAG_AFTERGLOW,
   FLAG_AUTOBLINK,
   FLAG_EDGE_GLOW,
@@ -40,7 +43,7 @@ const SET_CONV_STATE = 0x25
  * Apply a protocol TX packet to the face state.
  * Returns true if the packet was relevant and applied.
  */
-export function applyProtocolPacket(fs: FaceState, pkt: ProtocolPacket): boolean {
+export function applyProtocolPacket(fs: FaceState, pkt: ProtocolPacket, bs?: BorderState): boolean {
   // Only process face TX packets
   if (pkt.device !== 'face' || pkt.direction !== 'TX') return false
 
@@ -48,7 +51,6 @@ export function applyProtocolPacket(fs: FaceState, pkt: ProtocolPacket): boolean
   const ptype = pkt.pkt_type
 
   if (ptype === SET_STATE) {
-    // fields: {mood, intensity, gaze_x, gaze_y, brightness}
     const mood = f.mood as number | undefined
     const intensityU8 = f.intensity as number | undefined
     const gazeXI8 = f.gaze_x as number | undefined
@@ -72,12 +74,10 @@ export function applyProtocolPacket(fs: FaceState, pkt: ProtocolPacket): boolean
   }
 
   if (ptype === SET_FLAGS) {
-    // fields: {flags} or individual booleans
     const flags = f.flags as number | undefined
     if (flags !== undefined) {
       faceSetFlags(fs, flags)
     } else {
-      // Individual boolean fields
       let mask = 0
       if (f.idle_wander) mask |= FLAG_IDLE_WANDER
       if (f.autoblink) mask |= FLAG_AUTOBLINK
@@ -92,15 +92,16 @@ export function applyProtocolPacket(fs: FaceState, pkt: ProtocolPacket): boolean
   }
 
   if (ptype === SET_TALKING) {
-    // fields: {talking, energy}
     fs.talking = !!(f.talking as boolean | number | undefined)
     const energy = f.energy as number | undefined
-    if (energy !== undefined) fs.talking_energy = energy / 255.0
+    if (energy !== undefined) {
+      fs.talking_energy = energy / 255.0
+      if (bs) borderSetEnergy(bs, energy / 255.0)
+    }
     return true
   }
 
   if (ptype === GESTURE) {
-    // fields: {gesture_id, duration_ms} or {gesture, duration_ms}
     const gestureId = (f.gesture_id as number | undefined) ?? (f.gesture as number | undefined)
     const durationMs = (f.duration_ms as number | undefined) ?? 0
     if (gestureId !== undefined) {
@@ -110,14 +111,14 @@ export function applyProtocolPacket(fs: FaceState, pkt: ProtocolPacket): boolean
   }
 
   if (ptype === SET_CONV_STATE) {
-    // fields: {conv_state}
-    // Conversation border rendering is deferred (Phase 5).
-    // Store the value for future use.
+    const convState = f.conv_state as number | undefined
+    if (convState !== undefined && bs) {
+      borderUpdate(bs, convState as ConvState, 0.0, 0.0)
+    }
     return true
   }
 
   if (ptype === SET_SYSTEM) {
-    // fields: {mode, param} or {system_mode, param}
     const mode = (f.mode as number | undefined) ?? (f.system_mode as number | undefined)
     if (mode !== undefined) {
       fs.system.mode = mode as SystemMode
