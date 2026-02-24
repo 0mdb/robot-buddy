@@ -164,14 +164,11 @@ _10 items complete (Stage 4.0 spec/port/parity/buttons/gestures/docs) — see ar
     - [x] Inputs in one panel: physical PTT, dashboard PTT, wake word, text chat (bypass STT), “simulate wake word” button
     - [x] Fix PTT semantics: PTT OFF = `end_utterance` (no immediate teardown; teardown after response)
     - [ ] Multi-turn PTT semantics: keep session open; ACTION cancels session; optional idle timeout ends session
-    - [ ] Supervisor WS commands (extend `supervisor/api/http_server.py` + `supervisor/core/tick_loop.py`):
-      - [x] `conversation.start` / `conversation.cancel` / `conversation.end_utterance` / `conversation.send_text`
+    - [x] Supervisor WS commands: `conversation.start` / `conversation.cancel` / `conversation.end_utterance` / `conversation.send_text`
     - [x] AI worker: add `ai.cmd.send_text` (send `{"type":"text"}` to `/converse`) + handle server `assistant_text` → `ai.conversation.assistant_text`
     - [x] Server `/converse`: always emit `assistant_text` before audio; add client `config` (stream_audio/stream_text/debug); support `stream_audio=false` (true text-only)
     - [x] Add a conversation event stream for Studio (avoid bloating 20 Hz telemetry): per-turn transcript (opt-in), emotion/intensity/mood_reason, gestures, memory_tags, timings, errors
-  - [ ] **Output modes (two toggles)**
-    - [x] **Mute speaker playback** (still generate TTS + lip-sync energy, but no `aplay` output; optionally mute chimes)
-    - [x] **No TTS generation** (server skips synthesis; Studio shows assistant replies as text only)
+  - [x] **Output modes (two toggles)** — mute speaker playback + no-TTS generation both implemented
   - [ ] **Voice + latency diagnostics**
     - [ ] Pipeline timeline per turn: trigger → VAD end → transcription → emotion → first audio chunk → done (+ error states)
     - [ ] TTS benchmark runner: fixed corpus via `/tts`, time-to-first-byte, total synth time, chunk cadence, max utterance duration safeguards
