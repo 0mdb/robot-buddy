@@ -231,7 +231,7 @@ export default function FaceTab() {
   const [noTtsGeneration, setNoTtsGeneration] = useState(false)
   const [speakerVolume, setSpeakerVolume] = useState(80)
 
-  // Params for volume control
+  // Params for volume + planner controls
   const { data: paramsList } = useParamsList()
   const updateParams = useUpdateParams()
   const volParam = paramsList?.find((p) => p.name === 'tts.speaker_volume')
@@ -244,6 +244,27 @@ export default function FaceTab() {
     debounce((v: number) => {
       updateParams.mutate({ 'tts.speaker_volume': v })
     }, 150),
+  ).current
+
+  // Planner controls
+  const [plannerEnabled, setPlannerEnabled] = useState(true)
+  const [plannerPeriodS, setPlannerPeriodS] = useState(5)
+
+  const plannerEnabledParam = paramsList?.find((p) => p.name === 'planner.enabled')
+  const plannerPeriodParam = paramsList?.find((p) => p.name === 'planner.plan_period_s')
+
+  useEffect(() => {
+    if (plannerEnabledParam?.value != null) setPlannerEnabled(Boolean(plannerEnabledParam.value))
+  }, [plannerEnabledParam?.value])
+
+  useEffect(() => {
+    if (plannerPeriodParam?.value != null) setPlannerPeriodS(Number(plannerPeriodParam.value))
+  }, [plannerPeriodParam?.value])
+
+  const debouncedPeriod = useRef(
+    debounce((v: number) => {
+      updateParams.mutate({ 'planner.plan_period_s': v })
+    }, 200),
   ).current
 
   const startWakeWord = useCallback(() => {
@@ -1041,6 +1062,49 @@ export default function FaceTab() {
               />
             </label>
           </div>
+        </div>
+
+        {/* Planner controls */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#aaa' }}>
+            <input
+              type="checkbox"
+              checked={plannerEnabled}
+              onChange={(e) => {
+                const v = e.target.checked
+                setPlannerEnabled(v)
+                updateParams.mutate({ 'planner.enabled': v })
+              }}
+            />
+            AI planner
+          </label>
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              color: plannerEnabled ? '#aaa' : '#555',
+            }}
+          >
+            <span style={{ fontSize: 11 }}>every</span>
+            <input
+              type="range"
+              min={1}
+              max={120}
+              step={1}
+              value={plannerPeriodS}
+              disabled={!plannerEnabled}
+              onChange={(e) => {
+                const v = Number(e.target.value)
+                setPlannerPeriodS(v)
+                debouncedPeriod(v)
+              }}
+              style={{ minWidth: 100 }}
+            />
+            <span className={styles.mono} style={{ fontSize: 11, width: 32 }}>
+              {plannerPeriodS}s
+            </span>
+          </label>
         </div>
 
         {/* Pipeline Timeline */}
