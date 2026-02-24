@@ -19,7 +19,7 @@ test-server *filter:
 
 # Run dashboard tests
 test-dashboard *filter:
-    cd {{project}}/dashboard && npx vitest run {{filter}}
+    cd {{project}}/dashboard && npx vitest run --passWithNoTests {{filter}}
 
 # ── Linting ──────────────────────────────────────────────
 

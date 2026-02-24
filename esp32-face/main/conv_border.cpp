@@ -112,8 +112,8 @@ struct ButtonZone {
     float    flash_timer = 0.0f;
 };
 
-static ButtonZone s_btn_left;
-static ButtonZone s_btn_right;
+static ButtonZone s_btn_left; // default: MIC / IDLE
+static ButtonZone s_btn_right = {BtnIcon::X_MARK, BtnState::IDLE, 0, 0, 0, 0.0f};
 
 // ══════════════════════════════════════════════════════════════════════
 // Helpers
@@ -223,6 +223,21 @@ void conv_border_set_state(uint8_t state)
             s_border.color_g = c.g;
             s_border.color_b = c.b;
         }
+    }
+
+    // Drive corner button visuals from conversation state (parity with sim __main__.py)
+    const auto cs = static_cast<FaceConvState>(state);
+    if (cs == FaceConvState::PTT || cs == FaceConvState::LISTENING) {
+        const auto& c = CONV_COLORS[state];
+        conv_border_set_button_left(BtnIcon::MIC, BtnState::ACTIVE, c.r, c.g, c.b);
+        conv_border_set_button_right(BtnIcon::X_MARK, BtnState::ACTIVE, c.r, c.g, c.b);
+    } else if (cs == FaceConvState::THINKING || cs == FaceConvState::SPEAKING) {
+        const auto& c = CONV_COLORS[state];
+        conv_border_set_button_left(BtnIcon::MIC, BtnState::IDLE, 0, 0, 0);
+        conv_border_set_button_right(BtnIcon::X_MARK, BtnState::ACTIVE, c.r, c.g, c.b);
+    } else {
+        conv_border_set_button_left(BtnIcon::MIC, BtnState::IDLE, 0, 0, 0);
+        conv_border_set_button_right(BtnIcon::X_MARK, BtnState::IDLE, 0, 0, 0);
     }
 }
 

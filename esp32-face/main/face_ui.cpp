@@ -498,11 +498,12 @@ static void root_touch_event_cb(lv_event_t* e)
         g_touch_active.store(true, std::memory_order_relaxed);
         publish_touch_sample(0, p.x, p.y);
 
-        // Corner button hit-testing (pixel-rendered buttons replace LVGL overlay)
-        if (conv_border_hit_test_left(p.x, p.y)) {
+        // Corner button hit-testing — disabled during system overlays (spec §4.4)
+        const bool sys_overlay = g_system_mode.load(std::memory_order_relaxed) != 0;
+        if (!sys_overlay && conv_border_hit_test_left(p.x, p.y)) {
             publish_button_event(FaceButtonId::PTT, FaceButtonEventType::PRESS,
                                  g_ptt_listening.load(std::memory_order_relaxed) ? 1 : 0);
-        } else if (conv_border_hit_test_right(p.x, p.y)) {
+        } else if (!sys_overlay && conv_border_hit_test_right(p.x, p.y)) {
             publish_button_event(FaceButtonId::ACTION, FaceButtonEventType::PRESS, 0);
         }
     } else if (code == LV_EVENT_PRESSING) {
@@ -522,15 +523,17 @@ static void root_touch_event_cb(lv_event_t* e)
         g_touch_active.store(false, std::memory_order_relaxed);
         publish_touch_sample(1, p.x, p.y);
 
-        // Corner button release + click detection (use press origin for zone match)
-        if (conv_border_hit_test_left(press_x, press_y) && conv_border_hit_test_left(p.x, p.y)) {
+        // Corner button release + click detection — disabled during system overlays (spec §4.4)
+        const bool sys_overlay_r = g_system_mode.load(std::memory_order_relaxed) != 0;
+        if (!sys_overlay_r && conv_border_hit_test_left(press_x, press_y) && conv_border_hit_test_left(p.x, p.y)) {
             publish_button_event(FaceButtonId::PTT, FaceButtonEventType::RELEASE,
                                  g_ptt_listening.load(std::memory_order_relaxed) ? 1 : 0);
             // Toggle PTT on click (press+release in same zone)
             const bool listening = !g_ptt_listening.load(std::memory_order_relaxed);
             g_ptt_listening.store(listening, std::memory_order_relaxed);
             publish_button_event(FaceButtonId::PTT, FaceButtonEventType::TOGGLE, listening ? 1 : 0);
-        } else if (conv_border_hit_test_right(press_x, press_y) && conv_border_hit_test_right(p.x, p.y)) {
+        } else if (!sys_overlay_r && conv_border_hit_test_right(press_x, press_y) &&
+                   conv_border_hit_test_right(p.x, p.y)) {
             publish_button_event(FaceButtonId::ACTION, FaceButtonEventType::RELEASE, 0);
             publish_button_event(FaceButtonId::ACTION, FaceButtonEventType::CLICK, 0);
         }
@@ -623,9 +626,11 @@ void face_ui_update(const FaceState& fs)
             apply_afterglow(canvas_buf, fs);
         }
 
-        // Conversation border overlay + corner buttons (drawn on top of everything)
-        conv_border_render(canvas_buf);
-        conv_border_render_buttons(canvas_buf);
+        // Conversation border overlay + corner buttons — suppress during system overlays (spec §4.4)
+        if (fs.system.mode == SystemMode::NONE) {
+            conv_border_render(canvas_buf);
+            conv_border_render_buttons(canvas_buf);
+        }
 
         if ((fs.system.mode != SystemMode::NONE || !fs.fx.afterglow) && afterglow_buf) {
             memcpy(afterglow_buf, canvas_buf, CANVAS_BYTES);

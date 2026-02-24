@@ -513,8 +513,21 @@ def main() -> int:
     face_ui_path = MCU_DIR / "face_ui.cpp"
     if face_ui_path.exists():
         face_ui_text = face_ui_path.read_text()
+
+        def _find_non_comment_call(text: str, func_name: str) -> int:
+            """Find first occurrence of func_name( that isn't inside a // comment."""
+            import re
+
+            for m in re.finditer(re.escape(func_name) + r"\(", text):
+                # Check if this match is on a line that starts with a comment
+                line_start = text.rfind("\n", 0, m.start()) + 1
+                line_prefix = text[line_start : m.start()].lstrip()
+                if not line_prefix.startswith("//") and not line_prefix.startswith("*"):
+                    return m.start()
+            return -1
+
         # Check that conv_border_render is called conditionally on SystemMode::NONE
-        border_call_pos = face_ui_text.find("conv_border_render(")
+        border_call_pos = _find_non_comment_call(face_ui_text, "conv_border_render")
         if border_call_pos >= 0:
             context_before = face_ui_text[
                 max(0, border_call_pos - 300) : border_call_pos
@@ -535,7 +548,9 @@ def main() -> int:
                 failed += 1
 
             # Same check for button rendering
-            btn_call_pos = face_ui_text.find("conv_border_render_buttons(")
+            btn_call_pos = _find_non_comment_call(
+                face_ui_text, "conv_border_render_buttons"
+            )
             if btn_call_pos >= 0:
                 context_before_btn = face_ui_text[
                     max(0, btn_call_pos - 300) : btn_call_pos

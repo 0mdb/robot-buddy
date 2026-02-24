@@ -570,8 +570,13 @@ def render_face(
         elif mode == SystemMode.SHUTTING_DOWN:
             _sys_shutdown(fs)
 
-    # Border background layer (behind eyes)
-    if border_renderer is not None and hasattr(border_renderer, "render"):
+    # Border background layer (behind eyes) — suppress during system overlays (spec §4.4)
+    show_border = mode == SystemMode.NONE
+    if (
+        show_border
+        and border_renderer is not None
+        and hasattr(border_renderer, "render")
+    ):
         border_renderer.render(buf)  # type: ignore[attr-defined]
 
     # Eyes + mouth
@@ -607,12 +612,20 @@ def render_face(
     elif mode == SystemMode.UPDATING:
         _sys_updating_bar(buf, _clamp(fs.system.param, 0.0, 1.0))
 
-    # Corner buttons (rendered before border so the ring overlaps them)
-    if border_renderer is not None and hasattr(border_renderer, "render_buttons"):
+    # Corner buttons + border ring — suppress during system overlays (spec §4.4)
+    if (
+        show_border
+        and border_renderer is not None
+        and hasattr(border_renderer, "render_buttons")
+    ):
         border_renderer.render_buttons(buf)  # type: ignore[attr-defined]
 
     # Border ring re-pass over corner buttons for clean overlap
-    if border_renderer is not None and hasattr(border_renderer, "render"):
+    if (
+        show_border
+        and border_renderer is not None
+        and hasattr(border_renderer, "render")
+    ):
         border_renderer.render(buf)  # type: ignore[attr-defined]
 
     # Store frame for afterglow
