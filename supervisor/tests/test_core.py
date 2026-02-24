@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+
 from supervisor.core.action_scheduler import (
     ActionScheduler,
     PlanValidator,
@@ -403,3 +407,42 @@ class TestBehaviorEngine:
         twist = be.step(r, w)
         # Patrol drift should produce some motion
         assert twist.v_mm_s != 0 or twist.w_mrad_s != 0
+
+
+# ── Prosody routing (B5) ───────────────────────────────────────
+
+
+class TestProsodyRouting:
+    """_enqueue_say should forward world.personality_mood as TTS emotion."""
+
+    def _make_tick_loop(self):
+        from supervisor.core.tick_loop import TickLoop
+
+        workers = MagicMock()
+        workers.send_to = AsyncMock(return_value=True)
+        loop = TickLoop(reflex=None, face=None, workers=workers)
+        return loop
+
+    @pytest.mark.asyncio
+    async def test_default_mood_is_neutral(self):
+        loop = self._make_tick_loop()
+        await loop._enqueue_say("hello")
+        loop._workers.send_to.assert_called_once()
+        payload = loop._workers.send_to.call_args[0][2]
+        assert payload["emotion"] == "neutral"
+
+    @pytest.mark.asyncio
+    async def test_forwards_personality_mood(self):
+        loop = self._make_tick_loop()
+        loop.world.personality_mood = "excited"
+        await loop._enqueue_say("wow!")
+        payload = loop._workers.send_to.call_args[0][2]
+        assert payload["emotion"] == "excited"
+
+    @pytest.mark.asyncio
+    async def test_sad_mood_forwarded(self):
+        loop = self._make_tick_loop()
+        loop.world.personality_mood = "sad"
+        await loop._enqueue_say("oh no")
+        payload = loop._workers.send_to.call_args[0][2]
+        assert payload["emotion"] == "sad"

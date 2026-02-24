@@ -27,7 +27,7 @@ Living section — reorder as priorities shift. Current recommended sequence:
 4. ~~Conversation hardening (context-budget, audio overflow, privacy, L1 mood_reason validation)~~ ✅ + chat templates (quality improvement, deferred)
 5. ~~Personality profile injection (`personality.llm.profile` → `/converse` prompt injection + anchor cadence)~~ ✅
 6. Memory system (local JSON, consent gate, dashboard viewer + forget)
-7. Prosody routing (TTS emotion from PE mood; optional VA→prosody later)
+7. ~~Prosody routing (TTS emotion from PE mood)~~ ✅
 8. PE evaluation (metrics + guardrail + child-safety validation)
 
 ### Track C: Reflex MCU Commissioning (hardware)
@@ -129,8 +129,8 @@ _(all items completed)_
 - [ ] Dashboard: parent memory viewer + “Forget everything” button (`personality.cmd.reset_memory`) (PE spec S2 §8.5)
 - [ ] Apply memory bias term in affect update (step 3) (PE spec S2 §8.3)
 
-**B5 — Prosody** `[sonnet]`
-- [ ] Route TTS emotion tag from `world.personality_mood` (PE spec S2 §11.5) instead of hardcoding `”neutral”`
+**B5 — Prosody** `[sonnet]` ✅
+- [x] Route TTS emotion tag from `world.personality_mood` (PE spec S2 §11.5) instead of hardcoding `”neutral”`
 
 **B6 — Evaluation** `[opus]`
 - [ ] Add/extend tests: clamping behavior, worker intensity caps, planner-emote impulse routing, conv-ended teardown coverage, `confused` server vocab, schema-v2 parsing, guided decoding compliance
@@ -259,6 +259,11 @@ _(all items completed)_
 - [x] `_build_current_state_block()`: dynamic CURRENT STATE system block injected before each user turn (mood, intensity, arc, continuity constraint per §12.5)
 - [x] Personality anchor (§12.7): 30-token reminder injected every 5 turns to prevent persona drift
 - [x] 10 new tests: profile emission timing, payload fields, CURRENT STATE block content, anchor cadence, profile+anchor coexistence
+
+### Personality Engine — B5 Prosody Routing
+- [x] `_enqueue_say()` in tick_loop.py: replaced hardcoded `"neutral"` emotion with `self.world.personality_mood` (PE spec S2 §11.5)
+- [x] TTS worker already forwards emotion tag to server HTTP POST — no changes needed downstream
+- [x] 3 new tests in `test_core.py::TestProsodyRouting`: default neutral, PE mood forwarding, multiple moods
 
 ### Personality Engine — B2 Conversation Schema V2 + Guided Decoding
 - [x] `ConversationResponseV2` Pydantic model (9 fields: inner_thought, emotion, intensity, mood_reason, emotional_arc, child_affect, text, gestures, memory_tags)

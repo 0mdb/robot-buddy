@@ -907,7 +907,7 @@ class TickLoop:
             TTS_CMD_SPEAK,
             {
                 "text": text,
-                "emotion": "neutral",
+                "emotion": self.world.personality_mood,
                 "source": source,
                 "priority": priority,
             },
