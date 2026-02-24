@@ -172,8 +172,8 @@ _10 items complete (Stage 4.0 spec/port/parity/buttons/gestures/docs) — see ar
   - [x] **Output modes (two toggles)** — mute speaker playback + no-TTS generation both implemented
   - [ ] **Voice + latency diagnostics**
     - [x] Pipeline timeline per turn: trigger → VAD end → transcription → emotion → first audio chunk → done (+ error states) — `PipelineTimeline.tsx` component + `/ws/conversation` endpoint + `ConversationCapture` + first_audio/assistant_text events
-    - [ ] TTS benchmark runner: fixed corpus via `/tts`, time-to-first-byte, total synth time, chunk cadence, max utterance duration safeguards
-    - [ ] Wake word workbench: live score/threshold view + event log + optional ring-buffer capture/export + soak-test summary
+    - [x] TTS benchmark runner: fixed corpus via `/tts`, time-to-first-byte, total synth time, chunk cadence — `TtsBenchmark.tsx` + `supervisor/api/tts_benchmark.py` + WS commands
+    - [x] Wake word workbench: live score/threshold view + event log + soak-test summary — `WakeWordWorkbench.tsx` + ear worker score streaming + threshold tuning
   - [ ] **Personality tuning + B6 completion harness**
     - [ ] Personality visualization: affect vector, mood anchors, decay curves, layer attribution, guardrail status + last trigger, RS-1/RS-2 timers
     - [ ] Runtime tuning controls (safe/risky gating): PE axes, guardrail toggles, profile-injection preview/debug

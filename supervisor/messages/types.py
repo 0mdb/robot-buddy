@@ -73,6 +73,11 @@ CORE_EVENT_VISION_STALE = "core.event.vision_stale"
 CONV_SESSION_STARTED = "conv.session.started"
 CONV_SESSION_ENDED = "conv.session.ended"
 
+# ── TTS Benchmark (dashboard diagnostics) ─────────────────────
+
+TTS_BENCHMARK_PROGRESS = "tts.benchmark.progress"
+TTS_BENCHMARK_DONE = "tts.benchmark.done"
+
 # ── System (§4.7) ───────────────────────────────────────────────
 
 SYSTEM_CLOCK_SYNC_UPDATE = "system.clock.sync_update"
@@ -112,8 +117,11 @@ EAR_CMD_START_LISTENING = "ear.cmd.start_listening"
 EAR_CMD_STOP_LISTENING = "ear.cmd.stop_listening"
 EAR_CMD_PAUSE_VAD = "ear.cmd.pause_vad"
 EAR_CMD_RESUME_VAD = "ear.cmd.resume_vad"
+EAR_CMD_STREAM_SCORES = "ear.cmd.stream_scores"
+EAR_CMD_SET_THRESHOLD = "ear.cmd.set_threshold"
 EAR_EVENT_WAKE_WORD = "ear.event.wake_word"
 EAR_EVENT_END_OF_UTTERANCE = "ear.event.end_of_utterance"
+EAR_EVENT_OWW_SCORE = "ear.event.oww_score"
 EAR_STATUS_HEALTH = "ear.status.health"
 EAR_LIFECYCLE_STARTED = "ear.lifecycle.started"
 EAR_LIFECYCLE_STOPPED = "ear.lifecycle.stopped"

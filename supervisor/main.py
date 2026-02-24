@@ -230,6 +230,7 @@ async def async_main(args: argparse.Namespace) -> None:
         )
 
         # ── HTTP server ──────────────────────────────────────────
+        tts_endpoint = (args.planner_api + "/tts") if args.planner_api else ""
         app = create_app(
             tick,
             registry,
@@ -237,6 +238,7 @@ async def async_main(args: argparse.Namespace) -> None:
             workers,
             capture=capture,
             conv_capture=conv_capture,
+            tts_endpoint=tts_endpoint,
         )
         http_config = uvicorn.Config(
             app,

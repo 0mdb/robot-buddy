@@ -125,6 +125,7 @@ def create_app(
     workers: WorkerManager,
     capture: ProtocolCapture | None = None,
     conv_capture: ConversationCapture | None = None,
+    tts_endpoint: str = "",
 ) -> FastAPI:
     import psutil
 
@@ -439,7 +440,7 @@ def create_app(
                     msg = json.loads(raw)
                 except json.JSONDecodeError:
                     continue
-                await _handle_ws_cmd(msg, tick)
+                await _handle_ws_cmd(msg, tick, conv_capture, tts_endpoint)
         except WebSocketDisconnect:
             pass
         finally:
@@ -453,7 +454,12 @@ def create_app(
     return app
 
 
-async def _handle_ws_cmd(msg: dict, tick: TickLoop) -> None:
+async def _handle_ws_cmd(
+    msg: dict,
+    tick: TickLoop,
+    conv_capture: ConversationCapture | None = None,
+    tts_endpoint: str = "",
+) -> None:
     """Process incoming WebSocket command messages."""
     msg_type = msg.get("type")
     if msg_type == "twist":
@@ -611,5 +617,34 @@ async def _handle_ws_cmd(msg: dict, tick: TickLoop) -> None:
                     "muted": bool(msg.get("muted", False)),
                     "mute_chimes": bool(msg.get("mute_chimes", False)),
                 },
+            )
+        )
+    # -- TTS benchmark --------------------------------------------------------
+    elif msg_type == "tts_benchmark.start":
+        if tts_endpoint and conv_capture:
+            from supervisor.api.tts_benchmark import start_benchmark
+
+            started = start_benchmark(
+                tts_endpoint,
+                conv_capture,
+                session_active=bool(tick.world.session_id),
+            )
+            if not started:
+                log.warning("tts_benchmark.start rejected")
+    # -- Ear workbench --------------------------------------------------------
+    elif msg_type == "ear.stream_scores":
+        asyncio.ensure_future(
+            tick._workers.send_to(
+                "ear",
+                "ear.cmd.stream_scores",
+                {"enabled": bool(msg.get("enabled", False))},
+            )
+        )
+    elif msg_type == "ear.set_threshold":
+        asyncio.ensure_future(
+            tick._workers.send_to(
+                "ear",
+                "ear.cmd.set_threshold",
+                {"threshold": float(msg.get("threshold", 0.5))},
             )
         )

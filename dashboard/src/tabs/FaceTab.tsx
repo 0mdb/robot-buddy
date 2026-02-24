@@ -4,6 +4,8 @@ import FaceMirrorCanvas, {
   type SandboxDispatch,
 } from '../components/FaceMirrorCanvas'
 import PipelineTimeline from '../components/PipelineTimeline'
+import TtsBenchmark from '../components/TtsBenchmark'
+import WakeWordWorkbench from '../components/WakeWordWorkbench'
 import { FACE_FLAGS, GESTURES, MOODS, SYSTEM_MODES } from '../constants'
 import type { AnimFps } from '../face_sim'
 import { ANIM_FPS_OPTIONS } from '../face_sim'
@@ -778,6 +780,12 @@ export default function FaceTab() {
           )}
         </div>
       </div>
+
+      {/* TTS Benchmark */}
+      <TtsBenchmark />
+
+      {/* Wake Word Workbench */}
+      <WakeWordWorkbench />
 
       {/* Face State — read-only conversation + sequencer display */}
       <div className={styles.card}>

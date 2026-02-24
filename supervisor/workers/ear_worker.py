@@ -20,10 +20,13 @@ from supervisor.messages.envelope import Envelope
 from supervisor.messages.types import (
     EAR_CMD_PAUSE_VAD,
     EAR_CMD_RESUME_VAD,
+    EAR_CMD_SET_THRESHOLD,
     EAR_CMD_START_LISTENING,
     EAR_CMD_STOP_LISTENING,
+    EAR_CMD_STREAM_SCORES,
     EAR_CONFIG_INIT,
     EAR_EVENT_END_OF_UTTERANCE,
+    EAR_EVENT_OWW_SCORE,
     EAR_EVENT_WAKE_WORD,
     SYSTEM_AUDIO_LINK_DOWN,
     SYSTEM_AUDIO_LINK_UP,
@@ -88,6 +91,7 @@ class EarWorker(BaseWorker):
 
         # Wake word timing
         self._last_ww_mono: float = 0.0
+        self._stream_scores: bool = False
 
         # Socket + process
         self._mic_sock: socket.socket | None = None
@@ -125,6 +129,15 @@ class EarWorker(BaseWorker):
 
         elif t == EAR_CMD_RESUME_VAD:
             self._vad_paused = False
+
+        elif t == EAR_CMD_STREAM_SCORES:
+            self._stream_scores = bool(p.get("enabled", False))
+            log.info("score streaming: %s", "on" if self._stream_scores else "off")
+
+        elif t == EAR_CMD_SET_THRESHOLD:
+            val = float(p.get("threshold", self._wakeword_threshold))
+            self._wakeword_threshold = max(0.0, min(1.0, val))
+            log.info("wake word threshold: %.3f", self._wakeword_threshold)
 
     def _start_listening(self) -> None:
         """Begin forwarding mic audio and running VAD."""
@@ -164,6 +177,8 @@ class EarWorker(BaseWorker):
             "speech_detected": self._speech_detected,
             "oww_loaded": self._oww_model is not None,
             "vad_loaded": self._vad_session is not None,
+            "wakeword_threshold": self._wakeword_threshold,
+            "stream_scores": self._stream_scores,
         }
 
     # ── Main loop ─────────────────────────────────────────────────
@@ -280,20 +295,30 @@ class EarWorker(BaseWorker):
         if self._oww_model is None:
             return
 
-        # Don't trigger during active conversation
-        if self._listening:
-            return
-
-        now = time.monotonic()
-        if now - self._last_ww_mono < _WW_COOLDOWN_S:
-            return
-
         try:
             import numpy as np
 
             # OWW expects int16 samples
             samples = np.frombuffer(pcm_80ms, dtype=np.int16)
             prediction = self._oww_model.predict(samples)
+
+            # Stream scores to dashboard workbench (opt-in, 12.5 Hz)
+            if self._stream_scores:
+                self.send(
+                    EAR_EVENT_OWW_SCORE,
+                    {
+                        "scores": {k: round(v, 4) for k, v in prediction.items()},
+                        "threshold": self._wakeword_threshold,
+                    },
+                )
+
+            # Don't trigger during active conversation
+            if self._listening:
+                return
+
+            now = time.monotonic()
+            if now - self._last_ww_mono < _WW_COOLDOWN_S:
+                return
 
             # Check all model scores
             for name, score in prediction.items():
