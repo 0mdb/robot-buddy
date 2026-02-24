@@ -29,7 +29,9 @@ async def test_vllm_generate_plan_retries_on_bad_json():
     backend = VLLMBackend()
     calls = {"n": 0}
 
-    async def _fake_generate_text(prompt: str, *, request_tag: str) -> str:
+    async def _fake_generate_text(
+        prompt: str, *, request_tag: str, **_kw: object
+    ) -> str:
         del prompt, request_tag
         calls["n"] += 1
         if calls["n"] == 1:
@@ -48,7 +50,9 @@ async def test_vllm_generate_plan_retries_on_bad_json():
 async def test_vllm_generate_plan_tolerates_trailing_text():
     backend = VLLMBackend()
 
-    async def _fake_generate_text(prompt: str, *, request_tag: str) -> str:
+    async def _fake_generate_text(
+        prompt: str, *, request_tag: str, **_kw: object
+    ) -> str:
         del prompt, request_tag
         return (
             '{"actions":[{"action":"say","text":"Hi"}],"ttl_ms":2000}\n'
@@ -66,7 +70,9 @@ async def test_vllm_generate_plan_tolerates_trailing_text():
 async def test_vllm_generate_plan_uses_first_json_object():
     backend = VLLMBackend()
 
-    async def _fake_generate_text(prompt: str, *, request_tag: str) -> str:
+    async def _fake_generate_text(
+        prompt: str, *, request_tag: str, **_kw: object
+    ) -> str:
         del prompt, request_tag
         return (
             '{"actions":[{"action":"say","text":"Hi"}],"ttl_ms":2000}\n'
@@ -84,8 +90,16 @@ async def test_vllm_generate_plan_uses_first_json_object():
 async def test_vllm_generate_conversation_parses_response():
     backend = VLLMBackend()
 
-    async def _fake_generate_text(prompt: str, *, request_tag: str) -> str:
-        del prompt, request_tag
+    async def _fake_generate_text(
+        prompt: str,
+        *,
+        request_tag: str,
+        guided_json_schema: object = None,
+        override_temperature: float | None = None,
+        override_max_output_tokens: int | None = None,
+    ) -> str:
+        del prompt, request_tag, guided_json_schema
+        del override_temperature, override_max_output_tokens
         return (
             '{"emotion":"excited","intensity":0.9,'
             '"text":"Hello there!","gestures":["nod"]}'

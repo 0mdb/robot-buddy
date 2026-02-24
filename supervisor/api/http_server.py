@@ -685,3 +685,24 @@ async def _handle_ws_cmd(
                     "personality", PERSONALITY_CMD_SET_GUARDRAIL, payload
                 )
             )
+    # -- Generation override commands (dev-only) --------------------------------
+    elif msg_type == "ai.set_generation_overrides":
+        from supervisor.messages.types import AI_CMD_SET_GENERATION_OVERRIDES
+
+        override_payload: dict[str, object] = {}
+        if "temperature" in msg:
+            override_payload["temperature"] = float(msg["temperature"])
+        if "max_output_tokens" in msg:
+            override_payload["max_output_tokens"] = int(msg["max_output_tokens"])
+        if override_payload:
+            asyncio.ensure_future(
+                tick._workers.send_to(
+                    "ai", AI_CMD_SET_GENERATION_OVERRIDES, override_payload
+                )
+            )
+    elif msg_type == "ai.clear_generation_overrides":
+        from supervisor.messages.types import AI_CMD_CLEAR_GENERATION_OVERRIDES
+
+        asyncio.ensure_future(
+            tick._workers.send_to("ai", AI_CMD_CLEAR_GENERATION_OVERRIDES, {})
+        )

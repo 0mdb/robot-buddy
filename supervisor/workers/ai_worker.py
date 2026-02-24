@@ -23,11 +23,13 @@ from typing import Any
 from supervisor.messages.envelope import Envelope
 from supervisor.messages.types import (
     AI_CMD_CANCEL,
+    AI_CMD_CLEAR_GENERATION_OVERRIDES,
     AI_CMD_END_CONVERSATION,
     AI_CMD_END_UTTERANCE,
     AI_CMD_REQUEST_PLAN,
     AI_CMD_SEND_AUDIO,
     AI_CMD_SEND_PROFILE,
+    AI_CMD_SET_GENERATION_OVERRIDES,
     AI_CMD_START_CONVERSATION,
     AI_CONFIG_INIT,
     AI_CONVERSATION_ASSISTANT_TEXT,
@@ -94,6 +96,10 @@ class AIWorker(BaseWorker):
 
         # Server connection
         self._server_connected = False
+        self._server_health: dict[str, Any] = {}
+
+        # Dev-only generation overrides (temperature, max_output_tokens)
+        self._generation_overrides: dict[str, Any] = {}
 
     async def on_message(self, envelope: Envelope) -> None:
         t = envelope.type
@@ -134,6 +140,20 @@ class AIWorker(BaseWorker):
             # Forward personality profile to server (PE spec S2 §12.5)
             await self._ws_send({"type": "profile", "profile": p})
 
+        elif t == AI_CMD_SET_GENERATION_OVERRIDES:
+            self._generation_overrides = {}
+            temp = p.get("temperature")
+            max_tok = p.get("max_output_tokens")
+            if temp is not None:
+                self._generation_overrides["temperature"] = float(temp)
+            if max_tok is not None:
+                self._generation_overrides["max_output_tokens"] = int(max_tok)
+            log.info("generation overrides set: %s", self._generation_overrides)
+
+        elif t == AI_CMD_CLEAR_GENERATION_OVERRIDES:
+            self._generation_overrides = {}
+            log.info("generation overrides cleared")
+
         elif t == AI_CMD_SEND_AUDIO:
             # Mode B: audio relay from Core
             if self._audio_mode == "relay" and self._ws:
@@ -146,6 +166,8 @@ class AIWorker(BaseWorker):
             "connected": self._server_connected,
             "state": self._state,
             "session_id": self._session_id,
+            "server_health": self._server_health,
+            "generation_overrides": dict(self._generation_overrides),
         }
 
     async def run(self) -> None:
@@ -268,6 +290,11 @@ class AIWorker(BaseWorker):
             f"&session_seq={self._session_seq}"
             f"&session_monotonic_ts_ms={int(time.monotonic() * 1000)}"
         )
+        # Append dev-only generation overrides if set
+        if "temperature" in self._generation_overrides:
+            url += f"&override_temperature={self._generation_overrides['temperature']}"
+        if "max_output_tokens" in self._generation_overrides:
+            url += f"&override_max_output_tokens={self._generation_overrides['max_output_tokens']}"
 
         try:
             self._ws = await websockets.connect(url)
@@ -529,7 +556,7 @@ class AIWorker(BaseWorker):
     # ── Health check ─────────────────────────────────────────────
 
     async def _health_check_loop(self) -> None:
-        """Periodic health check to the server."""
+        """Periodic health check to the server — stores full snapshot."""
         while self.running:
             if self._server_base_url:
                 try:
@@ -538,8 +565,13 @@ class AIWorker(BaseWorker):
                     async with httpx.AsyncClient(timeout=3.0) as client:
                         resp = await client.get(f"{self._server_base_url}/health")
                         self._server_connected = resp.status_code == 200
+                        if resp.status_code == 200:
+                            self._server_health = resp.json()
+                        else:
+                            self._server_health = {}
                 except Exception:
                     self._server_connected = False
+                    self._server_health = {}
             await asyncio.sleep(5.0)
 
 

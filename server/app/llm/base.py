@@ -64,6 +64,9 @@ class PlannerLLMBackend(ABC):
         self,
         history: ConversationHistory,
         user_text: str,
+        *,
+        override_temperature: float | None = None,
+        override_max_output_tokens: int | None = None,
     ) -> ConversationResponse:
         raise NotImplementedError
 

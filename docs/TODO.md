@@ -186,12 +186,12 @@ _10 items complete (Stage 4.0 spec/port/parity/buttons/gestures/docs) — see ar
       - `/converse` overflow/timeouts/disconnects + “no transcript logs by default” privacy policy
   - [ ] **Future-proofing (models/prompt/server settings + prototyping)**
     - [ ] Versioned “prompt packs” selectable per session (no ad-hoc prompt hacking); show active pack in UI + exports
-    - [ ] Show planner server `/health` snapshot (model ids, backend, timeouts, GPU budget) inside Studio; include in exports
-    - [ ] **Model template config visibility + vLLM telemetry (Studio)**
-      - [ ] Server: expose active model name + resolved chat template kwargs (from `server/app/llm/model_config.py`) via `/health` or `/debug/llm` (include family + kwargs + notes + where applied)
-      - [ ] Supervisor: ingest server model/template snapshot (poll or push) and surface in Studio + exports (so tuning sessions always include “what model + template”)
-      - [ ] vLLM metrics: add a lightweight `/debug/vllm` snapshot (queue depth, running/waiting requests, token throughput, KV cache usage, GPU mem/util if available) + show in Studio
-    - [ ] Optional dev-only per-session generation overrides (temperature/max_output_tokens) for fast experiments
+    - [x] Show planner server `/health` snapshot (model ids, backend, timeouts, GPU budget) inside Studio; include in exports
+    - [x] **Model template config visibility + vLLM telemetry (Studio)**
+      - [x] Server: expose active model name + resolved chat template kwargs (from `server/app/llm/model_config.py`) via `/health` or `/debug/llm` (include family + kwargs + notes + where applied)
+      - [x] Supervisor: ingest server model/template snapshot (poll or push) and surface in Studio + exports (so tuning sessions always include “what model + template”)
+      - [x] vLLM metrics: add a lightweight `/debug/vllm` snapshot (queue depth, running/waiting requests, token throughput, KV cache usage, GPU mem/util if available) + show in Studio
+    - [x] Optional dev-only per-session generation overrides (temperature/max_output_tokens) for fast experiments
   - [ ] **Record / replay / export (diagnose + share + regressions)**
     - [ ] Define `TuningSession.v1` export schema: config snapshots, per-turn messages/metadata, protocol slice, timings/errors
     - [ ] “Record session” (opt-in; default off) + export bundle + replay bundle (offline debugging)

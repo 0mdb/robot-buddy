@@ -59,6 +59,18 @@ async def converse(ws: WebSocket):
     session_seq = _to_int(ws.query_params.get("session_seq"))
     session_monotonic_ts_ms = _to_int(ws.query_params.get("session_monotonic_ts_ms"))
 
+    # Dev-only per-session generation overrides
+    override_temperature = _to_float(ws.query_params.get("override_temperature"))
+    override_max_output_tokens = _to_int(
+        ws.query_params.get("override_max_output_tokens")
+    )
+    if override_temperature is not None or override_max_output_tokens is not None:
+        log.info(
+            "Generation overrides: temperature=%s max_output_tokens=%s",
+            override_temperature,
+            override_max_output_tokens,
+        )
+
     await ws.accept()
     registry = ws.app.state.converse_registry
     old_ws = await registry.register(
@@ -137,7 +149,14 @@ async def converse(ws: WebSocket):
                     continue
 
                 await ws.send_json({"type": "transcription", "text": user_text})
-                await _generate_and_stream(ws, llm, history, user_text)
+                await _generate_and_stream(
+                    ws,
+                    llm,
+                    history,
+                    user_text,
+                    override_temperature=override_temperature,
+                    override_max_output_tokens=override_max_output_tokens,
+                )
                 await ws.send_json({"type": "listening"})
 
             elif msg_type == "text":
@@ -146,7 +165,14 @@ async def converse(ws: WebSocket):
                 if not user_text:
                     continue
 
-                await _generate_and_stream(ws, llm, history, user_text)
+                await _generate_and_stream(
+                    ws,
+                    llm,
+                    history,
+                    user_text,
+                    override_temperature=override_temperature,
+                    override_max_output_tokens=override_max_output_tokens,
+                )
                 await ws.send_json({"type": "listening"})
 
             elif msg_type == "profile":
@@ -191,6 +217,19 @@ def _to_int(raw: object) -> int | None:
         return None
 
 
+def _to_float(raw: object) -> float | None:
+    if raw is None:
+        return None
+    if isinstance(raw, (int, float)):
+        return float(raw)
+    if not isinstance(raw, str):
+        return None
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return None
+
+
 async def _transcribe_audio(pcm_audio: bytes) -> str:
     """Transcribe PCM audio using Whisper STT."""
     stt = get_stt()
@@ -210,10 +249,18 @@ async def _generate_and_stream(
     llm: PlannerLLMBackend,
     history: ConversationHistory,
     user_text: str,
+    *,
+    override_temperature: float | None = None,
+    override_max_output_tokens: int | None = None,
 ) -> None:
     """Generate LLM response and stream emotion + TTS audio to client."""
     try:
-        response = await llm.generate_conversation(history, user_text)
+        response = await llm.generate_conversation(
+            history,
+            user_text,
+            override_temperature=override_temperature,
+            override_max_output_tokens=override_max_output_tokens,
+        )
     except LLMBusyError:
         await ws.send_json({"type": "error", "message": "llm_busy"})
         return

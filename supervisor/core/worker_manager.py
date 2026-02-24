@@ -12,7 +12,7 @@ import logging
 import os
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Callable, Coroutine
 
 from supervisor.messages.envelope import Envelope, SeqCounter, make_envelope
@@ -40,6 +40,7 @@ class WorkerInfo:
     last_seq: int = 0
     alive: bool = False
     starting: bool = False
+    last_health: dict = field(default_factory=dict)
 
 
 class WorkerManager:
@@ -169,6 +170,7 @@ class WorkerManager:
                 "restart_count": info.restart_count,
                 "last_seq": info.last_seq,
                 "pid": info.process.pid if info.process else None,
+                "health": dict(info.last_health),
             }
         return result
 
@@ -224,9 +226,11 @@ class WorkerManager:
 
                 info.last_seq = env.seq
 
-                # Health messages update heartbeat
+                # Health messages update heartbeat + store payload
                 if env.type.endswith(".status.health"):
                     info.last_heartbeat_ns = time.monotonic_ns()
+                    if env.payload:
+                        info.last_health = dict(env.payload)
 
                 # Lifecycle started also counts as heartbeat
                 if env.type.endswith(".lifecycle.started"):

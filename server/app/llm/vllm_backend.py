@@ -235,6 +235,9 @@ class VLLMBackend(PlannerLLMBackend):
         self,
         history: ConversationHistory,
         user_text: str,
+        *,
+        override_temperature: float | None = None,
+        override_max_output_tokens: int | None = None,
     ) -> ConversationResponse:
         history.add_user(user_text)
         await self._acquire_generation_slot()
@@ -249,6 +252,8 @@ class VLLMBackend(PlannerLLMBackend):
                     prompt,
                     request_tag=f"conv-{history.turn_count}-1",
                     guided_json_schema=_CONVERSATION_V2_JSON_SCHEMA,
+                    override_temperature=override_temperature,
+                    override_max_output_tokens=override_max_output_tokens,
                 )
                 response = parse_conversation_response_content(text)
                 history.add_assistant(response.text, emotion=response.emotion)
@@ -259,6 +264,8 @@ class VLLMBackend(PlannerLLMBackend):
                 text = await self._generate_text(
                     prompt,
                     request_tag=f"conv-{history.turn_count}-{attempt}",
+                    override_temperature=override_temperature,
+                    override_max_output_tokens=override_max_output_tokens,
                 )
                 candidate = _extract_json_object(text)
                 try:
@@ -281,8 +288,63 @@ class VLLMBackend(PlannerLLMBackend):
         finally:
             await self._release_generation_slot()
 
+    def engine_metrics(self) -> dict[str, Any]:
+        """Best-effort snapshot of vLLM engine internals (scheduler, KV cache).
+
+        vLLM internal APIs vary across versions, so every access uses
+        defensive getattr() chains and degrades gracefully to {}.
+        """
+        if not self._loaded or self._engine is None:
+            return {}
+
+        metrics: dict[str, Any] = {}
+        try:
+            engine = getattr(self._engine, "engine", None)
+            if engine is None:
+                return metrics
+
+            scheduler = getattr(engine, "scheduler", None)
+            if scheduler is None:
+                # vLLM v0.8+ uses scheduler[0] list
+                schedulers = getattr(engine, "scheduler", None)
+                if isinstance(schedulers, list) and schedulers:
+                    scheduler = schedulers[0]
+
+            if scheduler is not None:
+                running = getattr(scheduler, "running", [])
+                waiting = getattr(scheduler, "waiting", [])
+                swapped = getattr(scheduler, "swapped", [])
+                metrics["scheduler_running"] = len(running)
+                metrics["scheduler_waiting"] = len(waiting)
+                metrics["scheduler_swapped"] = len(swapped)
+
+                # KV cache block allocator
+                block_manager = getattr(scheduler, "block_manager", None)
+                if block_manager is not None:
+                    gpu_alloc = getattr(block_manager, "gpu_allocator", None)
+                    if gpu_alloc is not None:
+                        free_fn = getattr(gpu_alloc, "get_num_free_blocks", None)
+                        total_fn = getattr(gpu_alloc, "get_num_total_blocks", None)
+                        if callable(free_fn) and callable(total_fn):
+                            free = free_fn()
+                            total = total_fn()
+                            if isinstance(total, int) and total > 0:
+                                metrics["kv_cache_free_blocks"] = free
+                                metrics["kv_cache_total_blocks"] = total
+                                metrics["kv_cache_usage_pct"] = round(
+                                    (1.0 - free / total) * 100, 1
+                                )
+        except Exception:
+            log.debug("Failed to read vLLM engine metrics", exc_info=True)
+
+        return metrics
+
     def debug_snapshot(self) -> dict:
         family = self._template_kwargs.get("_family", "unknown")
+
+        # Resolve template config for visibility
+        template_cfg = resolve_template_config(self._model_name)
+
         return {
             "backend": self.backend_name,
             "model": self.model_name,
@@ -296,6 +358,18 @@ class VLLMBackend(PlannerLLMBackend):
             "guided_decoding": self._GuidedDecodingParams is not None,
             "chat_template": self._tokenizer is not None,
             "model_family": family,
+            "template_config": {
+                "family": template_cfg.family,
+                "chat_template_kwargs": dict(template_cfg.chat_template_kwargs),
+                "notes": template_cfg.notes,
+            },
+            "generation_defaults": {
+                "temperature": settings.vllm_temperature,
+                "max_output_tokens": settings.vllm_max_output_tokens,
+                "timeout_s": settings.vllm_timeout_s,
+                "enable_thinking": settings.vllm_enable_thinking,
+            },
+            "engine_metrics": self.engine_metrics(),
         }
 
     # -- Chat template formatting -------------------------------------------
@@ -382,13 +456,22 @@ class VLLMBackend(PlannerLLMBackend):
         *,
         request_tag: str,
         guided_json_schema: dict[str, Any] | None = None,
+        override_temperature: float | None = None,
+        override_max_output_tokens: int | None = None,
     ) -> str:
         if self._engine is None or self._SamplingParams is None:
             raise LLMUnavailableError("vllm backend not initialized")
 
+        temperature = settings.vllm_temperature
+        max_tokens = settings.vllm_max_output_tokens
+        if override_temperature is not None:
+            temperature = max(0.0, min(2.0, override_temperature))
+        if override_max_output_tokens is not None:
+            max_tokens = max(64, min(2048, override_max_output_tokens))
+
         sp_kwargs: dict[str, Any] = {
-            "temperature": settings.vllm_temperature,
-            "max_tokens": settings.vllm_max_output_tokens,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
         }
 
         # Attach guided decoding if schema provided and vLLM supports it.

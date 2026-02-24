@@ -244,6 +244,7 @@ export interface WorkerDebugEntry {
   restart_count: number
   last_seq: number
   pid: number | null
+  health: Record<string, unknown>
 }
 
 export type WorkersDebug = Record<string, WorkerDebugEntry>

@@ -192,12 +192,16 @@ class OllamaBackend(PlannerLLMBackend):
         self,
         history: ConversationHistory,
         user_text: str,
+        *,
+        override_temperature: float | None = None,
+        override_max_output_tokens: int | None = None,
     ) -> ConversationResponse:
         """Generate one conversation response turn."""
         assert self._client is not None
         await self._acquire_generation_slot()
         try:
             try:
+                # Note: ollama backend doesn't support per-request overrides yet.
                 return await generate_conversation_response(
                     self._client, history, user_text
                 )
@@ -238,6 +242,14 @@ class OllamaBackend(PlannerLLMBackend):
             "loaded": self._client is not None,
             "max_inflight": self._max_inflight,
             "active_generations": self._active_generations,
+            "template_config": None,
+            "generation_defaults": {
+                "temperature": settings.temperature,
+                "max_output_tokens": settings.num_ctx,
+                "timeout_s": settings.plan_timeout_s,
+                "enable_thinking": False,
+            },
+            "engine_metrics": {},
         }
 
     async def _acquire_generation_slot(self) -> None:

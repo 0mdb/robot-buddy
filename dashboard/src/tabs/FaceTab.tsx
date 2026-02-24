@@ -5,6 +5,7 @@ import FaceMirrorCanvas, {
 } from '../components/FaceMirrorCanvas'
 import PersonalityPanel from '../components/PersonalityPanel'
 import PipelineTimeline from '../components/PipelineTimeline'
+import ServerHealthPanel from '../components/ServerHealthPanel'
 import TtsBenchmark from '../components/TtsBenchmark'
 import WakeWordWorkbench from '../components/WakeWordWorkbench'
 import { FACE_FLAGS, GESTURES, MOODS, SYSTEM_MODES } from '../constants'
@@ -750,6 +751,9 @@ export default function FaceTab() {
 
       {/* Personality Engine */}
       <PersonalityPanel />
+
+      {/* Server Health + Model Config + Generation Overrides */}
+      <ServerHealthPanel />
 
       {/* TTS Benchmark */}
       <TtsBenchmark />
