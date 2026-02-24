@@ -49,7 +49,7 @@ class WsConversationManager {
   private disposed = false
 
   connect(): void {
-    if (this.disposed) return
+    this.disposed = false
     this.cleanup()
 
     const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
