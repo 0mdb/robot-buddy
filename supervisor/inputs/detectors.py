@@ -21,6 +21,7 @@ def detect_clear_path(
     frame: np.ndarray,
     floor_hsv_low: Tuple[int, int, int] = (0, 0, 50),
     floor_hsv_high: Tuple[int, int, int] = (180, 80, 220),
+    include_mask: np.ndarray | None = None,
 ) -> float:
     """Estimate how clear the path ahead is based on floor color.
 
@@ -42,7 +43,17 @@ def detect_clear_path(
     hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
     mask = cv2.inRange(hsv, np.array(floor_hsv_low), np.array(floor_hsv_high))
 
-    total = mask.size
+    include_roi: np.ndarray | None = None
+    if include_mask is not None and include_mask.shape[:2] == frame.shape[:2]:
+        include_roi = include_mask[h * 2 // 3 :, :]
+        if include_roi.ndim == 3:
+            include_roi = include_roi[:, :, 0]
+        if include_roi.dtype != np.uint8:
+            include_roi = (include_roi > 0).astype(np.uint8) * 255
+        mask = cv2.bitwise_and(mask, include_roi)
+        total = int(np.count_nonzero(include_roi))
+    else:
+        total = int(mask.size)
     if total == 0:
         return 0.0
 
@@ -51,7 +62,10 @@ def detect_clear_path(
 
     # Penalize if the center column is blocked (most dangerous)
     center_strip = mask[:, w // 3 : w * 2 // 3]
-    center_total = center_strip.size
+    if include_roi is not None:
+        center_total = int(np.count_nonzero(include_roi[:, w // 3 : w * 2 // 3]))
+    else:
+        center_total = int(center_strip.size)
     if center_total > 0:
         center_clear = int(np.count_nonzero(center_strip)) / center_total
         # Weight center more heavily
@@ -133,6 +147,7 @@ def detect_ball(
     good_radius_px: int = 35,
     blur_ksize: int = 5,
     *,
+    include_mask: np.ndarray | None = None,
     hfov_deg: float = HFOV_DEG,
 ) -> tuple[float, float] | None:
     """
@@ -170,6 +185,14 @@ def detect_ball(
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1)
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
     mask = cv2.dilate(mask, kernel, iterations=1)
+
+    if include_mask is not None and include_mask.shape[:2] == mask.shape[:2]:
+        inc = include_mask
+        if inc.ndim == 3:
+            inc = inc[:, :, 0]
+        if inc.dtype != np.uint8:
+            inc = (inc > 0).astype(np.uint8) * 255
+        mask = cv2.bitwise_and(mask, inc)
 
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if not contours:

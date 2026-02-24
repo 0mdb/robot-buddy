@@ -257,6 +257,22 @@ export interface LogEntry {
   msg: string
 }
 
+// ---- Vision masks (dashboard editor) ----
+
+export type VisionMaskPoint = [number, number]
+export type VisionMaskPoly = VisionMaskPoint[]
+
+export interface VisionMaskSection {
+  enabled: boolean
+  exclude_polys: VisionMaskPoly[]
+}
+
+export interface VisionMaskV1 {
+  version: 1
+  floor: VisionMaskSection
+  ball: VisionMaskSection
+}
+
 // ---- Tab IDs ----
 
 export type TabId =

@@ -254,11 +254,15 @@ async def async_main(args: argparse.Namespace) -> None:
             # Apply initial safety policy thresholds (vision.* params)
             _configure_vision_policy_from_registry(registry)
 
+            from supervisor.vision.mask_store import load_mask
+
+            vision_mask = load_mask(Path("./data/vision_mask.json"))
             await workers.send_to(
                 "vision",
                 "vision.config.update",
                 {
                     "mjpeg_enabled": False,
+                    "mask": vision_mask,
                     **_build_vision_worker_config(registry),
                 },
             )

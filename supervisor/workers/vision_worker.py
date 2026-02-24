@@ -82,6 +82,12 @@ class VisionWorker(BaseWorker):
         # Camera format ("BGR888" preferred; fallback to "RGB888" + convert)
         self._camera_main_format = "RGB888"
 
+        # Vision masks (exclusion polys; applied to processed `small` frame)
+        self._mask_obj: dict[str, Any] | None = None
+        self._mask_dirty = False
+        self._mask_floor_include: Any | None = None
+        self._mask_ball_include: Any | None = None
+
     def _build_libcamera_controls(self) -> dict[str, Any]:
         """Return libcamera control dict for current camera/ISP settings."""
         controls: dict[str, Any] = {}
@@ -178,6 +184,11 @@ class VisionWorker(BaseWorker):
             if "jpeg_quality" in p:
                 self._jpeg_quality = int(p["jpeg_quality"])
 
+            if "mask" in p:
+                raw = p.get("mask")
+                self._mask_obj = raw if isinstance(raw, dict) else None
+                self._mask_dirty = True
+
             if controls_changed:
                 self._queue_controls_apply()
             log.info("config updated")
@@ -195,7 +206,7 @@ class VisionWorker(BaseWorker):
         """Main vision loop — capture frames and run detection."""
         try:
             import cv2
-            import numpy as np  # noqa: F401 — imported to verify availability
+            import numpy as np
         except ImportError as e:
             self.send(VISION_LIFECYCLE_ERROR, {"error": f"missing dependency: {e}"})
             return
@@ -274,6 +285,90 @@ class VisionWorker(BaseWorker):
                 pass
 
             while self.running:
+                if self._mask_dirty:
+                    self._mask_dirty = False
+                    try:
+                        w, h = int(self._process_size[0]), int(self._process_size[1])
+
+                        def _build_include(polys_norm: Any) -> Any:
+                            include = np.full((h, w), 255, dtype=np.uint8)
+                            if not isinstance(polys_norm, list):
+                                return include
+                            for poly in polys_norm:
+                                if not isinstance(poly, list) or len(poly) < 3:
+                                    continue
+                                pts: list[list[int]] = []
+                                for pt in poly:
+                                    if (
+                                        not isinstance(pt, (list, tuple))
+                                        or len(pt) != 2
+                                        or not isinstance(pt[0], (int, float))
+                                        or not isinstance(pt[1], (int, float))
+                                    ):
+                                        continue
+                                    x = int(round(float(pt[0]) * float(w - 1)))
+                                    y = int(round(float(pt[1]) * float(h - 1)))
+                                    if x < 0:
+                                        x = 0
+                                    elif x >= w:
+                                        x = w - 1
+                                    if y < 0:
+                                        y = 0
+                                    elif y >= h:
+                                        y = h - 1
+                                    pts.append([x, y])
+                                if len(pts) >= 3:
+                                    cv2.fillPoly(
+                                        include,
+                                        [np.array(pts, dtype=np.int32)],
+                                        0,
+                                    )
+                            return include
+
+                        floor_include: Any | None = None
+                        ball_include: Any | None = None
+
+                        mask_obj = (
+                            self._mask_obj if isinstance(self._mask_obj, dict) else {}
+                        )
+                        floor = (
+                            mask_obj.get("floor", {})
+                            if isinstance(mask_obj, dict)
+                            else {}
+                        )
+                        ball = (
+                            mask_obj.get("ball", {})
+                            if isinstance(mask_obj, dict)
+                            else {}
+                        )
+
+                        floor_enabled = bool(
+                            floor.get("enabled", False)
+                            if isinstance(floor, dict)
+                            else False
+                        )
+                        ball_enabled = bool(
+                            ball.get("enabled", False)
+                            if isinstance(ball, dict)
+                            else False
+                        )
+
+                        if floor_enabled and isinstance(floor, dict):
+                            polys = floor.get("exclude_polys", [])
+                            if isinstance(polys, list) and polys:
+                                floor_include = _build_include(polys)
+                        if ball_enabled and isinstance(ball, dict):
+                            polys = ball.get("exclude_polys", [])
+                            if isinstance(polys, list) and polys:
+                                ball_include = _build_include(polys)
+
+                        self._mask_floor_include = floor_include
+                        self._mask_ball_include = ball_include
+                    except Exception as e:
+                        self._mask_floor_include = None
+                        self._mask_ball_include = None
+                        self._last_error = f"mask_build: {e}"
+
                 # Capture in executor to avoid blocking the event loop
                 try:
                     frame, t_cam_ns = await loop.run_in_executor(
@@ -300,13 +395,17 @@ class VisionWorker(BaseWorker):
                 small = cv2.resize(frame, self._process_size)
 
                 clear_conf = detect_clear_path(
-                    small, self._floor_hsv_low, self._floor_hsv_high
+                    small,
+                    self._floor_hsv_low,
+                    self._floor_hsv_high,
+                    include_mask=self._mask_floor_include,
                 )
                 ball_result = detect_ball(
                     small,
                     self._ball_hsv_low,
                     self._ball_hsv_high,
                     self._min_ball_radius,
+                    include_mask=self._mask_ball_include,
                     hfov_deg=self._hfov_deg,
                 )
 

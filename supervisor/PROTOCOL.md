@@ -343,7 +343,7 @@ All types follow `domain.entity.verb`:
 | Type | Direction | Description |
 |------|-----------|-------------|
 | `vision.detection.snapshot` | Vision → Core | Per-frame detection results |
-| `vision.config.update` | Core → Vision | HSV thresholds, camera/ISP settings, MJPEG toggle |
+| `vision.config.update` | Core → Vision | HSV thresholds, camera/ISP settings, MJPEG toggle, optional masks |
 | `vision.frame.jpeg` | Vision → Core | MJPEG frame (on request) |
 | `vision.status.health` | Vision → Core | FPS, drops, errors |
 | `vision.lifecycle.started` | Vision → Core | Worker ready |
@@ -650,7 +650,13 @@ Each worker has its own stdout pipe to Core (§6.1). Within a single worker's pi
     "saturation": 1.0,
     "sharpness": 1.0,
 
-    "jpeg_quality": 50
+    "jpeg_quality": 50,
+
+    "mask": {
+        "version": 1,
+        "floor": { "enabled": true, "exclude_polys": [[[0.1, 0.8], [0.3, 0.9], [0.2, 0.95]]] },
+        "ball": { "enabled": false, "exclude_polys": [] }
+    }
 }
 ```
 

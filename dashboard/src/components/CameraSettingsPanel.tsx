@@ -1,10 +1,9 @@
-import type { MouseEvent as ReactMouseEvent } from 'react'
 import { useCallback, useRef, useState } from 'react'
 import { useTelemetry } from '../hooks/useTelemetry'
 import { debounce } from '../lib/debounce'
-import { hsvRangeFromSample, type OpenCvHsv, rgbToOpenCvHsv } from '../lib/vision/color'
 import styles from '../styles/global.module.css'
 import type { ParamDef, TelemetryPayload } from '../types'
+import { VisionMaskEditor } from './VisionMaskEditor'
 
 const FLOOR_KEYS = [
   'vision.floor_hsv_h_low',
@@ -61,12 +60,6 @@ function getNumber(p: ParamDef | undefined, fallback = 0): number {
 function getDefault(p: ParamDef | undefined, fallback = 0): number {
   const v = p?.default
   return typeof v === 'number' ? v : fallback
-}
-
-function clamp(n: number, min: number, max: number): number {
-  if (n < min) return min
-  if (n > max) return max
-  return n
 }
 
 function shortParamName(name: string): string {
@@ -220,12 +213,6 @@ export function CameraSettingsPanel({
   // UI toggles
   const [videoEnabled, setVideoEnabled] = useState(false)
   const [liveApply, setLiveApply] = useState(true)
-  const [pickTarget, setPickTarget] = useState<'off' | 'floor' | 'ball'>('off')
-
-  // Eyedropper tolerances
-  const [deltaH, setDeltaH] = useState(10)
-  const [deltaS, setDeltaS] = useState(40)
-  const [deltaV, setDeltaV] = useState(40)
 
   // Local staged values (initialize once from current params)
   const [local, setLocal] = useState<Record<string, number>>(() => {
@@ -284,72 +271,12 @@ export function CameraSettingsPanel({
     [local, pmap, queueApply],
   )
 
-  // Video + picking
-  const imgRef = useRef<HTMLImageElement | null>(null)
-  const canvasRef = useRef<HTMLCanvasElement | null>(null)
-  const [lastPick, setLastPick] = useState<{
-    rgb: [number, number, number]
-    hsv: OpenCvHsv
-    target: 'floor' | 'ball'
-  } | null>(null)
-
-  const handleVideoClick = useCallback(
-    (e: ReactMouseEvent<HTMLElement>) => {
-      if (pickTarget === 'off') return
-      const img = imgRef.current
-      if (!img) return
-
-      const rect = img.getBoundingClientRect()
-      if (rect.width <= 0 || rect.height <= 0) return
-
-      const w = img.naturalWidth || img.width
-      const h = img.naturalHeight || img.height
-      if (!w || !h) return
-
-      const x = clamp(Math.floor(((e.clientX - rect.left) / rect.width) * w), 0, w - 1)
-      const y = clamp(Math.floor(((e.clientY - rect.top) / rect.height) * h), 0, h - 1)
-
-      const canvas = canvasRef.current ?? document.createElement('canvas')
-      canvasRef.current = canvas
-      canvas.width = w
-      canvas.height = h
-
-      const ctx = canvas.getContext('2d', { willReadFrequently: true })
-      if (!ctx) return
-
-      try {
-        ctx.drawImage(img, 0, 0, w, h)
-        const data = ctx.getImageData(x, y, 1, 1).data
-        const rgb: [number, number, number] = [data[0] ?? 0, data[1] ?? 0, data[2] ?? 0]
-        const hsv = rgbToOpenCvHsv(rgb[0], rgb[1], rgb[2])
-
-        const range = hsvRangeFromSample(hsv, { dh: deltaH, ds: deltaS, dv: deltaV })
-        const patch: Record<string, number> = {}
-
-        if (pickTarget === 'floor') {
-          patch['vision.floor_hsv_h_low'] = range.hLow
-          patch['vision.floor_hsv_h_high'] = range.hHigh
-          patch['vision.floor_hsv_s_low'] = range.sLow
-          patch['vision.floor_hsv_s_high'] = range.sHigh
-          patch['vision.floor_hsv_v_low'] = range.vLow
-          patch['vision.floor_hsv_v_high'] = range.vHigh
-        } else {
-          patch['vision.ball_hsv_h_low'] = range.hLow
-          patch['vision.ball_hsv_h_high'] = range.hHigh
-          patch['vision.ball_hsv_s_low'] = range.sLow
-          patch['vision.ball_hsv_s_high'] = range.sHigh
-          patch['vision.ball_hsv_v_low'] = range.vLow
-          patch['vision.ball_hsv_v_high'] = range.vHigh
-        }
-
-        setLastPick({ rgb, hsv, target: pickTarget })
-        setLocal((prev) => ({ ...prev, ...patch }))
-        queueApply(patch)
-      } catch {
-        // drawImage/getImageData can throw if the browser considers the image tainted.
-      }
+  const onParamPatch = useCallback(
+    (patch: Record<string, number>) => {
+      setLocal((prev) => ({ ...prev, ...patch }))
+      queueApply(patch)
     },
-    [deltaH, deltaS, deltaV, pickTarget, queueApply],
+    [queueApply],
   )
 
   const ballHueWrap = (local['vision.ball_hsv_h_low'] ?? 0) > (local['vision.ball_hsv_h_high'] ?? 0)
@@ -374,159 +301,11 @@ export function CameraSettingsPanel({
         </span>
       </div>
 
-      {/* Video + eyedropper */}
-      <div className={styles.card}>
-        <h3 style={{ marginBottom: 6 }}>Video + Eyedropper</h3>
-        {!visionAlive && (
-          <div className={styles.mono} style={{ color: 'var(--red)', marginBottom: 8 }}>
-            Vision worker is down — /video may be unavailable.
-          </div>
-        )}
-
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {videoEnabled ? (
-              <button
-                type="button"
-                aria-label="Pick pixel from video"
-                onClick={handleVideoClick}
-                style={{
-                  padding: 0,
-                  borderRadius: 6,
-                  border: '1px solid #333',
-                  background: 'transparent',
-                  cursor: pickTarget === 'off' ? 'default' : 'crosshair',
-                }}
-              >
-                <img
-                  ref={imgRef}
-                  src="/video"
-                  alt="Vision preview"
-                  style={{
-                    width: 360,
-                    maxWidth: '100%',
-                    display: 'block',
-                    borderRadius: 6,
-                  }}
-                />
-              </button>
-            ) : (
-              <div
-                style={{
-                  width: 360,
-                  height: 240,
-                  maxWidth: '100%',
-                  borderRadius: 6,
-                  border: '1px dashed rgba(255,255,255,0.15)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: 'var(--text-dim)',
-                }}
-              >
-                Video preview OFF
-              </div>
-            )}
-
-            <div className={styles.mono} style={{ fontSize: 11, color: 'var(--text-dim)' }}>
-              Tip: enable Video preview, set Pick mode, then click a pixel.
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 260 }}>
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-              <span style={{ color: 'var(--text-dim)', fontSize: 12 }}>Pick mode</span>
-              <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                <input
-                  type="radio"
-                  checked={pickTarget === 'off'}
-                  onChange={() => setPickTarget('off')}
-                />
-                Off
-              </label>
-              <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                <input
-                  type="radio"
-                  checked={pickTarget === 'floor'}
-                  onChange={() => setPickTarget('floor')}
-                />
-                Floor
-              </label>
-              <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                <input
-                  type="radio"
-                  checked={pickTarget === 'ball'}
-                  onChange={() => setPickTarget('ball')}
-                />
-                Ball
-              </label>
-            </div>
-
-            <div
-              className={styles.grid3}
-              style={{ gridTemplateColumns: 'repeat(3, minmax(80px, 1fr))' }}
-            >
-              <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <span>ΔH</span>
-                <input
-                  type="number"
-                  value={deltaH}
-                  min={0}
-                  max={179}
-                  onChange={(e) => setDeltaH(Number(e.target.value))}
-                />
-              </label>
-              <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <span>ΔS</span>
-                <input
-                  type="number"
-                  value={deltaS}
-                  min={0}
-                  max={255}
-                  onChange={(e) => setDeltaS(Number(e.target.value))}
-                />
-              </label>
-              <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <span>ΔV</span>
-                <input
-                  type="number"
-                  value={deltaV}
-                  min={0}
-                  max={255}
-                  onChange={(e) => setDeltaV(Number(e.target.value))}
-                />
-              </label>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <div className={styles.mono} style={{ color: 'var(--text-dim)' }}>
-                Last pick
-              </div>
-              {lastPick ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <div
-                    style={{
-                      width: 20,
-                      height: 20,
-                      borderRadius: 4,
-                      border: '1px solid rgba(255,255,255,0.15)',
-                      background: `rgb(${lastPick.rgb[0]},${lastPick.rgb[1]},${lastPick.rgb[2]})`,
-                    }}
-                  />
-                  <div className={styles.mono} style={{ fontSize: 12 }}>
-                    {lastPick.target} rgb=({lastPick.rgb.join(',')}) hsv=(
-                    {lastPick.hsv.h},{lastPick.hsv.s},{lastPick.hsv.v})
-                  </div>
-                </div>
-              ) : (
-                <div className={styles.mono} style={{ color: 'var(--text-dim)', fontSize: 12 }}>
-                  —
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
+      <VisionMaskEditor
+        videoEnabled={videoEnabled}
+        visionAlive={visionAlive}
+        onParamPatch={onParamPatch}
+      />
 
       {/* Camera / ISP */}
       <div className={styles.card}>

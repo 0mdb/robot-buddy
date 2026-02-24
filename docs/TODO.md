@@ -137,8 +137,8 @@ _10 items complete (Stage 4.0 spec/port/parity/buttons/gestures/docs) — see ar
 ### Camera & Vision
 
 - [ ] `[sonnet]` Arducam IMX708 integration — proper V4L2/Picamera2 setup, autofocus config (needs on-hardware validation)
-- [x] `[sonnet]` Camera calibration/mask/CV settings in dashboard (MVP: HSV + min radius + safety thresholds + /video preview + eyedropper; mask editor deferred)
-- [ ] `[sonnet]` Mask editor + camera calibration tooling in dashboard
+- [x] `[sonnet]` Camera calibration/CV settings in dashboard (HSV + min radius + safety thresholds + /video preview + eyedropper)
+- [x] `[sonnet]` Mask editor + camera calibration tooling in dashboard (floor + ball exclusion polygons; persisted to `./data/vision_mask.json`)
 - [x] `[sonnet]` Upgrade camera settings for new hardware (camera/ISP params + dashboard UI; Picamera2 controls + rotate/FOV/JPEG quality)
 
 ---

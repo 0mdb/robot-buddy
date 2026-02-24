@@ -23,6 +23,13 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
+from supervisor.vision.mask_store import (
+    default_mask,
+    load_mask,
+    save_mask_atomic,
+    validate_and_normalize_mask,
+)
+
 if TYPE_CHECKING:
     from supervisor.api.conversation_capture import ConversationCapture
     from supervisor.api.param_registry import ParamRegistry
@@ -34,6 +41,7 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 STATIC_DIR = Path(__file__).parent.parent / "static"
+VISION_MASK_PATH = Path("./data/vision_mask.json")
 
 
 # -- WebSocket log broadcaster ------------------------------------------------
@@ -315,6 +323,44 @@ def create_app(
                 workers.send_to("personality", PERSONALITY_CMD_RESET_MEMORY, {})
             )
         return JSONResponse({"ok": True})
+
+    # -- Vision masks (dashboard mask editor) --------------------------------
+
+    @app.get("/api/vision/mask")
+    async def get_vision_mask():
+        return JSONResponse(load_mask(VISION_MASK_PATH))
+
+    @app.put("/api/vision/mask")
+    async def put_vision_mask(body: dict):
+        try:
+            mask = validate_and_normalize_mask(body)
+        except ValueError as e:
+            return JSONResponse({"error": str(e)}, status_code=422)
+
+        try:
+            save_mask_atomic(VISION_MASK_PATH, mask)
+        except Exception as e:
+            log.warning("failed to save vision mask: %s", e)
+            return JSONResponse({"error": "failed to save mask"}, status_code=500)
+
+        if workers.worker_alive("vision"):
+            await workers.send_to("vision", "vision.config.update", {"mask": mask})
+
+        return JSONResponse(mask)
+
+    @app.delete("/api/vision/mask")
+    async def delete_vision_mask():
+        mask = default_mask()
+        try:
+            save_mask_atomic(VISION_MASK_PATH, mask)
+        except Exception as e:
+            log.warning("failed to reset vision mask: %s", e)
+            return JSONResponse({"error": "failed to reset mask"}, status_code=500)
+
+        if workers.worker_alive("vision"):
+            await workers.send_to("vision", "vision.config.update", {"mask": mask})
+
+        return JSONResponse({"ok": True, "mask": mask})
 
     # -- MJPEG video stream --------------------------------------------------
 

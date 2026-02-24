@@ -120,7 +120,7 @@ All type names use canonical taxonomy (`domain.entity.verb`). See PROTOCOL.md §
 | `tts.cmd.cancel` | tts | (empty) |
 | `tts.cmd.start_mic` | tts | (empty — begin arecord capture) |
 | `tts.cmd.stop_mic` | tts | (empty — stop capture) |
-| `vision.config.update` | vision | `HSV thresholds, camera/ISP settings, MJPEG toggle` |
+| `vision.config.update` | vision | `HSV thresholds, camera/ISP settings, MJPEG toggle, optional masks` |
 | `ai.config.init` | ai | `audio_mode, mic_socket_path, spk_socket_path, server_base_url, robot_id` |
 | `ai.cmd.request_plan` | ai | `world_state` |
 | `ai.cmd.start_conversation` | ai | `session_id, turn_id` |
@@ -222,7 +222,7 @@ Absorbs: `inputs/vision_worker.py`, `inputs/camera_vision.py`
 
 - Reuses `detectors.py` detection logic verbatim
 - Camera capture → HSV detection → emits `vision.detection.snapshot`
-- Receives `vision.config.update` for HSV thresholds, camera/ISP settings, MJPEG toggle
+- Receives `vision.config.update` for HSV thresholds, camera/ISP settings, MJPEG toggle, optional masks
 - Switch from multiprocessing.Queue to NDJSON stdin/stdout
 
 ### ai_worker (conversation brain + planner transport)
