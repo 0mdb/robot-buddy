@@ -25,7 +25,7 @@ Living section — reorder as priorities shift. Current recommended sequence:
 2. ~~Guardrail config + safety timers~~ ✅ (B1b: GuardrailConfig, RS-1/RS-2 session/daily limits, persistence, parent override)
 3. ~~Conversation response schema v2 + prompt v2 + guided decoding + model defaults~~ ✅ (B2 core: v2 schema, age 4-8 prompt, Qwen3-8B-AWQ, mood_reason forwarding)
 4. ~~Conversation hardening (context-budget, audio overflow, privacy, L1 mood_reason validation)~~ ✅ + chat templates (quality improvement, deferred)
-5. Personality profile injection (`personality.llm.profile` → `/converse` prompt injection + anchor cadence)
+5. ~~Personality profile injection (`personality.llm.profile` → `/converse` prompt injection + anchor cadence)~~ ✅
 6. Memory system (local JSON, consent gate, dashboard viewer + forget)
 7. Prosody routing (TTS emotion from PE mood; optional VA→prosody later)
 8. PE evaluation (metrics + guardrail + child-safety validation)
@@ -119,9 +119,9 @@ _(all items completed)_
 - [ ] Add `personality.event.memory_extract` emission per turn (memory_tags from v2 schema)
 - [ ] Use model chat templates (Qwen) instead of ad-hoc `ROLE: ...` prompting to avoid behavior drift between backends (quality + token efficiency)
 
-**B3 — Personality Profile Injection (server conditioning)** `[opus]`
-- [ ] Add outbound `personality.llm.profile` from PersonalityWorker (conv start + 1 Hz during conv) and route it to AI worker
-- [ ] Extend `/converse` protocol to accept `{“type”:”profile”,”profile”:{...}}`; server injects “CURRENT STATE …” system block each turn + anchor reminder every 5 turns (PE spec S2 §12.5, §12.7)
+**B3 — Personality Profile Injection (server conditioning)** `[opus]` ✅
+- [x] Add outbound `personality.llm.profile` from PersonalityWorker (conv start + 1 Hz during conv) and route it to AI worker
+- [x] Extend `/converse` protocol to accept `{“type”:”profile”,”profile”:{...}}`; server injects “CURRENT STATE …” system block each turn + anchor reminder every 5 turns (PE spec S2 §12.5, §12.7)
 
 **B4 — Memory System (COPPA)** `[opus]`
 - [ ] Implement local memory store per PE spec S2 §8: decay tiers, max 50 entries, eviction, local-only JSON, consent gate default false
@@ -250,6 +250,15 @@ _(all items completed)_
 - [x] Session/daily time state in personality snapshot → WorldState → telemetry (dashboard-visible)
 - [x] Tick loop enforces daily limit gate on `_start_conversation` + session limit wind-down via delayed teardown
 - [x] 30 new unit tests: config parsing, guardrail toggles, session/daily timer increments, limit events, persistence, set_guardrail command
+
+### Personality Engine — B3 Personality Profile Injection
+- [x] `personality.llm.profile` emitted from PersonalityWorker at conv start + 1 Hz during conversation (PE spec S2 §10.4)
+- [x] Tick loop enriches profile with `turn_id`/`session_id` and routes to AI worker via `AI_CMD_SEND_PROFILE`
+- [x] AI worker forwards `{"type":"profile","profile":{...}}` over WebSocket to server
+- [x] `/converse` WebSocket handler accepts `profile` message type, stores on ConversationHistory
+- [x] `_build_current_state_block()`: dynamic CURRENT STATE system block injected before each user turn (mood, intensity, arc, continuity constraint per §12.5)
+- [x] Personality anchor (§12.7): 30-token reminder injected every 5 turns to prevent persona drift
+- [x] 10 new tests: profile emission timing, payload fields, CURRENT STATE block content, anchor cadence, profile+anchor coexistence
 
 ### Personality Engine — B2 Conversation Schema V2 + Guided Decoding
 - [x] `ConversationResponseV2` Pydantic model (9 fields: inner_thought, emotion, intensity, mood_reason, emotional_arc, child_affect, text, gestures, memory_tags)

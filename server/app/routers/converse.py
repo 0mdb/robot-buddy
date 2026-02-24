@@ -6,6 +6,7 @@ Protocol:
         {"type": "end_utterance"}
         {"type": "cancel"}
         {"type": "text", "text": "..."}  # bypass STT, send text directly
+        {"type": "profile", "profile": {...}}  # personality profile (PE spec §12.5)
 
     Server → Client:
         {"type": "listening"}
@@ -134,6 +135,12 @@ async def converse(ws: WebSocket):
 
                 await _generate_and_stream(ws, llm, history, user_text)
                 await ws.send_json({"type": "listening"})
+
+            elif msg_type == "profile":
+                # Personality profile injection (PE spec S2 §12.5)
+                profile = msg.get("profile")
+                if isinstance(profile, dict):
+                    history.update_profile(profile)
 
             elif msg_type == "cancel":
                 audio_buffer.clear()

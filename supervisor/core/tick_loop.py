@@ -52,6 +52,7 @@ from supervisor.messages.envelope import Envelope
 from supervisor.messages.types import (
     AI_CMD_END_CONVERSATION,
     AI_CMD_END_UTTERANCE,
+    AI_CMD_SEND_PROFILE,
     AI_CMD_START_CONVERSATION,
     AI_CONVERSATION_DONE,
     AI_CONVERSATION_EMOTION,
@@ -69,6 +70,7 @@ from supervisor.messages.types import (
     PERSONALITY_EVENT_GUARDRAIL_TRIGGERED,
     PERSONALITY_EVENT_SPEECH_ACTIVITY,
     PERSONALITY_EVENT_SYSTEM_STATE,
+    PERSONALITY_LLM_PROFILE,
     TTS_CMD_CANCEL,
     TTS_CMD_PLAY_CHIME,
     TTS_CMD_SPEAK,
@@ -564,6 +566,16 @@ class TickLoop:
                 asyncio.ensure_future(self._delayed_end_conversation(4.0))
             elif rule in ("daily_time_limit", "daily_limit_blocked"):
                 log.info("daily time limit — conversations blocked")
+
+        # Personality LLM profile → enrich with turn context → forward to AI worker
+        elif env.type == PERSONALITY_LLM_PROFILE:
+            if self.world.session_id:
+                profile = dict(env.payload)
+                profile["turn_id"] = self.world.turn_id
+                profile["session_id"] = self.world.session_id
+                asyncio.ensure_future(
+                    self._workers.send_to("ai", AI_CMD_SEND_PROFILE, profile)
+                )
 
         # Ear worker events
         elif env.type == EAR_EVENT_WAKE_WORD:

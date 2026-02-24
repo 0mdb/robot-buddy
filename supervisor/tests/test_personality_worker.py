@@ -21,6 +21,7 @@ from supervisor.messages.types import (
     PERSONALITY_EVENT_GUARDRAIL_TRIGGERED,
     PERSONALITY_EVENT_SPEECH_ACTIVITY,
     PERSONALITY_EVENT_SYSTEM_STATE,
+    PERSONALITY_LLM_PROFILE,
     PERSONALITY_STATE_SNAPSHOT,
 )
 from supervisor.personality.affect import compute_trait_parameters
@@ -1145,3 +1146,99 @@ class TestMoodReasonIntegration:
             and p.get("rule") == "mood_reason_rejected"
         ]
         assert len(guardrail_events) == 1
+
+
+# ── LLM Profile Emission (PE spec S2 §12.5) ──────────────────────────
+
+
+class TestLLMProfile:
+    @pytest.mark.asyncio
+    async def test_profile_emitted_on_conv_start(self):
+        w = _make_worker()
+        sends = _collect_sends(w)
+
+        await w.on_message(
+            _env(PERSONALITY_EVENT_CONV_STARTED, {"session_id": "s1", "trigger": "ptt"})
+        )
+
+        profiles = [(t, p) for t, p in sends if t == PERSONALITY_LLM_PROFILE]
+        assert len(profiles) >= 1
+        payload = profiles[0][1]
+        assert "mood" in payload
+        assert "intensity" in payload
+        assert "valence" in payload
+        assert "arousal" in payload
+        assert "idle_state" in payload
+        assert "session_time_s" in payload
+
+    @pytest.mark.asyncio
+    async def test_profile_not_emitted_outside_conversation(self):
+        w = _make_worker()
+        sends = _collect_sends(w)
+
+        # Tick without conversation active
+        w._tick_1hz()
+
+        profiles = [(t, p) for t, p in sends if t == PERSONALITY_LLM_PROFILE]
+        assert len(profiles) == 0
+
+    def test_profile_emitted_at_1hz_during_conversation(self):
+        w = _make_worker()
+        sends = _collect_sends(w)
+
+        # Start conversation
+        w._conversation_active = True
+
+        # First tick emits profile
+        w._tick_1hz()
+        profiles = [(t, p) for t, p in sends if t == PERSONALITY_LLM_PROFILE]
+        assert len(profiles) == 1
+
+        # Second tick emits another profile
+        w._tick_1hz()
+        profiles = [(t, p) for t, p in sends if t == PERSONALITY_LLM_PROFILE]
+        assert len(profiles) == 2
+
+    def test_profile_reflects_current_mood(self):
+        w = _make_worker()
+        # Push valence high to get a positive mood
+        w._affect.valence = 0.80
+        w._affect.arousal = 0.60
+        w._conversation_active = True
+        sends = _collect_sends(w)
+
+        w._tick_1hz()
+
+        profiles = [(t, p) for t, p in sends if t == PERSONALITY_LLM_PROFILE]
+        assert len(profiles) == 1
+        payload = profiles[0][1]
+        # Should reflect the current mood, not always neutral
+        assert isinstance(payload["mood"], str)
+        assert 0.0 <= payload["intensity"] <= 1.0
+        assert isinstance(payload["valence"], float)
+        assert isinstance(payload["arousal"], float)
+
+    @pytest.mark.asyncio
+    async def test_profile_stops_after_conv_ends(self):
+        w = _make_worker()
+        sends = _collect_sends(w)
+
+        # Start conversation
+        await w.on_message(
+            _env(PERSONALITY_EVENT_CONV_STARTED, {"session_id": "s1", "trigger": "ptt"})
+        )
+        sends.clear()
+
+        # One tick during conversation
+        w._tick_1hz()
+        profiles_during = [(t, p) for t, p in sends if t == PERSONALITY_LLM_PROFILE]
+        assert len(profiles_during) == 1
+
+        # End conversation
+        await w.on_message(_env(PERSONALITY_EVENT_CONV_ENDED, {"session_id": "s1"}))
+        sends.clear()
+
+        # Tick after conversation ends
+        w._tick_1hz()
+        profiles_after = [(t, p) for t, p in sends if t == PERSONALITY_LLM_PROFILE]
+        assert len(profiles_after) == 0

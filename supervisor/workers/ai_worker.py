@@ -27,6 +27,7 @@ from supervisor.messages.types import (
     AI_CMD_END_UTTERANCE,
     AI_CMD_REQUEST_PLAN,
     AI_CMD_SEND_AUDIO,
+    AI_CMD_SEND_PROFILE,
     AI_CMD_START_CONVERSATION,
     AI_CONFIG_INIT,
     AI_CONVERSATION_DONE,
@@ -123,6 +124,10 @@ class AIWorker(BaseWorker):
 
         elif t == AI_CMD_CANCEL:
             await self._cancel()
+
+        elif t == AI_CMD_SEND_PROFILE:
+            # Forward personality profile to server (PE spec S2 §12.5)
+            await self._ws_send({"type": "profile", "profile": p})
 
         elif t == AI_CMD_SEND_AUDIO:
             # Mode B: audio relay from Core

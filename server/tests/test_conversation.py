@@ -7,8 +7,10 @@ import json
 import pytest
 
 from app.llm.conversation import (
+    PERSONALITY_ANCHOR,
     ConversationHistory,
     ConversationResponseV2,
+    _build_current_state_block,
     _compress_turns,
     parse_conversation_response_content,
 )
@@ -33,8 +35,9 @@ class TestContextBudget:
 
     def test_compression_kicks_in_beyond_8_turns(self):
         h = ConversationHistory(max_turns=30)
-        # Add 10 turns (20 messages) — exceeds 8-turn recent window
-        for i in range(10):
+        # Add 9 turns (18 messages) — exceeds 8-turn recent window.
+        # Use 9 (not 10) to avoid the personality anchor at every-5-turn boundary.
+        for i in range(9):
             h.add_user(f"question {i}")
             h.add_assistant(f"answer {i}", emotion="happy")
 
@@ -222,3 +225,137 @@ class TestConversationResponseV2:
         for arc in ("rising", "stable", "falling", "peak", "recovery"):
             r = ConversationResponseV2(emotional_arc=arc)
             assert r.emotional_arc == arc
+
+
+# ── Personality Profile Injection (PE spec S2 §12.5, §12.7) ────────────
+
+
+class TestBuildCurrentStateBlock:
+    """Test the CURRENT STATE system block builder."""
+
+    def test_basic_output(self):
+        block = _build_current_state_block(
+            {"mood": "curious", "intensity": 0.4, "turn_id": 5, "valence": 0.3}
+        )
+        assert "CURRENT STATE" in block
+        assert "curious" in block
+        assert "0.4" in block
+        assert "turn: 5" in block
+
+    def test_positive_valence_arc(self):
+        block = _build_current_state_block({"valence": 0.5})
+        assert "gently positive" in block
+
+    def test_negative_valence_arc(self):
+        block = _build_current_state_block({"valence": -0.5})
+        assert "slightly tense" in block
+
+    def test_neutral_valence_arc(self):
+        block = _build_current_state_block({"valence": 0.0})
+        assert "calm and neutral" in block
+
+    def test_negative_mood_continuity(self):
+        block = _build_current_state_block({"mood": "sad", "valence": -0.3})
+        assert "recovery" in block
+
+    def test_positive_mood_continuity(self):
+        block = _build_current_state_block({"mood": "happy", "valence": 0.3})
+        assert "positive trajectory" in block
+
+    def test_defaults_for_missing_fields(self):
+        block = _build_current_state_block({})
+        assert "CURRENT STATE" in block
+        assert "neutral" in block
+
+
+class TestProfileInjection:
+    """Test profile injection into ConversationHistory messages."""
+
+    def test_no_profile_no_injection(self):
+        h = ConversationHistory(max_turns=20)
+        h.add_user("hello")
+        h.add_assistant("hi", emotion="happy")
+        msgs = h.to_ollama_messages()
+        # No CURRENT STATE block when no profile set
+        assert not any("CURRENT STATE" in m["content"] for m in msgs)
+
+    def test_profile_injected_before_last_user_message(self):
+        h = ConversationHistory(max_turns=20)
+        h.update_profile(
+            {"mood": "curious", "intensity": 0.4, "turn_id": 1, "valence": 0.2}
+        )
+        h.add_user("why is the sky blue?")
+        msgs = h.to_ollama_messages()
+        # Find the CURRENT STATE block
+        state_msgs = [m for m in msgs if "CURRENT STATE" in m["content"]]
+        assert len(state_msgs) == 1
+        # Should be a system message
+        assert state_msgs[0]["role"] == "system"
+        # Should appear before the user message
+        state_idx = msgs.index(state_msgs[0])
+        user_idx = next(i for i, m in enumerate(msgs) if m["role"] == "user")
+        assert state_idx < user_idx
+
+    def test_profile_updated_between_turns(self):
+        h = ConversationHistory(max_turns=20)
+        h.update_profile(
+            {"mood": "neutral", "intensity": 0.3, "turn_id": 1, "valence": 0.0}
+        )
+        h.add_user("hello")
+        h.add_assistant("hi!", emotion="happy")
+        # Update profile before second turn
+        h.update_profile(
+            {"mood": "happy", "intensity": 0.6, "turn_id": 2, "valence": 0.4}
+        )
+        h.add_user("tell me a joke")
+        msgs = h.to_ollama_messages()
+        state_msgs = [m for m in msgs if "CURRENT STATE" in m["content"]]
+        assert len(state_msgs) == 1
+        # Should reflect the latest profile
+        assert "happy" in state_msgs[0]["content"]
+
+
+class TestPersonalityAnchor:
+    """Test the personality anchor injection every 5 turns (§12.7)."""
+
+    def test_no_anchor_before_5_turns(self):
+        h = ConversationHistory(max_turns=20)
+        for i in range(1, 4):  # 3 turns
+            h.add_user(f"message {i}")
+            h.add_assistant(f"response {i}", emotion="happy")
+        h.add_user("message 4")
+        msgs = h.to_ollama_messages()
+        assert not any(PERSONALITY_ANCHOR in m["content"] for m in msgs)
+
+    def test_anchor_at_5_turns(self):
+        h = ConversationHistory(max_turns=20)
+        for i in range(1, 6):  # 5 turns
+            h.add_user(f"message {i}")
+            h.add_assistant(f"response {i}", emotion="happy")
+        # turn_count is now 5 — next to_ollama_messages should include anchor
+        msgs = h.to_ollama_messages()
+        anchor_msgs = [m for m in msgs if PERSONALITY_ANCHOR in m["content"]]
+        assert len(anchor_msgs) == 1
+        assert anchor_msgs[0]["role"] == "system"
+
+    def test_anchor_at_10_turns(self):
+        h = ConversationHistory(max_turns=20)
+        for i in range(1, 11):  # 10 turns
+            h.add_user(f"message {i}")
+            h.add_assistant(f"response {i}", emotion="happy")
+        msgs = h.to_ollama_messages()
+        anchor_msgs = [m for m in msgs if PERSONALITY_ANCHOR in m["content"]]
+        assert len(anchor_msgs) == 1
+
+    def test_anchor_and_profile_both_present(self):
+        h = ConversationHistory(max_turns=20)
+        h.update_profile(
+            {"mood": "curious", "intensity": 0.4, "turn_id": 5, "valence": 0.2}
+        )
+        for i in range(1, 6):  # 5 turns
+            h.add_user(f"message {i}")
+            h.add_assistant(f"response {i}", emotion="happy")
+        msgs = h.to_ollama_messages()
+        # Both should be present
+        assert any("CURRENT STATE" in m["content"] for m in msgs)
+        assert any(PERSONALITY_ANCHOR in m["content"] for m in msgs)

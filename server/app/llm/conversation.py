@@ -168,6 +168,57 @@ class ConversationMessage:
     emotion: str = ""  # populated for assistant messages (v2)
 
 
+# ── Personality profile injection (PE spec S2 §12.5, §12.7) ──────────────
+
+# Personality anchor injected every N user turns to prevent persona drift.
+_ANCHOR_INTERVAL_TURNS = 5
+
+PERSONALITY_ANCHOR = (
+    "[Reminder: Buddy is calm (energy 0.40), gently responsive. "
+    "Emotions lean positive. Negative emotions are mild and brief. "
+    "Stay in character.]"
+)
+
+
+def _build_current_state_block(profile: dict[str, object]) -> str:
+    """Build the CURRENT STATE system block from a personality profile (§12.5).
+
+    Example output:
+        CURRENT STATE
+        Buddy is feeling curious at intensity 0.4.
+        Session turn: 5. Conversation has been gently positive.
+        Emotional continuity: maintain positive trajectory, don't snap to a different mood.
+    """
+    mood = str(profile.get("mood", "neutral"))
+    intensity = float(str(profile.get("intensity", 0.5)))
+    turn_id = int(str(profile.get("turn_id", 1)).split(".")[0])
+    valence = float(str(profile.get("valence", 0.0)))
+
+    # Derive arc description from valence
+    if valence > 0.15:
+        arc = "gently positive"
+    elif valence < -0.15:
+        arc = "slightly tense"
+    else:
+        arc = "calm and neutral"
+
+    # Derive continuity constraint from mood
+    negative_moods = {"sad", "scared", "angry"}
+    if mood in negative_moods:
+        continuity = "moving toward recovery, gradually lighten"
+    elif mood in {"neutral", "thinking", "confused"}:
+        continuity = "Buddy is in a stable, calm state"
+    else:
+        continuity = "maintain positive trajectory, don't snap to a different mood"
+
+    return (
+        f"CURRENT STATE\n"
+        f"Buddy is feeling {mood} at intensity {intensity:.1f}.\n"
+        f"Session turn: {turn_id}. Conversation has been {arc}.\n"
+        f"Emotional continuity: {continuity}"
+    )
+
+
 # ── Context budget constants (PE spec S2 §12.6) ─────────────────────────
 
 # Recent turns kept as full messages (user + assistant pairs).
@@ -200,6 +251,11 @@ class ConversationHistory:
     def __init__(self, max_turns: int = 20, *, max_context_tokens: int = 4096) -> None:
         self._messages: deque[ConversationMessage] = deque(maxlen=max_turns * 2)
         self._max_context_tokens = max_context_tokens
+        self._profile: dict[str, object] | None = None
+
+    def update_profile(self, profile: dict[str, object]) -> None:
+        """Store the latest personality profile for prompt injection (§12.5)."""
+        self._profile = profile
 
     def add_user(self, text: str) -> None:
         self._messages.append(ConversationMessage(role="user", content=text))
@@ -212,7 +268,8 @@ class ConversationHistory:
     def to_ollama_messages(self) -> list[dict[str, str]]:
         """Build the messages array with context-budget compression.
 
-        Returns system prompt + optional summary of old turns + recent turns.
+        Returns system prompt + optional summary of old turns + recent turns
+        + CURRENT STATE block (§12.5) + personality anchor every 5 turns (§12.7).
         """
         all_msgs = list(self._messages)
         recent_boundary = _RECENT_WINDOW_TURNS * 2  # user + assistant pairs
@@ -222,20 +279,40 @@ class ConversationHistory:
             msgs = [{"role": "system", "content": CONVERSATION_SYSTEM_PROMPT}]
             for m in all_msgs:
                 msgs.append({"role": m.role, "content": m.content})
-            return self._enforce_token_budget(msgs)
+        else:
+            # Split into old (to compress) and recent (keep full).
+            old_msgs = all_msgs[: len(all_msgs) - recent_boundary]
+            recent_msgs = all_msgs[len(all_msgs) - recent_boundary :]
 
-        # Split into old (to compress) and recent (keep full).
-        old_msgs = all_msgs[: len(all_msgs) - recent_boundary]
-        recent_msgs = all_msgs[len(all_msgs) - recent_boundary :]
+            # Compress old turns into summary tuples.
+            summary = _compress_turns(old_msgs)
 
-        # Compress old turns into summary tuples.
-        summary = _compress_turns(old_msgs)
+            msgs = [{"role": "system", "content": CONVERSATION_SYSTEM_PROMPT}]
+            if summary:
+                msgs.append({"role": "system", "content": summary})
+            for m in recent_msgs:
+                msgs.append({"role": m.role, "content": m.content})
 
-        msgs = [{"role": "system", "content": CONVERSATION_SYSTEM_PROMPT}]
-        if summary:
-            msgs.append({"role": "system", "content": summary})
-        for m in recent_msgs:
-            msgs.append({"role": m.role, "content": m.content})
+        # §12.5: Inject CURRENT STATE block before the latest user message.
+        if self._profile is not None:
+            state_block = _build_current_state_block(self._profile)
+            # Insert as system message just before the last user message.
+            insert_idx = len(msgs)
+            for i in range(len(msgs) - 1, -1, -1):
+                if msgs[i]["role"] == "user":
+                    insert_idx = i
+                    break
+            msgs.insert(insert_idx, {"role": "system", "content": state_block})
+
+        # §12.7: Personality anchor every _ANCHOR_INTERVAL_TURNS turns.
+        if self.turn_count > 0 and self.turn_count % _ANCHOR_INTERVAL_TURNS == 0:
+            # Insert anchor just before the CURRENT STATE / last user message.
+            insert_idx = len(msgs)
+            for i in range(len(msgs) - 1, -1, -1):
+                if msgs[i]["role"] == "user":
+                    insert_idx = i
+                    break
+            msgs.insert(insert_idx, {"role": "system", "content": PERSONALITY_ANCHOR})
 
         return self._enforce_token_budget(msgs)
 

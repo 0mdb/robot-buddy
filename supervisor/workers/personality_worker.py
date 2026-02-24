@@ -31,6 +31,7 @@ from supervisor.messages.types import (
     PERSONALITY_EVENT_GUARDRAIL_TRIGGERED,
     PERSONALITY_EVENT_SPEECH_ACTIVITY,
     PERSONALITY_EVENT_SYSTEM_STATE,
+    PERSONALITY_LLM_PROFILE,
     PERSONALITY_STATE_SNAPSHOT,
 )
 from supervisor.personality.affect import (
@@ -328,6 +329,10 @@ class PersonalityWorker(BaseWorker):
         # Process and emit
         self._process_and_emit(dt)
 
+        # Emit LLM profile at 1 Hz during conversation (PE spec S2 §10.4)
+        if self._conversation_active:
+            self._emit_llm_profile()
+
     def _process_and_emit(self, dt: float) -> None:
         """Affect update → project mood → guardrails → emit snapshot.
 
@@ -393,6 +398,26 @@ class PersonalityWorker(BaseWorker):
                 "daily_time_s": round(self._daily_state.total_s, 1),
                 "session_limit_reached": self._session_limit_reached,
                 "daily_limit_reached": self._daily_limit_reached,
+            },
+        )
+
+    # ── LLM Profile Emission (PE spec S2 §12.5) ─────────────────
+
+    def _emit_llm_profile(self) -> None:
+        """Emit personality.llm.profile for server-side prompt injection.
+
+        Sent at conv start + 1 Hz during conversation. The tick loop enriches
+        this with turn_id/session_id before forwarding to the AI worker.
+        """
+        self.send(
+            PERSONALITY_LLM_PROFILE,
+            {
+                "mood": self._current_mood,
+                "intensity": round(self._current_intensity, 2),
+                "valence": round(self._affect.valence, 3),
+                "arousal": round(self._affect.arousal, 3),
+                "idle_state": self._idle_state(),
+                "session_time_s": round(self._session_time_s, 1),
             },
         )
 
@@ -665,6 +690,9 @@ class PersonalityWorker(BaseWorker):
             log.debug("L0-13 child approach (wake word)")
 
         self._fast_path()
+
+        # Emit initial LLM profile on conversation start (PE spec S2 §10.4)
+        self._emit_llm_profile()
 
     def _handle_conv_ended(self, payload: dict) -> None:
         """L0-07 / L0-08: Conversation ended (positive/negative)."""
