@@ -79,7 +79,7 @@ run:
 
 # Run planner server
 run-server:
-    cd {{project}}/server && uv run python -m app.main
+    bash -lc 'set -a; [ -f "{{project}}/.env" ] && source "{{project}}/.env"; set +a; cd "{{project}}/server" && uv run python -m app.main'
 
 # Run dashboard dev server
 run-dashboard:
@@ -103,35 +103,130 @@ serial-diag *args:
 
 # ── ESP32 Firmware ───────────────────────────────────────
 
+# ESP-IDF export script (used if `idf.py` isn't already on PATH)
+# Override if your ESP-IDF lives elsewhere: `ESP_IDF_EXPORT=/path/to/esp-idf/export.sh just build-reflex`
+ESP_IDF_EXPORT := env_var_or_default("ESP_IDF_EXPORT", "$HOME/esp/esp-idf/export.sh")
+ESP_IDF_EXPORT_LOG := env_var_or_default("ESP_IDF_EXPORT_LOG", "/tmp/idf_export.log")
+
 # Build reflex firmware (also filters GCC-specific flags from compile_commands.json for clang/clang-tidy)
 build-reflex:
-    cd {{project}}/esp32-reflex && idf.py build
+    @expected="{{project}}/esp32-reflex"; \
+        cache="{{project}}/esp32-reflex/build/CMakeCache.txt"; \
+        if [ -f "$cache" ]; then \
+            configured=$(grep -m1 '^CMAKE_HOME_DIRECTORY:INTERNAL=' "$cache" | cut -d= -f2-); \
+            if [ -n "$configured" ] && [ "$configured" != "$expected" ]; then \
+                echo "Build dir mismatch (configured for $configured, expected $expected). Running idf.py fullclean..."; \
+                if command -v idf.py >/dev/null 2>&1; then \
+                    cd "$expected" && idf.py fullclean; \
+                else \
+                    if [ ! -f "{{ESP_IDF_EXPORT}}" ]; then \
+                        echo "ESP-IDF export script not found: {{ESP_IDF_EXPORT}}"; \
+                        echo "Install ESP-IDF or set ESP_IDF_EXPORT=/path/to/export.sh"; \
+                        exit 1; \
+                    fi; \
+                    bash -lc 'source "{{ESP_IDF_EXPORT}}" >"{{ESP_IDF_EXPORT_LOG}}" 2>&1 && cd "{{project}}/esp32-reflex" && idf.py fullclean'; \
+                fi; \
+            fi; \
+        fi
+    @if command -v idf.py >/dev/null 2>&1; then \
+        cd {{project}}/esp32-reflex && idf.py build; \
+    else \
+        if [ ! -f "{{ESP_IDF_EXPORT}}" ]; then \
+            echo "ESP-IDF export script not found: {{ESP_IDF_EXPORT}}"; \
+            echo "Install ESP-IDF or set ESP_IDF_EXPORT=/path/to/export.sh"; \
+            exit 1; \
+        fi; \
+        bash -lc 'source "{{ESP_IDF_EXPORT}}" >"{{ESP_IDF_EXPORT_LOG}}" 2>&1 && cd "{{project}}/esp32-reflex" && idf.py build'; \
+    fi
     python3 {{project}}/tools/gen_clang_db.py \
         {{project}}/esp32-reflex/build/compile_commands.json \
         {{project}}/esp32-reflex/build/compile_commands.json
 
 # Build face firmware (also filters GCC-specific flags from compile_commands.json for clang/clang-tidy)
 build-face:
-    cd {{project}}/esp32-face && idf.py build
+    @expected="{{project}}/esp32-face"; \
+        cache="{{project}}/esp32-face/build/CMakeCache.txt"; \
+        if [ -f "$cache" ]; then \
+            configured=$(grep -m1 '^CMAKE_HOME_DIRECTORY:INTERNAL=' "$cache" | cut -d= -f2-); \
+            if [ -n "$configured" ] && [ "$configured" != "$expected" ]; then \
+                echo "Build dir mismatch (configured for $configured, expected $expected). Running idf.py fullclean..."; \
+                if command -v idf.py >/dev/null 2>&1; then \
+                    cd "$expected" && idf.py fullclean; \
+                else \
+                    if [ ! -f "{{ESP_IDF_EXPORT}}" ]; then \
+                        echo "ESP-IDF export script not found: {{ESP_IDF_EXPORT}}"; \
+                        echo "Install ESP-IDF or set ESP_IDF_EXPORT=/path/to/export.sh"; \
+                        exit 1; \
+                    fi; \
+                    bash -lc 'source "{{ESP_IDF_EXPORT}}" >"{{ESP_IDF_EXPORT_LOG}}" 2>&1 && cd "{{project}}/esp32-face" && idf.py fullclean'; \
+                fi; \
+            fi; \
+        fi
+    @if command -v idf.py >/dev/null 2>&1; then \
+        cd {{project}}/esp32-face && idf.py build; \
+    else \
+        if [ ! -f "{{ESP_IDF_EXPORT}}" ]; then \
+            echo "ESP-IDF export script not found: {{ESP_IDF_EXPORT}}"; \
+            echo "Install ESP-IDF or set ESP_IDF_EXPORT=/path/to/export.sh"; \
+            exit 1; \
+        fi; \
+        bash -lc 'source "{{ESP_IDF_EXPORT}}" >"{{ESP_IDF_EXPORT_LOG}}" 2>&1 && cd "{{project}}/esp32-face" && idf.py build'; \
+    fi
     python3 {{project}}/tools/gen_clang_db.py \
         {{project}}/esp32-face/build/compile_commands.json \
         {{project}}/esp32-face/build/compile_commands.json
 
 # Flash reflex firmware
 flash-reflex: build-reflex
-    cd {{project}}/esp32-reflex && idf.py flash
+    @if command -v idf.py >/dev/null 2>&1; then \
+        cd {{project}}/esp32-reflex && idf.py flash; \
+    else \
+        if [ ! -f "{{ESP_IDF_EXPORT}}" ]; then \
+            echo "ESP-IDF export script not found: {{ESP_IDF_EXPORT}}"; \
+            echo "Install ESP-IDF or set ESP_IDF_EXPORT=/path/to/export.sh"; \
+            exit 1; \
+        fi; \
+        bash -lc 'source "{{ESP_IDF_EXPORT}}" >"{{ESP_IDF_EXPORT_LOG}}" 2>&1 && cd "{{project}}/esp32-reflex" && idf.py flash'; \
+    fi
 
 # Flash face firmware
 flash-face: build-face
-    cd {{project}}/esp32-face && idf.py flash
+    @if command -v idf.py >/dev/null 2>&1; then \
+        cd {{project}}/esp32-face && idf.py flash; \
+    else \
+        if [ ! -f "{{ESP_IDF_EXPORT}}" ]; then \
+            echo "ESP-IDF export script not found: {{ESP_IDF_EXPORT}}"; \
+            echo "Install ESP-IDF or set ESP_IDF_EXPORT=/path/to/export.sh"; \
+            exit 1; \
+        fi; \
+        bash -lc 'source "{{ESP_IDF_EXPORT}}" >"{{ESP_IDF_EXPORT_LOG}}" 2>&1 && cd "{{project}}/esp32-face" && idf.py flash'; \
+    fi
 
 # Monitor reflex serial output
 monitor-reflex:
-    cd {{project}}/esp32-reflex && idf.py monitor
+    @if command -v idf.py >/dev/null 2>&1; then \
+        cd {{project}}/esp32-reflex && idf.py monitor; \
+    else \
+        if [ ! -f "{{ESP_IDF_EXPORT}}" ]; then \
+            echo "ESP-IDF export script not found: {{ESP_IDF_EXPORT}}"; \
+            echo "Install ESP-IDF or set ESP_IDF_EXPORT=/path/to/export.sh"; \
+            exit 1; \
+        fi; \
+        bash -lc 'source "{{ESP_IDF_EXPORT}}" >"{{ESP_IDF_EXPORT_LOG}}" 2>&1 && cd "{{project}}/esp32-reflex" && idf.py monitor'; \
+    fi
 
 # Monitor face serial output
 monitor-face:
-    cd {{project}}/esp32-face && idf.py monitor
+    @if command -v idf.py >/dev/null 2>&1; then \
+        cd {{project}}/esp32-face && idf.py monitor; \
+    else \
+        if [ ! -f "{{ESP_IDF_EXPORT}}" ]; then \
+            echo "ESP-IDF export script not found: {{ESP_IDF_EXPORT}}"; \
+            echo "Install ESP-IDF or set ESP_IDF_EXPORT=/path/to/export.sh"; \
+            exit 1; \
+        fi; \
+        bash -lc 'source "{{ESP_IDF_EXPORT}}" >"{{ESP_IDF_EXPORT_LOG}}" 2>&1 && cd "{{project}}/esp32-face" && idf.py monitor'; \
+    fi
 
 # ── Deployment ───────────────────────────────────────────
 
