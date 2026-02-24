@@ -168,12 +168,14 @@ class OrpheusTTS:
         device: str = "cuda",
         backend: str = settings.tts_backend,
         voice: str = settings.tts_voice,
+        orpheus_voice: str = settings.orpheus_voice,
         rate_wpm: int = settings.tts_rate_wpm,
     ) -> None:
         self._model_name = model_name
         self._device = device
         self._backend_pref = str(backend or "auto").strip().lower()
         self._voice = str(voice or "en-us")
+        self._orpheus_voice = str(orpheus_voice or "").strip().lower() or "tara"
         self._rate_wpm = int(rate_wpm)
         self._loaded = False
         self._backend: str | None = None
@@ -432,7 +434,6 @@ class OrpheusTTS:
 
             model_candidates = [
                 self._model_name,
-                "canopylabs/orpheus-tts-0.1-finetune-prod",
             ]
             last_err: Exception | None = None
             tried: set[str] = set()
@@ -690,7 +691,8 @@ class OrpheusTTS:
                     self._backend == "orpheus_speech"
                     and self._legacy_generate_speech is not None
                 ):
-                    audio_float32 = self._legacy_generate_speech(tagged_text)
+                    prompt = f"{self._orpheus_voice}: {tagged_text}"
+                    audio_float32 = self._legacy_generate_speech(prompt)
                     return pcm_float32_to_int16(
                         audio_float32,
                         src_rate=24000,
@@ -701,7 +703,9 @@ class OrpheusTTS:
                     # orpheus_tts currently yields int16 PCM chunks at 24 kHz.
                     req_id = f"req-{int(time.time() * 1000)}-{uuid.uuid4().hex[:8]}"
                     gen = self._model.generate_speech(
-                        prompt=tagged_text, request_id=req_id
+                        prompt=tagged_text,
+                        voice=self._orpheus_voice,
+                        request_id=req_id,
                     )
                     audio_int16_24k = self._collect_chunks_with_timeout(gen)
                     if not audio_int16_24k:
@@ -760,6 +764,7 @@ class OrpheusTTS:
             "backend_active": self._backend,
             "model_name": self._model_name,
             "device": self._device,
+            "orpheus_voice": self._orpheus_voice,
             "loaded": self._loaded,
             "init_error": self._init_error,
             "hf_token_present": self._hf_token_present(),

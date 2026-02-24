@@ -76,6 +76,7 @@ class Settings:
         "TTS_MODEL_NAME", "canopylabs/orpheus-3b-0.1-ft"
     )
     tts_voice: str = os.environ.get("TTS_VOICE", "en-us")
+    orpheus_voice: str = os.environ.get("ORPHEUS_VOICE", "tara")
     tts_rate_wpm: int = int(os.environ.get("TTS_RATE_WPM", "165"))
     orpheus_gpu_memory_utilization: float = float(
         os.environ.get("ORPHEUS_GPU_MEMORY_UTILIZATION", "0.45")
@@ -139,6 +140,10 @@ class Settings:
             raise ValueError("TTS_BUSY_QUEUE_THRESHOLD must be >= 0")
         if self.tts_max_utterance_s < 1.0:
             raise ValueError("TTS_MAX_UTTERANCE_S must be >= 1.0")
+
+        self.orpheus_voice = str(self.orpheus_voice or "").strip().lower()
+        if not self.orpheus_voice:
+            self.orpheus_voice = "tara"
 
 
 settings = Settings()

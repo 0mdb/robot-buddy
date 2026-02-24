@@ -5,49 +5,53 @@ from __future__ import annotations
 import asyncio
 
 import pytest
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-from starlette.websockets import WebSocketDisconnect
 
 from app.admission import ConverseSessionRegistry
 from app.llm.conversation import ConversationHistory
-from app.routers.converse import router as converse_router
+from app.routers.converse import converse
 
 
-class _FakeLLM:
-    async def generate_conversation(self, history, user_text):
-        del history, user_text
-        return None
+class _FakeWebSocket:
+    def __init__(self, *, query_params: dict[str, str] | None = None) -> None:
+        self.query_params = query_params or {}
+        self.close_code: int | None = None
+        self.close_reason: str | None = None
+
+    async def close(self, *, code: int = 1000, reason: str | None = None) -> None:
+        self.close_code = code
+        self.close_reason = reason
 
 
-def _make_app() -> FastAPI:
-    app = FastAPI()
-    app.include_router(converse_router)
-    app.state.converse_registry = ConverseSessionRegistry()
-    app.state.llm = _FakeLLM()
-    return app
+class _CloseCapturingWebSocket:
+    def __init__(self) -> None:
+        self.closed: list[tuple[int, str | None]] = []
+
+    async def close(self, *, code: int = 1000, reason: str | None = None) -> None:
+        self.closed.append((code, reason))
 
 
-def test_converse_requires_robot_id():
-    app = _make_app()
-    with TestClient(app) as client:
-        with pytest.raises(WebSocketDisconnect) as exc:
-            with client.websocket_connect("/converse"):
-                pass
-    assert exc.value.code == 4400
+@pytest.mark.asyncio
+async def test_converse_requires_robot_id():
+    ws = _FakeWebSocket()
+    await converse(ws)  # type: ignore[arg-type]
+    assert ws.close_code == 4400
+    assert ws.close_reason == "missing_robot_id"
 
 
-def test_converse_same_robot_preempts_older_session():
-    app = _make_app()
-    with TestClient(app) as client:
-        with client.websocket_connect("/converse?robot_id=robot-1") as ws1:
-            assert ws1.receive_json()["type"] == "listening"
+@pytest.mark.asyncio
+async def test_registry_register_same_robot_preempts_older_session():
+    reg = ConverseSessionRegistry()
 
-            with client.websocket_connect("/converse?robot_id=robot-1") as ws2:
-                assert ws2.receive_json()["type"] == "listening"
-                with pytest.raises(WebSocketDisconnect) as exc:
-                    ws1.receive_json()
-                assert exc.value.code == 4001
+    ws1 = _CloseCapturingWebSocket()
+    assert await reg.register(robot_id="robot-1", websocket=ws1) is None
+
+    ws2 = _CloseCapturingWebSocket()
+    old_ws = await reg.register(robot_id="robot-1", websocket=ws2)
+    assert old_ws is ws1
+
+    await old_ws.close(code=4001, reason="replaced_by_newer_session")
+    assert ws1.closed == [(4001, "replaced_by_newer_session")]
+    assert reg.snapshot()["preempted"] == 1
 
 
 # ── History stash unit tests (ConverseSessionRegistry) ────────────────

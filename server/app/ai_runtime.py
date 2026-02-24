@@ -36,6 +36,7 @@ def get_tts() -> OrpheusTTS:
             model_name=settings.tts_model_name,
             backend=settings.tts_backend,
             voice=settings.tts_voice,
+            orpheus_voice=settings.orpheus_voice,
             rate_wpm=settings.tts_rate_wpm,
         )
     return _tts

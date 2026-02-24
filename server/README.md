@@ -132,7 +132,8 @@ All settings are overridable via environment variables:
 | `STT_COMPUTE_TYPE` | `int8` | faster-whisper compute type |
 | `TTS_BACKEND` | `auto` | `auto`, `orpheus`, `espeak`, or `off` |
 | `TTS_MODEL_NAME` | `canopylabs/orpheus-3b-0.1-ft` | Orpheus model repo when using Orpheus |
-| `TTS_VOICE` | `en-us` | Voice for `espeak` fallback backend |
+| `TTS_VOICE` | `en-us` | Voice for `espeak` fallback backend (ignored by Orpheus) |
+| `ORPHEUS_VOICE` | `tara` | Pinned Orpheus speaker voice (`tara`, `leo`, etc.) |
 | `TTS_RATE_WPM` | `165` | Speech rate for `espeak` fallback backend |
 | `ORPHEUS_GPU_MEMORY_UTILIZATION` | `0.45` | vLLM GPU memory target for Orpheus |
 | `ORPHEUS_MAX_MODEL_LEN` | `8192` | vLLM max sequence length for Orpheus |
@@ -180,6 +181,7 @@ Returns `503` when the selected LLM backend is not reachable.
 ## TTS Notes
 
 - Orpheus model repos are gated on Hugging Face. Account access + auth are required.
+- Pin voice selection with `ORPHEUS_VOICE` to avoid speaker drift across requests.
 - First TTS request can be significantly slower than warm-path requests because model load/compile happens lazily.
 - The Orpheus backend uses a persistent event loop thread to keep the vLLM engine alive between requests. On failure, the engine is explicitly shut down and GPU memory is freed before retrying.
 - If logs show `CUDA out of memory`, lower:
