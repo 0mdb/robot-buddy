@@ -7,6 +7,7 @@ import { wsLogsManager } from './lib/wsLogs'
 import { wsManager } from './lib/wsManager'
 import { wsProtocolManager } from './lib/wsProtocol'
 import { useUiStore } from './stores/uiStore'
+import styles from './styles/global.module.css'
 import CalibrationTab from './tabs/CalibrationTab'
 import DevicesTab from './tabs/DevicesTab'
 import DriveTab from './tabs/DriveTab'
@@ -16,7 +17,6 @@ import MonitorTab from './tabs/MonitorTab'
 import ParamsTab from './tabs/ParamsTab'
 import ProtocolTab from './tabs/ProtocolTab'
 import TelemetryTab from './tabs/TelemetryTab'
-import './styles/global.module.css'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -88,10 +88,10 @@ export default function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <div className="layout">
+      <div className={styles.layout}>
         <Header />
         <TabBar />
-        <div className="tabContent">
+        <div className={styles.tabContent}>
           <TabContent />
         </div>
       </div>
