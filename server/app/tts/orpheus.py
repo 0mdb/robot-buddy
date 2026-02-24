@@ -17,7 +17,6 @@ import logging
 import os
 import queue
 import shutil
-import struct
 import subprocess
 import threading
 import time
@@ -67,63 +66,94 @@ def apply_prosody_tag(emotion: str, text: str) -> str:
     return text
 
 
-def pcm_float32_to_int16(float_audio: bytes, *, src_rate: int = 24000) -> bytes:
+def pcm_float32_to_int16(
+    float_audio: bytes,
+    *,
+    src_rate: int = 24000,
+    max_duration_s: float = 0,
+) -> bytes:
     """Convert float32 audio to 16-bit signed PCM, with optional resampling.
 
-    Simple linear resampling from src_rate to 16 kHz. For production quality,
-    use a proper resampler (e.g. scipy.signal.resample_poly).
+    Uses numpy for vectorized linear interpolation from *src_rate* to
+    OUTPUT_SAMPLE_RATE (16 kHz).  When *max_duration_s* > 0 the input is
+    truncated before resampling.
     """
-    n_samples = len(float_audio) // 4
-    float_samples = list(struct.unpack(f"<{n_samples}f", float_audio))
+    import numpy as np
+
+    if len(float_audio) < 4:
+        return b""
+
+    samples = np.frombuffer(float_audio, dtype=np.float32).copy()
+
+    # Enforce max duration at source rate
+    if max_duration_s > 0:
+        max_samples = int(src_rate * max_duration_s)
+        if len(samples) > max_samples:
+            log.warning(
+                "Truncating float32 audio from %.1fs to %.1fs",
+                len(samples) / src_rate,
+                max_duration_s,
+            )
+            samples = samples[:max_samples]
 
     # Resample if needed
     if src_rate != OUTPUT_SAMPLE_RATE:
-        ratio = OUTPUT_SAMPLE_RATE / src_rate
-        out_len = int(n_samples * ratio)
-        resampled = []
-        for i in range(out_len):
-            src_idx = i / ratio
-            idx = int(src_idx)
-            if idx >= n_samples - 1:
-                resampled.append(float_samples[-1])
-            else:
-                frac = src_idx - idx
-                resampled.append(
-                    float_samples[idx] * (1 - frac) + float_samples[idx + 1] * frac
-                )
-        float_samples = resampled
+        n_in = len(samples)
+        n_out = int(n_in * OUTPUT_SAMPLE_RATE / src_rate)
+        if n_out == 0:
+            return b""
+        x_in = np.arange(n_in, dtype=np.float64)
+        x_out = np.linspace(0, n_in - 1, n_out, dtype=np.float64)
+        samples = np.interp(x_out, x_in, samples).astype(np.float32)
 
-    # Convert to 16-bit signed
-    int16_samples = []
-    for s in float_samples:
-        clamped = max(-1.0, min(1.0, s))
-        int16_samples.append(int(clamped * 32767))
-
-    return struct.pack(f"<{len(int16_samples)}h", *int16_samples)
+    # Clamp and convert to int16
+    np.clip(samples, -1.0, 1.0, out=samples)
+    return (samples * 32767).astype(np.int16).tobytes()
 
 
-def pcm_int16_resample_to_int16(pcm_audio: bytes, *, src_rate: int = 24000) -> bytes:
-    """Resample int16 PCM bytes from src_rate to OUTPUT_SAMPLE_RATE."""
-    if src_rate == OUTPUT_SAMPLE_RATE:
+def pcm_int16_resample_to_int16(
+    pcm_audio: bytes,
+    *,
+    src_rate: int = 24000,
+    max_duration_s: float = 0,
+) -> bytes:
+    """Resample int16 PCM bytes from *src_rate* to OUTPUT_SAMPLE_RATE.
+
+    Uses numpy for vectorized linear interpolation.  When *max_duration_s* > 0
+    the input is truncated before resampling.
+    """
+    if src_rate == OUTPUT_SAMPLE_RATE and max_duration_s <= 0:
         return pcm_audio
     if len(pcm_audio) < 2:
         return b""
 
-    n_samples = len(pcm_audio) // 2
-    samples = struct.unpack(f"<{n_samples}h", pcm_audio[: n_samples * 2])
-    ratio = OUTPUT_SAMPLE_RATE / src_rate
-    out_len = int(n_samples * ratio)
-    out: list[int] = []
-    for i in range(out_len):
-        src_idx = i / ratio
-        idx = int(src_idx)
-        if idx >= n_samples - 1:
-            out.append(samples[-1])
-        else:
-            frac = src_idx - idx
-            v = samples[idx] * (1.0 - frac) + samples[idx + 1] * frac
-            out.append(int(v))
-    return struct.pack(f"<{len(out)}h", *out)
+    import numpy as np
+
+    samples = np.frombuffer(pcm_audio, dtype=np.int16).astype(np.float64)
+
+    # Enforce max duration at source rate
+    if max_duration_s > 0:
+        max_samples = int(src_rate * max_duration_s)
+        if len(samples) > max_samples:
+            log.warning(
+                "Truncating int16 audio from %.1fs to %.1fs",
+                len(samples) / src_rate,
+                max_duration_s,
+            )
+            samples = samples[:max_samples]
+
+    if src_rate == OUTPUT_SAMPLE_RATE:
+        return np.clip(samples, -32768, 32767).astype(np.int16).tobytes()
+
+    n_in = len(samples)
+    n_out = int(n_in * OUTPUT_SAMPLE_RATE / src_rate)
+    if n_out == 0:
+        return b""
+
+    x_in = np.arange(n_in, dtype=np.float64)
+    x_out = np.linspace(0, n_in - 1, n_out, dtype=np.float64)
+    resampled = np.interp(x_out, x_in, samples)
+    return np.clip(resampled, -32768, 32767).astype(np.int16).tobytes()
 
 
 class OrpheusTTS:
@@ -491,7 +521,11 @@ class OrpheusTTS:
             self._reset_orpheus_backend()
 
     def _collect_chunks_with_timeout(self, gen: Iterator[bytes]) -> bytes:
-        """Drain an Orpheus generator safely with idle/total timeouts."""
+        """Drain an Orpheus generator safely with idle/total timeouts and max duration."""
+        # Byte-count cap at source rate (24 kHz, 16-bit mono = 48 kB/s)
+        max_utterance_s = settings.tts_max_utterance_s
+        max_bytes = int(max_utterance_s * 24000 * 2) if max_utterance_s > 0 else 0
+
         q: queue.Queue[tuple[str, bytes | Exception | None]] = queue.Queue()
 
         def _run() -> None:
@@ -507,6 +541,7 @@ class OrpheusTTS:
         th.start()
 
         out: list[bytes] = []
+        total_bytes = 0
         start = time.monotonic()
         last_item = start
 
@@ -516,6 +551,13 @@ class OrpheusTTS:
                 raise TimeoutError(
                     f"orpheus stream exceeded total timeout ({ORPHEUS_TOTAL_TIMEOUT_S}s)"
                 )
+
+            if max_bytes > 0 and total_bytes >= max_bytes:
+                log.warning(
+                    "Truncating orpheus stream at %.1fs max utterance duration",
+                    max_utterance_s,
+                )
+                break
 
             wait_s = min(
                 ORPHEUS_IDLE_TIMEOUT_S,
@@ -535,6 +577,7 @@ class OrpheusTTS:
                 assert isinstance(payload, (bytes, bytearray))
                 if payload:
                     out.append(bytes(payload))
+                    total_bytes += len(payload)
             elif kind == "error":
                 assert isinstance(payload, Exception)
                 raise payload
@@ -648,7 +691,11 @@ class OrpheusTTS:
                     and self._legacy_generate_speech is not None
                 ):
                     audio_float32 = self._legacy_generate_speech(tagged_text)
-                    return pcm_float32_to_int16(audio_float32, src_rate=24000)
+                    return pcm_float32_to_int16(
+                        audio_float32,
+                        src_rate=24000,
+                        max_duration_s=settings.tts_max_utterance_s,
+                    )
 
                 if self._backend == "orpheus_tts" and self._model is not None:
                     # orpheus_tts currently yields int16 PCM chunks at 24 kHz.
@@ -659,7 +706,11 @@ class OrpheusTTS:
                     audio_int16_24k = self._collect_chunks_with_timeout(gen)
                     if not audio_int16_24k:
                         return b""
-                    return pcm_int16_resample_to_int16(audio_int16_24k, src_rate=24000)
+                    return pcm_int16_resample_to_int16(
+                        audio_int16_24k,
+                        src_rate=24000,
+                        max_duration_s=settings.tts_max_utterance_s,
+                    )
 
                 if self._init_error is None:
                     self._init_error = "orpheus_backend_unavailable"

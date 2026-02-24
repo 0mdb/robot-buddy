@@ -95,6 +95,7 @@ class Settings:
         os.environ.get("ORPHEUS_MIN_FREE_VRAM_GB", "10.0")
     )
     tts_busy_queue_threshold: int = int(os.environ.get("TTS_BUSY_QUEUE_THRESHOLD", "0"))
+    tts_max_utterance_s: float = float(os.environ.get("TTS_MAX_UTTERANCE_S", "15.0"))
     log_transcripts: bool = _env_bool("LOG_TRANSCRIPTS", False)
     host: str = os.environ.get("SERVER_HOST", "0.0.0.0")
     port: int = int(os.environ.get("SERVER_PORT", "8100"))
@@ -136,6 +137,8 @@ class Settings:
                 )
         if self.tts_busy_queue_threshold < 0:
             raise ValueError("TTS_BUSY_QUEUE_THRESHOLD must be >= 0")
+        if self.tts_max_utterance_s < 1.0:
+            raise ValueError("TTS_MAX_UTTERANCE_S must be >= 1.0")
 
 
 settings = Settings()

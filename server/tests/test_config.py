@@ -20,6 +20,11 @@ def test_settings_reject_vllm_gpu_budget_over_cap() -> None:
         )
 
 
+def test_settings_reject_tts_max_utterance_below_1() -> None:
+    with pytest.raises(ValueError, match="TTS_MAX_UTTERANCE_S must be >= 1.0"):
+        Settings(tts_max_utterance_s=0.5)
+
+
 def test_settings_allow_same_budget_when_backend_is_ollama() -> None:
     settings = Settings(
         llm_backend="ollama",
