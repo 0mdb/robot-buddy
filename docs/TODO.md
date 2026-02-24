@@ -24,7 +24,7 @@ Living section — reorder as priorities shift. Current recommended sequence:
 1. ~~PE↔Face spec compliance fixes~~ ✅ + ~~Server emotion vocab alignment~~ ✅ (B1 complete)
 2. ~~Guardrail config + safety timers~~ ✅ (B1b: GuardrailConfig, RS-1/RS-2 session/daily limits, persistence, parent override)
 3. ~~Conversation response schema v2 + prompt v2 + guided decoding + model defaults~~ ✅ (B2 core: v2 schema, age 4-8 prompt, Qwen3-8B-AWQ, mood_reason forwarding)
-4. Conversation hardening (context-budget, audio overflow, privacy, L1 mood_reason validation, chat templates)
+4. ~~Conversation hardening (context-budget, audio overflow, privacy, L1 mood_reason validation)~~ ✅ + chat templates (quality improvement, deferred)
 5. Personality profile injection (`personality.llm.profile` → `/converse` prompt injection + anchor cadence)
 6. Memory system (local JSON, consent gate, dashboard viewer + forget)
 7. Prosody routing (TTS emotion from PE mood; optional VA→prosody later)
@@ -115,7 +115,7 @@ _(all items completed)_
 - [x] Harden `/converse` websocket: cap per-utterance `audio_buffer` bytes (~30s / 960KB), reject on overflow with `audio_buffer_overflow` error
 - [x] Privacy hardening: `LOG_TRANSCRIPTS=false` by default — conversation text not logged at INFO level; only emotion/intensity/length logged
 - [x] Extend `personality.event.ai_emotion` payload forwarding: include `session_id`, `turn_id`, `mood_reason`
-- [ ] Update PersonalityWorker L1 pipeline (PE spec S2 §13): `mood_reason` validation + modulation factor; rejected reasons substitute THINKING and emit guardrail-trigger event
+- [x] Update PersonalityWorker L1 pipeline (PE spec S2 §13): `mood_reason` validation + modulation factor; rejected reasons substitute THINKING and emit guardrail-trigger event
 - [ ] Add `personality.event.memory_extract` emission per turn (memory_tags from v2 schema)
 - [ ] Use model chat templates (Qwen) instead of ad-hoc `ROLE: ...` prompting to avoid behavior drift between backends (quality + token efficiency)
 

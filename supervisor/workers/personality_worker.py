@@ -79,6 +79,47 @@ SESSION_COOLDOWN_S: float = 120.0
 # ── Daily Timer Persistence ─────────────────────────────────────────
 _DAILY_PERSIST_INTERVAL_S: float = 60.0  # flush to disk every 60s
 
+# ── mood_reason Validation (spec §13.3) ────────────────────────────
+_NEGATIVE_EMOTIONS = frozenset({"sad", "scared", "angry"})
+
+# Phrases that indicate the LLM is directing negative emotion AT the child.
+_REJECTED_REASON_PHRASES = (
+    "angry at child",
+    "frustrated with child",
+    "annoyed by child",
+    "child won't",
+    "child refused",
+    "child is being",
+)
+
+
+def _validate_mood_reason(
+    mood_reason: str, emotion: str, conversation_active: bool
+) -> float:
+    """Validate mood_reason against personality constraints (§13.3).
+
+    Returns modulation factor:
+    - 0.95 if mood_reason is valid (light safety margin)
+    - 1.00 if mood_reason is empty/missing (cannot validate)
+    - 0.0 if rejected (caller should substitute THINKING impulse)
+    """
+    reason_lower = mood_reason.strip().lower()
+
+    # HC-4: never direct negative emotion at child.
+    if emotion in _NEGATIVE_EMOTIONS and reason_lower:
+        for phrase in _REJECTED_REASON_PHRASES:
+            if phrase in reason_lower:
+                return 0.0  # reject → substitute THINKING
+
+    # HC-10: no negative emotions outside conversation.
+    if emotion in _NEGATIVE_EMOTIONS and not conversation_active:
+        return 0.0  # reject
+
+    if not reason_lower:
+        return 1.00  # unvalidated — full modulation
+
+    return 0.95  # valid — light touch
+
 
 @dataclass(slots=True)
 class _DailyState:
@@ -546,9 +587,14 @@ class PersonalityWorker(BaseWorker):
         )
 
     def _handle_ai_emotion(self, payload: dict) -> None:
-        """L1: Map LLM emotion to VA impulse (spec §5.2).
+        """L1: Map LLM emotion to VA impulse (spec §5.2, §13).
 
-        Accepts optional session_id, turn_id, mood_reason from v2 schema.
+        Pipeline (§13.1):
+        1. Map emotion to VA target
+        2. Compute base magnitude from LLM intensity
+        3. Validate mood_reason (§13.3) → modulation factor
+        4. If rejected (factor=0.0), substitute THINKING impulse
+        5. Apply impulse
         """
         emotion = str(payload.get("emotion", "")).strip().lower()
         intensity = float(payload.get("intensity", 0.7))
@@ -563,13 +609,31 @@ class PersonalityWorker(BaseWorker):
         # Scale magnitude by the LLM-provided intensity (0.0–1.0)
         magnitude = base_mag * max(0.0, min(1.0, intensity))
 
-        self._pending_impulses.append(
-            Impulse(target_v, target_a, magnitude, "ai_emotion")
-        )
-        self._idle_timer_s = 0.0  # interaction resets idle
+        # §13.3: Validate mood_reason against personality constraints.
+        conversation_active = self._conversation_active
+        mod_factor = _validate_mood_reason(mood_reason, emotion, conversation_active)
 
-        if mood_reason:
-            log.debug("ai_emotion mood_reason: %s", mood_reason)
+        if mod_factor == 0.0:
+            # Rejected — substitute THINKING impulse (§13.3).
+            log.info(
+                "mood_reason rejected for %s: %r → substituting THINKING",
+                emotion,
+                mood_reason,
+            )
+            thinking = EMOTION_VA_TARGETS["thinking"]
+            self._pending_impulses.append(
+                Impulse(thinking[0], thinking[1], thinking[2] * 0.5, "ai_emotion")
+            )
+            self._emit_guardrail_triggered(
+                "mood_reason_rejected",
+                {"emotion": emotion, "mood_reason": mood_reason},
+            )
+        else:
+            self._pending_impulses.append(
+                Impulse(target_v, target_a, magnitude * mod_factor, "ai_emotion")
+            )
+
+        self._idle_timer_s = 0.0  # interaction resets idle
 
         # Event-triggered fast path: immediate processing
         self._fast_path()

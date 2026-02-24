@@ -28,6 +28,7 @@ from supervisor.workers.personality_worker import (
     IDLE_DROWSY_S,
     IDLE_SUPPRESS_AFTER_CONV_S,
     PersonalityWorker,
+    _validate_mood_reason,
 )
 
 # ── Helpers ──────────────────────────────────────────────────────────
@@ -1029,3 +1030,118 @@ class TestSetGuardrail:
         await w.on_message(_env(PERSONALITY_CMD_SET_GUARDRAIL, {"context_gate": False}))
         assert w._guardrails.context_gate is False
         assert w._guardrails.session_time_limit_s == original_session
+
+
+# ── mood_reason Validation (§13.3) ─────────────────────────────────────
+
+
+class TestValidateMoodReason:
+    """Tests for _validate_mood_reason() — PE spec §13.3."""
+
+    def test_valid_reason_in_conversation(self):
+        assert _validate_mood_reason("child told a joke", "happy", True) == 0.95
+
+    def test_empty_reason_returns_full_modulation(self):
+        assert _validate_mood_reason("", "happy", True) == 1.00
+
+    def test_negative_emotion_rejected_outside_conversation(self):
+        assert _validate_mood_reason("some reason", "sad", False) == 0.0
+        assert _validate_mood_reason("some reason", "angry", False) == 0.0
+        assert _validate_mood_reason("some reason", "scared", False) == 0.0
+
+    def test_negative_emotion_accepted_in_conversation(self):
+        assert _validate_mood_reason("empathizing with child", "sad", True) == 0.95
+
+    def test_angry_at_child_rejected(self):
+        assert (
+            _validate_mood_reason("angry at child for not listening", "angry", True)
+            == 0.0
+        )
+
+    def test_frustrated_with_child_rejected(self):
+        assert _validate_mood_reason("frustrated with child", "sad", True) == 0.0
+
+    def test_child_refused_rejected(self):
+        assert _validate_mood_reason("child refused to answer", "angry", True) == 0.0
+
+    def test_positive_emotion_allowed_outside_conversation(self):
+        """Positive emotions are fine even outside conversation."""
+        assert _validate_mood_reason("idle curiosity", "curious", False) == 0.95
+
+    def test_neutral_emotion_allowed_outside_conversation(self):
+        assert _validate_mood_reason("", "neutral", False) == 1.00
+
+    def test_case_insensitive_phrase_matching(self):
+        assert _validate_mood_reason("ANGRY AT CHILD", "angry", True) == 0.0
+
+
+class TestMoodReasonIntegration:
+    """Integration tests: mood_reason validation in PersonalityWorker."""
+
+    @pytest.mark.asyncio
+    async def test_rejected_mood_reason_substitutes_thinking(self):
+        w = _make_worker()
+        sends = _collect_sends(w)
+        # Start conversation first so conversation_active=True
+        await w.on_message(_env(PERSONALITY_EVENT_CONV_STARTED, {"session_id": "s1"}))
+
+        await w.on_message(
+            _env(
+                PERSONALITY_EVENT_AI_EMOTION,
+                {
+                    "emotion": "angry",
+                    "intensity": 0.8,
+                    "mood_reason": "angry at child for not paying attention",
+                },
+            )
+        )
+
+        # Should have emitted guardrail_triggered
+        guardrail_events = [
+            (t, p)
+            for t, p in sends
+            if t == PERSONALITY_EVENT_GUARDRAIL_TRIGGERED
+            and p.get("rule") == "mood_reason_rejected"
+        ]
+        assert len(guardrail_events) == 1
+
+    @pytest.mark.asyncio
+    async def test_valid_mood_reason_applies_light_modulation(self):
+        w = _make_worker()
+        _collect_sends(w)
+        await w.on_message(_env(PERSONALITY_EVENT_CONV_STARTED, {"session_id": "s1"}))
+
+        v_before = w._affect.valence
+        await w.on_message(
+            _env(
+                PERSONALITY_EVENT_AI_EMOTION,
+                {
+                    "emotion": "happy",
+                    "intensity": 0.8,
+                    "mood_reason": "child told a funny joke",
+                },
+            )
+        )
+        # Valence should have increased (happy is positive valence)
+        assert w._affect.valence > v_before
+
+    @pytest.mark.asyncio
+    async def test_negative_emotion_outside_conv_rejected(self):
+        w = _make_worker()
+        sends = _collect_sends(w)
+        # No conversation started — conv_ended_ago_s != inf
+
+        await w.on_message(
+            _env(
+                PERSONALITY_EVENT_AI_EMOTION,
+                {"emotion": "sad", "intensity": 0.5, "mood_reason": "feeling down"},
+            )
+        )
+
+        guardrail_events = [
+            (t, p)
+            for t, p in sends
+            if t == PERSONALITY_EVENT_GUARDRAIL_TRIGGERED
+            and p.get("rule") == "mood_reason_rejected"
+        ]
+        assert len(guardrail_events) == 1
