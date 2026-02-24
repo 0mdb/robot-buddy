@@ -3,6 +3,7 @@ import FaceMirrorCanvas, {
   type MirrorMode,
   type SandboxDispatch,
 } from '../components/FaceMirrorCanvas'
+import PipelineTimeline from '../components/PipelineTimeline'
 import { FACE_FLAGS, GESTURES, MOODS, SYSTEM_MODES } from '../constants'
 import type { AnimFps } from '../face_sim'
 import { ANIM_FPS_OPTIONS } from '../face_sim'
@@ -739,6 +740,14 @@ export default function FaceTab() {
               No TTS generation
             </label>
           </div>
+        </div>
+
+        {/* Pipeline Timeline */}
+        <div style={{ marginTop: 8 }}>
+          <span className={styles.mono} style={{ color: 'var(--text-dim)', fontSize: 11 }}>
+            Pipeline Timeline
+          </span>
+          <PipelineTimeline />
         </div>
 
         <div

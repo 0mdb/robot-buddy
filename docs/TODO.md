@@ -171,7 +171,7 @@ _10 items complete (Stage 4.0 spec/port/parity/buttons/gestures/docs) — see ar
     - [x] Add a conversation event stream for Studio (avoid bloating 20 Hz telemetry): per-turn transcript (opt-in), emotion/intensity/mood_reason, gestures, memory_tags, timings, errors
   - [x] **Output modes (two toggles)** — mute speaker playback + no-TTS generation both implemented
   - [ ] **Voice + latency diagnostics**
-    - [ ] Pipeline timeline per turn: trigger → VAD end → transcription → emotion → first audio chunk → done (+ error states)
+    - [x] Pipeline timeline per turn: trigger → VAD end → transcription → emotion → first audio chunk → done (+ error states) — `PipelineTimeline.tsx` component + `/ws/conversation` endpoint + `ConversationCapture` + first_audio/assistant_text events
     - [ ] TTS benchmark runner: fixed corpus via `/tts`, time-to-first-byte, total synth time, chunk cadence, max utterance duration safeguards
     - [ ] Wake word workbench: live score/threshold view + event log + optional ring-buffer capture/export + soak-test summary
   - [ ] **Personality tuning + B6 completion harness**

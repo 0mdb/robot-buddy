@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useEffect } from 'react'
 import { Header } from './components/Header'
 import { TabBar } from './components/TabBar'
+import { wsConversationManager } from './lib/wsConversation'
 import { wsLogsManager } from './lib/wsLogs'
 import { wsManager } from './lib/wsManager'
 import { wsProtocolManager } from './lib/wsProtocol'
@@ -63,15 +64,25 @@ export default function App() {
       wsManager.dispose()
       wsLogsManager.dispose()
       wsProtocolManager.dispose()
+      wsConversationManager.dispose()
     }
   }, [])
 
-  // Connect protocol WS only when the Protocol tab is active
+  // Connect protocol WS when Protocol or Face tab is active (face mirror needs TX packets)
   useEffect(() => {
-    if (activeTab === 'protocol') {
+    if (activeTab === 'protocol' || activeTab === 'face') {
       wsProtocolManager.connect()
     } else {
       wsProtocolManager.dispose()
+    }
+  }, [activeTab])
+
+  // Connect conversation WS when Face tab is active (pipeline timeline + studio)
+  useEffect(() => {
+    if (activeTab === 'face') {
+      wsConversationManager.connect()
+    } else {
+      wsConversationManager.dispose()
     }
   }, [activeTab])
 

@@ -1,0 +1,9 @@
+@keyframes pipeline-pulse {
+  0%,
+  100% {
+    opacity: 0.85;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}

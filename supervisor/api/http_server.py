@@ -167,6 +167,23 @@ def create_app(
             finally:
                 capture.remove_client(q)
 
+    # -- WebSocket conversation capture ----------------------------------------
+
+    if conv_capture is not None:
+
+        @app.websocket("/ws/conversation")
+        async def websocket_conversation(ws: WebSocket):
+            await ws.accept()
+            q = conv_capture.add_client()
+            try:
+                while True:
+                    entry = await q.get()
+                    await ws.send_text(entry)
+            except WebSocketDisconnect:
+                pass
+            finally:
+                conv_capture.remove_client(q)
+
     # -- HTTP endpoints ------------------------------------------------------
 
     @app.get("/status")
@@ -537,3 +554,62 @@ async def _handle_ws_cmd(msg: dict, tick: TickLoop) -> None:
                 bool(msg.get("talking", False)),
                 energy=int(msg.get("energy", 0)),
             )
+    # -- Conversation commands -----------------------------------------------
+    elif msg_type == "conversation.start":
+        trigger = str(msg.get("trigger", "dashboard"))
+        tick._start_conversation(trigger)
+    elif msg_type == "conversation.cancel":
+        from supervisor.devices.protocol import FaceConvState
+
+        if tick.world.session_id:
+            tick._conv.set_state(FaceConvState.DONE)
+            tick._end_conversation()
+    elif msg_type == "conversation.end_utterance":
+        if tick.world.session_id:
+            from supervisor.devices.protocol import FaceConvState
+
+            tick._conv.set_state(FaceConvState.THINKING)
+            asyncio.ensure_future(
+                tick._workers.send_to(
+                    "ai",
+                    "ai.cmd.end_utterance",
+                    {"session_id": tick.world.session_id},
+                )
+            )
+            asyncio.ensure_future(
+                tick._workers.send_to("ear", "ear.cmd.stop_listening")
+            )
+            tick.robot.face_listening = False
+    elif msg_type == "conversation.send_text":
+        text = str(msg.get("text", "")).strip()
+        if text and tick.world.session_id:
+            asyncio.ensure_future(
+                tick._workers.send_to(
+                    "ai",
+                    "ai.cmd.send_text",
+                    {"text": text, "session_id": tick.world.session_id},
+                )
+            )
+    elif msg_type == "conversation.config":
+        if tick.world.session_id:
+            asyncio.ensure_future(
+                tick._workers.send_to(
+                    "ai",
+                    "ai.cmd.config",
+                    {
+                        "stream_audio": msg.get("stream_audio", True),
+                        "stream_text": msg.get("stream_text", True),
+                    },
+                )
+            )
+    elif msg_type == "tts.set_mute":
+        asyncio.ensure_future(
+            tick._workers.send_to(
+                "tts",
+                "tts.cmd.set_mute",
+                {
+                    "muted": bool(msg.get("muted", False)),
+                    "mute_chimes": bool(msg.get("mute_chimes", False)),
+                },
+            )
+        )
