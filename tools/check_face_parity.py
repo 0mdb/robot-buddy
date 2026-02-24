@@ -439,6 +439,142 @@ def main() -> int:
                     sim_targets[i],
                 )
 
+    # ── Semantic: mood enum completeness ─────────────────────────
+    print("-- Semantic: mood enum completeness --")
+    expected_moods = [
+        "NEUTRAL",
+        "HAPPY",
+        "EXCITED",
+        "CURIOUS",
+        "SAD",
+        "SCARED",
+        "ANGRY",
+        "SURPRISED",
+        "SLEEPY",
+        "LOVE",
+        "SILLY",
+        "THINKING",
+        "CONFUSED",
+    ]
+    # Check firmware enum has all 13 moods (0-12)
+    for mood_name in expected_moods:
+        if re.search(rf"\b{mood_name}\s*=\s*\d+", state_h):
+            passed += 1
+        else:
+            print(f"  FAIL  Mood::{mood_name} missing from face_state.h enum")
+            failed += 1
+
+    # ── Semantic: CONFUSED coverage in all switches ───────────────
+    print("-- Semantic: CONFUSED mood coverage --")
+    # Check CONFUSED appears in color switch
+    confused_blocks = [
+        m.start() for m in re.finditer(r"case\s+Mood::CONFUSED:", state_cpp)
+    ]
+    if confused_blocks:
+        # Verify color function coverage
+        color_func_pos = state_cpp.find("face_get_emotion_color")
+        if color_func_pos >= 0:
+            color_section = state_cpp[color_func_pos:]
+            if re.search(r"case\s+Mood::CONFUSED:", color_section):
+                passed += 1
+            else:
+                print("  FAIL  CONFUSED missing from face_get_emotion_color switch")
+                failed += 1
+        else:
+            print("  SKIP  face_get_emotion_color not found")
+
+        # Check CONFUSED in eye scale switch (ws/hs pattern)
+        has_eye_scale = any(
+            "ws" in state_cpp[pos : pos + 200] for pos in confused_blocks
+        )
+        if has_eye_scale:
+            passed += 1
+        else:
+            print("  FAIL  CONFUSED missing from eye scale switch")
+            failed += 1
+
+        # Check CONFUSED in expression targets switch (t_curve/t_lid pattern)
+        has_targets = any(
+            "t_curve" in state_cpp[pos : pos + 200]
+            or "t_lid_slope" in state_cpp[pos : pos + 200]
+            for pos in confused_blocks
+        )
+        if has_targets:
+            passed += 1
+        else:
+            print("  FAIL  CONFUSED missing from expression targets switch")
+            failed += 1
+    else:
+        print("  FAIL  Mood::CONFUSED not found anywhere in face_state.cpp")
+        failed += 3  # color + eye_scale + targets all missing
+
+    # ── Semantic: system-mode border suppression ──────────────────
+    print("-- Semantic: system-mode border/button suppression --")
+    face_ui_path = MCU_DIR / "face_ui.cpp"
+    if face_ui_path.exists():
+        face_ui_text = face_ui_path.read_text()
+        # Check that conv_border_render is called conditionally on SystemMode::NONE
+        border_call_pos = face_ui_text.find("conv_border_render(")
+        if border_call_pos >= 0:
+            context_before = face_ui_text[
+                max(0, border_call_pos - 300) : border_call_pos
+            ]
+            has_guard = (
+                "system.mode == SystemMode::NONE" in context_before
+                or "system.mode != SystemMode::NONE" in context_before
+            )
+            if has_guard:
+                passed += 1
+            else:
+                print(
+                    "  FAIL  conv_border_render() not guarded by SystemMode::NONE check"
+                )
+                print(
+                    "        -> border renders during system overlays (spec 4.4 says suppress)"
+                )
+                failed += 1
+
+            # Same check for button rendering
+            btn_call_pos = face_ui_text.find("conv_border_render_buttons(")
+            if btn_call_pos >= 0:
+                context_before_btn = face_ui_text[
+                    max(0, btn_call_pos - 300) : btn_call_pos
+                ]
+                has_btn_guard = (
+                    "system.mode == SystemMode::NONE" in context_before_btn
+                    or "system.mode != SystemMode::NONE" in context_before_btn
+                )
+                if has_btn_guard:
+                    passed += 1
+                else:
+                    print(
+                        "  FAIL  conv_border_render_buttons() not guarded by SystemMode check"
+                    )
+                    failed += 1
+        else:
+            print("  SKIP  conv_border_render() not found in face_ui.cpp")
+    else:
+        print("  SKIP  face_ui.cpp not found")
+
+    # ── Semantic: corner button icon enum parity ──────────────────
+    print("-- Semantic: corner button icon enum --")
+    from tools.face_sim_v3.state.constants import ButtonIcon
+
+    border_h_path = MCU_DIR / "conv_border.h"
+    if border_h_path.exists():
+        border_h_text = border_h_path.read_text()
+        for icon in ButtonIcon:
+            pattern = rf"\b{icon.name}\s*=\s*{icon.value}\b"
+            if re.search(pattern, border_h_text):
+                passed += 1
+            else:
+                print(
+                    f"  FAIL  BtnIcon::{icon.name} = {icon.value} missing from conv_border.h"
+                )
+                failed += 1
+    else:
+        print("  SKIP  conv_border.h not found")
+
     # ── Summary ──────────────────────────────────────────────────
     total = passed + failed
     print(f"\n{'=' * 50}")

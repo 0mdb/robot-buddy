@@ -57,7 +57,7 @@ _(all items completed)_
 - [ ] Stage 4.0: Disable corner-button hit-testing + button telemetry during system overlays (buttons hidden)
 - [x] Stage 4.0: Fix firmware to accept Mood.CONFUSED (mood_id 12) in `SET_STATE`
 - [ ] Stage 4.0: Gesture gap analysis: Sim V3 gestures 13–19 exist; defer + gate in sim, keep firmware/protocol at 13 for now
-- [ ] Stage 4.0: Expand `tools/check_face_parity.py` to catch semantic mismatches (not just constants):
+- [x] Stage 4.0: Expand `tools/check_face_parity.py` to catch semantic mismatches (not just constants):
   - CONFUSED mood acceptance, system-mode suppression of border/buttons, corner icon mapping defaults
 - [ ] Stage 4.0: Supervisor: send LOW_BATTERY param (0–255) derived from `battery_mv` (battery fill/progress)
 - [ ] Stage 4.0: Doc parity cleanup: reconcile `esp32-face/README.md` with current renderer + corner button semantics
