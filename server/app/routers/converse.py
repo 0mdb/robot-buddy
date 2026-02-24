@@ -73,9 +73,21 @@ async def converse(ws: WebSocket):
         except Exception:
             pass
 
-    log.info("Conversation WebSocket connected (robot_id=%s)", robot_id)
+    # Restore stashed history from a previous connection, or start fresh.
+    stashed = registry.take_stashed_history(robot_id)
+    if stashed is not None:
+        history = stashed
+        log.info(
+            "Conversation WebSocket connected (robot_id=%s, restored %d turns)",
+            robot_id,
+            history.turn_count,
+        )
+    else:
+        history = ConversationHistory(max_turns=20)
+        log.info(
+            "Conversation WebSocket connected (robot_id=%s, new session)", robot_id
+        )
 
-    history = ConversationHistory(max_turns=20)
     audio_buffer = bytearray()
     llm = ws.app.state.llm
 
@@ -163,7 +175,7 @@ async def converse(ws: WebSocket):
         except Exception:
             pass
     finally:
-        await registry.unregister(robot_id=robot_id, websocket=ws)
+        await registry.unregister(robot_id=robot_id, websocket=ws, history=history)
 
 
 def _to_int(raw: object) -> int | None:

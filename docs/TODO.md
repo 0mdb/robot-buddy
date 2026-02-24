@@ -124,7 +124,7 @@ _10 items complete (Stage 4.0 spec/port/parity/buttons/gestures/docs) — see ar
 
 ### Conversation & Voice
 
-- [ ] `[opus]` LLM conversation history/memory — server-side session context
+- [x] `[opus]` LLM conversation history/memory — server-side session context (stash/restore with 30 min TTL)
 - [ ] `[sonnet]` TTS perf hardening: replace Python-loop resampling in `server/app/tts/orpheus.py` with an efficient resampler; add max utterance duration safeguards
 - [ ] `[sonnet]` Wake word model: increase recall from 42%→80%+ (n_samples 15k→50k+, augmentation rounds 3→5, speech-heavy negative data, layer_size 64)
 - [ ] `[sonnet]` Wake word: record 20–50 real "hey buddy" utterances from family
