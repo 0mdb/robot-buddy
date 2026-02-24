@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import FaceMirrorCanvas from '../components/FaceMirrorCanvas'
+import FaceMirrorCanvas, {
+  type MirrorMode,
+  type SandboxDispatch,
+} from '../components/FaceMirrorCanvas'
 import { FACE_FLAGS, GESTURES, MOODS, SYSTEM_MODES } from '../constants'
+import type { AnimFps } from '../face_sim'
+import { ANIM_FPS_OPTIONS } from '../face_sim'
 import { useSend } from '../hooks/useSend'
 import { useTelemetry } from '../hooks/useTelemetry'
 import { debounce } from '../lib/debounce'
@@ -64,6 +69,31 @@ function compactConvEvent(e: ConversationEvent): string {
   return compactFields(rest as Record<string, unknown>)
 }
 
+/** Convert FlagState to bitmask. */
+function flagsToBitmask(f: FlagState): number {
+  let mask = 0
+  if (f.idle_wander) mask |= 1 << 0
+  if (f.autoblink) mask |= 1 << 1
+  if (f.solid_eye) mask |= 1 << 2
+  if (f.show_mouth) mask |= 1 << 3
+  if (f.edge_glow) mask |= 1 << 4
+  if (f.sparkle) mask |= 1 << 5
+  if (f.afterglow) mask |= 1 << 6
+  return mask
+}
+
+// Gesture name → ID (indexes match GestureId enum in constants.ts)
+const GESTURE_NAME_TO_ID: Record<string, number> = {}
+for (let i = 0; i < GESTURES.length; i++) {
+  GESTURE_NAME_TO_ID[GESTURES[i]] = i
+}
+
+// System mode name → ID
+const SYSTEM_MODE_TO_ID: Record<string, number> = {}
+for (let i = 0; i < SYSTEM_MODES.length; i++) {
+  SYSTEM_MODE_TO_ID[SYSTEM_MODES[i]] = i
+}
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -86,12 +116,39 @@ interface FlagState {
   afterglow: boolean
 }
 
+// Segmented button style helper
+const segBtnBase: React.CSSProperties = {
+  padding: '3px 10px',
+  fontSize: 11,
+  border: '1px solid #333',
+  background: '#1a1a2e',
+  color: '#888',
+  cursor: 'pointer',
+}
+const segBtnActive: React.CSSProperties = {
+  ...segBtnBase,
+  border: '1px solid var(--accent)',
+  background: 'rgba(100,180,255,0.12)',
+  color: '#ccc',
+  fontWeight: 600,
+}
+
 // ---------------------------------------------------------------------------
 // Main Tab
 // ---------------------------------------------------------------------------
 
 export default function FaceTab() {
   const send = useSend()
+
+  // ── Mirror controls (Phase 6) ───────────────────────────────
+  const [mirrorMode, setMirrorMode] = useState<MirrorMode>('live')
+  const [mirrorFps, setMirrorFps] = useState<AnimFps>(30)
+  const [mirrorDet, setMirrorDet] = useState(false)
+  const sandboxRef = useRef<SandboxDispatch | null>(null)
+
+  const handleSandboxDispatch = useCallback((d: SandboxDispatch | null) => {
+    sandboxRef.current = d
+  }, [])
 
   // -- Telemetry --
   const faceConnected = useTelemetry((s) => s.snapshot.face_connected)
@@ -276,7 +333,19 @@ export default function FaceTab() {
     (patch: Partial<FaceState>) => {
       setFace((prev) => {
         const next = { ...prev, ...patch }
+        // Always send to supervisor
         debouncedFaceState(next)
+        // Also dispatch to sandbox if active
+        if (sandboxRef.current) {
+          const moodIdx = MOODS.indexOf(next.mood as (typeof MOODS)[number])
+          sandboxRef.current.setMood(
+            moodIdx >= 0 ? moodIdx : 0,
+            next.intensity,
+            next.brightness,
+            next.gazeX,
+            next.gazeY,
+          )
+        }
         return next
       })
     },
@@ -296,6 +365,10 @@ export default function FaceTab() {
         sparkle: f.sparkle,
         afterglow: f.afterglow,
       })
+      // Also dispatch to sandbox
+      if (sandboxRef.current) {
+        sandboxRef.current.setFlags(flagsToBitmask(f))
+      }
     },
     [send],
   )
@@ -314,6 +387,8 @@ export default function FaceTab() {
     if (typeof tickMonoMs !== 'number') return null
     return Math.max(0, tickMonoMs - last.ts_mono_ms)
   }, [faceTxRecent, tickMonoMs])
+
+  const isSandbox = mirrorMode === 'sandbox'
 
   return (
     <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -368,9 +443,103 @@ export default function FaceTab() {
         </div>
       </div>
 
+      {/* Mirror controls (Phase 6) */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+          flexWrap: 'wrap',
+        }}
+      >
+        {/* Mode toggle: Live | Sandbox */}
+        <div style={{ display: 'flex' }}>
+          <button
+            type="button"
+            onClick={() => setMirrorMode('live')}
+            style={{
+              ...(mirrorMode === 'live' ? segBtnActive : segBtnBase),
+              borderRadius: '4px 0 0 4px',
+            }}
+          >
+            Live
+          </button>
+          <button
+            type="button"
+            onClick={() => setMirrorMode('sandbox')}
+            style={{
+              ...(mirrorMode === 'sandbox' ? segBtnActive : segBtnBase),
+              borderRadius: '0 4px 4px 0',
+              borderLeft: 'none',
+            }}
+          >
+            Sandbox
+          </button>
+        </div>
+
+        {/* FPS toggle */}
+        <div style={{ display: 'flex' }}>
+          {ANIM_FPS_OPTIONS.map((fpsOpt, i) => (
+            <button
+              type="button"
+              key={fpsOpt}
+              onClick={() => setMirrorFps(fpsOpt)}
+              style={{
+                ...(mirrorFps === fpsOpt ? segBtnActive : segBtnBase),
+                borderRadius:
+                  i === 0 ? '4px 0 0 4px' : i === ANIM_FPS_OPTIONS.length - 1 ? '0 4px 4px 0' : '0',
+                borderLeft: i > 0 ? 'none' : undefined,
+              }}
+            >
+              {fpsOpt}
+            </button>
+          ))}
+        </div>
+
+        {/* Deterministic checkbox */}
+        <label
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 5,
+            fontSize: 11,
+            color: mirrorDet ? '#9c27b0' : '#888',
+            cursor: 'pointer',
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={mirrorDet}
+            onChange={(e) => setMirrorDet(e.target.checked)}
+          />
+          Deterministic
+        </label>
+
+        {/* Reset button (sandbox only) */}
+        {isSandbox && sandboxRef.current && (
+          <button
+            type="button"
+            onClick={() => sandboxRef.current?.reset()}
+            style={{
+              ...segBtnBase,
+              borderRadius: 4,
+              color: '#ff5252',
+              borderColor: '#ff5252',
+            }}
+          >
+            Reset
+          </button>
+        )}
+      </div>
+
       {/* Face Mirror Canvas */}
       <div className={styles.card}>
-        <FaceMirrorCanvas />
+        <FaceMirrorCanvas
+          mode={mirrorMode}
+          fps={mirrorFps}
+          deterministic={mirrorDet}
+          onSandboxDispatch={handleSandboxDispatch}
+        />
       </div>
 
       {/* Live Face TX feed (protocol) */}
@@ -378,7 +547,7 @@ export default function FaceTab() {
         <h3>Live Face TX (Protocol)</h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
           <span className={styles.mono} style={{ color: 'var(--text-dim)', fontSize: 11 }}>
-            Drives the upcoming “Face Mirror” by replaying face TX commands (SET_STATE / FLAGS /
+            Drives the upcoming "Face Mirror" by replaying face TX commands (SET_STATE / FLAGS /
             CONV_STATE / SYSTEM / TALKING / GESTURE).
           </span>
           <div
@@ -748,7 +917,13 @@ export default function FaceTab() {
             <button
               type="button"
               key={g}
-              onClick={() => send({ type: 'face_gesture', name: g, duration_ms: 500 })}
+              onClick={() => {
+                send({ type: 'face_gesture', name: g, duration_ms: 500 })
+                const gid = GESTURE_NAME_TO_ID[g]
+                if (gid !== undefined && sandboxRef.current) {
+                  sandboxRef.current.triggerGesture(gid, 500)
+                }
+              }}
               style={{ padding: '8px 0', fontSize: 13, fontWeight: 500 }}
             >
               {g}
@@ -758,7 +933,10 @@ export default function FaceTab() {
       </div>
 
       {/* System Mode section */}
-      <div className={styles.card}>
+      <div
+        className={styles.card}
+        style={isSandbox ? { opacity: 0.5, pointerEvents: 'none' } : undefined}
+      >
         <h3>System Mode</h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
           <label>
@@ -809,6 +987,9 @@ export default function FaceTab() {
                 const t = e.target.checked
                 setTalking(t)
                 debouncedTalking(t, talkEnergy)
+                if (sandboxRef.current) {
+                  sandboxRef.current.setTalking(t, talkEnergy)
+                }
               }}
             />
             Talking
@@ -825,6 +1006,9 @@ export default function FaceTab() {
                 const val = Number(e.target.value)
                 setTalkEnergy(val)
                 debouncedTalking(talking, val)
+                if (sandboxRef.current) {
+                  sandboxRef.current.setTalking(talking, val)
+                }
               }}
             />
           </label>
@@ -857,7 +1041,10 @@ export default function FaceTab() {
       </div>
 
       {/* Manual Lock */}
-      <div className={styles.card}>
+      <div
+        className={styles.card}
+        style={isSandbox ? { opacity: 0.5, pointerEvents: 'none' } : undefined}
+      >
         <h3>Manual Lock</h3>
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
           <input

@@ -105,7 +105,7 @@ export function applyProtocolPacket(fs: FaceState, pkt: ProtocolPacket, bs?: Bor
     const gestureId = (f.gesture_id as number | undefined) ?? (f.gesture as number | undefined)
     const durationMs = (f.duration_ms as number | undefined) ?? 0
     if (gestureId !== undefined) {
-      faceTriggerGesture(fs, gestureId, durationMs)
+      faceTriggerGesture(fs, gestureId, durationMs, performance.now() / 1000.0)
     }
     return true
   }

@@ -158,8 +158,8 @@ _10 items complete (Stage 4.0 spec/port/parity/buttons/gestures/docs) — see ar
     - [x] Dashboard: allow protocol WS connection while Studio is open (not only on Protocol tab)
     - [x] Phase 4: Gestures & effects — 20 gesture visual overrides (heart eyes SDF, X-eyes cross, rage shake, sleepy droop, peek-a-boo, shy, dizzy, celebrate, etc.), fire particles, afterglow buffer, holiday effects (birthday/halloween/christmas/new year), snow, confetti, rosy cheeks, system mode animations (boot/shutdown/error/battery/updating)
     - [x] Phase 5: Border renderer — conv-state-driven border (8 states: IDLE/ATTENTION/LISTENING/PTT/THINKING/SPEAKING/ERROR/DONE), border SDF frame + inner glow + attention sweep + thinking orbit dots, corner buttons with 6 icon types, energy sync from talking
-    - [ ] Phase 6: Mirror modes (Sandbox / Replay) + deterministic toggle (disable idle wander + autoblink randomness) + FPS selector (30/60)
-    - [ ] Phase 7: Parity harness — golden-state suite (mood sweep, conv states, system overlays, talking energy sweep) Python sim vs TS pixel-diff + `just check-face-mirror-parity` recipe
+    - [x] Phase 6: Mirror modes (Live/Sandbox) + deterministic PRNG toggle + FPS selector (30/60) — sandbox dispatch API, simTime threading, mulberry32 PRNG, breathing dt fix
+    - [ ] Phase 7 (deferred): Parity harness — TS face sim may replace Python sim as firmware tuning reference; pin TS sim first, then golden-state pixel-diff suite
   - [ ] **Conversation harness (multi-input; addresses Conversation & Voice backlog)**
     - [x] Inputs in one panel: physical PTT, dashboard PTT, wake word, text chat (bypass STT), “simulate wake word” button
     - [x] Fix PTT semantics: PTT OFF = `end_utterance` (no immediate teardown; teardown after response)

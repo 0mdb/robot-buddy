@@ -11,6 +11,8 @@
 export const SCREEN_W = 320
 export const SCREEN_H = 240
 export const ANIM_FPS = 30
+export const ANIM_FPS_OPTIONS = [30, 60] as const
+export type AnimFps = (typeof ANIM_FPS_OPTIONS)[number]
 export const BG_COLOR: RGB = [0, 0, 0]
 
 // ═══════════════════════════════════════════════════════════════════
