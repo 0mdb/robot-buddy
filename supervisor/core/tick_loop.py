@@ -174,6 +174,7 @@ class TickLoop:
         # Face flags sent on reconnect
         self._face_flags_sent = False
         self._last_face_system_mode: int | None = None
+        self._last_face_system_param: int = 0
 
         # Ticks remaining to hold talking animation after TTS_EVENT_FINISHED
         self._talking_grace_ticks: int = 0
@@ -598,6 +599,7 @@ class TickLoop:
 
         # Face system mode overlay — send only on change, skip when manual lock
         if not self.robot.face_manual_lock:
+            desired_param = 0
             if self.robot.mode == Mode.BOOT:
                 desired_sys = int(FaceSystemMode.BOOTING)
             elif self.robot.mode == Mode.ERROR:
@@ -607,11 +609,18 @@ class TickLoop:
                 and self.robot.battery_mv < self._low_battery_mv
             ):
                 desired_sys = int(FaceSystemMode.LOW_BATTERY)
+                # Derive 0-255 battery fill level (2S LiPo: 6000mV empty, 8400mV full)
+                fill = (self.robot.battery_mv - 6000) / (8400 - 6000)
+                desired_param = max(0, min(255, int(fill * 255)))
             else:
                 desired_sys = int(FaceSystemMode.NONE)
-            if desired_sys != self._last_face_system_mode:
-                self._face.send_system_mode(desired_sys, 0)
+            if (
+                desired_sys != self._last_face_system_mode
+                or desired_param != self._last_face_system_param
+            ):
+                self._face.send_system_mode(desired_sys, desired_param)
                 self._last_face_system_mode = desired_sys
+                self._last_face_system_param = desired_param
 
         # Talking layer — driven by TTS energy with post-drain grace period.
         # Grace holds the animation alive for _POST_TALKING_GRACE_TICKS after
