@@ -30,33 +30,36 @@ class TTSRequest(BaseModel):
 async def generate_speech(req: TTSRequest) -> StreamingResponse:
     """Generate speech from text immediately (bypassing LLM).
 
-    Returns a stream of raw PCM audio (16kHz, 16-bit mono) or WAV container
-    depending on the engine implementation. Orpheus streams raw PCM chunks.
+    Streams raw PCM audio (16kHz, 16-bit mono) as chunks are generated.
+    For the orpheus_tts backend, first bytes arrive within ~200–500 ms
+    (true streaming); other backends synthesize-then-chunk.
     """
     if not req.text.strip():
         raise HTTPException(status_code=400, detail="Text cannot be empty")
 
     tts = get_tts()
+
+    # Fail fast if TTS is already known to be unavailable (e.g. disabled via
+    # TTS_BACKEND=off, or performance_mode not enabled).  This avoids
+    # committing to a 200 response that would immediately send zero bytes.
+    snap = tts.debug_snapshot()
+    if snap["loaded"] and snap["init_error"]:
+        raise HTTPException(status_code=503, detail=snap["init_error"])
+
+    # stream() does the busy check synchronously before returning the iterator,
+    # so TTSBusyError is raised here — before the StreamingResponse is created
+    # — allowing us to return a proper 503.
     try:
-        audio = await tts.synthesize(req.text, req.emotion)
+        audio_iter = tts.stream(req.text, req.emotion)
     except TTSBusyError:
         raise HTTPException(status_code=503, detail="tts_busy_no_fallback") from None
-    except Exception as e:
-        log.error("TTS generation failed: %s", e)
-        raise HTTPException(status_code=503, detail="tts_unavailable") from e
-    if not audio:
-        init_error = str(tts.debug_snapshot().get("init_error") or "tts_unavailable")
-        raise HTTPException(status_code=503, detail=init_error)
 
-    async def audio_generator() -> AsyncGenerator[bytes, None]:
-        chunk_size = 320
-        for off in range(0, len(audio), chunk_size):
-            chunk = audio[off : off + chunk_size]
-            if chunk:
-                yield chunk
+    async def audio_stream() -> AsyncGenerator[bytes, None]:
+        async for chunk in audio_iter:
+            yield chunk
 
     return StreamingResponse(
-        audio_generator(),
+        audio_stream(),
         media_type="application/octet-stream",
         headers={
             "X-Audio-Sample-Rate": "16000",

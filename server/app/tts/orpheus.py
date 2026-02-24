@@ -742,21 +742,140 @@ class OrpheusTTS:
 
         return b""
 
-    async def stream(self, text: str, emotion: str = "neutral") -> AsyncIterator[bytes]:
-        """Stream PCM audio chunks as they're generated.
+    @staticmethod
+    async def _empty_stream() -> AsyncIterator[bytes]:
+        """Async generator that immediately terminates (empty-text guard)."""
+        if False:  # noqa: SIM210
+            yield b""
 
-        Yields 10ms chunks of 16-bit 16 kHz mono PCM.
-        Falls back to synthesize-then-chunk if streaming isn't supported.
+    def stream(self, text: str, emotion: str = "neutral") -> AsyncIterator[bytes]:
+        """Return an async iterator of PCM audio chunks.
+
+        For the orpheus_tts backend, first bytes arrive within ~200–500 ms
+        (true token-level streaming) rather than after full synthesis (~2–7 s).
+        Other backends (espeak, orpheus_speech) fall back to
+        synthesize-then-chunk.
+
+        The busy check runs synchronously here so callers can catch
+        TTSBusyError *before* committing to a streaming HTTP response.
+
+        Yields 16-bit 16 kHz mono PCM in CHUNK_SAMPLES (10 ms) increments.
         """
-        # For now, synthesize full audio then yield in chunks.
-        # True streaming requires deeper Orpheus integration.
-        audio = await self.synthesize(text, emotion)
+        if not isinstance(text, str) or not text.strip():
+            return self._empty_stream()
 
+        should_shed_to_espeak = False
+        with self._active_lock:
+            busy = self._active_requests > settings.tts_busy_queue_threshold
+            if busy and self.prefers_orpheus() and self._orpheus_allowed:
+                if self._espeak_available():
+                    log.info(
+                        "TTS busy (active=%d threshold=%d); shedding stream to espeak",
+                        self._active_requests,
+                        settings.tts_busy_queue_threshold,
+                    )
+                    should_shed_to_espeak = True
+                else:
+                    raise TTSBusyError("tts_busy_no_fallback")
+            if not should_shed_to_espeak:
+                self._active_requests += 1
+
+        return self._stream_gen(text, emotion, should_shed_to_espeak)
+
+    async def _stream_gen(
+        self, text: str, emotion: str, should_shed_to_espeak: bool
+    ) -> AsyncIterator[bytes]:
+        """Async generator body for stream(). Do not call directly."""
         chunk_bytes = CHUNK_SAMPLES * OUTPUT_SAMPLE_WIDTH
-        offset = 0
-        while offset < len(audio):
-            yield audio[offset : offset + chunk_bytes]
-            offset += chunk_bytes
+        try:
+            if should_shed_to_espeak:
+                audio = await asyncio.to_thread(self._synthesize_with_espeak, text)
+                for off in range(0, len(audio), chunk_bytes):
+                    chunk = audio[off : off + chunk_bytes]
+                    if chunk:
+                        yield chunk
+                return
+
+            # Ensure the model is loaded before deciding which path to take.
+            await asyncio.to_thread(self._ensure_model)
+
+            if self._backend == "orpheus_tts" and self._model is not None:
+                # True streaming: pipe PCM chunks from the Orpheus generator
+                # to the async caller via an asyncio.Queue as they are decoded.
+                loop = asyncio.get_running_loop()
+                q: asyncio.Queue[bytes | Exception | None] = asyncio.Queue(maxsize=16)
+                model = self._model
+
+                def _producer() -> None:
+                    try:
+                        tagged = apply_prosody_tag(emotion, text)
+                        req_id = f"req-{int(time.time() * 1000)}-{uuid.uuid4().hex[:8]}"
+                        for raw_chunk in model.generate_speech(
+                            prompt=tagged,
+                            voice=self._orpheus_voice,
+                            request_id=req_id,
+                        ):
+                            pcm = pcm_int16_resample_to_int16(
+                                bytes(raw_chunk), src_rate=24000
+                            )
+                            if pcm:
+                                asyncio.run_coroutine_threadsafe(
+                                    q.put(pcm), loop
+                                ).result(timeout=10.0)
+                    except Exception as exc:
+                        try:
+                            asyncio.run_coroutine_threadsafe(q.put(exc), loop).result(
+                                timeout=5.0
+                            )
+                        except Exception:
+                            pass
+                    finally:
+                        try:
+                            asyncio.run_coroutine_threadsafe(q.put(None), loop).result(
+                                timeout=5.0
+                            )
+                        except Exception:
+                            pass
+
+                threading.Thread(
+                    target=_producer, daemon=True, name="orpheus-stream"
+                ).start()
+
+                buf = b""
+                while True:
+                    try:
+                        item = await asyncio.wait_for(
+                            q.get(), timeout=ORPHEUS_IDLE_TIMEOUT_S
+                        )
+                    except asyncio.TimeoutError:
+                        log.warning(
+                            "orpheus stream idle timeout (%.0fs)",
+                            ORPHEUS_IDLE_TIMEOUT_S,
+                        )
+                        break
+                    if item is None:
+                        break
+                    if isinstance(item, Exception):
+                        raise item
+                    buf += item
+                    while len(buf) >= chunk_bytes:
+                        yield buf[:chunk_bytes]
+                        buf = buf[chunk_bytes:]
+                if buf:
+                    yield buf
+            else:
+                # espeak / orpheus_speech / backend not loaded: full synthesis
+                # then chunk.
+                audio = await asyncio.to_thread(self._synthesize_sync, text, emotion)
+                for off in range(0, len(audio), chunk_bytes):
+                    chunk = audio[off : off + chunk_bytes]
+                    if chunk:
+                        yield chunk
+        finally:
+            if not should_shed_to_espeak:
+                with self._active_lock:
+                    if self._active_requests > 0:
+                        self._active_requests -= 1
 
     def debug_snapshot(self) -> dict:
         return {

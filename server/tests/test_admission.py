@@ -52,8 +52,10 @@ async def test_plan_second_concurrent_request_gets_429():
 @pytest.mark.asyncio
 async def test_tts_busy_no_fallback_returns_503(monkeypatch):
     class _BusyTTS:
-        async def synthesize(self, text: str, emotion: str = "neutral"):
-            del text, emotion
+        def debug_snapshot(self) -> dict:
+            return {"loaded": False, "init_error": None}
+
+        def stream(self, text: str, emotion: str = "neutral"):
             raise TTSBusyError("tts_busy_no_fallback")
 
     monkeypatch.setattr("app.routers.tts.get_tts", lambda: _BusyTTS())
@@ -68,12 +70,8 @@ async def test_tts_busy_no_fallback_returns_503(monkeypatch):
 @pytest.mark.asyncio
 async def test_tts_empty_audio_returns_503(monkeypatch):
     class _EmptyTTS:
-        async def synthesize(self, text: str, emotion: str = "neutral"):
-            del text, emotion
-            return b""
-
         def debug_snapshot(self) -> dict:
-            return {"init_error": "espeak_not_available"}
+            return {"loaded": True, "init_error": "espeak_not_available"}
 
     monkeypatch.setattr("app.routers.tts.get_tts", lambda: _EmptyTTS())
 
