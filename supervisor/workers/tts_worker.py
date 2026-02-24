@@ -20,6 +20,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
 from supervisor.messages.envelope import Envelope
 from supervisor.messages.types import (
     SYSTEM_AUDIO_LINK_DOWN,
@@ -120,6 +122,9 @@ class TTSWorker(BaseWorker):
         # Playback process
         self._aplay_proc: asyncio.subprocess.Process | None = None
 
+        # Persistent HTTP client — reused across utterances to avoid TCP setup
+        self._http_client: Any = None  # httpx.AsyncClient once created
+
         # Stats
         self._chunks_played = 0
 
@@ -194,17 +199,22 @@ class TTSWorker(BaseWorker):
             asyncio.create_task(self._connect_spk_socket())
 
         # Speech playback loop
-        while self.running:
-            try:
-                req = await asyncio.wait_for(self._speech_queue.get(), timeout=1.0)
-            except asyncio.TimeoutError:
-                continue
+        try:
+            while self.running:
+                try:
+                    req = await asyncio.wait_for(self._speech_queue.get(), timeout=1.0)
+                except asyncio.TimeoutError:
+                    continue
 
-            if req is None:
-                continue
+                if req is None:
+                    continue
 
-            self._cancel_event.clear()
-            await self._play_tts(req)
+                self._cancel_event.clear()
+                await self._play_tts(req)
+        finally:
+            if self._http_client is not None:
+                await self._http_client.aclose()
+                self._http_client = None
 
     async def _play_tts(self, req: dict) -> None:
         """Stream TTS audio from server and play via aplay."""
@@ -227,45 +237,47 @@ class TTSWorker(BaseWorker):
             self._speaking = False
             return
 
+        if self._http_client is None:
+            self._http_client = httpx.AsyncClient(timeout=30.0)
+
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                payload = {
-                    "text": text,
-                    "emotion": emotion,
-                    "stream": True,
-                    "robot_id": "",
-                    "seq": ref_seq,
-                }
-                async with client.stream(
-                    "POST", self._tts_endpoint, json=payload
-                ) as resp:
-                    if resp.status_code != 200:
-                        self.send(
-                            TTS_EVENT_ERROR, {"error": f"TTS HTTP {resp.status_code}"}
-                        )
-                        self._speaking = False
-                        return
+            payload = {
+                "text": text,
+                "emotion": emotion,
+                "stream": True,
+                "robot_id": "",
+                "seq": ref_seq,
+            }
+            async with self._http_client.stream(
+                "POST", self._tts_endpoint, json=payload
+            ) as resp:
+                if resp.status_code != 200:
+                    self.send(
+                        TTS_EVENT_ERROR, {"error": f"TTS HTTP {resp.status_code}"}
+                    )
+                    self._speaking = False
+                    return
 
-                    # Start aplay subprocess
-                    await self._start_aplay()
-                    t0 = time.monotonic()
+                # Start aplay subprocess
+                await self._start_aplay()
+                t0 = time.monotonic()
 
-                    async for chunk in resp.aiter_bytes(CHUNK_BYTES):
-                        if self._cancel_event.is_set():
-                            break
+                async for chunk in resp.aiter_bytes(CHUNK_BYTES):
+                    if self._cancel_event.is_set():
+                        break
 
-                        await self._play_pcm_chunk(chunk)
-                        self._chunks_played += 1
+                    await self._play_pcm_chunk(chunk)
+                    self._chunks_played += 1
 
-                        # Energy for lip sync (coalesced to 20 Hz)
-                        energy = self._lip_sync.update_chunk(chunk)
-                        now = time.monotonic()
-                        if now - self._last_energy_t >= _ENERGY_MIN_INTERVAL_S:
-                            self._last_energy_t = now
-                            self.send(TTS_EVENT_ENERGY, {"energy": energy})
+                    # Energy for lip sync (coalesced to 20 Hz)
+                    energy = self._lip_sync.update_chunk(chunk)
+                    now = time.monotonic()
+                    if now - self._last_energy_t >= _ENERGY_MIN_INTERVAL_S:
+                        self._last_energy_t = now
+                        self.send(TTS_EVENT_ENERGY, {"energy": energy})
 
-                    # Wait for aplay to finish
-                    await self._drain_aplay()
+                # Wait for aplay to finish
+                await self._drain_aplay()
 
         except asyncio.CancelledError:
             pass
@@ -346,15 +358,12 @@ class TTSWorker(BaseWorker):
 
     def _scale_pcm(self, pcm: bytes) -> bytes:
         """Scale S16_LE PCM samples by self._volume (0.0–1.0)."""
-        n = len(pcm) // 2
-        if n == 0:
+        if len(pcm) < 2:
             return pcm
-        samples = struct.unpack(f"<{n}h", pcm[: n * 2])
-        scaled = struct.pack(
-            f"<{n}h",
-            *(max(-32768, min(32767, int(s * self._volume))) for s in samples),
-        )
-        return scaled
+        arr = np.frombuffer(pcm, dtype=np.int16).astype(np.float32)
+        arr *= self._volume
+        np.clip(arr, -32768, 32767, out=arr)
+        return arr.astype(np.int16).tobytes()
 
     async def _play_pcm_chunk(self, pcm: bytes) -> None:
         """Write a PCM chunk to the aplay subprocess (applies volume + mute)."""

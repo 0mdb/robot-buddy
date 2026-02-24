@@ -797,7 +797,9 @@ class OrpheusTTS:
                 return
 
             # Ensure the model is loaded before deciding which path to take.
-            await asyncio.to_thread(self._ensure_model)
+            # Fast path: skip thread dispatch on every request after warmup.
+            if not self._loaded:
+                await asyncio.to_thread(self._ensure_model)
 
             if self._backend == "orpheus_tts" and self._model is not None:
                 # True streaming: pipe PCM chunks from the Orpheus generator
