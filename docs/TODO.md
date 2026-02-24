@@ -44,7 +44,7 @@ _(all items completed)_
 **Stage 4 — Parity + Firmware Display Optimization** `[opus]`
 _10 items complete (Stage 4.0 spec/port/parity/buttons/gestures/docs) — see archive_
 - [ ] Stage 4.0: Hardware visual pass: Sim V3 vs MCU side-by-side on hardware for all 13 moods (confirm “real” reads match spec intent) `[sonnet]`
-- [ ] Stage 4.0: Bug: face device buttons not working (PTT/ACTION) — debug wiring/GPIO/firmware + protocol → supervisor events; verify on hardware `[sonnet]`
+- [x] Stage 4.0: Bug: face device buttons not working (PTT/ACTION) — LVGL touch callbacks registered on parent instead of canvas_obj; canvas absorbed all events `[sonnet]`
 - [ ] Stage 4.0: Mouth parity: device vs Python sim (Sim V3) vs JS sim (Face Mirror) — fix mouth shape/animation mismatch `[sonnet]`
 - [ ] Stage 4.0: Gesture parity: HEART_EYES on face device doesn’t match sim — fix device vs Sim V3/Face Mirror mismatch `[sonnet]`
 - [ ] Stage 4.0: Refine THINKING face on hardware (currently reads as angry) `[sonnet]`

@@ -567,9 +567,9 @@ void face_ui_create(lv_obj_t* parent)
     lv_canvas_fill_bg(canvas_obj, lv_color_black(), LV_OPA_COVER);
 
     // Root touch telemetry hooks (press / drag / release).
-    lv_obj_add_event_cb(parent, root_touch_event_cb, LV_EVENT_PRESSED, nullptr);
-    lv_obj_add_event_cb(parent, root_touch_event_cb, LV_EVENT_PRESSING, nullptr);
-    lv_obj_add_event_cb(parent, root_touch_event_cb, LV_EVENT_RELEASED, nullptr);
+    lv_obj_add_event_cb(canvas_obj, root_touch_event_cb, LV_EVENT_PRESSED, nullptr);
+    lv_obj_add_event_cb(canvas_obj, root_touch_event_cb, LV_EVENT_PRESSING, nullptr);
+    lv_obj_add_event_cb(canvas_obj, root_touch_event_cb, LV_EVENT_RELEASED, nullptr);
 
     // Corner button zones are now pixel-rendered by conv_border_render_buttons().
     // Touch hit-testing is handled in root_touch_event_cb via conv_border_hit_test_*.
