@@ -128,6 +128,8 @@ PERSONALITY_LLM_PROFILE = "personality.llm.profile"
 PERSONALITY_STATUS_HEALTH = "personality.status.health"
 PERSONALITY_EVENT_MOOD_CHANGED = "personality.event.mood_changed"
 PERSONALITY_EVENT_GUARDRAIL_TRIGGERED = "personality.event.guardrail_triggered"
+PERSONALITY_EVENT_MEMORY_EXTRACT = "personality.event.memory_extract"
+PERSONALITY_CMD_RESET_MEMORY = "personality.cmd.reset_memory"
 
 # ── Source IDs ───────────────────────────────────────────────────
 

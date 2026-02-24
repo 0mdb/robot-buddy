@@ -277,6 +277,43 @@ def create_app(
                 {"ok": False, "reason": f"unknown action: {action}"}, status_code=400
             )
 
+    # -- Personality memory (PE spec S2 §8.5) --------------------------------
+
+    @app.get("/api/personality/memory")
+    async def get_personality_memory():
+        """Parent memory viewer — returns all stored memory entries."""
+        # Get consent status from worker health snapshot
+        consent = False
+        if workers.worker_alive("personality"):
+            snap = workers.worker_snapshot().get("personality", {})
+            consent = snap.get("health", {}).get("memory_consent", False)
+
+        # Read memory file from default path
+        memory_path = Path("./data/personality_memory.json")
+        if not memory_path.exists():
+            return JSONResponse(
+                {"version": 1, "entries": [], "entry_count": 0, "consent": consent}
+            )
+        try:
+            data = json.loads(memory_path.read_text())
+            data["consent"] = consent
+            data["entry_count"] = len(data.get("entries", []))
+            return JSONResponse(data)
+        except Exception as e:
+            log.warning("failed to read memory file: %s", e)
+            return JSONResponse({"entries": [], "entry_count": 0, "consent": consent})
+
+    @app.delete("/api/personality/memory")
+    async def delete_personality_memory():
+        """Parent 'Forget Everything' — wipe all memory entries."""
+        from supervisor.messages.types import PERSONALITY_CMD_RESET_MEMORY
+
+        if workers.worker_alive("personality"):
+            asyncio.ensure_future(
+                workers.send_to("personality", PERSONALITY_CMD_RESET_MEMORY, {})
+            )
+        return JSONResponse({"ok": True})
+
     # -- MJPEG video stream --------------------------------------------------
 
     _video_clients: int = 0

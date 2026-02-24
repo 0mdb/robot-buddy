@@ -145,13 +145,15 @@ class TestParseV2Response:
                 "child_affect": "positive",
                 "text": "Great question!",
                 "gestures": ["nod"],
-                "memory_tags": ["interested_in_science"],
+                "memory_tags": [{"tag": "interested_in_science", "category": "topic"}],
             }
         )
         resp = parse_conversation_response_content(content)
         assert resp.emotion == "curious"
         assert resp.mood_reason == "child asking about science"
-        assert resp.memory_tags == ["interested_in_science"]
+        assert resp.memory_tags == [
+            {"tag": "interested_in_science", "category": "topic"}
+        ]
 
     def test_v1_response_still_works(self):
         content = json.dumps(
@@ -178,17 +180,45 @@ class TestParseV2Response:
         resp = parse_conversation_response_content(content)
         assert resp.emotion == "neutral"
 
+    def test_legacy_string_memory_tags(self):
+        """Legacy v2 responses with bare string memory_tags are upgraded."""
+        content = json.dumps(
+            {
+                "emotion": "happy",
+                "intensity": 0.5,
+                "text": "Hi",
+                "memory_tags": ["likes_dinosaurs", "child_name_emma"],
+            }
+        )
+        resp = parse_conversation_response_content(content)
+        assert resp.memory_tags == [
+            {"tag": "likes_dinosaurs", "category": "topic"},
+            {"tag": "child_name_emma", "category": "topic"},
+        ]
+
     def test_invalid_memory_tags_ignored(self):
         content = json.dumps(
             {
                 "emotion": "happy",
                 "intensity": 0.5,
                 "text": "Hi",
-                "memory_tags": [123, "", "valid_tag"],
+                "memory_tags": [123, "", {"tag": "valid_tag", "category": "topic"}],
             }
         )
         resp = parse_conversation_response_content(content)
-        assert resp.memory_tags == ["valid_tag"]
+        assert resp.memory_tags == [{"tag": "valid_tag", "category": "topic"}]
+
+    def test_invalid_category_defaults_to_topic(self):
+        content = json.dumps(
+            {
+                "emotion": "happy",
+                "intensity": 0.5,
+                "text": "Hi",
+                "memory_tags": [{"tag": "some_tag", "category": "invalid_tier"}],
+            }
+        )
+        resp = parse_conversation_response_content(content)
+        assert resp.memory_tags == [{"tag": "some_tag", "category": "topic"}]
 
 
 # ── ConversationResponseV2 Schema ──────────────────────────────────────
@@ -261,6 +291,26 @@ class TestBuildCurrentStateBlock:
     def test_positive_mood_continuity(self):
         block = _build_current_state_block({"mood": "happy", "valence": 0.3})
         assert "positive trajectory" in block
+
+    def test_memory_context_included(self):
+        block = _build_current_state_block(
+            {
+                "mood": "happy",
+                "intensity": 0.5,
+                "turn_id": 3,
+                "valence": 0.2,
+                "memory_tags": ["likes_dinosaurs", "child_name_emma"],
+            }
+        )
+        assert "Known about this child" in block
+        assert "likes dinosaurs" in block
+        assert "child name emma" in block
+
+    def test_no_memory_tags_no_memory_line(self):
+        block = _build_current_state_block(
+            {"mood": "neutral", "intensity": 0.3, "turn_id": 1, "valence": 0.0}
+        )
+        assert "Known about this child" not in block
 
     def test_defaults_for_missing_fields(self):
         block = _build_current_state_block({})

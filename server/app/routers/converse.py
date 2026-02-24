@@ -13,6 +13,7 @@ Protocol:
         {"type": "transcription", "text": "..."}
         {"type": "emotion", "emotion": "excited", "intensity": 0.8, "mood_reason": "..."}
         {"type": "gestures", "names": ["nod"]}
+        {"type": "memory_tags", "tags": [{"tag": "likes_dinosaurs", "category": "topic"}]}
         {"type": "audio", "data": "<base64 PCM 16kHz 16-bit mono>", "chunk_index": N}
         {"type": "done"}
         {"type": "error", "message": "..."}
@@ -229,6 +230,10 @@ async def _generate_and_stream(
                 "names": response.gestures,
             }
         )
+
+    # 2b. Send memory tags if any (PE spec S2 §8)
+    if response.memory_tags:
+        await ws.send_json({"type": "memory_tags", "tags": response.memory_tags})
 
     # 3. Stream TTS audio
     if response.text:

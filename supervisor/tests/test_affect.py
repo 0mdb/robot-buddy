@@ -396,3 +396,90 @@ class TestConstants:
 
     def test_max_anchor_distance(self):
         assert MAX_ANCHOR_DISTANCE == 1.20
+
+
+# ── Memory Bias (PE spec S2 §8.3) ──────────────────────────────────────
+
+
+class TestMemoryBias:
+    def test_memory_bias_shifts_valence(self):
+        """Positive memory should nudge valence positive."""
+        from supervisor.personality.memory import MemoryEntry
+
+        a = _affect(0.10, -0.05)
+        t = _canonical_trait()
+        # Zero noise to isolate memory effect
+        from dataclasses import replace
+
+        t_quiet = replace(t, noise_amplitude=0.0)
+
+        import time
+
+        now = time.time()
+        mem = MemoryEntry(
+            tag="likes_dinosaurs",
+            category="topic",
+            valence_bias=0.10,
+            arousal_bias=0.0,
+            initial_strength=1.0,
+            created_ts=now,
+            last_reinforced_ts=now,
+            reinforcement_count=1,
+            decay_lambda=0.0,  # Never decays for test stability
+            source="llm_extract",
+        )
+
+        # Run several ticks with memory
+        for _ in range(10):
+            update_affect(a, t_quiet, [], 1.0, memories=[mem])
+
+        # Valence should be nudged positive beyond just decay
+        a_no_mem = _affect(0.10, -0.05)
+        for _ in range(10):
+            update_affect(a_no_mem, t_quiet, [], 1.0, memories=None)
+
+        assert a.valence > a_no_mem.valence
+
+    def test_weak_memory_below_threshold_ignored(self):
+        """Memory with strength < 0.05 should not bias affect."""
+        from supervisor.personality.memory import MemoryEntry
+
+        import time
+
+        t = _canonical_trait()
+        from dataclasses import replace
+
+        t_quiet = replace(t, noise_amplitude=0.0)
+
+        # Memory with very low strength (essentially forgotten)
+        now = time.time()
+        mem = MemoryEntry(
+            tag="old_memory",
+            category="topic",
+            valence_bias=0.10,
+            arousal_bias=0.10,
+            initial_strength=0.04,  # Below 0.05 threshold
+            created_ts=now,
+            last_reinforced_ts=now,
+            reinforcement_count=1,
+            decay_lambda=0.0,
+            source="llm_extract",
+        )
+
+        a_with = _affect(0.10, -0.05)
+        a_without = _affect(0.10, -0.05)
+
+        update_affect(a_with, t_quiet, [], 1.0, memories=[mem])
+        update_affect(a_without, t_quiet, [], 1.0, memories=None)
+
+        # Should be identical (within floating point) since memory is below threshold
+        assert a_with.valence == pytest.approx(a_without.valence, abs=1e-10)
+        assert a_with.arousal == pytest.approx(a_without.arousal, abs=1e-10)
+
+    def test_none_memories_no_crash(self):
+        """Passing memories=None should work fine."""
+        a = _affect(0.10, -0.05)
+        t = _canonical_trait()
+        random.seed(42)
+        update_affect(a, t, [], 1.0, memories=None)
+        # Should not crash

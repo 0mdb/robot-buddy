@@ -4,6 +4,7 @@ import { TimeSeriesChart } from '../components/TimeSeriesChart'
 import { FAULT_NAMES, RANGE_STATUS } from '../constants'
 import { useClocks } from '../hooks/useClocks'
 import { useDevices } from '../hooks/useDevices'
+import { type MemoryEntry, useMemory, useResetMemory } from '../hooks/useMemory'
 import { useSystem } from '../hooks/useSystem'
 import { useTelemetry } from '../hooks/useTelemetry'
 import { useWorkers } from '../hooks/useWorkers'
@@ -697,6 +698,189 @@ function DeviceClockPanel({
   )
 }
 
+/* ---- memory panel (PE spec S2 §8.5) ---- */
+
+const CATEGORY_LABELS: Record<string, string> = {
+  name: 'Name',
+  ritual: 'Ritual',
+  topic: 'Topic',
+  tone: 'Tone',
+  preference: 'Pref',
+}
+
+const CATEGORY_COLORS: Record<string, string> = {
+  name: 'var(--blue)',
+  ritual: 'var(--green)',
+  topic: 'var(--text)',
+  tone: 'var(--yellow)',
+  preference: 'var(--red)',
+}
+
+function formatAge(ts: number): string {
+  const age = Date.now() / 1000 - ts
+  if (age < 60) return '<1m'
+  if (age < 3600) return `${Math.floor(age / 60)}m`
+  if (age < 86400) return `${Math.floor(age / 3600)}h`
+  return `${Math.floor(age / 86400)}d`
+}
+
+function MemoryPanel() {
+  const { data: memory } = useMemory()
+  const resetMemory = useResetMemory()
+  const [confirmReset, setConfirmReset] = useState(false)
+
+  if (!memory) {
+    return (
+      <div className={styles.card}>
+        <h3 className={m.sectionTitle}>Memory</h3>
+        <span className={styles.mono} style={{ color: 'var(--text-dim)' }}>
+          Loading...
+        </span>
+      </div>
+    )
+  }
+
+  if (!memory.consent) {
+    return (
+      <div className={styles.card}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: 8,
+          }}
+        >
+          <h3 className={m.sectionTitle} style={{ marginBottom: 0 }}>
+            Memory
+          </h3>
+          <span className={`${styles.badge} ${styles.badgeDim}`}>disabled</span>
+        </div>
+        <span className={styles.mono} style={{ color: 'var(--text-dim)', fontSize: 12 }}>
+          Memory storage requires parental consent. Set memory_consent: true in config.
+        </span>
+      </div>
+    )
+  }
+
+  const entries: MemoryEntry[] = memory.entries ?? []
+  const sorted = [...entries].sort((a, b) => b.current_strength - a.current_strength)
+
+  return (
+    <div className={styles.card}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: 8,
+        }}
+      >
+        <h3 className={m.sectionTitle} style={{ marginBottom: 0 }}>
+          Memory
+        </h3>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span className={`${styles.badge} ${styles.badgeGreen}`}>
+            {memory.entry_count} entries
+          </span>
+          {confirmReset ? (
+            <div style={{ display: 'flex', gap: 4 }}>
+              <button
+                type="button"
+                className={`${styles.badge} ${styles.badgeRed}`}
+                style={{ cursor: 'pointer', border: 'none' }}
+                onClick={() => {
+                  resetMemory.mutate()
+                  setConfirmReset(false)
+                }}
+              >
+                Confirm
+              </button>
+              <button
+                type="button"
+                className={`${styles.badge} ${styles.badgeDim}`}
+                style={{ cursor: 'pointer', border: 'none' }}
+                onClick={() => setConfirmReset(false)}
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              className={`${styles.badge} ${styles.badgeRed}`}
+              style={{ cursor: 'pointer', border: 'none' }}
+              onClick={() => setConfirmReset(true)}
+            >
+              Forget All
+            </button>
+          )}
+        </div>
+      </div>
+      {sorted.length === 0 ? (
+        <span className={styles.mono} style={{ color: 'var(--text-dim)', fontSize: 12 }}>
+          No memories stored yet.
+        </span>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {sorted.map((entry) => (
+            <div
+              key={entry.tag}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}
+            >
+              <span
+                className={`${styles.badge}`}
+                style={{
+                  background: CATEGORY_COLORS[entry.category] ?? 'var(--text-dim)',
+                  color: '#000',
+                  minWidth: 40,
+                  textAlign: 'center',
+                  fontSize: 10,
+                }}
+              >
+                {CATEGORY_LABELS[entry.category] ?? entry.category}
+              </span>
+              <span className={styles.mono} style={{ flex: 1 }}>
+                {entry.tag.replace(/_/g, ' ')}
+              </span>
+              <div style={{ width: 60 }}>
+                <div style={{ background: '#333', borderRadius: 2, height: 6, overflow: 'hidden' }}>
+                  <div
+                    style={{
+                      width: `${Math.round(entry.current_strength * 100)}%`,
+                      height: '100%',
+                      background: 'var(--green)',
+                      borderRadius: 2,
+                    }}
+                  />
+                </div>
+              </div>
+              <span
+                className={styles.mono}
+                style={{ color: 'var(--text-dim)', width: 35, textAlign: 'right' }}
+              >
+                {(entry.current_strength * 100).toFixed(0)}%
+              </span>
+              <span
+                className={styles.mono}
+                style={{ color: 'var(--text-dim)', width: 20, textAlign: 'right' }}
+              >
+                x{entry.reinforcement_count}
+              </span>
+              <span
+                className={styles.mono}
+                style={{ color: 'var(--text-dim)', width: 30, textAlign: 'right' }}
+              >
+                {formatAge(entry.last_reinforced_ts)}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 /* ---- main tab ---- */
 
 export default function MonitorTab() {
@@ -777,6 +961,9 @@ export default function MonitorTab() {
         <DriveHealthPanel faultFlags={faultFlags} speedCaps={speedCaps} />
         <WorkerHealthPanel workers={workers} />
       </div>
+
+      {/* Personality memory (PE spec S2 §8.5) */}
+      <MemoryPanel />
     </div>
   )
 }

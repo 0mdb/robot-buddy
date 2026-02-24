@@ -73,23 +73,42 @@ RESPONSE FORMAT
   "child_affect": "<positive|neutral|negative|unclear>",
   "text": "<spoken response>",
   "gestures": ["<{_GESTURES_LIST}>"],
-  "memory_tags": ["<things worth remembering, e.g. 'likes_dinosaurs'>"]
+  "memory_tags": [{{"tag": "<semantic label>", "category": "<name|topic|ritual|tone|preference>"}}]
 }}
+
+MEMORY TAG CATEGORIES
+- name: child's name (permanent, max 1). Example: {{"tag": "child_name_emma", "category": "name"}}
+- ritual: recurring interaction patterns (90-day memory). Example: {{"tag": "greeting_fist_bump", "category": "ritual"}}
+- topic: interests and knowledge (21-day memory). Example: {{"tag": "likes_dinosaurs", "category": "topic"}}
+- tone: session emotional tone (7-day memory). Example: {{"tag": "last_session_happy", "category": "tone"}}
+- preference: behavioral preferences (4-day memory). Example: {{"tag": "prefers_silly_mood", "category": "preference"}}
 
 EXAMPLES
 
 User: "Why is the sky blue?"
-{{"inner_thought": "Science question — a learning moment. Buddy should be curious and warm.", "emotion": "curious", "intensity": 0.6, "mood_reason": "child asking a science question", "emotional_arc": "rising", "child_affect": "positive", "text": "Ooh, great question! The sun sends light in all colors, and the blue light bounces around the sky the most. It's like the sky is playing catch with blue!", "gestures": ["nod"], "memory_tags": ["interested_in_science"]}}
+{{"inner_thought": "Science question — a learning moment. Buddy should be curious and warm.", "emotion": "curious", "intensity": 0.6, "mood_reason": "child asking a science question", "emotional_arc": "rising", "child_affect": "positive", "text": "Ooh, great question! The sun sends light in all colors, and the blue light bounces around the sky the most. It's like the sky is playing catch with blue!", "gestures": ["nod"], "memory_tags": [{{"tag": "interested_in_science", "category": "topic"}}]}}
 
 User: "I don't want to go to school tomorrow."
 {{"inner_thought": "Child is unhappy about school. Be gently empathetic, not dismissive or overly cheerful.", "emotion": "sad", "intensity": 0.3, "mood_reason": "empathizing with child's reluctance", "emotional_arc": "stable", "child_affect": "negative", "text": "Hmm, that sounds tough. Is there something about school that's been bugging you?", "gestures": [], "memory_tags": []}}
 
 User: "Look, I can do a handstand!"
-{{"inner_thought": "Child is showing off a physical achievement — match their excitement but stay calm.", "emotion": "excited", "intensity": 0.6, "mood_reason": "child proud of physical skill", "emotional_arc": "peak", "child_affect": "positive", "text": "Wow, that's amazing! You must have practiced a lot. How long can you hold it?", "gestures": ["wiggle"], "memory_tags": ["likes_gymnastics"]}}\
+{{"inner_thought": "Child is showing off a physical achievement — match their excitement but stay calm.", "emotion": "excited", "intensity": 0.6, "mood_reason": "child proud of physical skill", "emotional_arc": "peak", "child_affect": "positive", "text": "Wow, that's amazing! You must have practiced a lot. How long can you hold it?", "gestures": ["wiggle"], "memory_tags": [{{"tag": "likes_gymnastics", "category": "topic"}}]}}\
 """
 
 
 # ── ConversationResponseV2 Pydantic model (PE spec S2 §12.3) ────────────
+
+_MEMORY_CATEGORIES = ("name", "topic", "ritual", "tone", "preference")
+
+
+class MemoryTagV2(BaseModel):
+    """A structured memory tag with decay-tier category (PE spec S2 §8.2)."""
+
+    tag: str = Field(description="Semantic label, e.g. 'likes_dinosaurs'")
+    category: Literal["name", "topic", "ritual", "tone", "preference"] = Field(
+        default="topic",
+        description="Decay tier: name (permanent), ritual (90d), topic (21d), tone (7d), preference (4d)",
+    )
 
 
 class ConversationResponseV2(BaseModel):
@@ -112,9 +131,9 @@ class ConversationResponseV2(BaseModel):
     child_affect: Literal["positive", "neutral", "negative", "unclear"] = "neutral"
     text: str = Field(default="", description="Spoken response to the child")
     gestures: list[str] = Field(default_factory=list)
-    memory_tags: list[str] = Field(
+    memory_tags: list[MemoryTagV2] = Field(
         default_factory=list,
-        description="Things to remember from this turn",
+        description="Things to remember from this turn, with decay-tier category",
     )
 
 
@@ -156,7 +175,9 @@ class ConversationResponse:
     text: str = ""
     gestures: list[str] = field(default_factory=list)
     mood_reason: str = ""
-    memory_tags: list[str] = field(default_factory=list)
+    memory_tags: list[dict] = field(
+        default_factory=list
+    )  # [{"tag": ..., "category": ...}]
 
 
 @dataclass(slots=True)
@@ -211,11 +232,20 @@ def _build_current_state_block(profile: dict[str, object]) -> str:
     else:
         continuity = "maintain positive trajectory, don't snap to a different mood"
 
+    # Memory context (PE spec S2 §12.5)
+    memory_tags = profile.get("memory_tags", [])
+    if memory_tags:
+        readable = ", ".join(str(t).replace("_", " ") for t in memory_tags[:10])
+        memory_line = f"\nKnown about this child: {readable}."
+    else:
+        memory_line = ""
+
     return (
         f"CURRENT STATE\n"
         f"Buddy is feeling {mood} at intensity {intensity:.1f}.\n"
         f"Session turn: {turn_id}. Conversation has been {arc}.\n"
         f"Emotional continuity: {continuity}"
+        f"{memory_line}"
     )
 
 
@@ -450,10 +480,21 @@ def parse_conversation_response_content(content: str) -> ConversationResponse:
 
     # Extract v2 fields (gracefully absent for v1 responses)
     raw_mood_reason = str(parsed.get("mood_reason", ""))
+
+    # Parse memory_tags — accept both legacy list[str] and structured list[dict]
     raw_memory_tags = parsed.get("memory_tags", [])
     if not isinstance(raw_memory_tags, list):
         raw_memory_tags = []
-    memory_tags = [str(t) for t in raw_memory_tags if isinstance(t, str) and t.strip()]
+    memory_tags: list[dict] = []
+    for t in raw_memory_tags:
+        if isinstance(t, str) and t.strip():
+            # Legacy v2 format: bare string → default to "topic" category
+            memory_tags.append({"tag": t.strip(), "category": "topic"})
+        elif isinstance(t, dict) and t.get("tag"):
+            cat = str(t.get("category", "topic"))
+            if cat not in _MEMORY_CATEGORIES:
+                cat = "topic"
+            memory_tags.append({"tag": str(t["tag"]).strip(), "category": cat})
 
     response = ConversationResponse(
         emotion=raw_emotion,

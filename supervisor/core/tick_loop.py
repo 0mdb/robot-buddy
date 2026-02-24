@@ -68,6 +68,7 @@ from supervisor.messages.types import (
     PERSONALITY_EVENT_CONV_ENDED,
     PERSONALITY_EVENT_CONV_STARTED,
     PERSONALITY_EVENT_GUARDRAIL_TRIGGERED,
+    PERSONALITY_EVENT_MEMORY_EXTRACT,
     PERSONALITY_EVENT_SPEECH_ACTIVITY,
     PERSONALITY_EVENT_SYSTEM_STATE,
     PERSONALITY_LLM_PROFILE,
@@ -576,6 +577,14 @@ class TickLoop:
                 asyncio.ensure_future(
                     self._workers.send_to("ai", AI_CMD_SEND_PROFILE, profile)
                 )
+
+        # Memory extract from AI worker → forward to personality worker
+        elif env.type == PERSONALITY_EVENT_MEMORY_EXTRACT:
+            asyncio.ensure_future(
+                self._workers.send_to(
+                    "personality", PERSONALITY_EVENT_MEMORY_EXTRACT, env.payload
+                )
+            )
 
         # Ear worker events
         elif env.type == EAR_EVENT_WAKE_WORD:

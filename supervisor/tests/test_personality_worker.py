@@ -12,6 +12,7 @@ import pytest
 from supervisor.messages.envelope import Envelope, make_envelope
 from supervisor.messages.types import (
     PERSONALITY_CMD_OVERRIDE_AFFECT,
+    PERSONALITY_CMD_RESET_MEMORY,
     PERSONALITY_CMD_SET_GUARDRAIL,
     PERSONALITY_CONFIG_INIT,
     PERSONALITY_EVENT_AI_EMOTION,
@@ -19,6 +20,7 @@ from supervisor.messages.types import (
     PERSONALITY_EVENT_CONV_ENDED,
     PERSONALITY_EVENT_CONV_STARTED,
     PERSONALITY_EVENT_GUARDRAIL_TRIGGERED,
+    PERSONALITY_EVENT_MEMORY_EXTRACT,
     PERSONALITY_EVENT_SPEECH_ACTIVITY,
     PERSONALITY_EVENT_SYSTEM_STATE,
     PERSONALITY_LLM_PROFILE,
@@ -1242,3 +1244,121 @@ class TestLLMProfile:
         w._tick_1hz()
         profiles_after = [(t, p) for t, p in sends if t == PERSONALITY_LLM_PROFILE]
         assert len(profiles_after) == 0
+
+
+# ── Memory System (PE spec S2 §8) ──────────────────────────────────────
+
+
+class TestMemoryHandlers:
+    @pytest.mark.asyncio
+    async def test_memory_extract_stores_entries(self, tmp_path):
+        w = _make_worker()
+        w._memory_consent = True
+        w._memory_path = str(tmp_path / "mem.json")
+        from supervisor.personality.memory import MemoryStore
+
+        w._memory = MemoryStore(w._memory_path, consent=True)
+
+        await w.on_message(
+            _env(
+                PERSONALITY_EVENT_MEMORY_EXTRACT,
+                {
+                    "session_id": "s1",
+                    "turn_id": 1,
+                    "tags": [
+                        {"tag": "likes_dinosaurs", "category": "topic"},
+                        {"tag": "child_name_emma", "category": "name"},
+                    ],
+                },
+            )
+        )
+        assert w._memory.entry_count == 2
+        tags = w._memory.tag_summary()
+        assert "likes_dinosaurs" in tags
+        assert "child_name_emma" in tags
+
+    @pytest.mark.asyncio
+    async def test_memory_extract_legacy_strings(self, tmp_path):
+        """Legacy string tags should be handled gracefully."""
+        w = _make_worker()
+        w._memory_consent = True
+        w._memory_path = str(tmp_path / "mem.json")
+        from supervisor.personality.memory import MemoryStore
+
+        w._memory = MemoryStore(w._memory_path, consent=True)
+
+        await w.on_message(
+            _env(
+                PERSONALITY_EVENT_MEMORY_EXTRACT,
+                {
+                    "tags": ["likes_trains", "enjoys_math"],
+                },
+            )
+        )
+        assert w._memory.entry_count == 2
+
+    @pytest.mark.asyncio
+    async def test_memory_reset_clears_store(self, tmp_path):
+        w = _make_worker()
+        w._memory_consent = True
+        w._memory_path = str(tmp_path / "mem.json")
+        from supervisor.personality.memory import MemoryStore
+
+        w._memory = MemoryStore(w._memory_path, consent=True)
+        w._memory.add_or_reinforce("test_tag", "topic")
+        w._memory.save()
+        assert w._memory.entry_count == 1
+
+        await w.on_message(_env(PERSONALITY_CMD_RESET_MEMORY, {}))
+        assert w._memory.entry_count == 0
+
+    @pytest.mark.asyncio
+    async def test_memory_consent_gate(self, tmp_path):
+        """No storage when consent is False."""
+        w = _make_worker()
+        w._memory_consent = False
+        w._memory_path = str(tmp_path / "mem.json")
+        from supervisor.personality.memory import MemoryStore
+
+        w._memory = MemoryStore(w._memory_path, consent=False)
+
+        await w.on_message(
+            _env(
+                PERSONALITY_EVENT_MEMORY_EXTRACT,
+                {"tags": [{"tag": "test", "category": "topic"}]},
+            )
+        )
+        assert w._memory.entry_count == 0
+
+    @pytest.mark.asyncio
+    async def test_memory_tags_in_llm_profile(self, tmp_path):
+        w = _make_worker()
+        w._memory_consent = True
+        w._memory_path = str(tmp_path / "mem.json")
+        from supervisor.personality.memory import MemoryStore
+
+        w._memory = MemoryStore(w._memory_path, consent=True)
+        w._memory.add_or_reinforce("likes_dinosaurs", "topic")
+        w._conversation_active = True
+        sends = _collect_sends(w)
+
+        w._emit_llm_profile()
+        profiles = [(t, p) for t, p in sends if t == PERSONALITY_LLM_PROFILE]
+        assert len(profiles) == 1
+        _, payload = profiles[0]
+        assert "memory_tags" in payload
+        assert "likes_dinosaurs" in payload["memory_tags"]
+
+    @pytest.mark.asyncio
+    async def test_health_payload_includes_memory(self, tmp_path):
+        w = _make_worker()
+        w._memory_consent = True
+        w._memory_path = str(tmp_path / "mem.json")
+        from supervisor.personality.memory import MemoryStore
+
+        w._memory = MemoryStore(w._memory_path, consent=True)
+        w._memory.add_or_reinforce("test_tag", "topic")
+
+        health = w.health_payload()
+        assert health["memory_count"] == 1
+        assert health["memory_consent"] is True

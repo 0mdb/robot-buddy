@@ -22,6 +22,7 @@ from supervisor.config import GuardrailConfig
 from supervisor.messages.envelope import Envelope
 from supervisor.messages.types import (
     PERSONALITY_CMD_OVERRIDE_AFFECT,
+    PERSONALITY_CMD_RESET_MEMORY,
     PERSONALITY_CMD_SET_GUARDRAIL,
     PERSONALITY_CONFIG_INIT,
     PERSONALITY_EVENT_AI_EMOTION,
@@ -29,11 +30,13 @@ from supervisor.messages.types import (
     PERSONALITY_EVENT_CONV_ENDED,
     PERSONALITY_EVENT_CONV_STARTED,
     PERSONALITY_EVENT_GUARDRAIL_TRIGGERED,
+    PERSONALITY_EVENT_MEMORY_EXTRACT,
     PERSONALITY_EVENT_SPEECH_ACTIVITY,
     PERSONALITY_EVENT_SYSTEM_STATE,
     PERSONALITY_LLM_PROFILE,
     PERSONALITY_STATE_SNAPSHOT,
 )
+from supervisor.personality.memory import MemoryStore
 from supervisor.personality.affect import (
     EMOTION_VA_TARGETS,
     AffectVector,
@@ -144,9 +147,10 @@ class PersonalityWorker(BaseWorker):
         # Guardrail configuration (overridden by config.init)
         self._guardrails = GuardrailConfig()
 
-        # Memory config (stored but not yet consumed by L1)
+        # Memory config + store (PE spec S2 §8)
         self._memory_path: str = "./data/personality_memory.json"
         self._memory_consent: bool = False
+        self._memory: MemoryStore | None = None
 
         # Affect state
         self._affect = AffectVector()
@@ -200,6 +204,18 @@ class PersonalityWorker(BaseWorker):
         # Load daily timer persistence
         self._load_daily_state()
 
+        # Load memory store (PE spec S2 §8)
+        self._memory = MemoryStore(self._memory_path, self._memory_consent)
+        if self._memory_consent:
+            self._memory.load()
+            log.info(
+                "memory store loaded (%d entries, consent=%s)",
+                self._memory.entry_count,
+                self._memory_consent,
+            )
+        else:
+            log.info("memory store disabled (consent=false)")
+
         # L0-01: Boot impulse (once)
         if not self._boot_fired:
             self._boot_fired = True
@@ -211,8 +227,10 @@ class PersonalityWorker(BaseWorker):
             self._tick_1hz()
             try:
                 await asyncio.wait_for(self._shutdown_event.wait(), timeout=1.0)
-                # Persist daily state on shutdown
+                # Persist state on shutdown
                 self._persist_daily_state()
+                if self._memory and self._memory.consent:
+                    self._memory.save()
                 return  # shutdown signalled
             except asyncio.TimeoutError:
                 pass  # 1s elapsed — run next tick
@@ -240,6 +258,10 @@ class PersonalityWorker(BaseWorker):
             self._handle_override(p)
         elif t == PERSONALITY_CMD_SET_GUARDRAIL:
             self._handle_set_guardrail(p)
+        elif t == PERSONALITY_EVENT_MEMORY_EXTRACT:
+            self._handle_memory_extract(p)
+        elif t == PERSONALITY_CMD_RESET_MEMORY:
+            self._handle_reset_memory(p)
         else:
             log.debug("unhandled message: %s", t)
 
@@ -259,6 +281,8 @@ class PersonalityWorker(BaseWorker):
             "daily_limit_s": self._guardrails.daily_time_limit_s,
             "session_limit_reached": self._session_limit_reached,
             "daily_limit_reached": self._daily_limit_reached,
+            "memory_count": self._memory.entry_count if self._memory else 0,
+            "memory_consent": self._memory_consent,
             "configured": self._trait is not None,
         }
 
@@ -341,8 +365,15 @@ class PersonalityWorker(BaseWorker):
         if self._trait is None:
             return
 
-        # Update affect vector (decay + impulses + noise + clamp)
-        update_affect(self._affect, self._trait, self._pending_impulses, dt)
+        # Update affect vector (decay + impulses + memory bias + noise + clamp)
+        active_memories = self._memory.get_active() if self._memory else None
+        update_affect(
+            self._affect,
+            self._trait,
+            self._pending_impulses,
+            dt,
+            memories=active_memories,
+        )
 
         # Project to discrete mood
         self._current_mood, self._current_intensity = project_mood(
@@ -409,17 +440,20 @@ class PersonalityWorker(BaseWorker):
         Sent at conv start + 1 Hz during conversation. The tick loop enriches
         this with turn_id/session_id before forwarding to the AI worker.
         """
-        self.send(
-            PERSONALITY_LLM_PROFILE,
-            {
-                "mood": self._current_mood,
-                "intensity": round(self._current_intensity, 2),
-                "valence": round(self._affect.valence, 3),
-                "arousal": round(self._affect.arousal, 3),
-                "idle_state": self._idle_state(),
-                "session_time_s": round(self._session_time_s, 1),
-            },
-        )
+        profile: dict = {
+            "mood": self._current_mood,
+            "intensity": round(self._current_intensity, 2),
+            "valence": round(self._affect.valence, 3),
+            "arousal": round(self._affect.arousal, 3),
+            "idle_state": self._idle_state(),
+            "session_time_s": round(self._session_time_s, 1),
+        }
+        # Include active memory tags for LLM context injection (PE spec S2 §12.5)
+        if self._memory:
+            tags = self._memory.tag_summary()
+            if tags:
+                profile["memory_tags"] = tags
+        self.send(PERSONALITY_LLM_PROFILE, profile)
 
     # ── Guardrail Events ──────────────────────────────────────────
 
@@ -808,6 +842,39 @@ class PersonalityWorker(BaseWorker):
 
         if changed:
             log.info("guardrail updated: %s", ", ".join(changed))
+
+    # ── Memory Handlers (PE spec S2 §8) ─────────────────────────────
+
+    def _handle_memory_extract(self, payload: dict) -> None:
+        """Process memory_tags extracted from LLM conversation response."""
+        if self._memory is None:
+            return
+        tags = payload.get("tags", [])
+        if not tags:
+            return
+        stored = 0
+        for tag_entry in tags:
+            if isinstance(tag_entry, dict):
+                tag = str(tag_entry.get("tag", "")).strip()
+                category = str(tag_entry.get("category", "topic"))
+            elif isinstance(tag_entry, str):
+                tag = tag_entry.strip()
+                category = "topic"
+            else:
+                continue
+            if tag and self._memory.add_or_reinforce(tag, category):
+                stored += 1
+        if stored:
+            self._memory.save()
+            log.info("memory: stored/reinforced %d tags", stored)
+
+    def _handle_reset_memory(self, payload: dict) -> None:
+        """Parent 'Forget Everything' command (PE spec S2 §8.5)."""
+        if self._memory is None:
+            return
+        count = self._memory.entry_count
+        self._memory.reset()
+        log.info("memory: reset (%d entries cleared)", count)
 
     # ── Fast Path ───────────────────────────────────────────────────
 

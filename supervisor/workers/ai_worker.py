@@ -36,6 +36,7 @@ from supervisor.messages.types import (
     AI_CONVERSATION_TRANSCRIPTION,
     AI_PLAN_RECEIVED,
     AI_STATE_CHANGED,
+    PERSONALITY_EVENT_MEMORY_EXTRACT,
     SYSTEM_AUDIO_LINK_DOWN,
     SYSTEM_AUDIO_LINK_UP,
 )
@@ -351,6 +352,18 @@ class AIWorker(BaseWorker):
                             "names": msg.get("names", []),
                         },
                     )
+
+                elif msg_type == "memory_tags":
+                    tags = msg.get("tags", [])
+                    if tags:
+                        self.send(
+                            PERSONALITY_EVENT_MEMORY_EXTRACT,
+                            {
+                                "session_id": self._session_id,
+                                "turn_id": self._turn_id,
+                                "tags": tags,
+                            },
+                        )
 
                 elif msg_type == "audio":
                     self._set_state("speaking", "audio_received")

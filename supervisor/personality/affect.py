@@ -169,18 +169,24 @@ def compute_trait_parameters(
 # ── Affect Update (spec §2.4) ───────────────────────────────────────
 
 
+# Memory bias weight — very weak per-tick influence (PE spec S2 §8.3).
+# Strong memory (strength 1.0, valence_bias 0.10): +0.002 VA/s.
+MEMORY_WEIGHT: float = 0.02
+
+
 def update_affect(
     affect: AffectVector,
     trait: TraitParameters,
     pending_impulses: list[Impulse],
     dt: float,
+    memories: list | None = None,
 ) -> None:
     """Run one tick of the decaying integrator.
 
     Steps (spec §2.4):
       1. Asymmetric decay toward baseline (tick-rate invariant)
       2. Apply pending impulses (drain queue)
-      3. (Memory bias — Layer 1, not implemented yet)
+      3. Memory bias (PE spec S2 §8.3)
       4. Add noise (Predictability axis)
       5. Clamp to bounds
     """
@@ -211,7 +217,13 @@ def update_affect(
         apply_impulse(affect, imp, trait)
     pending_impulses.clear()
 
-    # 3. Memory bias — omitted for Layer 0.
+    # 3. Memory bias (PE spec S2 §8.3)
+    if memories:
+        for mem in memories:
+            s = mem.current_strength()
+            if s > 0.05:
+                affect.valence += mem.valence_bias * s * MEMORY_WEIGHT * dt
+                affect.arousal += mem.arousal_bias * s * MEMORY_WEIGHT * dt
 
     # 4. Noise (Brownian scaling: stddev * sqrt(dt))
     affect.valence += random.gauss(0.0, trait.noise_amplitude) * math.sqrt(dt)
