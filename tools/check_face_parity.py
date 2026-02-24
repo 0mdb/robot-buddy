@@ -575,6 +575,40 @@ def main() -> int:
     else:
         print("  SKIP  conv_border.h not found")
 
+    # ── Semantic: gesture enum parity ────────────────────────────
+    print("-- Semantic: gesture enum parity --")
+    from tools.face_sim_v3.state.constants import GestureId, PRODUCTION_GESTURE_MAX_ID
+
+    # Verify firmware has all production gestures (0-PRODUCTION_GESTURE_MAX_ID)
+    for gesture in GestureId:
+        if gesture.value > PRODUCTION_GESTURE_MAX_ID:
+            continue  # Sim-only gestures — skip
+        pattern = rf"\b{gesture.name}\s*=\s*{gesture.value}\b"
+        if re.search(pattern, state_h):
+            passed += 1
+        else:
+            print(
+                f"  FAIL  GestureId::{gesture.name} = {gesture.value} missing from face_state.h"
+            )
+            failed += 1
+
+    # Verify sim-only gestures (> PRODUCTION_GESTURE_MAX_ID) are NOT in firmware
+    sim_only = [g for g in GestureId if g.value > PRODUCTION_GESTURE_MAX_ID]
+    sim_only_in_fw = [
+        g for g in sim_only if re.search(rf"\b{g.name}\s*=\s*{g.value}\b", state_h)
+    ]
+    if sim_only_in_fw:
+        print(
+            f"  WARN  Sim-only gestures found in firmware: "
+            f"{', '.join(g.name for g in sim_only_in_fw)}"
+        )
+        print(
+            f"        {len(sim_only)} sim-only gestures (IDs {PRODUCTION_GESTURE_MAX_ID + 1}-{max(g.value for g in sim_only)}) "
+            f"are deferred from firmware"
+        )
+    else:
+        passed += 1  # Correctly absent from firmware
+
     # ── Summary ──────────────────────────────────────────────────
     total = passed + failed
     print(f"\n{'=' * 50}")

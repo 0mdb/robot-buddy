@@ -282,6 +282,7 @@ SILLY_CROSS_EYE_B = (-6.0, 6.0)
 
 
 class GestureId(IntEnum):
+    # Production gestures (0-12): implemented in firmware + protocol + supervisor
     BLINK = 0
     WINK_L = 1
     WINK_R = 2
@@ -295,6 +296,9 @@ class GestureId(IntEnum):
     NOD = 10
     HEADSHAKE = 11
     WIGGLE = 12
+    # Sim-only gestures (13-19): deferred from firmware/protocol.
+    # Playable in sim for design iteration; NOT sent over the wire.
+    # Requires spec amendment + firmware extension to promote to production.
     PEEK_A_BOO = 13
     SHY = 14
     EYE_ROLL = 15
@@ -302,6 +306,10 @@ class GestureId(IntEnum):
     CELEBRATE = 17
     STARTLE_RELIEF = 18
     THINKING_HARD = 19
+
+
+# Gesture IDs that are implemented in firmware and safe to send over the wire.
+PRODUCTION_GESTURE_MAX_ID = 12
 
 
 # Default durations in seconds
