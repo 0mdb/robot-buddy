@@ -228,7 +228,10 @@ class EarWorker(BaseWorker):
 
         # ── OpenWakeWord ──────────────────────────────────────────
         ww_path = self._wakeword_model_path
-        if ww_path and Path(ww_path).exists():
+        if not ww_path:
+            log.warning("no wake word model configured — wake word disabled")
+        elif not Path(ww_path).exists() and "/" not in ww_path and "\\" not in ww_path:
+            # Treat as a built-in model name (e.g. "alexa", "hey_jarvis")
             try:
                 from openwakeword.model import Model  # type: ignore[import-untyped]
 
@@ -236,7 +239,18 @@ class EarWorker(BaseWorker):
                     wakeword_models=[ww_path],
                     inference_framework="onnx",
                 )
-                log.info("OpenWakeWord model loaded: %s", ww_path)
+                log.info("OpenWakeWord built-in model loaded by name: %s", ww_path)
+            except Exception:
+                log.exception("failed to load OpenWakeWord built-in model: %s", ww_path)
+        elif Path(ww_path).exists():
+            try:
+                from openwakeword.model import Model  # type: ignore[import-untyped]
+
+                self._oww_model = Model(
+                    wakeword_models=[ww_path],
+                    inference_framework="onnx",
+                )
+                log.info("OpenWakeWord model loaded from path: %s", ww_path)
             except Exception:
                 log.exception("failed to load OpenWakeWord model")
         else:

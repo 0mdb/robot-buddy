@@ -121,6 +121,11 @@ def parse_args() -> argparse.Namespace:
         "--usb-speaker-device", default="default", help="ALSA speaker device"
     )
     p.add_argument("--usb-mic-device", default="default", help="ALSA mic device")
+    p.add_argument(
+        "--wakeword-model",
+        default=str(Path(__file__).parent / "models" / "hey_buddy.onnx"),
+        help="Wake word ONNX model path, or built-in name (alexa, hey_jarvis, hey_mycroft, hey_rhasspy). Default: hey_buddy.onnx",
+    )
     return p.parse_args()
 
 
@@ -274,9 +279,7 @@ async def async_main(args: argparse.Namespace) -> None:
             ear_init = {
                 "mic_device": args.usb_mic_device,
                 "mic_socket_path": workers.mic_socket_path,
-                "wakeword_model_path": str(
-                    Path(__file__).parent / "models" / "hey_buddy.onnx"
-                ),
+                "wakeword_model_path": args.wakeword_model,
                 "wakeword_threshold": 0.5,
                 "vad_silence_ms": 1200,
                 "vad_min_speech_ms": 300,

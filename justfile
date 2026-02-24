@@ -70,12 +70,12 @@ lint-dashboard-fix:
 # ── Running ──────────────────────────────────────────────
 
 # Run supervisor with mock hardware (no robot needed)
-run-mock:
-    cd {{project}}/supervisor && uv run python -m supervisor --mock --no-face --no-vision
+run-mock *args:
+    cd {{project}}/supervisor && uv run python -m supervisor --mock --no-face --no-vision {{args}}
 
 # Run supervisor (default ports)
-run:
-    cd {{project}}/supervisor && uv run python -m supervisor
+run *args:
+    cd {{project}}/supervisor && uv run python -m supervisor {{args}}
 
 # Run planner server
 run-server:
@@ -256,6 +256,11 @@ retrain-wakeword:
 deploy-wakeword:
     cp {{project}}/training/output/hey_buddy.onnx {{project}}/supervisor/models/hey_buddy.onnx
     @echo "Deployed hey_buddy.onnx to supervisor/models/"
+
+# Download built-in openWakeWord models for testing (alexa, hey_jarvis, hey_mycroft)
+download-wakewords:
+    cd {{project}}/supervisor && uv run python -c "from openwakeword.utils import download_models; download_models(['alexa', 'hey_jarvis', 'hey_mycroft'])"
+    @echo "Built-in models downloaded. Use: just run --wakeword-model alexa"
 
 # ── Parity ──────────────────────────────────────────────
 

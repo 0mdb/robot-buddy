@@ -76,8 +76,7 @@ _10 items complete (Stage 4.0 spec/port/parity/buttons/gestures/docs) — see ar
 **B1–B5 complete** (31 items archived) — L0, PE↔Face compliance, guardrails, schema v2, profile injection, memory, prosody
 
 **B6 — Evaluation** `[opus]`
-- [x] Add/extend tests: clamping behavior, worker intensity caps, planner-emote impulse routing, conv-ended teardown coverage, `confused` server vocab, schema-v2 parsing, guided decoding compliance
-- [x] Add tests for RS-1/RS-2 time limits, `/converse` overflow/timeouts/disconnects, and “no transcript logs by default” privacy policy
+_2 items complete (B6 test extensions: guardrail/schema/privacy/RS limits) — see archive_
 - [ ] PE evaluation checklist: emotional coherence, guardrail compliance, child-safety validation (PE spec S2 §13 + §9 HC/RS) _(automated guardrail tests pass; child-safety T4 is a human protocol — tracked under Face Evaluation)_
 - [ ] `[opus]` Reduce baseline talkativeness (currently “talking non-stop”): review specs + annoyance research; set sane defaults (idle/backchannel frequency, cooldowns, auto-followup) + add tests
 - [ ] `[sonnet]` Reduce server ping/poll frequency: make requests event-driven + add backoff/debounce so Buddy isn’t “talking non-stop” _(period now configurable + disableable via `planner.plan_period_s` / `planner.enabled` params in dashboard — event-driven still pending)_
@@ -132,11 +131,12 @@ _10 items complete (Stage 4.0 spec/port/parity/buttons/gestures/docs) — see ar
 
 ### Conversation & Voice
 
-- [x] `[opus]` LLM conversation history/memory — server-side session context (stash/restore with 30 min TTL)
-- [x] `[sonnet]` TTS perf hardening: replace Python-loop resampling in `server/app/tts/orpheus.py` with an efficient resampler; add max utterance duration safeguards
-- [ ] `[sonnet]` Bug: wake word not working — sanity-check with a known baseline (e.g. “hey jarvis”) before custom model; reproduce, identify failure mode (ear worker? model? threshold? audio device), and fix
+_2 items complete (LLM session memory, TTS resampler hardening) — see archive_
+- [ ] `[sonnet]` Bug: wake word not working — `--wakeword-model` CLI flag added + ear worker now accepts built-in model names (`alexa`, `hey_jarvis`, etc.); `just download-wakewords` downloads them; test on Pi to confirm pipeline works, then diagnose custom model (threshold? audio device?)
 - [ ] `[sonnet]` “Quiet mode” while working: pause deterministic speech-policy comments/backchannels (dashboard toggle; ideally without affecting explicit user-initiated turns)
 - [ ] `[opus]` Voice consistency: Buddy’s voice sometimes switches between “male” and “female” — investigate why and make voice selection consistent (pin voice/engine + persist config)
+  - [x] Server: pin Orpheus model + voice (`ORPHEUS_VOICE`, no model fallback)
+  - [ ] Validate on Orpheus: 10+ utterances, no voice drift; then check off parent item
 - [ ] `[sonnet]` Wake word model: increase recall from 42%→80%+ (n_samples 15k→50k+, augmentation rounds 3→5, speech-heavy negative data, layer_size 64)
 - [ ] `[sonnet]` Wake word: record 20–50 real "hey buddy" utterances from family
 - [ ] `[sonnet]` Wake word: soak test 1+ hours idle with household noise
@@ -155,7 +155,6 @@ _10 items complete (Stage 4.0 spec/port/parity/buttons/gestures/docs) — see ar
 
 ### Dashboard
 
-- [x] `[sonnet]` Camera settings panel
 - [ ] `[opus]` **Tuning Studio (expand Face tab; consolidate dashboard; built to complete B6)** — one place to tune face parameters (mouth sync), personality, models, server settings, and the full voice pipeline
   - [x] **Dashboard consolidation (no redundant tuning UI)**
     - [x] Re-scope existing `dashboard/src/tabs/FaceTab.tsx` into “Tuning Studio” (keep tab id `face`; rename tab label to “Tuning”)
@@ -200,7 +199,7 @@ _10 items complete (Stage 4.0 spec/port/parity/buttons/gestures/docs) — see ar
   - [ ] `[sonnet]` Bug: Conversation Studio shows “conversation disconnected”; typing messages doesn’t work; no events shown
   - [x] `[sonnet]` Conversation Studio UX: filter/search events — type-prefix toggles (tts/personality/ear/ai/conv), search, sort, live/pause; personality OFF by default hides 1Hz snapshot spam
   - [ ] `[sonnet]` Conversation Studio UX: evolve into a chat-style transcript UI (text + voice) while keeping raw events for debugging
-  - [ ] `[sonnet]` Fault TTS: CMD_TIMEOUT + non-severe faults now suppressed from speech policy (only ESTOP/TILT/BROWNOUT speak); investigate why IDLE transitions still fire repeatedly when reflex is idle
+  - [x] `[sonnet]` Fault TTS: CMD_TIMEOUT + non-severe faults suppressed from speech policy (only ESTOP/TILT/BROWNOUT speak); IDLE mode speech removed entirely; planner gated when idle_state != "awake" or session_limit_reached
   - [ ] `[sonnet]` Session limit scope: `session_limit_reached` currently appears in every personality snapshot; the flag should only gate conversation starts, not influence personality state broadcasts — decouple the two uses
   - [x] **Voice + latency diagnostics**
     - [x] Pipeline timeline per turn: trigger → VAD end → transcription → emotion → first audio chunk → done (+ error states) — `PipelineTimeline.tsx` component + `/ws/conversation` endpoint + `ConversationCapture` + first_audio/assistant_text events
@@ -236,7 +235,7 @@ _10 items complete (Stage 4.0 spec/port/parity/buttons/gestures/docs) — see ar
 
 ## Completed
 
-_133 items archived to `docs/TODO-archive.md` (2026-02-23). Sections: Face specs, PE L0, Dashboard, IMU, PE B1b–B5, Face Sim V3, Stage 4.0, Face phases 0–5, Timestamps, Infrastructure._
+_138 items archived to `docs/TODO-archive.md` (latest: 2026-02-24). Sections: Face specs, PE L0, Dashboard, IMU, PE B1b–B5, Face Sim V3, Stage 4.0, Face phases 0–5, Timestamps, Infrastructure, B6 tests, Conversation & Voice, Camera settings._
 
 ---
 
