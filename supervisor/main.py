@@ -227,6 +227,7 @@ async def async_main(args: argparse.Namespace) -> None:
             robot_id=args.robot_id,
             low_battery_mv=cfg.safety.low_battery_mv,
             conv_capture=conv_capture,
+            param_registry=registry,
         )
 
         # ── HTTP server ──────────────────────────────────────────
@@ -360,9 +361,25 @@ async def async_main(args: argparse.Namespace) -> None:
             "vision.clear_low",
             "vision.clear_high",
         }
+        _PERSONALITY_AXIS_PARAMS = {
+            "personality.energy",
+            "personality.reactivity",
+            "personality.initiative",
+            "personality.vulnerability",
+            "personality.predictability",
+        }
+        _PERSONALITY_GUARDRAIL_PARAMS = {
+            "personality.guardrail.negative_duration_caps",
+            "personality.guardrail.negative_intensity_caps",
+            "personality.guardrail.context_gate",
+            "personality.guardrail.session_time_limit_s",
+            "personality.guardrail.daily_time_limit_s",
+        }
 
         vision_cfg_scheduled = False
         vision_policy_scheduled = False
+        pe_axes_scheduled = False
+        pe_guardrail_scheduled = False
 
         async def _flush_vision_worker_config() -> None:
             nonlocal vision_cfg_scheduled
@@ -382,14 +399,86 @@ async def async_main(args: argparse.Namespace) -> None:
             vision_policy_scheduled = False
             _configure_vision_policy_from_registry(registry)
 
+        async def _flush_pe_axes() -> None:
+            nonlocal pe_axes_scheduled
+            await asyncio.sleep(0)
+            pe_axes_scheduled = False
+            if not workers.worker_alive("personality"):
+                return
+            from supervisor.messages.types import PERSONALITY_CONFIG_INIT
+
+            await workers.send_to(
+                "personality",
+                PERSONALITY_CONFIG_INIT,
+                {
+                    "axes": {
+                        "energy": _get_float(registry, "personality.energy", 0.40),
+                        "reactivity": _get_float(
+                            registry, "personality.reactivity", 0.50
+                        ),
+                        "initiative": _get_float(
+                            registry, "personality.initiative", 0.30
+                        ),
+                        "vulnerability": _get_float(
+                            registry, "personality.vulnerability", 0.35
+                        ),
+                        "predictability": _get_float(
+                            registry, "personality.predictability", 0.75
+                        ),
+                    },
+                },
+            )
+
+        async def _flush_pe_guardrails() -> None:
+            nonlocal pe_guardrail_scheduled
+            await asyncio.sleep(0)
+            pe_guardrail_scheduled = False
+            if not workers.worker_alive("personality"):
+                return
+            from supervisor.messages.types import PERSONALITY_CMD_SET_GUARDRAIL
+
+            # Read bool params via get_value (not _get_float)
+            await workers.send_to(
+                "personality",
+                PERSONALITY_CMD_SET_GUARDRAIL,
+                {
+                    "negative_duration_caps": registry.get_value(
+                        "personality.guardrail.negative_duration_caps", True
+                    ),
+                    "negative_intensity_caps": registry.get_value(
+                        "personality.guardrail.negative_intensity_caps", True
+                    ),
+                    "context_gate": registry.get_value(
+                        "personality.guardrail.context_gate", True
+                    ),
+                    "session_time_limit_s": _get_float(
+                        registry,
+                        "personality.guardrail.session_time_limit_s",
+                        900.0,
+                    ),
+                    "daily_time_limit_s": _get_float(
+                        registry,
+                        "personality.guardrail.daily_time_limit_s",
+                        2700.0,
+                    ),
+                },
+            )
+
         def _on_param_change(name: str, _value: object) -> None:
             nonlocal vision_cfg_scheduled, vision_policy_scheduled
+            nonlocal pe_axes_scheduled, pe_guardrail_scheduled
             if name in _VISION_WORKER_PARAMS and not vision_cfg_scheduled:
                 vision_cfg_scheduled = True
                 asyncio.create_task(_flush_vision_worker_config())
             if name in _VISION_POLICY_PARAMS and not vision_policy_scheduled:
                 vision_policy_scheduled = True
                 asyncio.create_task(_flush_vision_policy())
+            if name in _PERSONALITY_AXIS_PARAMS and not pe_axes_scheduled:
+                pe_axes_scheduled = True
+                asyncio.create_task(_flush_pe_axes())
+            if name in _PERSONALITY_GUARDRAIL_PARAMS and not pe_guardrail_scheduled:
+                pe_guardrail_scheduled = True
+                asyncio.create_task(_flush_pe_guardrails())
 
         registry.on_change(_on_param_change)
 

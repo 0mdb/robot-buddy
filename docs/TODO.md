@@ -161,22 +161,22 @@ _10 items complete (Stage 4.0 spec/port/parity/buttons/gestures/docs) — see ar
     - [x] Phase 5: Border renderer — conv-state-driven border (8 states: IDLE/ATTENTION/LISTENING/PTT/THINKING/SPEAKING/ERROR/DONE), border SDF frame + inner glow + attention sweep + thinking orbit dots, corner buttons with 6 icon types, energy sync from talking
     - [x] Phase 6: Mirror modes (Live/Sandbox) + deterministic PRNG toggle + FPS selector (30/60) — sandbox dispatch API, simTime threading, mulberry32 PRNG, breathing dt fix
     - [ ] Phase 7 (deferred): Parity harness — TS face sim may replace Python sim as firmware tuning reference; pin TS sim first, then golden-state pixel-diff suite
-  - [ ] **Conversation harness (multi-input; addresses Conversation & Voice backlog)**
+  - [x] **Conversation harness (multi-input; addresses Conversation & Voice backlog)**
     - [x] Inputs in one panel: physical PTT, dashboard PTT, wake word, text chat (bypass STT), “simulate wake word” button
     - [x] Fix PTT semantics: PTT OFF = `end_utterance` (no immediate teardown; teardown after response)
-    - [ ] Multi-turn PTT semantics: keep session open; ACTION cancels session; optional idle timeout ends session
+    - [x] Multi-turn PTT semantics: keep session open; ACTION cancels session; optional idle timeout ends session
     - [x] Supervisor WS commands: `conversation.start` / `conversation.cancel` / `conversation.end_utterance` / `conversation.send_text`
     - [x] AI worker: add `ai.cmd.send_text` (send `{"type":"text"}` to `/converse`) + handle server `assistant_text` → `ai.conversation.assistant_text`
     - [x] Server `/converse`: always emit `assistant_text` before audio; add client `config` (stream_audio/stream_text/debug); support `stream_audio=false` (true text-only)
     - [x] Add a conversation event stream for Studio (avoid bloating 20 Hz telemetry): per-turn transcript (opt-in), emotion/intensity/mood_reason, gestures, memory_tags, timings, errors
   - [x] **Output modes (two toggles)** — mute speaker playback + no-TTS generation both implemented
-  - [ ] **Voice + latency diagnostics**
+  - [x] **Voice + latency diagnostics**
     - [x] Pipeline timeline per turn: trigger → VAD end → transcription → emotion → first audio chunk → done (+ error states) — `PipelineTimeline.tsx` component + `/ws/conversation` endpoint + `ConversationCapture` + first_audio/assistant_text events
     - [x] TTS benchmark runner: fixed corpus via `/tts`, time-to-first-byte, total synth time, chunk cadence — `TtsBenchmark.tsx` + `supervisor/api/tts_benchmark.py` + WS commands
     - [x] Wake word workbench: live score/threshold view + event log + soak-test summary — `WakeWordWorkbench.tsx` + ear worker score streaming + threshold tuning
   - [ ] **Personality tuning + B6 completion harness**
-    - [ ] Personality visualization: affect vector, mood anchors, decay curves, layer attribution, guardrail status + last trigger, RS-1/RS-2 timers
-    - [ ] Runtime tuning controls (safe/risky gating): PE axes, guardrail toggles, profile-injection preview/debug
+    - [x] Personality visualization: VA scatter plot, mood anchors, mood bar, layer/idle/conv badges, guardrail status + last trigger, RS-1/RS-2 session/daily timers
+    - [x] Runtime tuning controls: PE axes sliders (5 params), guardrail toggles (3 bools + 2 time limits), debug impulse injection with presets, param registry integration, WS commands (`personality.override_affect`, `personality.set_guardrail`)
     - [ ] **B6 scenario suite inside Studio** (scripted conversations + assertions):
       - clamping behavior + worker intensity caps
       - planner-emote impulse routing

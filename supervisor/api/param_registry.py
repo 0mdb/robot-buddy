@@ -939,4 +939,142 @@ def create_default_registry() -> ParamRegistry:
         )
     )
 
+    # -- Conversation parameters --
+    reg.register(
+        ParamDef(
+            name="conversation.multi_turn_timeout_s",
+            type="float",
+            min=5.0,
+            max=120.0,
+            step=5.0,
+            default=30.0,
+            owner="supervisor",
+            safety="safe",
+            doc="Idle timeout between PTT turns before session ends",
+        )
+    )
+
+    # -- Personality parameters (PE spec S2 §14.3) --
+    reg.register(
+        ParamDef(
+            name="personality.energy",
+            type="float",
+            min=0.0,
+            max=1.0,
+            step=0.05,
+            default=0.40,
+            owner="supervisor",
+            safety="risky",
+            doc="PE axis: energy (baseline arousal offset)",
+        )
+    )
+    reg.register(
+        ParamDef(
+            name="personality.reactivity",
+            type="float",
+            min=0.0,
+            max=1.0,
+            step=0.05,
+            default=0.50,
+            owner="supervisor",
+            safety="risky",
+            doc="PE axis: reactivity (impulse gain)",
+        )
+    )
+    reg.register(
+        ParamDef(
+            name="personality.initiative",
+            type="float",
+            min=0.0,
+            max=1.0,
+            step=0.05,
+            default=0.30,
+            owner="supervisor",
+            safety="risky",
+            doc="PE axis: initiative (proactive behavior probability)",
+        )
+    )
+    reg.register(
+        ParamDef(
+            name="personality.vulnerability",
+            type="float",
+            min=0.0,
+            max=1.0,
+            step=0.05,
+            default=0.35,
+            owner="supervisor",
+            safety="risky",
+            doc="PE axis: vulnerability (negative mood susceptibility)",
+        )
+    )
+    reg.register(
+        ParamDef(
+            name="personality.predictability",
+            type="float",
+            min=0.0,
+            max=1.0,
+            step=0.05,
+            default=0.75,
+            owner="supervisor",
+            safety="safe",
+            doc="PE axis: predictability (response consistency)",
+        )
+    )
+    reg.register(
+        ParamDef(
+            name="personality.guardrail.negative_duration_caps",
+            type="bool",
+            default=True,
+            owner="supervisor",
+            safety="risky",
+            doc="Cap negative mood durations (PE spec S2 §9)",
+        )
+    )
+    reg.register(
+        ParamDef(
+            name="personality.guardrail.negative_intensity_caps",
+            type="bool",
+            default=True,
+            owner="supervisor",
+            safety="risky",
+            doc="Cap negative mood intensities (PE spec S2 §9)",
+        )
+    )
+    reg.register(
+        ParamDef(
+            name="personality.guardrail.context_gate",
+            type="bool",
+            default=True,
+            owner="supervisor",
+            safety="risky",
+            doc="Block negative moods outside conversation (PE spec S2 §9.2)",
+        )
+    )
+    reg.register(
+        ParamDef(
+            name="personality.guardrail.session_time_limit_s",
+            type="float",
+            min=0.0,
+            max=7200.0,
+            step=60.0,
+            default=900.0,
+            owner="supervisor",
+            safety="risky",
+            doc="RS-1: max single-session duration (seconds)",
+        )
+    )
+    reg.register(
+        ParamDef(
+            name="personality.guardrail.daily_time_limit_s",
+            type="float",
+            min=0.0,
+            max=14400.0,
+            step=60.0,
+            default=2700.0,
+            owner="supervisor",
+            safety="risky",
+            doc="RS-2: max daily conversation time (seconds)",
+        )
+    )
+
     return reg

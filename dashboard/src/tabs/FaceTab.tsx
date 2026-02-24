@@ -3,6 +3,7 @@ import FaceMirrorCanvas, {
   type MirrorMode,
   type SandboxDispatch,
 } from '../components/FaceMirrorCanvas'
+import PersonalityPanel from '../components/PersonalityPanel'
 import PipelineTimeline from '../components/PipelineTimeline'
 import TtsBenchmark from '../components/TtsBenchmark'
 import WakeWordWorkbench from '../components/WakeWordWorkbench'
@@ -545,40 +546,6 @@ export default function FaceTab() {
         />
       </div>
 
-      {/* Live Face TX feed (protocol) */}
-      <div className={styles.card}>
-        <h3>Live Face TX (Protocol)</h3>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
-          <span className={styles.mono} style={{ color: 'var(--text-dim)', fontSize: 11 }}>
-            Drives the upcoming "Face Mirror" by replaying face TX commands (SET_STATE / FLAGS /
-            CONV_STATE / SYSTEM / TALKING / GESTURE).
-          </span>
-          <div
-            style={{
-              maxHeight: 160,
-              overflow: 'auto',
-              border: '1px solid rgba(255,255,255,0.06)',
-              borderRadius: 6,
-              padding: 8,
-              background: 'rgba(0,0,0,0.12)',
-            }}
-          >
-            {faceTxRecent.length === 0 ? (
-              <span className={styles.mono} style={{ color: '#888', fontSize: 12 }}>
-                No face TX packets yet.
-              </span>
-            ) : (
-              faceTxRecent.map((p) => (
-                <div key={`${p.ts_mono_ms}-${p.seq}-${p.type_name}`} className={styles.mono}>
-                  <span style={{ color: '#777' }}>{p.type_name}</span>{' '}
-                  <span style={{ color: '#aaa' }}>{compactFields(p.fields)}</span>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      </div>
-
       {/* Conversation capture (Tuning Studio) */}
       <div className={styles.card}>
         <div
@@ -780,6 +747,9 @@ export default function FaceTab() {
           )}
         </div>
       </div>
+
+      {/* Personality Engine */}
+      <PersonalityPanel />
 
       {/* TTS Benchmark */}
       <TtsBenchmark />

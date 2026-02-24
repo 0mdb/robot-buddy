@@ -113,6 +113,7 @@ class TickLoop:
         robot_id: str = "",
         low_battery_mv: int = 6400,
         conv_capture: ConversationCapture | None = None,
+        param_registry: Any | None = None,
     ) -> None:
         self._reflex = reflex
         self._face = face
@@ -120,6 +121,7 @@ class TickLoop:
         self._on_telemetry = on_telemetry
         self._low_battery_mv = low_battery_mv
         self._conv_capture = conv_capture
+        self._param_registry = param_registry
 
         # State
         self.robot = RobotState()
@@ -187,6 +189,9 @@ class TickLoop:
 
         # Ticks remaining to hold talking animation after TTS_EVENT_FINISHED
         self._talking_grace_ticks: int = 0
+
+        # Multi-turn PTT idle timeout (Batch 1: keep session open between turns)
+        self._multi_turn_timeout: asyncio.Task[None] | None = None
 
         # PE system event forwarding state
         self._pe_boot_sent: bool = False
@@ -466,12 +471,47 @@ class TickLoop:
             ptt_on = bool(evt.state)
             self.world.ptt_active = ptt_on
             if ptt_on:
-                self._start_conversation("ptt")
-                self._conv.ptt_held = True
-                self._conv.set_state(FaceConvState.ATTENTION)
+                if self.world.session_id:
+                    # Multi-turn resume: same session, new turn
+                    self._cancel_multi_turn_timeout()
+                    self.world.turn_id += 1
+                    self._conv.ptt_held = True
+                    self._conv.set_state(FaceConvState.ATTENTION)
+                    asyncio.ensure_future(
+                        self._workers.send_to("ear", EAR_CMD_START_LISTENING)
+                    )
+                    asyncio.ensure_future(
+                        self._workers.send_to(
+                            "ai",
+                            AI_CMD_START_CONVERSATION,
+                            {
+                                "session_id": self.world.session_id,
+                                "turn_id": self.world.turn_id,
+                            },
+                        )
+                    )
+                    self.robot.face_listening = True
+                else:
+                    # Fresh session
+                    self._start_conversation("ptt")
+                    self._conv.ptt_held = True
+                    self._conv.set_state(FaceConvState.ATTENTION)
             else:
+                # PTT OFF: end utterance, not session
                 self._conv.ptt_held = False
-                self._end_conversation()
+                if self.world.session_id:
+                    self._conv.set_state(FaceConvState.THINKING)
+                    asyncio.ensure_future(
+                        self._workers.send_to(
+                            "ai",
+                            AI_CMD_END_UTTERANCE,
+                            {"session_id": self.world.session_id},
+                        )
+                    )
+                    asyncio.ensure_future(
+                        self._workers.send_to("ear", EAR_CMD_STOP_LISTENING)
+                    )
+                    self.robot.face_listening = False
 
         # ACTION click — context-gated: cancel during session, greet outside
         if evt.button_id == int(FaceButtonId.ACTION) and evt.event_type == int(
@@ -643,8 +683,13 @@ class TickLoop:
                 self._talking_grace_ticks = self._POST_TALKING_GRACE_TICKS
             if self._conv.session_active:
                 if self.world.session_id:
-                    # Multi-turn: return to LISTENING
-                    self._conv.set_state(FaceConvState.LISTENING)
+                    if self.world.conversation_trigger == "ptt":
+                        # PTT multi-turn: go to DONE, start idle timeout
+                        self._conv.set_state(FaceConvState.DONE)
+                        self._start_multi_turn_timeout()
+                    else:
+                        # Wake word: return to LISTENING
+                        self._conv.set_state(FaceConvState.LISTENING)
                 else:
                     self._conv.set_state(FaceConvState.DONE)
 
@@ -1033,8 +1078,38 @@ class TickLoop:
 
         self.robot.face_listening = True
 
+    def _start_multi_turn_timeout(self) -> None:
+        """Start an idle timeout that ends the session if no PTT within window."""
+        self._cancel_multi_turn_timeout()
+
+        timeout_s = 30.0
+        if self._param_registry is not None:
+            timeout_s = float(
+                self._param_registry.get_value(
+                    "conversation.multi_turn_timeout_s", 30.0
+                )
+            )
+
+        async def _timeout() -> None:
+            await asyncio.sleep(timeout_s)
+            if self.world.session_id:
+                log.info("multi-turn idle timeout (%gs) — ending session", timeout_s)
+                from supervisor.devices.protocol import FaceConvState
+
+                self._conv.set_state(FaceConvState.DONE)
+                self._end_conversation()
+
+        self._multi_turn_timeout = asyncio.ensure_future(_timeout())
+
+    def _cancel_multi_turn_timeout(self) -> None:
+        """Cancel the multi-turn idle timeout if running."""
+        if self._multi_turn_timeout is not None and not self._multi_turn_timeout.done():
+            self._multi_turn_timeout.cancel()
+        self._multi_turn_timeout = None
+
     def _end_conversation(self) -> None:
         """End a conversation (PTT off, ACTION cancel, or error teardown)."""
+        self._cancel_multi_turn_timeout()
         # Notify PE immediately so affect recovery starts without waiting
         # for AI_CONVERSATION_DONE (which may be delayed or never arrive).
         if self.world.session_id:

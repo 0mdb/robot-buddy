@@ -648,3 +648,40 @@ async def _handle_ws_cmd(
                 {"threshold": float(msg.get("threshold", 0.5))},
             )
         )
+    # -- Personality commands ---------------------------------------------------
+    elif msg_type == "personality.override_affect":
+        from supervisor.messages.types import PERSONALITY_CMD_OVERRIDE_AFFECT
+
+        asyncio.ensure_future(
+            tick._workers.send_to(
+                "personality",
+                PERSONALITY_CMD_OVERRIDE_AFFECT,
+                {
+                    "valence": float(msg.get("valence", 0.0)),
+                    "arousal": float(msg.get("arousal", 0.0)),
+                    "magnitude": float(msg.get("magnitude", 0.5)),
+                },
+            )
+        )
+    elif msg_type == "personality.set_guardrail":
+        from supervisor.messages.types import PERSONALITY_CMD_SET_GUARDRAIL
+
+        payload: dict[str, object] = {}
+        for key in (
+            "negative_duration_caps",
+            "negative_intensity_caps",
+            "context_gate",
+        ):
+            if key in msg:
+                payload[key] = bool(msg[key])
+        for key in ("session_time_limit_s", "daily_time_limit_s"):
+            if key in msg:
+                payload[key] = float(msg[key])
+        if msg.get("reset_daily"):
+            payload["reset_daily"] = True
+        if payload:
+            asyncio.ensure_future(
+                tick._workers.send_to(
+                    "personality", PERSONALITY_CMD_SET_GUARDRAIL, payload
+                )
+            )

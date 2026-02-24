@@ -102,7 +102,7 @@ export const TABS: { id: TabId; label: string }[] = [
   { id: 'protocol', label: 'Protocol' },
   { id: 'calibration', label: 'Calibration' },
   { id: 'params', label: 'Parameters' },
-  { id: 'face', label: 'Face' },
+  { id: 'face', label: 'Tuning' },
   { id: 'monitor', label: 'Monitor' },
 ]
 
@@ -130,6 +130,8 @@ export const RING_METRICS = [
   'clear_conf',
   'ball_conf',
   'vision_fps',
+  'personality_valence',
+  'personality_arousal',
 ] as const
 
 export type RingMetric = (typeof RING_METRICS)[number]
