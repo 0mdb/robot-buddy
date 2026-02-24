@@ -43,11 +43,11 @@ Held for extended periods. The face "rests" in one of these.
 |--------|-------------|----------------|----------|
 | **Idle** | Robot is on, no conversation active | Eyes (neutral) + breathing + blink + gaze wander | Indefinite |
 | **Conversation: Listening** | Child is speaking, robot is attending | Gaze (center lock) + border (teal breathing) + LED | Until VAD end-of-utterance |
-| **Conversation: PTT** | Push-to-talk active | Gaze (center lock) + border (amber steady) + LED | Until button release |
+| **Conversation: PTT** | Tap-to-talk active | Gaze (center lock) + border (amber steady) + LED | Until toggled off |
 | **Conversation: Thinking** | Processing user input | Gaze (aversion) + border (blue-violet orbit) + LED | Until TTS starts (~1–3 s typical) |
 | **Conversation: Speaking** | TTS playback active | Mouth (lip sync) + border (white-teal energy) + LED | Until TTS finishes |
 | **Emotion** | AI/planner-set mood | Eyes + mouth + face color | Until next mood command or recovery |
-| **System overlay** | BOOTING, ERROR, LOW_BATTERY, UPDATING, SHUTTING_DOWN | Full screen takeover | Until condition clears |
+| **System overlay** | BOOTING, ERROR, LOW_BATTERY, UPDATING, SHUTTING_DOWN | Face-based expression + status icon (§4.4) | Until condition clears |
 
 ### 2.3 Layer Interaction Rules
 
@@ -255,7 +255,7 @@ IDLE → ATTENTION → LISTENING → THINKING → SPEAKING → DONE → IDLE
 
 ---
 
-**PTT** (push-to-talk held — variant of listening)
+**PTT** (tap-to-talk — variant of listening, toggled on/off by tapping PTT button)
 
 | Channel | Behavior |
 |---------|----------|
@@ -358,17 +358,17 @@ When no conversation is active and no system overlay is shown.
 
 ### 4.4 System Overlays
 
-System overlays take full screen control. These are unchanged from current implementation.
+System overlays use Buddy's face features to communicate system states — the same expressive language the child already understands. Each mode drives eyes, mouth, eyelids, and color directly through FaceState, with a small SDF status icon overlaid in the lower-right corner for additional context.
 
-| System Mode | Visual | Priority |
-|-------------|--------|----------|
-| BOOTING | Boot animation (implementation-specific) | Highest |
-| ERROR_DISPLAY | Red tint, error indicator | Highest |
-| LOW_BATTERY | Battery icon + level (param field: 0–255) | Highest |
-| UPDATING | Progress animation | Highest |
-| SHUTTING_DOWN | Fade to black | Highest |
+| System Mode | Face Expression | Status Icon | Priority |
+|-------------|----------------|-------------|----------|
+| BOOTING | Sleepy eyes opening → yawn → settle to neutral (~3 s) | None | Highest |
+| ERROR_DISPLAY | Confused expression, slow headshake, warm orange/amber | Warning triangle (lower-right) | Highest |
+| LOW_BATTERY | Heavy eyelids, periodic yawns, blue tone with brightness dim | Battery bar (lower-right, param: 0–255 fill level) | Highest |
+| UPDATING | Thinking expression, gaze drifts up-right, blue-violet | Progress bar (bottom) | Highest |
+| SHUTTING_DOWN | Reverse of boot — yawn, droop, eyelids close, fade to black (~2.5 s) | None | Highest |
 
-System overlays suppress all other layers, including conversation border rendering. When a system overlay clears, the face returns to whatever tonic state was active (idle or conversation), and the border resumes from its current conversation state.
+System overlays suppress all other layers, including conversation border rendering and corner buttons. Corner button hit-testing is disabled while `SystemMode != NONE`. When a system overlay clears, the face returns to whatever tonic state was active (idle or conversation), and the border + buttons resume from their current conversation state.
 
 ---
 
@@ -646,7 +646,7 @@ The supervisor communicates with the face MCU over USB-CDC serial (COBS-encoded 
 
 ### 9.5 Touch Semantics for Conversation Control
 
-**PTT button** (FaceButtonId.PTT): PRESS → start PTT listening (→ ATTENTION → PTT), RELEASE → end PTT (→ THINKING). Already defined in protocol.
+**PTT button** (FaceButtonId.PTT): Tap-toggle — each tap in the PTT zone inverts the listening state. First tap → ATTENTION → PTT (listening active). Second tap → THINKING (listening ended). Toggle fires on touch release within the same hit zone. Already defined in protocol.
 
 **ACTION button** (FaceButtonId.ACTION): Context-gated behavior:
 - **During active conversation** (`conversation_active == True`): CLICK → cancel session (→ DONE state). Provides a way to abort a conversation that's stuck or unwanted.
@@ -654,9 +654,11 @@ The supervisor communicates with the face MCU over USB-CDC serial (COBS-encoded 
 
 **Implementation note**: Requires modifying the ACTION button handler in `tick_loop.py` to check `conversation_active` before deciding greet vs cancel.
 
-**Soft buttons**: The sim prototype renders PTT and Cancel soft buttons in the border layer (`conv_border.py`). MCU implementation requires hit-test regions for full-screen touch events routed as (event_type, x, y). Soft button regions:
-- PTT: bottom-left, 48×48 px hitbox centered at (27, 212)
-- Cancel: bottom-right, 48×48 px hitbox centered at (293, 212)
+**Soft buttons**: Corner button hit zones are flush with screen edges (Fitts's Law — edge targets benefit from infinite depth). Constants defined in `BTN_CORNER_*` (parity-checked between sim and firmware):
+- PTT: bottom-left, 60×46 px zone — x ∈ [0, 60], y ∈ [194, 240], icon center (30, 217)
+- Cancel: bottom-right, 60×46 px zone — x ∈ [260, 320], y ∈ [194, 240], icon center (290, 217)
+
+Corner buttons are hidden and hit-testing is disabled during system overlays (§4.4).
 
 ### 9.6 Supervisor Tick Loop Integration
 
@@ -740,13 +742,13 @@ Updated priority stack incorporating conversation state:
 | Current State | Event | Next State | Actions |
 |--------------|-------|-----------|---------|
 | IDLE | wake_word_detected | ATTENTION | Send CONV_STATE(ATTENTION), SET_FLAGS(wander=0), SET_STATE(gaze=center) |
-| IDLE | ptt_pressed | ATTENTION | Same as wake word. Held = PTT mode (advance to PTT after ATTENTION completes). Released during ATTENTION = auto-advance to LISTENING. |
-| ATTENTION | 400 ms elapsed (no PTT held) | LISTENING | Send CONV_STATE(LISTENING), SET_STATE(gaze=center) |
-| ATTENTION | 400 ms elapsed (PTT held) | PTT | Send CONV_STATE(PTT) — button is still held, enter push-to-talk |
-| ATTENTION | ptt_pressed (during ATTENTION) | PTT | Send CONV_STATE(PTT) — late press also enters PTT |
+| IDLE | ptt_toggled_on | ATTENTION | Same as wake word. PTT flag set → advance to PTT after ATTENTION completes. If toggled off during ATTENTION → auto-advance to LISTENING. |
+| ATTENTION | 400 ms elapsed (PTT not active) | LISTENING | Send CONV_STATE(LISTENING), SET_STATE(gaze=center) |
+| ATTENTION | 400 ms elapsed (PTT active) | PTT | Send CONV_STATE(PTT) — tap-to-talk active, enter PTT listening |
+| ATTENTION | ptt_toggled_on (during ATTENTION) | PTT | Send CONV_STATE(PTT) — late tap also enters PTT |
 | LISTENING | vad_end_of_utterance | THINKING | Send CONV_STATE(THINKING), SET_STATE(gaze=aversion, mood=THINKING@0.5) |
 | LISTENING | session_cancelled | DONE | Send CONV_STATE(DONE) |
-| PTT | ptt_released | THINKING | Send CONV_STATE(THINKING), SET_STATE(gaze=aversion, mood=THINKING@0.5) |
+| PTT | ptt_toggled_off | THINKING | Send CONV_STATE(THINKING), SET_STATE(gaze=aversion, mood=THINKING@0.5) |
 | PTT | session_cancelled | DONE | Send CONV_STATE(DONE) |
 | THINKING | tts_started | SPEAKING | Anticipation blink, send CONV_STATE(SPEAKING), SET_STATE(gaze=center) |
 | THINKING | ai_error | ERROR | Send CONV_STATE(ERROR) |

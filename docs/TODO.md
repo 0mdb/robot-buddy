@@ -47,7 +47,7 @@ _(all items completed)_
 ### Face Communication System
 
 **Stage 4 — Parity + Firmware Display Optimization** `[opus]`
-- [ ] Stage 4.0: Update `specs/face-communication-spec-stage2.md` + `docs/protocols.md` to match chosen behavior:
+- [x] Stage 4.0: Update `specs/face-communication-spec-stage2.md` + `docs/protocols.md` to match chosen behavior:
   - System overlays = Sim V3 “face-based” screens + hide border/buttons while SystemMode != NONE
   - PTT semantics = tap-toggle (not strict press/hold)
   - Corner button hitboxes = `BTN_CORNER_*` constants (not stale 48×48 numbers)
