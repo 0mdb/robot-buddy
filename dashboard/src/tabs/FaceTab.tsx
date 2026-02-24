@@ -290,6 +290,12 @@ export default function FaceTab() {
     const text = chatText.trim()
     if (!text) return
     send({ type: 'conversation.send_text', text })
+    // Immediate local echo so the event log shows what was sent
+    useConversationStore.getState().push({
+      ts_mono_ms: Date.now(),
+      type: 'ai.conversation.user_text',
+      text,
+    })
     setChatText('')
   }, [chatText, send])
 

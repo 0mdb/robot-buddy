@@ -33,7 +33,6 @@ class SpeechPolicy:
         self._cooldown_ms = {
             "vision.ball_acquired": 5000.0,
             "mode.changed:WANDER": 7000.0,
-            "mode.changed:IDLE": 9000.0,
             "fault.raised": 6000.0,
             "face.button.click": 4000.0,
         }
@@ -47,10 +46,6 @@ class SpeechPolicy:
                 "Wander mode on. Let's explore!",
                 "I am going exploring now.",
                 "Patrol drift started.",
-            ],
-            "mode.changed:IDLE": [
-                "Okay, I'll pause in idle mode.",
-                "Taking a little rest in idle.",
             ],
             "fault.raised": [
                 "Uh oh. I need to pause for safety.",
@@ -153,8 +148,6 @@ class SpeechPolicy:
             to_mode = str(evt.payload.get("to", "")).upper()
             if to_mode == "WANDER":
                 return "mode.changed:WANDER"
-            if to_mode == "IDLE":
-                return "mode.changed:IDLE"
         return None
 
     def _on_cooldown(self, key: str, now_mono_ms: float) -> bool:

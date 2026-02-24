@@ -945,6 +945,8 @@ class TickLoop:
             self.world.planner_enabled
             and _planner_param_enabled
             and self.world.planner_connected
+            and self.world.personality_idle_state == "awake"
+            and not self.world.personality_session_limit_reached
             and now_ms - self._last_plan_request_ms > float(_plan_period_s) * 1000
         ):
             self._last_plan_request_ms = now_ms

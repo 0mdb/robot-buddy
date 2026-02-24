@@ -39,6 +39,7 @@ from supervisor.messages.types import (
     AI_CONVERSATION_FIRST_AUDIO,
     AI_CONVERSATION_GESTURE,
     AI_CONVERSATION_TRANSCRIPTION,
+    AI_CONVERSATION_USER_TEXT,
     AI_PLAN_RECEIVED,
     AI_STATE_CHANGED,
     PERSONALITY_EVENT_MEMORY_EXTRACT,
@@ -336,6 +337,7 @@ class AIWorker(BaseWorker):
             self._set_state("error", "ws_connect_timeout_for_text")
             return
         self._set_state("thinking", "text_sent")
+        self.send(AI_CONVERSATION_USER_TEXT, {"text": text})
         await self._ws_send({"type": "text", "text": text})
 
     async def _end_conversation(self) -> None:
