@@ -518,14 +518,16 @@ class TickLoop:
             self._queued_emotion = ""
             self._queued_intensity = 0.0
             self._conv.set_state(FaceConvState.DONE)
-            # Notify personality worker
-            asyncio.ensure_future(
-                self._workers.send_to(
-                    "personality",
-                    PERSONALITY_EVENT_CONV_ENDED,
-                    {"session_id": self.world.session_id},
+            # Notify PE only if session still active (not already torn down by
+            # PTT off or ACTION cancel, which emit conv_ended in _end_conversation)
+            if self.world.session_id:
+                asyncio.ensure_future(
+                    self._workers.send_to(
+                        "personality",
+                        PERSONALITY_EVENT_CONV_ENDED,
+                        {"session_id": self.world.session_id},
+                    )
                 )
-            )
             # If wake-word conversation, clean up session after response
             if self.world.conversation_trigger == "wake_word" and self.world.session_id:
                 self._finish_session()
@@ -694,43 +696,49 @@ class TickLoop:
 
         if not self._conv_choreo.suppress_mood_pipeline:
             # Step 1: Determine target mood.
-            # Primary path: personality worker snapshot (PE spec §11.1).
-            # Fallback: direct AI emotion + tick-loop guardrails (pre-PE behavior).
-            pe_age_ms = now_ms - self.world.personality_snapshot_ts_ms
-            pe_fresh = (
-                self.world.personality_snapshot_ts_ms > 0 and pe_age_ms < _PE_STALE_MS
-            )
 
-            if pe_fresh:
-                # PRIMARY: read mood from personality worker snapshot
-                pe_norm = normalize_emotion_name(self.world.personality_mood)
-                target_mood = EMOTION_TO_FACE_MOOD.get(pe_norm or "", 0)
-                target_intensity = self.world.personality_intensity
-                # PE worker already enforced guardrails — skip tick-loop check
+            # Conversation phase clamping (face comm S2 §2.3; alignment §4.5):
+            # During LISTENING/PTT force NEUTRAL@0.3, THINKING force THINKING@0.5.
+            # This overrides PE snapshot and AI emotion — the face must reflect
+            # the deterministic conversation phase, not the robot's affect.
+            conv_clamp = self._conv.get_mood_hint()
+
+            if conv_clamp is not None:
+                target_mood, target_intensity = conv_clamp
             else:
-                # FALLBACK: existing behavior (AI emotion > mood hint > NEUTRAL)
-                target_mood: int = 0  # FaceMood.NEUTRAL
-                target_intensity: float = 1.0
-                if self._conversation_emotion:
-                    norm = normalize_emotion_name(self._conversation_emotion)
-                    if norm:
-                        resolved = EMOTION_TO_FACE_MOOD.get(norm)
-                        if resolved is not None:
-                            target_mood = resolved
-                            target_intensity = self._conversation_intensity
-                elif self._conv.get_mood_hint() is not None:
-                    hint = self._conv.get_mood_hint()
-                    if hint is not None:
-                        target_mood, target_intensity = hint
-
-                # Apply tick-loop guardrails ONLY in fallback path
-                now_s = now_ms / 1000.0
-                target_mood, target_intensity = self._guardrails.check(
-                    target_mood,
-                    target_intensity,
-                    conversation_active=self._conv.session_active,
-                    now=now_s,
+                # Normal mood pipeline: PE snapshot (primary) or fallback.
+                pe_age_ms = now_ms - self.world.personality_snapshot_ts_ms
+                pe_fresh = (
+                    self.world.personality_snapshot_ts_ms > 0
+                    and pe_age_ms < _PE_STALE_MS
                 )
+
+                if pe_fresh:
+                    # PRIMARY: read mood from personality worker snapshot
+                    pe_norm = normalize_emotion_name(self.world.personality_mood)
+                    target_mood = EMOTION_TO_FACE_MOOD.get(pe_norm or "", 0)
+                    target_intensity = self.world.personality_intensity
+                    # PE worker already enforced guardrails — skip tick-loop check
+                else:
+                    # FALLBACK: existing behavior (AI emotion > mood hint > NEUTRAL)
+                    target_mood = 0  # FaceMood.NEUTRAL
+                    target_intensity = 1.0
+                    if self._conversation_emotion:
+                        norm = normalize_emotion_name(self._conversation_emotion)
+                        if norm:
+                            resolved = EMOTION_TO_FACE_MOOD.get(norm)
+                            if resolved is not None:
+                                target_mood = resolved
+                                target_intensity = self._conversation_intensity
+
+                    # Apply tick-loop guardrails ONLY in fallback path
+                    now_s = now_ms / 1000.0
+                    target_mood, target_intensity = self._guardrails.check(
+                        target_mood,
+                        target_intensity,
+                        conversation_active=self._conv.session_active,
+                        now=now_s,
+                    )
 
             # Step 3: Feed to mood sequencer
             self._mood_seq.request_mood(target_mood, target_intensity)
@@ -865,17 +873,21 @@ class TickLoop:
             self.world.speech_priority = priority
 
     def _apply_emote(self, action: dict) -> None:
-        """Apply a planner emote action to the face."""
-        if not self._face or not self._face.connected:
-            return
+        """Route planner emote action through PE as impulse (face comm S2 Layer 3).
+
+        Face mood must come from PE snapshot, not bypass it directly.
+        """
         name = normalize_emotion_name(str(action.get("name", "")))
         if not name:
             return
-        mood_id = EMOTION_TO_FACE_MOOD.get(name)
-        if mood_id is None:
-            return
         intensity = float(action.get("intensity", 0.7))
-        self._face.send_state(mood_id, intensity)
+        asyncio.ensure_future(
+            self._workers.send_to(
+                "personality",
+                PERSONALITY_EVENT_AI_EMOTION,
+                {"emotion": name, "intensity": intensity},
+            )
+        )
 
     def _apply_gesture(self, action: dict) -> None:
         """Apply a planner gesture action to the face."""
@@ -949,7 +961,17 @@ class TickLoop:
         self.robot.face_listening = True
 
     def _end_conversation(self) -> None:
-        """End a PTT conversation (immediate teardown)."""
+        """End a conversation (PTT off, ACTION cancel, or error teardown)."""
+        # Notify PE immediately so affect recovery starts without waiting
+        # for AI_CONVERSATION_DONE (which may be delayed or never arrive).
+        if self.world.session_id:
+            asyncio.ensure_future(
+                self._workers.send_to(
+                    "personality",
+                    PERSONALITY_EVENT_CONV_ENDED,
+                    {"session_id": self.world.session_id},
+                )
+            )
         asyncio.ensure_future(self._workers.send_to("ear", EAR_CMD_STOP_LISTENING))
         asyncio.ensure_future(
             self._workers.send_to(

@@ -115,6 +115,7 @@ class FaceClient:
         self._touch_subscribers: list[Callable[[TouchEvent], None]] = []
         self._button_subscribers: list[Callable[[ButtonEvent], None]] = []
         self._tx_packets = 0
+        self._tx_dedup_skips = 0
         self._rx_face_status_packets = 0
         self._rx_touch_packets = 0
         self._rx_button_packets = 0
@@ -123,6 +124,11 @@ class FaceClient:
         self._rx_unknown_packets = 0
         self.last_talking_energy_cmd = 0
         self.last_flags_cmd = FACE_FLAGS_ALL
+
+        # Send-rate dedup: track last sent values to avoid serial spam
+        self._last_state_key: tuple[int, int, int, int, int] | None = None
+        self._last_conv_state_val: int | None = None
+        self._last_flags_val: int | None = None
 
         transport.on_packet(self._handle_packet)
 
@@ -150,6 +156,14 @@ class FaceClient:
         gaze_x_i8 = max(-128, min(127, int(gaze_x * 32)))
         gaze_y_i8 = max(-128, min(127, int(gaze_y * 32)))
         brightness_u8 = max(0, min(255, int(brightness * 255)))
+
+        # Dedup: skip if identical to last sent state
+        state_key = (emotion_id, intensity_u8, gaze_x_i8, gaze_y_i8, brightness_u8)
+        if state_key == self._last_state_key:
+            self._tx_dedup_skips += 1
+            return
+        self._last_state_key = state_key
+
         seq = self._next_seq()
         pkt = build_face_set_state(
             seq,
@@ -229,6 +243,13 @@ class FaceClient:
         if not self.connected:
             return
         flags_u8 = int(flags) & FACE_FLAGS_ALL
+
+        # Dedup: skip if unchanged
+        if flags_u8 == self._last_flags_val:
+            self._tx_dedup_skips += 1
+            return
+        self._last_flags_val = flags_u8
+
         seq = self._next_seq()
         pkt = build_face_set_flags(seq, flags_u8)
         self._transport.write(pkt)
@@ -246,6 +267,13 @@ class FaceClient:
         """Send SET_CONV_STATE command (conversation phase for border animation)."""
         if not self.connected:
             return
+
+        # Dedup: skip if unchanged
+        if conv_state == self._last_conv_state_val:
+            self._tx_dedup_skips += 1
+            return
+        self._last_conv_state_val = conv_state
+
         seq = self._next_seq()
         pkt = build_face_set_conv_state(seq, int(conv_state))
         self._transport.write(pkt)
@@ -267,6 +295,7 @@ class FaceClient:
         return {
             "connected": self.connected,
             "tx_packets": self._tx_packets,
+            "tx_dedup_skips": self._tx_dedup_skips,
             "rx_face_status_packets": self._rx_face_status_packets,
             "rx_touch_packets": self._rx_touch_packets,
             "rx_button_packets": self._rx_button_packets,

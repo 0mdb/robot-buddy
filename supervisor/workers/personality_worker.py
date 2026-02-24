@@ -51,6 +51,15 @@ DURATION_CAPS: dict[str, float] = {
     "surprised": 3.0,
 }
 
+# ── Intensity Caps (spec §9.1) ─────────────────────────────────────
+# Per-mood maximum intensity enforced before snapshot emission.
+INTENSITY_CAPS: dict[str, float] = {
+    "sad": 0.70,
+    "scared": 0.60,
+    "angry": 0.50,
+    "surprised": 0.80,
+}
+
 # ── Idle State Thresholds ───────────────────────────────────────────
 IDLE_DROWSY_S: float = 300.0  # 5 min
 IDLE_ASLEEP_S: float = 900.0  # 15 min
@@ -205,6 +214,11 @@ class PersonalityWorker(BaseWorker):
 
         # Duration caps: auto-recovery for sustained negative/surprised moods
         self._enforce_duration_caps(dt)
+
+        # Intensity caps: PE-side enforcement (spec §9.1)
+        cap = INTENSITY_CAPS.get(self._current_mood)
+        if cap is not None:
+            self._current_intensity = min(self._current_intensity, cap)
 
         # Emit snapshot
         self._emit_snapshot()

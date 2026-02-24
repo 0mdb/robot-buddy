@@ -18,6 +18,7 @@ CANONICAL_EMOTIONS: Final[tuple[str, ...]] = (
     "love",
     "silly",
     "thinking",
+    "confused",
 )
 
 EMOTION_ALIASES: Final[dict[str, str]] = {

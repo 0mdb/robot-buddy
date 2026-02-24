@@ -21,8 +21,8 @@ Living section — reorder as priorities shift. Current recommended sequence:
 3. T1–T4 evaluation
 
 ### Track B: Personality Engine (server + supervisor)
-1. PE↔Face spec compliance fixes (clamping, planner emote routing, conv lifecycle events, worker intensity caps)
-2. Server emotion vocab alignment (add confused, update prompts/schemas/tests)
+1. ~~PE↔Face spec compliance fixes~~ ✅ + ~~Server emotion vocab alignment~~ ✅ (B1 complete)
+2. Guardrail config + safety timers (B1b: config plumbing, RS-1/RS-2 session time limits)
 3. Conversation response schema v2 + prompt v2 (bucket-6 v2 skeleton, mood_reason, memory_tags)
 4. vLLM guided JSON decoding + model config defaults (Qwen3-8B-AWQ)
 5. Personality profile injection (`personality.llm.profile` → `/converse` prompt injection + anchor cadence)
@@ -91,13 +91,13 @@ _(all items completed)_
 - [x] L0 PersonalityWorker + affect vector model + tick loop integration (see Completed → “Personality Engine — Layer 0 Implementation”)
 - [x] L0 impulse catalog, idle rules, duration caps, context gate, fast-path processing (unit tested)
 
-**B1 — PE↔Face Compliance Fixes** `[sonnet]`
-- [ ] Tick loop conversation clamping: during LISTENING/PTT force NEUTRAL@0.3, during THINKING force THINKING@0.5, regardless of PE snapshot freshness (face comm S2 §2.3; alignment §4.5)
-- [ ] Route planner `emote` actions as PE impulses (do not call `FaceClient.send_state()` directly); face mood must come from PE snapshot (face comm S2 “Layer 3 source updated” note)
-- [ ] Ensure `personality.event.conv_ended` is emitted on all conversation teardown paths (PTT off, ACTION cancel, AI error/disconnect), not only `AI_CONVERSATION_DONE`
-- [ ] Add PE intensity caps enforcement (SAD 0.70, SCARED 0.60, ANGRY 0.50, SURPRISED 0.80) so the PE-fresh path is guardrail-safe
-- [ ] Face send-rate discipline: dedup/throttle `SET_STATE`/`SET_CONV_STATE` when unchanged; avoid serial/MCU spam (perf + face smoothness)
-- [ ] Add `confused` to server canonical emotions and ensure it survives end-to-end (server → ai_worker → tick_loop → personality_worker → face)
+**B1 — PE↔Face Compliance Fixes** `[sonnet]` ✅
+- [x] Tick loop conversation clamping: during LISTENING/PTT force NEUTRAL@0.3, during THINKING force THINKING@0.5, regardless of PE snapshot freshness (face comm S2 §2.3; alignment §4.5)
+- [x] Route planner `emote` actions as PE impulses (do not call `FaceClient.send_state()` directly); face mood must come from PE snapshot (face comm S2 “Layer 3 source updated” note)
+- [x] Ensure `personality.event.conv_ended` is emitted on all conversation teardown paths (PTT off, ACTION cancel, AI error/disconnect), not only `AI_CONVERSATION_DONE`
+- [x] Add PE intensity caps enforcement (SAD 0.70, SCARED 0.60, ANGRY 0.50, SURPRISED 0.80) so the PE-fresh path is guardrail-safe
+- [x] Face send-rate discipline: dedup/throttle `SET_STATE`/`SET_CONV_STATE`/`SET_FLAGS` when unchanged; avoid serial/MCU spam (perf + face smoothness)
+- [x] Add `confused` to server canonical emotions and ensure it survives end-to-end (server → ai_worker → tick_loop → personality_worker → face)
 
 **B1b — Guardrail Config + Safety Timers** `[opus]`
 - [ ] Extend `personality.config.init` to include `{axes, guardrails, memory_path, memory_consent}` and plumb into PersonalityWorker (PE spec S2 §9.5, §14.1)
@@ -239,6 +239,14 @@ _(all items completed)_
 
 ### IMU Derived Fields
 - [x] `tilt_angle_deg` + `accel_magnitude_mg` computed in tick_loop, exposed in telemetry + dashboard
+
+### Personality Engine — B1 PE↔Face Compliance
+- [x] Tick loop conversation clamping: LISTENING/PTT → NEUTRAL@0.3, THINKING → THINKING@0.5 (overrides PE snapshot)
+- [x] Planner `emote` actions routed as PE impulses (not direct `FaceClient.send_state()`)
+- [x] `personality.event.conv_ended` emitted on all teardown paths (PTT off, ACTION cancel, AI done)
+- [x] PE intensity caps enforced in PersonalityWorker (SAD 0.70, SCARED 0.60, ANGRY 0.50, SURPRISED 0.80)
+- [x] Face send-rate dedup: `SET_STATE`/`SET_CONV_STATE`/`SET_FLAGS` skip when unchanged
+- [x] `confused` added to server canonical emotions (end-to-end: server → ai_worker → PE → face)
 
 ### Personality Engine — Research & Specs
 - [x] Research buckets 0-7 → `docs/research/bucket-*.md`
