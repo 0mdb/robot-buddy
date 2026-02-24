@@ -82,7 +82,7 @@ robot-buddy/
 **Workers (process-isolated):**
 - `supervisor/workers/tts_worker.py` — TTS_CMD_SPEAK/CANCEL, energy stream
 - `supervisor/workers/ear_worker.py` — wake word detection, Silero VAD
-- `supervisor/workers/ai_worker.py` — LLM plan requests to server
+- `supervisor/workers/ai_worker.py` — LLM plan requests + conversation + profile forwarding to server
 - `supervisor/workers/vision_worker.py` — ball/clear detection via OpenCV
 
 **Reflex MCU:**

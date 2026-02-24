@@ -130,6 +130,13 @@ PTT activation cancels planner speech. Lip sync tracks RMS energy with exponenti
 - GuardrailConfig: negative_duration_caps, negative_intensity_caps, context_gate, session_time_limit_s (900s), daily_time_limit_s (2700s)
 - Parent override via `personality.cmd.set_guardrail` (runtime adjustable)
 
+**LLM profile injection (PE spec S2 §12.5, §12.7):**
+- PersonalityWorker emits `personality.llm.profile` at conv start + 1 Hz during conversation
+- Tick loop enriches with `turn_id`/`session_id`, forwards to AI worker via `AI_CMD_SEND_PROFILE`
+- AI worker sends `{"type":"profile","profile":{...}}` over WebSocket to server
+- Server injects dynamic "CURRENT STATE" system block before each user turn (mood, intensity, arc, continuity)
+- Personality anchor (30-token reminder) injected every 5 turns to prevent persona drift
+
 **Safety timers:**
 - RS-1: Session time limit (default 900s/15min) — winds down conversation with gentle redirect
 - RS-2: Daily time limit (default 2700s/45min) — blocks new conversations, persisted to disk (resets daily)
