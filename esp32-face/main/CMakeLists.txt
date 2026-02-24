@@ -8,6 +8,7 @@ idf_component_register(
          "touch.cpp"
          "face_state.cpp"
          "system_overlay_v2.cpp"
+         "system_face.cpp"
          "face_ui.cpp"
          "conv_border.cpp"
          "led.cpp"

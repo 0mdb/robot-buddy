@@ -6,6 +6,7 @@
 #include "led.h"
 #include "protocol.h"
 #include "touch.h"
+#include "system_face.h"
 #include "system_overlay_v2.h"
 #include "pixel.h"
 
@@ -613,17 +614,23 @@ void face_ui_update(const FaceState& fs)
     if (FACE_CALIBRATION_MODE) {
         render_calibration(canvas_buf);
     } else {
-        if (fs.system.mode != SystemMode::NONE) {
-            render_system_overlay_v2(canvas_buf, fs, now_s());
-        } else {
-            render_eye(canvas_buf, fs.eye_l, fs, true, LEFT_EYE_CX, LEFT_EYE_CY);
-            render_eye(canvas_buf, fs.eye_r, fs, false, RIGHT_EYE_CX, RIGHT_EYE_CY);
-            render_mouth(canvas_buf, fs);
-            if (fs.anim.rage) {
-                render_fire_effect(canvas_buf, fs);
-            }
-            render_sparkles(canvas_buf, fs);
-            apply_afterglow(canvas_buf, fs);
+        // Always render face (system modes drive face state via system_face_apply)
+        render_eye(canvas_buf, fs.eye_l, fs, true, LEFT_EYE_CX, LEFT_EYE_CY);
+        render_eye(canvas_buf, fs.eye_r, fs, false, RIGHT_EYE_CX, RIGHT_EYE_CY);
+        render_mouth(canvas_buf, fs);
+        if (fs.anim.rage) {
+            render_fire_effect(canvas_buf, fs);
+        }
+        render_sparkles(canvas_buf, fs);
+        apply_afterglow(canvas_buf, fs);
+
+        // System mode icon overlays (drawn on top of face)
+        if (fs.system.mode == SystemMode::ERROR_DISPLAY) {
+            system_face_render_error_icon(canvas_buf);
+        } else if (fs.system.mode == SystemMode::LOW_BATTERY) {
+            system_face_render_battery_icon(canvas_buf, fs.system.param);
+        } else if (fs.system.mode == SystemMode::UPDATING) {
+            system_face_render_updating_bar(canvas_buf, fs.system.param);
         }
 
         // Conversation border overlay + corner buttons — suppress during system overlays (spec §4.4)
@@ -831,6 +838,11 @@ void face_ui_task(void* arg)
 
         // 6. Advance animations
         face_state_update(fs);
+
+        // 6b. System face: override face state for system modes (before render)
+        if (fs.system.mode != SystemMode::NONE) {
+            system_face_apply(fs, now_s());
+        }
 
         // 7. Update telemetry atomics
         g_current_mood.store(static_cast<uint8_t>(fs.mood), std::memory_order_relaxed);

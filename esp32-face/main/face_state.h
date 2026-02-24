@@ -226,6 +226,12 @@ struct FaceState {
 
     uint8_t active_gesture = 0xFF; // GestureId or 0xFF when idle.
     float   active_gesture_until = 0.0f;
+
+    // Color override (set by system face animations, reset each frame)
+    bool    color_override_active = false;
+    uint8_t color_override_r = 0;
+    uint8_t color_override_g = 0;
+    uint8_t color_override_b = 0;
 };
 
 // ---- API ----

@@ -717,6 +717,14 @@ float face_get_breath_scale(const FaceState& fs)
 
 void face_get_emotion_color(const FaceState& fs, uint8_t& r, uint8_t& g, uint8_t& b)
 {
+    // System face color override takes priority (set by system_face_apply)
+    if (fs.color_override_active) {
+        r = fs.color_override_r;
+        g = fs.color_override_g;
+        b = fs.color_override_b;
+        return;
+    }
+
     int rr = 50;
     int gg = 150;
     int bb = 255;
