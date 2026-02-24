@@ -136,6 +136,7 @@ _2 items complete (LLM session memory, TTS resampler hardening) — see archive_
 - [ ] `[sonnet]` “Quiet mode” while working: pause deterministic speech-policy comments/backchannels (dashboard toggle; ideally without affecting explicit user-initiated turns)
 - [ ] `[opus]` Voice consistency: Buddy’s voice sometimes switches between “male” and “female” — investigate why and make voice selection consistent (pin voice/engine + persist config)
   - [x] Server: pin Orpheus model + voice (`ORPHEUS_VOICE` env var → `tara` default; passed to both legacy + vLLM backends; no model fallback)
+  - [x] Unit tests: assert voice is pinned for both Orpheus backends (`server/tests/test_tts_pinning.py`)
   - [ ] Validate on Orpheus: 10+ utterances, no voice drift; then check off parent item
 - [ ] `[sonnet]` Wake word model: increase recall from 42%→80%+ (n_samples 15k→50k+, augmentation rounds 3→5, speech-heavy negative data, layer_size 64)
 - [ ] `[sonnet]` Wake word: record 20–50 real "hey buddy" utterances from family
