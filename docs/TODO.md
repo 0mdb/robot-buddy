@@ -46,6 +46,7 @@ _10 items complete (Stage 4.0 spec/port/parity/buttons/gestures/docs) — see ar
 - [ ] Stage 4.0: Hardware visual pass: Sim V3 vs MCU side-by-side on hardware for all 13 moods (confirm “real” reads match spec intent) `[sonnet]`
 - [ ] Stage 4.0: Refine THINKING face on hardware (currently reads as angry) `[sonnet]`
 - [ ] Stage 4.0: Tune timing values on hardware: ramp durations, hold times, border alpha curves `[sonnet]`
+- [ ] Stage 4.0: Face button UX: instant on-device confirmation on press; faster yellow LED blink on PTT error `[sonnet]`
 - [ ] Stage 4.1: Profile current render loop (esp_timer instrumentation, 1000-frame stats)
 - [ ] Stage 4.1: Profile border SDF render cost for all 8 conv states
 - [ ] Stage 4.1: Profile command-to-pixel latency end-to-end (button/wake/PTT → first pixel)
@@ -75,6 +76,7 @@ _10 items complete (Stage 4.0 spec/port/parity/buttons/gestures/docs) — see ar
 - [x] Add/extend tests: clamping behavior, worker intensity caps, planner-emote impulse routing, conv-ended teardown coverage, `confused` server vocab, schema-v2 parsing, guided decoding compliance
 - [x] Add tests for RS-1/RS-2 time limits, `/converse` overflow/timeouts/disconnects, and “no transcript logs by default” privacy policy
 - [ ] PE evaluation checklist: emotional coherence, guardrail compliance, child-safety validation (PE spec S2 §13 + §9 HC/RS) _(automated guardrail tests pass; child-safety T4 is a human protocol — tracked under Face Evaluation)_
+- [ ] `[opus]` Reduce baseline talkativeness (currently “talking non-stop”): review specs + annoyance research; set sane defaults (idle/backchannel frequency, cooldowns, auto-followup) + add tests
 
 ---
 
@@ -177,9 +179,11 @@ _10 items complete (Stage 4.0 spec/port/parity/buttons/gestures/docs) — see ar
     - [x] Supervisor WS commands: `conversation.start` / `conversation.cancel` / `conversation.end_utterance` / `conversation.send_text`
     - [x] AI worker: add `ai.cmd.send_text` (send `{"type":"text"}` to `/converse`) + handle server `assistant_text` → `ai.conversation.assistant_text`
     - [x] Server `/converse`: always emit `assistant_text` before audio; add client `config` (stream_audio/stream_text/debug); support `stream_audio=false` (true text-only)
-    - [x] Add a conversation event stream for Studio (avoid bloating 20 Hz telemetry): per-turn transcript (opt-in), emotion/intensity/mood_reason, gestures, memory_tags, timings, errors
+  - [x] Add a conversation event stream for Studio (avoid bloating 20 Hz telemetry): per-turn transcript (opt-in), emotion/intensity/mood_reason, gestures, memory_tags, timings, errors
   - [x] **Output modes (two toggles)** — mute speaker playback + no-TTS generation both implemented
   - [ ] `[sonnet]` Robot volume control — speaker volume is currently fixed + loud (dashboard slider + persisted setting)
+  - [ ] `[sonnet]` Bug: Pipeline timeline is blank after sending a chat message (verify `/ws/conversation` + ConversationCapture event wiring)
+  - [ ] `[sonnet]` Bug: Studio device status indicators wrong (mic DOWN when installed; speaker UP when disconnected)
   - [x] **Voice + latency diagnostics**
     - [x] Pipeline timeline per turn: trigger → VAD end → transcription → emotion → first audio chunk → done (+ error states) — `PipelineTimeline.tsx` component + `/ws/conversation` endpoint + `ConversationCapture` + first_audio/assistant_text events
     - [x] TTS benchmark runner: fixed corpus via `/tts`, time-to-first-byte, total synth time, chunk cadence — `TtsBenchmark.tsx` + `supervisor/api/tts_benchmark.py` + WS commands

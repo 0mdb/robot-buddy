@@ -212,8 +212,8 @@ export const STARTLE_PEAK_TIME = 0.15
 export const STARTLE_PEAK_W = 1.3
 export const STARTLE_PEAK_H = 1.25
 
-export const THINKING_HARD_GAZE_A: [number, number] = [6.0, -4.0]
-export const THINKING_HARD_GAZE_B: [number, number] = [-6.0, -4.0]
+export const THINKING_HARD_GAZE_A: [number, number] = [6.0, -5.0]
+export const THINKING_HARD_GAZE_B: [number, number] = [-6.0, -5.0]
 export const THINKING_HARD_FREQ = 3.0
 export const THINKING_HARD_LID_SLOPE = 0.5
 export const THINKING_HARD_MOUTH_OFFSET_FREQ = 2.0

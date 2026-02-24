@@ -480,7 +480,19 @@ async def _handle_ws_cmd(
     elif msg_type == "clear":
         tick.clear_error()
     elif msg_type == "face_manual_lock":
-        tick.robot.face_manual_lock = bool(msg.get("enabled", False))
+        from supervisor.devices.protocol import (
+            FACE_FLAG_IDLE_WANDER,
+            FACE_FLAGS_ALL,
+        )
+
+        enabled = bool(msg.get("enabled", False))
+        tick.robot.face_manual_lock = enabled
+        if enabled and tick._face and tick._face.connected:
+            # Disable idle_wander so MCU doesn't override commanded gaze
+            flags = tick.robot.face_manual_flags or FACE_FLAGS_ALL
+            flags &= ~FACE_FLAG_IDLE_WANDER
+            tick.robot.face_manual_flags = flags
+            tick._face.send_flags(flags)
     elif msg_type == "face_set_flags":
         from supervisor.devices.protocol import pack_face_flags
 

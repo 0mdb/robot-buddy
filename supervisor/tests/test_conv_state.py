@@ -174,14 +174,14 @@ class TestGazeOverrides:
         gaze = t.get_gaze_override()
         assert gaze is None
 
-    def test_gaze_for_send_scales_correctly(self):
+    def test_gaze_for_send_passes_through(self):
         t = ConvStateTracker()
         t.set_state(FaceConvState.THINKING)
         gaze_send = t.get_gaze_for_send()
         assert gaze_send is not None
-        # Should be scaled by 127/32 ≈ 3.97
-        assert abs(gaze_send[0] - 0.5 * 127.0 / 32.0) < 0.01
-        assert abs(gaze_send[1] - (-0.3) * 127.0 / 32.0) < 0.01
+        # Now passes through normalized values directly (send_state uses * 127)
+        assert abs(gaze_send[0] - 0.5) < 0.01
+        assert abs(gaze_send[1] - (-0.3)) < 0.01
 
 
 class TestFlagOverrides:

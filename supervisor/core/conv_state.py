@@ -214,16 +214,11 @@ class ConvStateTracker:
     def get_gaze_for_send(self) -> tuple[float, float] | None:
         """Return gaze as floats for FaceClient.send_state().
 
-        The send_state API converts: i8 = int(float * 32).
+        The send_state API converts: i8 = int(float * 127).
         The MCU converts: physical_gaze = i8 / 127.0 * MAX_GAZE.
-        So float = (normalized * MAX_GAZE) / MAX_GAZE * 127.0 / 32.0
-                 = normalized * 127.0 / 32.0 ≈ normalized * 3.97
+        So float range [-1.0, 1.0] maps to full [-MAX_GAZE, MAX_GAZE].
         """
-        gaze = self.get_gaze_override()
-        if gaze is None:
-            return None
-        scale = 127.0 / 32.0  # Convert normalized to send_state float space
-        return (gaze[0] * scale, gaze[1] * scale)
+        return self.get_gaze_override()
 
     def get_flags(self) -> int:
         """Return flag bitmask for current state, or -1 for no change."""

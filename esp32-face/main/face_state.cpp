@@ -308,9 +308,9 @@ void face_state_update(FaceState& fs)
         t_width = 1.1f;
         break;
     case Mood::THINKING:
-        t_curve = -0.1f;
-        t_lid_slope = 0.4f;
-        t_lid_top = 0.2f;
+        t_curve = 0.0f;
+        t_lid_slope = 0.2f;
+        t_lid_top = 0.08f;
         break;
     case Mood::CONFUSED:
         t_curve = -0.2f;
@@ -373,6 +373,10 @@ void face_state_update(FaceState& fs)
         ws = 1.1f;
         hs = 1.0f;
         break;
+    case Mood::THINKING:
+        ws = 1.0f;
+        hs = 1.05f;
+        break;
     case Mood::CONFUSED:
         ws = 1.0f;
         hs = 1.05f;
@@ -397,9 +401,9 @@ void face_state_update(FaceState& fs)
     if (fs.mood == Mood::THINKING) {
         fs.mouth_offset_x_target = 1.5f;
         fs.eye_l.gaze_x_target = 6.0f;
-        fs.eye_l.gaze_y_target = -4.0f;
+        fs.eye_l.gaze_y_target = -5.0f;
         fs.eye_r.gaze_x_target = 6.0f;
-        fs.eye_r.gaze_y_target = -4.0f;
+        fs.eye_r.gaze_y_target = -5.0f;
     }
 
     // Confused: persistent asymmetric mouth (puzzled look)

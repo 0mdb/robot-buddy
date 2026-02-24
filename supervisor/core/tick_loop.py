@@ -171,6 +171,9 @@ class TickLoop:
         from supervisor.core.mood_sequencer import MoodSequencer
 
         self._mood_seq = MoodSequencer()
+        self._sync_mood_seq_timing()
+        if self._param_registry is not None:
+            self._param_registry.on_change(self._on_param_change)
         self._guardrails = Guardrails()
 
         # Transition choreographer (Phase 4)
@@ -782,11 +785,7 @@ class TickLoop:
         # Gaze: choreographer ramp > conv_state override > default
         choreo_gaze = self._conv_choreo.get_gaze_override()
         if choreo_gaze is not None:
-            scale = 127.0 / 32.0
-            gaze: tuple[float, float] | None = (
-                choreo_gaze[0] * scale,
-                choreo_gaze[1] * scale,
-            )
+            gaze: tuple[float, float] | None = choreo_gaze
         else:
             gaze = self._conv.get_gaze_for_send()
 
@@ -1077,6 +1076,28 @@ class TickLoop:
             )
 
         self.robot.face_listening = True
+
+    def _on_param_change(self, name: str, _value: Any) -> None:
+        """Handle param registry changes."""
+        if name.startswith("face.seq_"):
+            self._sync_mood_seq_timing()
+
+    def _sync_mood_seq_timing(self) -> None:
+        """Sync mood sequencer timing from param registry."""
+        if self._param_registry is None:
+            return
+        self._mood_seq.anticipation_s = (
+            self._param_registry.get_value("face.seq_anticipation_ms", 100) / 1000.0
+        )
+        self._mood_seq.ramp_down_s = (
+            self._param_registry.get_value("face.seq_ramp_down_ms", 150) / 1000.0
+        )
+        self._mood_seq.ramp_up_s = (
+            self._param_registry.get_value("face.seq_ramp_up_ms", 200) / 1000.0
+        )
+        self._mood_seq.min_hold_s = (
+            self._param_registry.get_value("face.seq_min_hold_ms", 500) / 1000.0
+        )
 
     def _start_multi_turn_timeout(self) -> None:
         """Start an idle timeout that ends the session if no PTT within window."""

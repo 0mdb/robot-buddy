@@ -30,7 +30,7 @@ export const MOOD_TARGETS: Record<number, MoodTarget> = {
   [Mood.SLEEPY]: [0.0, 1.0, 0.0, -0.2, 0.6, 0.0],
   [Mood.LOVE]: [0.6, 1.0, 0.0, 0.0, 0.0, 0.3],
   [Mood.SILLY]: [0.5, 1.1, 0.0, 0.0, 0.0, 0.0],
-  [Mood.THINKING]: [-0.1, 1.0, 0.0, 0.4, 0.2, 0.0],
+  [Mood.THINKING]: [0.0, 1.0, 0.0, 0.2, 0.08, 0.0],
   [Mood.CONFUSED]: [-0.2, 1.0, 0.0, 0.2, 0.1, 0.0],
 }
 
@@ -63,7 +63,7 @@ export const MOOD_EYE_SCALE: Record<number, [number, number]> = {
   [Mood.SLEEPY]: [0.95, 0.7],
   [Mood.LOVE]: [1.05, 1.05],
   [Mood.SILLY]: [1.1, 1.0],
-  [Mood.THINKING]: [1.0, 1.0],
+  [Mood.THINKING]: [1.0, 1.05],
   [Mood.CONFUSED]: [1.0, 1.05],
 }
 
@@ -78,7 +78,7 @@ export const GESTURE_COLOR_CELEBRATE_C: RGB = [255, 255, 200]
 
 // Thinking-mood offsets
 export const THINKING_GAZE_X = 6.0
-export const THINKING_GAZE_Y = -4.0
+export const THINKING_GAZE_Y = -5.0
 export const THINKING_MOUTH_OFFSET_X = 1.5
 
 // Curious asymmetric brow

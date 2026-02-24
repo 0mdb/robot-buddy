@@ -939,6 +939,56 @@ def create_default_registry() -> ParamRegistry:
         )
     )
 
+    # -- Face timing parameters (mood sequencer choreography) --
+    reg.register(
+        ParamDef(
+            name="face.seq_anticipation_ms",
+            type="int",
+            min=0,
+            max=500,
+            step=10,
+            default=100,
+            owner="face",
+            doc="Mood transition: anticipation blink phase (ms)",
+        )
+    )
+    reg.register(
+        ParamDef(
+            name="face.seq_ramp_down_ms",
+            type="int",
+            min=50,
+            max=500,
+            step=10,
+            default=150,
+            owner="face",
+            doc="Mood transition: ramp-down phase (ms)",
+        )
+    )
+    reg.register(
+        ParamDef(
+            name="face.seq_ramp_up_ms",
+            type="int",
+            min=50,
+            max=500,
+            step=10,
+            default=200,
+            owner="face",
+            doc="Mood transition: ramp-up phase (ms)",
+        )
+    )
+    reg.register(
+        ParamDef(
+            name="face.seq_min_hold_ms",
+            type="int",
+            min=100,
+            max=2000,
+            step=50,
+            default=500,
+            owner="face",
+            doc="Minimum hold time between mood transitions (ms)",
+        )
+    )
+
     # -- Conversation parameters --
     reg.register(
         ParamDef(

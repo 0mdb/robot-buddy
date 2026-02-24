@@ -19,7 +19,7 @@ from enum import IntEnum
 
 log = logging.getLogger(__name__)
 
-# Timing constants (match sim constants.py §5.1.1)
+# Default timing constants (match sim constants.py §5.1.1)
 SEQ_ANTICIPATION_S = 0.100  # 100 ms blink
 SEQ_RAMP_DOWN_S = 0.150  # 150 ms linear ramp
 SEQ_RAMP_UP_S = 0.200  # 200 ms linear ramp
@@ -50,6 +50,12 @@ class MoodSequencer:
         self._start_intensity: float = 1.0
         self._blink_pending: bool = False
         self._changed: bool = False
+
+        # Tunable timing (live-updatable from param registry)
+        self.anticipation_s: float = SEQ_ANTICIPATION_S
+        self.ramp_down_s: float = SEQ_RAMP_DOWN_S
+        self.ramp_up_s: float = SEQ_RAMP_UP_S
+        self.min_hold_s: float = SEQ_MIN_HOLD_S
 
     @property
     def transitioning(self) -> bool:
@@ -83,7 +89,7 @@ class MoodSequencer:
             return
 
         # Too soon since last transition for a mood change: queue
-        if self.hold_timer < SEQ_MIN_HOLD_S and mood_id != self.mood_id:
+        if self.hold_timer < self.min_hold_s and mood_id != self.mood_id:
             self._queued_mood_id = mood_id
             self._queued_intensity = intensity
             return
@@ -102,7 +108,7 @@ class MoodSequencer:
         if self.phase == SeqPhase.IDLE:
             # Handle intensity-only ramps (same mood, different target)
             if abs(self.intensity - self.target_intensity) > 0.01:
-                ramp_speed = dt / SEQ_RAMP_UP_S
+                ramp_speed = dt / self.ramp_up_s
                 if self.intensity < self.target_intensity:
                     self.intensity = min(
                         self.target_intensity,
@@ -128,14 +134,14 @@ class MoodSequencer:
         if self.phase == SeqPhase.ANTICIPATION:
             if self.timer == dt:  # First frame of phase
                 self._blink_pending = True
-            if self.timer >= SEQ_ANTICIPATION_S:
+            if self.timer >= self.anticipation_s:
                 self.phase = SeqPhase.RAMP_DOWN
                 self.timer = 0.0
 
         elif self.phase == SeqPhase.RAMP_DOWN:
-            progress = min(1.0, self.timer / SEQ_RAMP_DOWN_S)
+            progress = min(1.0, self.timer / self.ramp_down_s)
             self.intensity = self._start_intensity * (1.0 - progress)
-            if self.timer >= SEQ_RAMP_DOWN_S:
+            if self.timer >= self.ramp_down_s:
                 self.phase = SeqPhase.SWITCH
                 self.timer = 0.0
 
@@ -146,9 +152,9 @@ class MoodSequencer:
             self.timer = 0.0
 
         elif self.phase == SeqPhase.RAMP_UP:
-            progress = min(1.0, self.timer / SEQ_RAMP_UP_S)
+            progress = min(1.0, self.timer / self.ramp_up_s)
             self.intensity = self.target_intensity * progress
-            if self.timer >= SEQ_RAMP_UP_S:
+            if self.timer >= self.ramp_up_s:
                 self.intensity = self.target_intensity
                 self.phase = SeqPhase.IDLE
                 self.hold_timer = 0.0

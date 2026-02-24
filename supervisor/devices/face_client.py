@@ -153,8 +153,8 @@ class FaceClient:
         if not self.connected:
             return
         intensity_u8 = max(0, min(255, int(intensity * 255)))
-        gaze_x_i8 = max(-128, min(127, int(gaze_x * 32)))
-        gaze_y_i8 = max(-128, min(127, int(gaze_y * 32)))
+        gaze_x_i8 = max(-128, min(127, int(gaze_x * 127)))
+        gaze_y_i8 = max(-128, min(127, int(gaze_y * 127)))
         brightness_u8 = max(0, min(255, int(brightness * 255)))
 
         # Dedup: skip if identical to last sent state
