@@ -335,6 +335,14 @@ class TTSWorker(BaseWorker):
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.DEVNULL,
         )
+        # Give aplay a moment to fail if the device is absent
+        await asyncio.sleep(0.15)
+        if self._aplay_proc.returncode is not None:
+            log.warning("aplay exited immediately — speaker device unavailable")
+            self.send(
+                SYSTEM_AUDIO_LINK_DOWN, {"socket": "spk", "reason": "aplay_failed"}
+            )
+            self._aplay_proc = None
 
     def _scale_pcm(self, pcm: bytes) -> bytes:
         """Scale S16_LE PCM samples by self._volume (0.0–1.0)."""
@@ -381,6 +389,20 @@ class TTSWorker(BaseWorker):
 
     # ── Speaker socket (Mode A) ───────────────────────────────────
 
+    async def _has_audio_output(self) -> bool:
+        """Check whether at least one ALSA playback device is available."""
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "aplay",
+                "-l",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            out, _ = await asyncio.wait_for(proc.communicate(), timeout=2.0)
+            return b"card" in out
+        except Exception:
+            return False
+
     async def _connect_spk_socket(self) -> None:
         """Connect to the rb-spk Unix domain socket (retry loop)."""
         path = self._spk_socket_path
@@ -394,9 +416,12 @@ class TTSWorker(BaseWorker):
                 sock.connect(path)
                 sock.setblocking(False)
                 self._spk_sock = sock
-                self.send(SYSTEM_AUDIO_LINK_UP, {"socket": "spk"})
                 log.info("connected to spk socket: %s", path)
                 asyncio.create_task(self._spk_read_loop())
+                if await self._has_audio_output():
+                    self.send(SYSTEM_AUDIO_LINK_UP, {"socket": "spk"})
+                else:
+                    log.warning("no audio output device found — spk link stays down")
                 return
             except (ConnectionRefusedError, FileNotFoundError, OSError):
                 await asyncio.sleep(_SOCKET_RETRY_INTERVAL_S)

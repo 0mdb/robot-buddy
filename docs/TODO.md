@@ -77,6 +77,7 @@ _10 items complete (Stage 4.0 spec/port/parity/buttons/gestures/docs) — see ar
 - [x] Add tests for RS-1/RS-2 time limits, `/converse` overflow/timeouts/disconnects, and “no transcript logs by default” privacy policy
 - [ ] PE evaluation checklist: emotional coherence, guardrail compliance, child-safety validation (PE spec S2 §13 + §9 HC/RS) _(automated guardrail tests pass; child-safety T4 is a human protocol — tracked under Face Evaluation)_
 - [ ] `[opus]` Reduce baseline talkativeness (currently “talking non-stop”): review specs + annoyance research; set sane defaults (idle/backchannel frequency, cooldowns, auto-followup) + add tests
+- [ ] `[sonnet]` Reduce server ping/poll frequency: make requests event-driven + add backoff/debounce so Buddy isn’t “talking non-stop”
 
 ---
 
@@ -130,6 +131,7 @@ _10 items complete (Stage 4.0 spec/port/parity/buttons/gestures/docs) — see ar
 
 - [x] `[opus]` LLM conversation history/memory — server-side session context (stash/restore with 30 min TTL)
 - [x] `[sonnet]` TTS perf hardening: replace Python-loop resampling in `server/app/tts/orpheus.py` with an efficient resampler; add max utterance duration safeguards
+- [ ] `[opus]` Voice consistency: Buddy’s voice sometimes switches between “male” and “female” — investigate why and make voice selection consistent (pin voice/engine + persist config)
 - [ ] `[sonnet]` Wake word model: increase recall from 42%→80%+ (n_samples 15k→50k+, augmentation rounds 3→5, speech-heavy negative data, layer_size 64)
 - [ ] `[sonnet]` Wake word: record 20–50 real "hey buddy" utterances from family
 - [ ] `[sonnet]` Wake word: soak test 1+ hours idle with household noise
@@ -189,7 +191,7 @@ _10 items complete (Stage 4.0 spec/port/parity/buttons/gestures/docs) — see ar
   - [x] **Output modes (two toggles)** — mute speaker playback + no-TTS generation both implemented
   - [x] `[sonnet]` Robot volume control — speaker volume is currently fixed + loud (dashboard slider + persisted setting)
   - [x] `[sonnet]` Bug: Pipeline timeline is blank after sending a chat message (verify `/ws/conversation` + ConversationCapture event wiring)
-  - [ ] `[sonnet]` Bug: Studio device status indicators wrong (mic DOWN when installed; speaker UP when disconnected)
+  - [x] `[sonnet]` Bug: Studio device status indicators wrong (mic DOWN when installed; speaker UP when disconnected)
   - [x] **Voice + latency diagnostics**
     - [x] Pipeline timeline per turn: trigger → VAD end → transcription → emotion → first audio chunk → done (+ error states) — `PipelineTimeline.tsx` component + `/ws/conversation` endpoint + `ConversationCapture` + first_audio/assistant_text events
     - [x] TTS benchmark runner: fixed corpus via `/tts`, time-to-first-byte, total synth time, chunk cadence — `TtsBenchmark.tsx` + `supervisor/api/tts_benchmark.py` + WS commands

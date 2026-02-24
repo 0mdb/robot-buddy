@@ -213,6 +213,7 @@ class EarWorker(BaseWorker):
             stderr=asyncio.subprocess.DEVNULL,
         )
         log.info("arecord started (device=%s)", self._mic_device)
+        self.send(SYSTEM_AUDIO_LINK_UP, {"socket": "mic"})
 
         try:
             await self._capture_loop()
@@ -432,7 +433,6 @@ class EarWorker(BaseWorker):
                 sock.connect(path)
                 sock.setblocking(False)
                 self._mic_sock = sock
-                self.send(SYSTEM_AUDIO_LINK_UP, {"socket": "mic"})
                 log.info("connected to mic socket: %s", path)
                 return
             except (ConnectionRefusedError, FileNotFoundError, OSError):
@@ -447,14 +447,14 @@ class EarWorker(BaseWorker):
             except OSError:
                 pass
             self._mic_sock = None
-            self.send(
-                SYSTEM_AUDIO_LINK_DOWN, {"socket": "mic", "reason": "write_error"}
-            )
 
     # ── arecord lifecycle ─────────────────────────────────────────
 
     async def _kill_arecord(self) -> None:
         if self._arecord_proc:
+            self.send(
+                SYSTEM_AUDIO_LINK_DOWN, {"socket": "mic", "reason": "arecord_exit"}
+            )
             try:
                 self._arecord_proc.kill()
                 await self._arecord_proc.wait()

@@ -42,8 +42,6 @@ from supervisor.messages.types import (
     AI_PLAN_RECEIVED,
     AI_STATE_CHANGED,
     PERSONALITY_EVENT_MEMORY_EXTRACT,
-    SYSTEM_AUDIO_LINK_DOWN,
-    SYSTEM_AUDIO_LINK_UP,
 )
 from supervisor.workers.base import BaseWorker, worker_main
 
@@ -508,7 +506,7 @@ class AIWorker(BaseWorker):
                         }
                     )
         except (ConnectionError, OSError) as e:
-            self.send(SYSTEM_AUDIO_LINK_DOWN, {"socket": "mic", "reason": str(e)})
+            log.warning("mic socket read error: %s", e)
         except asyncio.CancelledError:
             pass
 
@@ -567,7 +565,6 @@ class AIWorker(BaseWorker):
                     self._mic_client = client
                 elif name == "spk":
                     self._spk_client = client
-                self.send(SYSTEM_AUDIO_LINK_UP, {"socket": name})
                 log.info("accepted %s connection", name)
             except asyncio.CancelledError:
                 break
