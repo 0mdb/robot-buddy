@@ -47,6 +47,7 @@ from supervisor.devices.protocol import (
     FaceButtonId,
     FaceSystemMode,
 )
+from supervisor.api.conversation_capture import ConversationCapture
 from supervisor.devices.reflex_client import ReflexClient
 from supervisor.messages.envelope import Envelope
 from supervisor.messages.types import (
@@ -57,6 +58,8 @@ from supervisor.messages.types import (
     AI_CONVERSATION_DONE,
     AI_CONVERSATION_EMOTION,
     AI_CONVERSATION_GESTURE,
+    CONV_SESSION_ENDED,
+    CONV_SESSION_STARTED,
     EAR_CMD_PAUSE_VAD,
     EAR_CMD_RESUME_VAD,
     EAR_CMD_START_LISTENING,
@@ -109,12 +112,14 @@ class TickLoop:
         planner_enabled: bool = False,
         robot_id: str = "",
         low_battery_mv: int = 6400,
+        conv_capture: ConversationCapture | None = None,
     ) -> None:
         self._reflex = reflex
         self._face = face
         self._workers = workers
         self._on_telemetry = on_telemetry
         self._low_battery_mv = low_battery_mv
+        self._conv_capture = conv_capture
 
         # State
         self.robot = RobotState()
@@ -281,6 +286,8 @@ class TickLoop:
             worker_name, env = self._pending_events.popleft()
             await self._event_router.route(worker_name, env)
             self._handle_face_events(env)
+            if self._conv_capture is not None:
+                self._conv_capture.capture_envelope(env)
 
         # 1b. Update conversation state machine (auto-transitions, backchannel)
         self._conv.update(self.robot.tick_dt_ms)
@@ -987,6 +994,13 @@ class TickLoop:
         self.world.turn_id = 1
         self.world.conversation_trigger = trigger
 
+        # Notify dashboard conversation capture
+        if self._conv_capture is not None:
+            self._conv_capture.capture_event(
+                CONV_SESSION_STARTED,
+                {"session_id": self.world.session_id, "trigger": trigger},
+            )
+
         # Tell AI worker to open WebSocket
         asyncio.ensure_future(
             self._workers.send_to(
@@ -1055,6 +1069,11 @@ class TickLoop:
 
     def _finish_session(self) -> None:
         """Clean up conversation state (shared by PTT and wake word paths)."""
+        if self._conv_capture is not None and self.world.session_id:
+            self._conv_capture.capture_event(
+                CONV_SESSION_ENDED,
+                {"session_id": self.world.session_id},
+            )
         self.world.session_id = ""
         self.world.turn_id = 0
         self.world.conversation_trigger = ""

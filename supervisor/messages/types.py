@@ -47,6 +47,8 @@ AI_CONVERSATION_TRANSCRIPTION = "ai.conversation.transcription"
 AI_CONVERSATION_EMOTION = "ai.conversation.emotion"
 AI_CONVERSATION_GESTURE = "ai.conversation.gesture"
 AI_CONVERSATION_DONE = "ai.conversation.done"
+AI_CONVERSATION_FIRST_AUDIO = "ai.conversation.first_audio"
+AI_CONVERSATION_ASSISTANT_TEXT = "ai.conversation.assistant_text"
 AI_STATE_CHANGED = "ai.state.changed"
 AI_STATUS_HEALTH = "ai.status.health"
 AI_LIFECYCLE_STARTED = "ai.lifecycle.started"
@@ -65,6 +67,11 @@ CORE_EVENT_OBSTACLE_CLOSE = "core.event.obstacle_close"
 CORE_EVENT_OBSTACLE_CLEARED = "core.event.obstacle_cleared"
 CORE_EVENT_VISION_HEALTHY = "core.event.vision_healthy"
 CORE_EVENT_VISION_STALE = "core.event.vision_stale"
+
+# ── Conversation capture (dashboard diagnostics) ────────────────
+
+CONV_SESSION_STARTED = "conv.session.started"
+CONV_SESSION_ENDED = "conv.session.ended"
 
 # ── System (§4.7) ───────────────────────────────────────────────
 

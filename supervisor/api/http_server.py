@@ -24,6 +24,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
 if TYPE_CHECKING:
+    from supervisor.api.conversation_capture import ConversationCapture
     from supervisor.api.param_registry import ParamRegistry
     from supervisor.api.protocol_capture import ProtocolCapture
     from supervisor.api.ws_hub import WsHub
@@ -115,6 +116,7 @@ def create_app(
     ws_hub: WsHub,
     workers: WorkerManager,
     capture: ProtocolCapture | None = None,
+    conv_capture: ConversationCapture | None = None,
 ) -> FastAPI:
     import psutil
 

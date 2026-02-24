@@ -247,7 +247,11 @@ async def _generate_and_stream(
     if response.memory_tags:
         await ws.send_json({"type": "memory_tags", "tags": response.memory_tags})
 
-    # 3. Stream TTS audio
+    # 3. Send assistant text (before audio so dashboard can display immediately)
+    if response.text:
+        await ws.send_json({"type": "assistant_text", "text": response.text})
+
+    # 4. Stream TTS audio
     if response.text:
         tts = get_tts()
         chunk_index = 0

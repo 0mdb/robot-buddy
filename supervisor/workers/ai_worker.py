@@ -30,8 +30,10 @@ from supervisor.messages.types import (
     AI_CMD_SEND_PROFILE,
     AI_CMD_START_CONVERSATION,
     AI_CONFIG_INIT,
+    AI_CONVERSATION_ASSISTANT_TEXT,
     AI_CONVERSATION_DONE,
     AI_CONVERSATION_EMOTION,
+    AI_CONVERSATION_FIRST_AUDIO,
     AI_CONVERSATION_GESTURE,
     AI_CONVERSATION_TRANSCRIPTION,
     AI_PLAN_RECEIVED,
@@ -74,6 +76,7 @@ class AIWorker(BaseWorker):
         self._session_id = ""
         self._turn_id = 0
         self._session_seq = 0
+        self._first_audio_emitted = False
 
         # Plan dedup
         self._seen_plans: OrderedDict[str, float] = OrderedDict()
@@ -114,6 +117,7 @@ class AIWorker(BaseWorker):
         elif t == AI_CMD_START_CONVERSATION:
             self._session_id = str(p.get("session_id", ""))
             self._turn_id = int(p.get("turn_id", 1))
+            self._first_audio_emitted = False
             asyncio.create_task(self._start_conversation())
 
         elif t == AI_CMD_END_UTTERANCE:
@@ -283,6 +287,7 @@ class AIWorker(BaseWorker):
 
     async def _end_utterance(self) -> None:
         """Signal end of user speech to server."""
+        self._first_audio_emitted = False
         self._set_state("thinking", "end_utterance_received")
         await self._ws_send({"type": "end_utterance"})
 
@@ -365,7 +370,26 @@ class AIWorker(BaseWorker):
                             },
                         )
 
+                elif msg_type == "assistant_text":
+                    self.send(
+                        AI_CONVERSATION_ASSISTANT_TEXT,
+                        {
+                            "session_id": self._session_id,
+                            "turn_id": self._turn_id,
+                            "text": msg.get("text", ""),
+                        },
+                    )
+
                 elif msg_type == "audio":
+                    if not self._first_audio_emitted:
+                        self._first_audio_emitted = True
+                        self.send(
+                            AI_CONVERSATION_FIRST_AUDIO,
+                            {
+                                "session_id": self._session_id,
+                                "turn_id": self._turn_id,
+                            },
+                        )
                     self._set_state("speaking", "audio_received")
                     # Forward audio to TTS worker via socket (Mode A) or NDJSON (Mode B)
                     data_b64 = msg.get("data", "")

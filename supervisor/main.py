@@ -151,9 +151,11 @@ async def async_main(args: argparse.Namespace) -> None:
         cfg.mock = True
     cfg.network.http_port = args.http_port
 
+    from supervisor.api.conversation_capture import ConversationCapture
     from supervisor.api.protocol_capture import ProtocolCapture
 
     capture = ProtocolCapture()
+    conv_capture = ConversationCapture()
     mock_reflex = None
     reflex = None
     face = None
@@ -224,10 +226,18 @@ async def async_main(args: argparse.Namespace) -> None:
             planner_enabled=planner_enabled,
             robot_id=args.robot_id,
             low_battery_mv=cfg.safety.low_battery_mv,
+            conv_capture=conv_capture,
         )
 
         # ── HTTP server ──────────────────────────────────────────
-        app = create_app(tick, registry, ws_hub, workers, capture=capture)
+        app = create_app(
+            tick,
+            registry,
+            ws_hub,
+            workers,
+            capture=capture,
+            conv_capture=conv_capture,
+        )
         http_config = uvicorn.Config(
             app,
             host=cfg.network.host,
