@@ -123,8 +123,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--usb-mic-device", default="default", help="ALSA mic device")
     p.add_argument(
         "--wakeword-model",
-        default=str(Path(__file__).parent / "models" / "hey_buddy.onnx"),
-        help="Wake word ONNX model path, or built-in name (alexa, hey_jarvis, hey_mycroft, hey_rhasspy). Default: hey_buddy.onnx",
+        default=os.environ.get(
+            "WAKEWORD_MODEL",
+            str(Path(__file__).parent / "models" / "hey_buddy.onnx"),
+        ),
+        help="Wake word ONNX model path, or built-in name (alexa, hey_jarvis, hey_mycroft, hey_rhasspy). Also reads WAKEWORD_MODEL env var. Default: hey_buddy.onnx",
     )
     return p.parse_args()
 
