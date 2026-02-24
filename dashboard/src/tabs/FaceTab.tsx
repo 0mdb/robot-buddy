@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import FaceMirrorCanvas from '../components/FaceMirrorCanvas'
 import { FACE_FLAGS, GESTURES, MOODS, SYSTEM_MODES } from '../constants'
 import { useSend } from '../hooks/useSend'
 import { useTelemetry } from '../hooks/useTelemetry'
 import { debounce } from '../lib/debounce'
+import { type ConversationEvent, useConversationStore } from '../lib/wsConversation'
+import { type CapturedPacket, useProtocolStore } from '../lib/wsProtocol'
 import styles from '../styles/global.module.css'
 
 // ---------------------------------------------------------------------------
@@ -49,6 +52,18 @@ const MOOD_ID_NAMES = [
   'confused',
 ]
 
+function compactFields(fields: Record<string, unknown>): string {
+  return Object.entries(fields)
+    .map(([k, v]) => `${k}=${typeof v === 'object' ? JSON.stringify(v) : String(v)}`)
+    .join('  ')
+}
+
+function compactConvEvent(e: ConversationEvent): string {
+  // Remove shared envelope-ish fields to keep rows readable.
+  const { ts_mono_ms: _ts, type: _type, ...rest } = e
+  return compactFields(rest as Record<string, unknown>)
+}
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -87,6 +102,68 @@ export default function FaceTab() {
   const currentManualLock = useTelemetry((s) => s.snapshot.face_manual_lock)
   const currentTalking = useTelemetry((s) => s.snapshot.face_talking)
   const currentTalkingEnergy = useTelemetry((s) => s.snapshot.face_talking_energy)
+  const sessionIdRaw = useTelemetry((s) => s.snapshot.session_id)
+  const aiStateRaw = useTelemetry((s) => s.snapshot.ai_state)
+  const micLinkUpRaw = useTelemetry((s) => s.snapshot.mic_link_up)
+  const spkLinkUpRaw = useTelemetry((s) => s.snapshot.spk_link_up)
+  const speakingRaw = useTelemetry((s) => s.snapshot.speaking)
+  const sessionId = typeof sessionIdRaw === 'string' ? sessionIdRaw : ''
+  const aiState = typeof aiStateRaw === 'string' ? aiStateRaw : ''
+  const micLinkUp = micLinkUpRaw === true
+  const spkLinkUp = spkLinkUpRaw === true
+  const speaking = speakingRaw === true
+
+  // -- Protocol capture (for live face TX mirroring) --
+  const protoConnected = useProtocolStore((s) => s.connected)
+  const protoPaused = useProtocolStore((s) => s.paused)
+  const setProtoPaused = useProtocolStore((s) => s.setPaused)
+  const faceTxRecent = useProtocolStore((s) => {
+    const out: CapturedPacket[] = []
+    for (let i = s.packets.length - 1; i >= 0 && out.length < 12; i--) {
+      const p = s.packets[i]
+      if (p.device === 'face' && p.direction === 'TX') out.push(p)
+    }
+    return out
+  })
+
+  // -- Conversation capture (for Studio diagnostics) --
+  const convConnected = useConversationStore((s) => s.connected)
+  const convPaused = useConversationStore((s) => s.paused)
+  const setConvPaused = useConversationStore((s) => s.setPaused)
+  const convRecent = useConversationStore((s) => s.events.slice(Math.max(0, s.events.length - 30)))
+
+  // Conversation controls (Studio)
+  const [dashPttHeld, setDashPttHeld] = useState(false)
+  const [chatText, setChatText] = useState('')
+  const [muteSpeaker, setMuteSpeaker] = useState(false)
+  const [muteChimes, setMuteChimes] = useState(false)
+  const [noTtsGeneration, setNoTtsGeneration] = useState(false)
+
+  const startWakeWord = useCallback(() => {
+    send({ type: 'conversation.start', trigger: 'wake_word' })
+  }, [send])
+
+  const startDashboardPtt = useCallback(() => {
+    setDashPttHeld(true)
+    send({ type: 'conversation.start', trigger: 'ptt' })
+  }, [send])
+
+  const endDashboardPtt = useCallback(() => {
+    setDashPttHeld(false)
+    send({ type: 'conversation.end_utterance' })
+  }, [send])
+
+  const cancelConversation = useCallback(() => {
+    setDashPttHeld(false)
+    send({ type: 'conversation.cancel' })
+  }, [send])
+
+  const sendChat = useCallback(() => {
+    const text = chatText.trim()
+    if (!text) return
+    send({ type: 'conversation.send_text', text })
+    setChatText('')
+  }, [chatText, send])
 
   // Conversation state + mood sequencer (read-only display)
   // snapshot is Record<string, unknown>, so narrow each field to its expected type.
@@ -231,18 +308,297 @@ export default function FaceTab() {
     return null
   }, [faceRxMs, tickMonoMs])
 
+  const faceTxAgeMs = useMemo(() => {
+    const last = faceTxRecent[0] ?? null
+    if (!last) return null
+    if (typeof tickMonoMs !== 'number') return null
+    return Math.max(0, tickMonoMs - last.ts_mono_ms)
+  }, [faceTxRecent, tickMonoMs])
+
   return (
     <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-      {/* Connection status */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span className={`${styles.badge} ${faceConnected ? styles.badgeGreen : styles.badgeRed}`}>
-          {faceConnected ? 'Face Connected' : 'Face Disconnected'}
-        </span>
-        {ageMs !== null && (
-          <span className={styles.mono} style={{ color: '#888', fontSize: 11 }}>
-            {ageMs.toFixed(0)} ms ago
+      {/* Header row */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 12,
+          flexWrap: 'wrap',
+        }}
+      >
+        <div style={{ fontSize: 16, fontWeight: 600, color: '#ccc' }}>Tuning Studio</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span
+            className={`${styles.badge} ${faceConnected ? styles.badgeGreen : styles.badgeRed}`}
+          >
+            {faceConnected ? 'Face Connected' : 'Face Disconnected'}
           </span>
-        )}
+          {ageMs !== null && (
+            <span className={styles.mono} style={{ color: '#888', fontSize: 11 }}>
+              face rx {ageMs.toFixed(0)} ms
+            </span>
+          )}
+
+          <span
+            className={`${styles.badge} ${protoConnected ? styles.badgeGreen : styles.badgeRed}`}
+          >
+            {protoConnected ? 'Protocol Connected' : 'Protocol Disconnected'}
+          </span>
+          <button
+            type="button"
+            onClick={() => setProtoPaused(!protoPaused)}
+            style={{
+              padding: '3px 10px',
+              fontSize: 11,
+              border: `1px solid ${protoPaused ? '#ff9800' : '#333'}`,
+              borderRadius: 4,
+              background: protoPaused ? 'rgba(255,152,0,0.15)' : '#1a1a2e',
+              color: protoPaused ? '#ff9800' : '#888',
+              cursor: 'pointer',
+            }}
+          >
+            {protoPaused ? 'Paused' : 'Live'}
+          </button>
+          {faceTxAgeMs !== null && (
+            <span className={styles.mono} style={{ color: '#888', fontSize: 11 }}>
+              face tx {faceTxAgeMs.toFixed(0)} ms
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Face Mirror Canvas */}
+      <div className={styles.card}>
+        <FaceMirrorCanvas />
+      </div>
+
+      {/* Live Face TX feed (protocol) */}
+      <div className={styles.card}>
+        <h3>Live Face TX (Protocol)</h3>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
+          <span className={styles.mono} style={{ color: 'var(--text-dim)', fontSize: 11 }}>
+            Drives the upcoming “Face Mirror” by replaying face TX commands (SET_STATE / FLAGS /
+            CONV_STATE / SYSTEM / TALKING / GESTURE).
+          </span>
+          <div
+            style={{
+              maxHeight: 160,
+              overflow: 'auto',
+              border: '1px solid rgba(255,255,255,0.06)',
+              borderRadius: 6,
+              padding: 8,
+              background: 'rgba(0,0,0,0.12)',
+            }}
+          >
+            {faceTxRecent.length === 0 ? (
+              <span className={styles.mono} style={{ color: '#888', fontSize: 12 }}>
+                No face TX packets yet.
+              </span>
+            ) : (
+              faceTxRecent.map((p) => (
+                <div key={`${p.ts_mono_ms}-${p.seq}-${p.type_name}`} className={styles.mono}>
+                  <span style={{ color: '#777' }}>{p.type_name}</span>{' '}
+                  <span style={{ color: '#aaa' }}>{compactFields(p.fields)}</span>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Conversation capture (Tuning Studio) */}
+      <div className={styles.card}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+          }}
+        >
+          <h3 style={{ margin: 0 }}>Conversation (Studio)</h3>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <span
+              className={`${styles.badge} ${convConnected ? styles.badgeGreen : styles.badgeRed}`}
+            >
+              {convConnected ? 'Conversation Connected' : 'Conversation Disconnected'}
+            </span>
+            <button
+              type="button"
+              onClick={() => setConvPaused(!convPaused)}
+              style={{
+                padding: '3px 10px',
+                fontSize: 11,
+                border: `1px solid ${convPaused ? '#ff9800' : '#333'}`,
+                borderRadius: 4,
+                background: convPaused ? 'rgba(255,152,0,0.15)' : '#1a1a2e',
+                color: convPaused ? '#ff9800' : '#888',
+                cursor: 'pointer',
+              }}
+            >
+              {convPaused ? 'Paused' : 'Live'}
+            </button>
+            <button
+              type="button"
+              onClick={() => useConversationStore.getState().clear()}
+              style={{
+                padding: '3px 10px',
+                fontSize: 11,
+                border: '1px solid #333',
+                borderRadius: 4,
+                background: '#1a1a2e',
+                color: '#888',
+                cursor: 'pointer',
+              }}
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button type="button" onClick={startWakeWord} style={{ padding: '6px 10px' }}>
+              Sim Wake Word
+            </button>
+            <button
+              type="button"
+              onMouseDown={() => {
+                if (!dashPttHeld) startDashboardPtt()
+              }}
+              onMouseUp={() => {
+                if (dashPttHeld) endDashboardPtt()
+              }}
+              onMouseLeave={() => {
+                if (dashPttHeld) endDashboardPtt()
+              }}
+              onTouchStart={() => {
+                if (!dashPttHeld) startDashboardPtt()
+              }}
+              onTouchEnd={() => {
+                if (dashPttHeld) endDashboardPtt()
+              }}
+              style={{
+                padding: '6px 10px',
+                border: `1px solid ${dashPttHeld ? '#ff9800' : '#333'}`,
+                background: dashPttHeld ? 'rgba(255,152,0,0.15)' : '#1a1a2e',
+                color: dashPttHeld ? '#ff9800' : '#ddd',
+              }}
+            >
+              {dashPttHeld ? 'PTT (Release to Send)' : 'PTT (Hold)'}
+            </button>
+            <button type="button" onClick={cancelConversation} style={{ padding: '6px 10px' }}>
+              Cancel
+            </button>
+          </div>
+
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input
+              value={chatText}
+              onChange={(e) => setChatText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') sendChat()
+              }}
+              placeholder="Type message…"
+              style={{
+                flex: 1,
+                minWidth: 180,
+                padding: '6px 10px',
+                borderRadius: 6,
+                border: '1px solid rgba(255,255,255,0.12)',
+                background: 'rgba(0,0,0,0.25)',
+                color: '#ddd',
+              }}
+            />
+            <button type="button" onClick={sendChat} style={{ padding: '6px 10px' }}>
+              Send
+            </button>
+          </div>
+
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+            <span className={styles.mono} style={{ color: '#888', fontSize: 11 }}>
+              session {sessionId ? sessionId : '—'}
+            </span>
+            <span className={styles.mono} style={{ color: '#888', fontSize: 11 }}>
+              ai_state {aiState ? aiState : '—'}
+            </span>
+            <span className={`${styles.badge} ${micLinkUp ? styles.badgeGreen : styles.badgeRed}`}>
+              {micLinkUp ? 'mic up' : 'mic down'}
+            </span>
+            <span className={`${styles.badge} ${spkLinkUp ? styles.badgeGreen : styles.badgeRed}`}>
+              {spkLinkUp ? 'spk up' : 'spk down'}
+            </span>
+            <span className={`${styles.badge} ${speaking ? styles.badgeGreen : styles.badgeRed}`}>
+              {speaking ? 'speaking' : 'not speaking'}
+            </span>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#aaa' }}>
+              <input
+                type="checkbox"
+                checked={muteSpeaker}
+                onChange={(e) => {
+                  const muted = e.target.checked
+                  setMuteSpeaker(muted)
+                  send({ type: 'tts.set_mute', muted, mute_chimes: muteChimes })
+                }}
+              />
+              Mute speaker
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#aaa' }}>
+              <input
+                type="checkbox"
+                checked={muteChimes}
+                onChange={(e) => {
+                  const mc = e.target.checked
+                  setMuteChimes(mc)
+                  send({ type: 'tts.set_mute', muted: muteSpeaker, mute_chimes: mc })
+                }}
+              />
+              Mute chimes
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#aaa' }}>
+              <input
+                type="checkbox"
+                checked={noTtsGeneration}
+                onChange={(e) => {
+                  const enabled = e.target.checked
+                  setNoTtsGeneration(enabled)
+                  send({ type: 'conversation.config', stream_audio: !enabled, stream_text: true })
+                }}
+              />
+              No TTS generation
+            </label>
+          </div>
+        </div>
+
+        <div
+          style={{
+            maxHeight: 220,
+            overflow: 'auto',
+            border: '1px solid rgba(255,255,255,0.06)',
+            borderRadius: 6,
+            padding: 8,
+            background: 'rgba(0,0,0,0.12)',
+            marginTop: 8,
+          }}
+        >
+          {convRecent.length === 0 ? (
+            <span className={styles.mono} style={{ color: '#888', fontSize: 12 }}>
+              No conversation events yet.
+            </span>
+          ) : (
+            convRecent.map((e) => (
+              <div
+                key={`${e.ts_mono_ms}-${e.type}-${String(e.turn_id ?? '')}`}
+                className={styles.mono}
+              >
+                <span style={{ color: '#777' }}>{e.type}</span>{' '}
+                <span style={{ color: '#aaa' }}>{compactConvEvent(e)}</span>
+              </div>
+            ))
+          )}
+        </div>
       </div>
 
       {/* Face State — read-only conversation + sequencer display */}

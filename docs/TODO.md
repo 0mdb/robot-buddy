@@ -21,13 +21,7 @@ Living section — reorder as priorities shift. Current recommended sequence:
 3. T1–T4 evaluation
 
 ### Track B: Personality Engine (server + supervisor)
-1. ~~PE↔Face spec compliance fixes~~ ✅ + ~~Server emotion vocab alignment~~ ✅ (B1 complete)
-2. ~~Guardrail config + safety timers~~ ✅ (B1b: GuardrailConfig, RS-1/RS-2 session/daily limits, persistence, parent override)
-3. ~~Conversation response schema v2 + prompt v2 + guided decoding + model defaults~~ ✅ (B2 core: v2 schema, age 4-8 prompt, Qwen3-8B-AWQ, mood_reason forwarding)
-4. ~~Conversation hardening (context-budget, audio overflow, privacy, L1 mood_reason validation) + chat templates~~ ✅
-5. ~~Personality profile injection (`personality.llm.profile` → `/converse` prompt injection + anchor cadence)~~ ✅
-6. ~~Memory system (local JSON, consent gate, dashboard viewer + forget)~~ ✅
-7. ~~Prosody routing (TTS emotion from PE mood)~~ ✅
+1–7. _(B1–B5 complete)_
 8. PE evaluation (metrics + guardrail + child-safety validation)
 
 ### Track C: Reflex MCU Commissioning (hardware)
@@ -47,20 +41,7 @@ _(all items completed)_
 ### Face Communication System
 
 **Stage 4 — Parity + Firmware Display Optimization** `[opus]`
-- [x] Stage 4.0: Update `specs/face-communication-spec-stage2.md` + `docs/protocols.md` to match chosen behavior:
-  - System overlays = Sim V3 “face-based” screens + hide border/buttons while SystemMode != NONE
-  - PTT semantics = tap-toggle (not strict press/hold)
-  - Corner button hitboxes = `BTN_CORNER_*` constants (not stale 48×48 numbers)
-- [x] Stage 4.0: Port Sim V3 system screens to firmware (`tools/face_sim_v3/render/face.py` → `esp32-face`)
-- [x] Stage 4.0: Suppress conversation border + corner buttons during system overlays (sim + firmware)
-- [x] Stage 4.0: Fix corner button visuals parity (MIC/X icons + ACTIVE/IDLE mapping matches `tools/face_sim_v3/__main__.py`)
-- [x] Stage 4.0: Disable corner-button hit-testing + button telemetry during system overlays (buttons hidden)
-- [x] Stage 4.0: Fix firmware to accept Mood.CONFUSED (mood_id 12) in `SET_STATE`
-- [x] Stage 4.0: Gesture gap analysis: Sim V3 gestures 13–19 exist; defer + gate in sim, keep firmware/protocol at 13 for now
-- [x] Stage 4.0: Expand `tools/check_face_parity.py` to catch semantic mismatches (not just constants):
-  - CONFUSED mood acceptance, system-mode suppression of border/buttons, corner icon mapping defaults
-- [x] Stage 4.0: Supervisor: send LOW_BATTERY param (0–255) derived from `battery_mv` (battery fill/progress)
-- [x] Stage 4.0: Doc parity cleanup: reconcile `esp32-face/README.md` with current renderer + corner button semantics
+_10 items complete (Stage 4.0 spec/port/parity/buttons/gestures/docs) — see archive_
 - [ ] Stage 4.0: Hardware visual pass: Sim V3 vs MCU side-by-side on hardware for all 13 moods (confirm “real” reads match spec intent) `[sonnet]`
 - [ ] Stage 4.0: Refine THINKING face on hardware (currently reads as angry) `[sonnet]`
 - [ ] Stage 4.0: Tune timing values on hardware: ramp durations, hold times, border alpha curves `[sonnet]`
@@ -87,50 +68,7 @@ _(all items completed)_
 
 **Spec references**: `specs/personality-engine-spec-stage2.md`, `specs/pe-face-comm-alignment.md`, `specs/face-communication-spec-stage2.md`
 
-**Status (already done)** `[opus]`
-- [x] L0 PersonalityWorker + affect vector model + tick loop integration (see Completed → “Personality Engine — Layer 0 Implementation”)
-- [x] L0 impulse catalog, idle rules, duration caps, context gate, fast-path processing (unit tested)
-
-**B1 — PE↔Face Compliance Fixes** `[sonnet]` ✅
-- [x] Tick loop conversation clamping: during LISTENING/PTT force NEUTRAL@0.3, during THINKING force THINKING@0.5, regardless of PE snapshot freshness (face comm S2 §2.3; alignment §4.5)
-- [x] Route planner `emote` actions as PE impulses (do not call `FaceClient.send_state()` directly); face mood must come from PE snapshot (face comm S2 “Layer 3 source updated” note)
-- [x] Ensure `personality.event.conv_ended` is emitted on all conversation teardown paths (PTT off, ACTION cancel, AI error/disconnect), not only `AI_CONVERSATION_DONE`
-- [x] Add PE intensity caps enforcement (SAD 0.70, SCARED 0.60, ANGRY 0.50, SURPRISED 0.80) so the PE-fresh path is guardrail-safe
-- [x] Face send-rate discipline: dedup/throttle `SET_STATE`/`SET_CONV_STATE`/`SET_FLAGS` when unchanged; avoid serial/MCU spam (perf + face smoothness)
-- [x] Add `confused` to server canonical emotions and ensure it survives end-to-end (server → ai_worker → tick_loop → personality_worker → face)
-
-**B1b — Guardrail Config + Safety Timers** `[opus]` ✅
-- [x] Extend `personality.config.init` to include `{axes, guardrails, memory_path, memory_consent}` and plumb into PersonalityWorker (PE spec S2 §9.5, §14.1)
-- [x] Implement RS-1 session time limit (900 s) + RS-2 daily time limit (2700 s): enforcement behavior + “daily” semantics + persistence/reset strategy (PE spec S2 §9.3)
-- [x] Expose time-limit state via telemetry + add a child-safe UX path (stop-and-redirect + cooldown) + parent override controls
-
-**B2 — Conversation Schema V2 + Prompt V2 (Layer 1)** `[opus]` ✅
-- [x] Implement ConversationResponse v2 schema (PE spec S2 §12.3): `inner_thought`, `emotion`, `intensity`, `mood_reason`, `emotional_arc`, `child_affect`, `text`, `gestures`, `memory_tags`
-- [x] Normalize target child age range across prompts/specs/eval docs to **age 4–8** (canonical; enforce in system prompt)
-- [x] Rewrite CONVERSATION_SYSTEM_PROMPT v2 (PE spec S2 §12.4): 6 sections (personality rules, emotion intensity limits, speech style, safety, response format, examples)
-- [x] vLLM schema-guided decoding (PE spec S2 §12.2) for conversation via `GuidedDecodingParams`; eliminates JSON repair loop for conversation
-- [x] Set server defaults: `VLLM_MODEL_NAME=Qwen/Qwen3-8B-Instruct-AWQ` and `VLLM_DTYPE=auto` (PE spec S2 §12.1)
-- [x] `/converse` websocket protocol: include `mood_reason` with emotion metadata; `ai_worker.py` parsing + forwarding
-- [x] Implement conversation history context-budget enforcement (PE spec S2 §12.6): recent window (8 turns), older turns compressed to summary tuples, token budget enforcement
-- [x] Harden `/converse` websocket: cap per-utterance `audio_buffer` bytes (~30s / 960KB), reject on overflow with `audio_buffer_overflow` error
-- [x] Privacy hardening: `LOG_TRANSCRIPTS=false` by default — conversation text not logged at INFO level; only emotion/intensity/length logged
-- [x] Extend `personality.event.ai_emotion` payload forwarding: include `session_id`, `turn_id`, `mood_reason`
-- [x] Update PersonalityWorker L1 pipeline (PE spec S2 §13): `mood_reason` validation + modulation factor; rejected reasons substitute THINKING and emit guardrail-trigger event
-- [x] Add `personality.event.memory_extract` emission per turn (memory_tags from v2 schema)
-- [x] Use model chat templates (Qwen) instead of ad-hoc `ROLE: ...` prompting to avoid behavior drift between backends (quality + token efficiency)
-
-**B3 — Personality Profile Injection (server conditioning)** `[opus]` ✅
-- [x] Add outbound `personality.llm.profile` from PersonalityWorker (conv start + 1 Hz during conv) and route it to AI worker
-- [x] Extend `/converse` protocol to accept `{“type”:”profile”,”profile”:{...}}`; server injects “CURRENT STATE …” system block each turn + anchor reminder every 5 turns (PE spec S2 §12.5, §12.7)
-
-**B4 — Memory System (COPPA)** `[opus]` ✅
-- [x] Implement local memory store per PE spec S2 §8: decay tiers, max 50 entries, eviction, local-only JSON, consent gate default false
-- [x] Memory timestamps: wall-clock `time.time()` for persistence across reboots (half-lives are days/months; sub-second precision irrelevant)
-- [x] Dashboard: parent memory viewer + “Forget everything” button (`personality.cmd.reset_memory`) (PE spec S2 §8.5)
-- [x] Apply memory bias term in affect update (step 3) (PE spec S2 §8.3)
-
-**B5 — Prosody** `[sonnet]` ✅
-- [x] Route TTS emotion tag from `world.personality_mood` (PE spec S2 §11.5) instead of hardcoding `”neutral”`
+**B1–B5 complete** (31 items archived) — L0, PE↔Face compliance, guardrails, schema v2, profile injection, memory, prosody
 
 **B6 — Evaluation** `[opus]`
 - [ ] Add/extend tests: clamping behavior, worker intensity caps, planner-emote impulse routing, conv-ended teardown coverage, `confused` server vocab, schema-v2 parsing, guided decoding compliance
@@ -142,9 +80,6 @@ _(all items completed)_
 ### Reflex MCU Commissioning
 
 **Prerequisite**: ESP-IDF environment, USB-C cable, hardware on breadboard.
-
-**Firmware** `[sonnet]`:
-- [x] Pin map verified — GPIO 17/18 (SDA/SCL) confirmed correct; TRIG→GPIO21 and VBAT→GPIO1 already in `pin_map.h`. No firmware change needed.
 
 **Phase 1: IMU (BMI270) — Hardware Validation** `[sonnet]`
 - [ ] Hardware bring-up: SSH → supervisor logs → `/status` poll → dashboard Telemetry tab → physical tilt/rotate tests
@@ -208,7 +143,6 @@ _(all items completed)_
 
 ### Dashboard
 
-- [x] `[sonnet]` Telemetry health panel per device (RTT, offset, drift, seq drops)
 - [ ] `[sonnet]` Camera settings panel
 - [ ] `[opus]` **Tuning Studio (expand Face tab; consolidate dashboard; built to complete B6)** — one place to tune face parameters (mouth sync), personality, models, server settings, and the full voice pipeline
   - [ ] **Dashboard consolidation (no redundant tuning UI)**
@@ -216,13 +150,15 @@ _(all items completed)_
     - [ ] Keep `Monitor` = health overview, `Protocol` = raw packets, `Params` = param registry; avoid duplicating controls across tabs
     - [ ] Fold the previously-planned “Personality engine visualization” into this Studio (no separate dashboard feature)
   - [ ] **Accurate Face Mirror (TypeScript port; protocol-driven)**
-    - [ ] Port canonical sim (`tools/face_sim_v3/`) to `dashboard/src/face_sim/*` (render + state machines + constants) with optional deterministic seed
-    - [ ] Drive mirror from `/ws/protocol` **face TX** stream (mirror commanded output: mood/intensity/gaze/brightness, conv state, flags, system mode, talking/energy, gestures)
+    - [x] Phase 1-3: Port core sim to `dashboard/src/face_sim/*` — constants, types, SDF, moods, render (eyes+mouth+sparkles), animation state machine (tweens, spring gaze, blink, breathing, idle wander, talking), protocol bridge (SET_STATE/SET_FLAGS/SET_TALKING/GESTURE/SET_CONV_STATE/SET_SYSTEM → FaceState)
+    - [x] `FaceMirrorCanvas.tsx` — 320×240 canvas (2x CSS), 30fps rAF loop, live protocol packet ingestion from useProtocolStore
+    - [x] Integrated into FaceTab (Tuning Studio)
     - [x] Supervisor: extend `supervisor/api/protocol_capture.py` to name+decode Face `SET_CONV_STATE (0x25)` (required for border parity)
     - [x] Dashboard: allow protocol WS connection while Studio is open (not only on Protocol tab)
-    - [ ] UI: `FaceMirrorCanvas` (320×240 canvas with scale/fit + 30/60 fps) + Mirror Mode (`Live` / `Replay` / `Sandbox`)
-    - [ ] “Deterministic mirror” toggle: disable randomness (idle wander + autoblink) to reduce divergence during tuning
-    - [ ] Parity harness: golden-state suite (mood sweep, conv states, system overlays, talking energy sweep) Python sim vs TS pixel-diff + `just` recipe
+    - [ ] Phase 4: Gestures & effects — sparkle animation, fire, afterglow buffer, holiday effects, confetti, snow; gesture visual overrides (heart eyes SDF, X-eyes cross SDF, rage shake, sleepy droop)
+    - [ ] Phase 5: Border renderer — conv-state-driven border (8 states: IDLE/LISTENING/THINKING/SPEAKING/etc.), border SDF + alpha curves, pulsing/breathing animations
+    - [ ] Phase 6: Mirror modes (Sandbox / Replay) + deterministic toggle (disable idle wander + autoblink randomness) + FPS selector (30/60)
+    - [ ] Phase 7: Parity harness — golden-state suite (mood sweep, conv states, system overlays, talking energy sweep) Python sim vs TS pixel-diff + `just check-face-mirror-parity` recipe
   - [ ] **Conversation harness (multi-input; addresses Conversation & Voice backlog)**
     - [x] Inputs in one panel: physical PTT, dashboard PTT, wake word, text chat (bypass STT), “simulate wake word” button
     - [x] Fix PTT semantics: PTT OFF = `end_utterance` (no immediate teardown; teardown after response)
@@ -273,161 +209,9 @@ _(all items completed)_
 
 ---
 
-### Infrastructure & Tooling
-
----
-
 ## Completed
 
-### Face Communication — Research & Specs
-- [x] Face communication spec Stage 1 (research) → `specs/face-communication-spec-stage1.md`
-- [x] Face communication spec Stage 2 (implementation-ready, ~1340 lines) → `specs/face-communication-spec-stage2.md`
-- [x] Spec revisions: 10 fixes + 3 nits applied, verification pass done
-- [x] Face visual language design document → `specs/face-visual-language.md`
-- [x] Face communication evaluation plan → `specs/face-communication-eval-plan.md`
-
-### Personality Engine — Layer 0 Implementation
-- [x] `supervisor/personality/affect.py`: sigmoid_map, TraitParameters, AffectVector, Impulse, PersonalitySnapshot, update_affect, apply_impulse, project_mood, enforce_context_gate
-- [x] `supervisor/workers/personality_worker.py`: L0 rules 01–13, duration caps, idle rules, fast path, all event handlers
-- [x] `supervisor/core/event_router.py` + `state.py` + `tick_loop.py`: full PE integration (event forwarding + snapshot → WorldState)
-- [x] `supervisor/tests/test_affect.py`: 47 tests covering all affect model math
-- [x] `supervisor/tests/test_personality_worker.py`: 44 tests covering all L0 rules, idle rules, duration caps, context gate
-
-### Dashboard
-- [x] Per-device clock health panel (`DeviceClockPanel` in `MonitorTab.tsx`): RTT, offset, drift, samples, data age, last seq per MCU
-
-### IMU Derived Fields
-- [x] `tilt_angle_deg` + `accel_magnitude_mg` computed in tick_loop, exposed in telemetry + dashboard
-
-### Personality Engine — B1b Guardrail Config + Safety Timers
-- [x] `GuardrailConfig` dataclass + `PersonalityConfig` section in `supervisor/config.py` (YAML-loadable)
-- [x] Extended `personality.config.init` payload: axes, guardrails, memory_path, memory_consent
-- [x] PersonalityWorker consumes guardrail config: toggleable duration caps, intensity caps, context gate
-- [x] RS-1 session time limit (900s default): per-conversation timer, guardrail_triggered event, tick_loop wind-down with gentle redirect speech
-- [x] RS-2 daily time limit (2700s default): persistent daily counter (JSON, resets on new day), blocks new conversations, guardrail_triggered event
-- [x] `personality.cmd.set_guardrail` handler: parent runtime override of limits + `reset_daily` command
-- [x] Session/daily time state in personality snapshot → WorldState → telemetry (dashboard-visible)
-- [x] Tick loop enforces daily limit gate on `_start_conversation` + session limit wind-down via delayed teardown
-- [x] 30 new unit tests: config parsing, guardrail toggles, session/daily timer increments, limit events, persistence, set_guardrail command
-
-### Personality Engine — B3 Personality Profile Injection
-- [x] `personality.llm.profile` emitted from PersonalityWorker at conv start + 1 Hz during conversation (PE spec S2 §10.4)
-- [x] Tick loop enriches profile with `turn_id`/`session_id` and routes to AI worker via `AI_CMD_SEND_PROFILE`
-- [x] AI worker forwards `{"type":"profile","profile":{...}}` over WebSocket to server
-- [x] `/converse` WebSocket handler accepts `profile` message type, stores on ConversationHistory
-- [x] `_build_current_state_block()`: dynamic CURRENT STATE system block injected before each user turn (mood, intensity, arc, continuity constraint per §12.5)
-- [x] Personality anchor (§12.7): 30-token reminder injected every 5 turns to prevent persona drift
-- [x] 10 new tests: profile emission timing, payload fields, CURRENT STATE block content, anchor cadence, profile+anchor coexistence
-
-### Personality Engine — B4 Memory System (COPPA)
-- [x] `supervisor/personality/memory.py` (new): MemoryEntry + MemoryStore — decay tiers (name/ritual/topic/tone/preference), exponential decay, 50-entry cap with eviction, per-tier max, consent gate
-- [x] `server/app/llm/conversation.py`: MemoryTagV2 Pydantic model + structured `memory_tags` schema (LLM classifies tag + category), backwards-compat legacy `list[str]` parsing
-- [x] `server/app/llm/conversation.py`: CURRENT STATE block includes "Known about this child: ..." from profile memory_tags
-- [x] `server/app/routers/converse.py`: send `memory_tags` over WebSocket after gestures
-- [x] `supervisor/workers/ai_worker.py`: handle `memory_tags` WS message, emit `personality.event.memory_extract`
-- [x] `supervisor/core/tick_loop.py`: route `PERSONALITY_EVENT_MEMORY_EXTRACT` to personality worker
-- [x] `supervisor/workers/personality_worker.py`: MemoryStore lifecycle, `_handle_memory_extract()`, `_handle_reset_memory()`, memory in LLM profile + health payload
-- [x] `supervisor/personality/affect.py`: MEMORY_WEIGHT=0.02, memory bias in `update_affect()` step 3 (PE spec S2 §8.3)
-- [x] `supervisor/api/http_server.py`: GET/DELETE `/api/personality/memory` endpoints
-- [x] `dashboard/src/tabs/MonitorTab.tsx` + `dashboard/src/hooks/useMemory.ts`: Memory panel with consent badge, entry list, strength bars, "Forget All" button
-- [x] `supervisor/tests/test_memory.py` (new): 18 tests — entry decay, floor, eviction, consent gate, persistence, reset
-- [x] `supervisor/tests/test_affect.py`: 3 new tests — memory bias, threshold filtering, None safety
-- [x] `supervisor/tests/test_personality_worker.py`: 6 new tests — extract, legacy strings, reset, consent gate, profile, health
-- [x] `server/tests/test_conversation.py`: 6 updated/new tests — structured tags, legacy fallback, invalid category, memory context
-
-### Personality Engine — B5 Prosody Routing
-- [x] `_enqueue_say()` in tick_loop.py: replaced hardcoded `"neutral"` emotion with `self.world.personality_mood` (PE spec S2 §11.5)
-- [x] TTS worker already forwards emotion tag to server HTTP POST — no changes needed downstream
-- [x] 3 new tests in `test_core.py::TestProsodyRouting`: default neutral, PE mood forwarding, multiple moods
-
-### Personality Engine — B2 Conversation Schema V2 + Guided Decoding
-- [x] `ConversationResponseV2` Pydantic model (9 fields: inner_thought, emotion, intensity, mood_reason, emotional_arc, child_affect, text, gestures, memory_tags)
-- [x] `CONVERSATION_SYSTEM_PROMPT` v2 rewrite: 6 sections (personality rules, emotion intensity limits, speech style, safety, response format with v2 JSON, 3 examples), target age 4-8
-- [x] vLLM guided JSON decoding via `GuidedDecodingParams(json_object=schema)` — eliminates repair loop for conversation; graceful fallback if `GuidedDecodingParams` unavailable
-- [x] Server config defaults updated: `Qwen/Qwen3-8B-Instruct-AWQ`, `dtype=auto` (PE spec S2 §12.1)
-- [x] `/converse` WebSocket emotion message includes `mood_reason` field
-- [x] `ai_worker.py` parses and forwards `mood_reason` from server emotion messages
-- [x] `ConversationResponse` dataclass extended with `mood_reason` + `memory_tags` fields
-- [x] `parse_conversation_response_content()` accepts both v1 (4 fields) and v2 (9 fields) JSON payloads
-- [x] Conversation history context-budget: 8-turn recent window + older turns compressed to `(turn_N: topic, emotion)` summary tuples + token budget enforcement
-- [x] Audio buffer overflow protection: 30s/960KB cap, `audio_buffer_overflow` error on exceed
-- [x] Privacy: `LOG_TRANSCRIPTS=false` default — conversation text not in server logs
-- [x] `personality.event.ai_emotion` payload extended: forwards `session_id`, `turn_id`, `mood_reason` from ai_worker through tick_loop to personality worker
-- [x] Chat templates: `model_config.py` registry (Qwen3/Qwen2/Llama families), `vllm_backend.py` rewritten to use `tokenizer.apply_chat_template()` with proper ChatML format, `enable_thinking=False` for Qwen3, fallback flat format for tests, repair loop fixed to append messages not raw strings; 12 new tests; Orpheus TTS confirmed no changes needed (handles own Llama-3.2 template internally)
-
-### Personality Engine — B1 PE↔Face Compliance
-- [x] Tick loop conversation clamping: LISTENING/PTT → NEUTRAL@0.3, THINKING → THINKING@0.5 (overrides PE snapshot)
-- [x] Planner `emote` actions routed as PE impulses (not direct `FaceClient.send_state()`)
-- [x] `personality.event.conv_ended` emitted on all teardown paths (PTT off, ACTION cancel, AI done)
-- [x] PE intensity caps enforced in PersonalityWorker (SAD 0.70, SCARED 0.60, ANGRY 0.50, SURPRISED 0.80)
-- [x] Face send-rate dedup: `SET_STATE`/`SET_CONV_STATE`/`SET_FLAGS` skip when unchanged
-- [x] `confused` added to server canonical emotions (end-to-end: server → ai_worker → PE → face)
-
-### Personality Engine — Research & Specs
-- [x] Research buckets 0-7 → `docs/research/bucket-*.md`
-- [x] PE Stage 1: research & decisions (PE-1 through PE-10) → `specs/personality-engine-spec-stage1.md`
-- [x] PE Stage 2: full implementation spec (~1340 lines) → `specs/personality-engine-spec-stage2.md`
-- [x] PE↔Face alignment review (5 conflicts resolved) → `specs/pe-face-comm-alignment.md`
-
-### Face Sim V3 (Stage 3)
-- [x] Clean rewrite: 16 modules, ~2600 lines, `tools/face_sim_v3/`
-- [x] 13 moods with distinct colors, expression intensity blending
-- [x] Mood transition choreography (blink → 150ms ramp-down → switch → 200ms ramp-up)
-- [x] Negative affect guardrails (context gate, intensity caps, duration caps, auto-recovery)
-- [x] Conversation state machine (8 states, auto-transitions, per-state gaze/flag overrides)
-- [x] Border renderer (SDF frame + glow, 8 state animations)
-- [x] Command bus (all inputs via protocol-equivalent commands)
-- [x] CI parity check (196/196 passed)
-- [x] Visual language remediation (G1-G7) + review cycles (R1-R5, D1-D5, B1-B3)
-
-### Face Stage 4.0 — Parity + Hardware Polish
-- [x] Suppress conversation border + corner buttons during system overlays (sim + firmware, spec §4.4)
-- [x] Fix corner button visuals: right button default MIC→X_MARK, drive icon/state/color from conv state
-- [x] Disable corner-button hit-testing + telemetry during system overlays (g_system_mode guard)
-- [x] Port Sim V3 face-based system screens to firmware (system_face.cpp: BOOTING, ERROR, LOW_BATTERY, UPDATING, SHUTTING_DOWN)
-- [x] Small SDF icon overlays on face: warning triangle, battery bar, progress bar
-- [x] Reconcile esp32-face/README.md with current renderer + corner button semantics
-- [x] Parity tool: fix false negative for comment-referenced function calls; 235/235 passing
-- [x] Justfile: add --passWithNoTests to dashboard test recipe
-
-### Face Implementation (Phases 0–4)
-- [x] Phase 0: Sim/MCU parity sync (17 divergences ported, 196/196 parity; blink interval, idle gaze, gesture durations, talking speed, BG color, mouth curve all confirmed synced; CONFUSED mood verified end-to-end in constants.ts, types.ts, protocols.md, sim)
-- [x] Phase 1: Supervisor conversation state machine (ConvStateTracker + tick_loop wiring + 39 tests)
-- [x] Phase 2: Firmware border rendering + SET_CONV_STATE 0x25 (~700 lines C++, corner buttons, LED sync + 8 protocol tests)
-- [x] Phase 3: Mood transition sequencer + guardrails (MoodSequencer 4-phase ~470ms + Guardrails + tick_loop + 58 tests)
-- [x] Phase 4: Conversation phase transitions (ConvTransitionChoreographer: gaze ramps, anticipation blink, re-engagement nod, mood settle + 51 tests)
-- [x] Phase 5: Talking sync fix (300ms POST_TALKING_GRACE_TICKS in tick_loop.py), dashboard Face State panel (conv state badge + intensity bar + sequencer phase), SET_FLAGS/SET_CONV_STATE/CONFUSED documented in protocols.md
-
-### Timestamps & Deterministic Telemetry
-- [x] Protocol v2 envelope: seq (u32) + t_src_us (u64) for all MCU packets
-- [x] TIME_SYNC_REQ/RESP (ClockSyncEngine: min-RTT offset, drift tracking)
-- [x] Raw packet logger (binary format per PROTOCOL.md §10.1, 50MB rotation)
-- [x] Camera frames: frame_seq, t_cam_ns (Picamera2 SensorTimestamp), t_det_done_ns
-- [x] Command causality: cmd_seq (u32), t_cmd_tx_ns tracking
-- [x] Telemetry health dashboard (Monitor tab: diagnostic tree, Pi resources, comms, power, sensors, faults, workers)
-
-### Infrastructure & Tooling
-- [x] `/diagnose` skill — curl commands, 5-step workflow, fault-specific diagnostics
-- [x] `/status` skill — git state, hardware detection, top TODO priorities, quick test status
-- [x] `specs/INDEX.md` — one-paragraph summaries with section links for all 6 spec files
-- [x] CLAUDE.md Key File Paths expanded: workers, mood/expression, conversation AI paths added
-- [x] TTS deterministic speech fix: `SpeechPolicy._held` queue retries face-busy intents for 1500ms
-- [x] Protocol docs: SET_FLAGS (0x24) + SET_CONV_STATE (0x25) + CONFUSED mood ID 12 added to `docs/protocols.md`
-- [x] Border constants parity (`BORDER_FRAME_W`, `GLOW_W`, `CORNER_R`, `BLEND_RATE`) in `check_face_parity.py`
-- [x] `docs/architecture.md` — 181-line comprehensive rewrite (was stale 17-line stub)
-- [x] `SystemMode::ERROR_DISPLAY` symbol parity — consistent across sim, supervisor, MCU
-- [x] LOW_BATTERY supervisor trigger wired: `low_battery_mv` threshold in `SafetyConfig`, `FaceSystemMode.LOW_BATTERY` overlay in `tick_loop.py` `_emit_mcu`
-- [x] README spec compliance: model refs (Qwen2.5-3B → Qwen3-8B-AWQ), hardware refs (Jetson → Pi 5), stale In Progress items removed
-- [x] `-v2` rename: `supervisor_v2/` → `supervisor/`, `esp32-face-v2/` → `esp32-face/` (~85 files, Python imports, configs, deploy, docs, specs, skills, VSCode)
-
-### Infrastructure
-- [x] Voice pipeline: STT + TTS on 3090 Ti server, audio on Pi USB devices
-- [x] Conversation flow: button-triggered STT → LLM → TTS → face animation
-- [x] Wake word detection with "hey buddy" + Silero VAD
-- [x] Ear worker plays `assets/chimes/listening.wav` on wake word detection
-- [x] Planner server: FastAPI + vLLM backend, conversation + planning endpoints
-- [x] Dashboard: React 19, Vite, TypeScript, Zustand, TanStack Query
-- [x] Deploy scripts + systemd service on Pi
+_133 items archived to `docs/TODO-archive.md` (2026-02-23). Sections: Face specs, PE L0, Dashboard, IMU, PE B1b–B5, Face Sim V3, Stage 4.0, Face phases 0–5, Timestamps, Infrastructure._
 
 ---
 
