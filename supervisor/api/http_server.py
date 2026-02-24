@@ -614,14 +614,20 @@ async def _handle_ws_cmd(
             tick.robot.face_listening = False
     elif msg_type == "conversation.send_text":
         text = str(msg.get("text", "")).strip()
-        if text and tick.world.session_id:
-            asyncio.ensure_future(
-                tick._workers.send_to(
-                    "ai",
-                    "ai.cmd.send_text",
-                    {"text": text, "session_id": tick.world.session_id},
+        if text:
+            # Auto-start session for text chat (no audio links required)
+            if not tick.world.session_id:
+                tick._start_conversation("text")
+            if tick.world.session_id:
+                from supervisor.messages.types import AI_CMD_SEND_TEXT
+
+                asyncio.ensure_future(
+                    tick._workers.send_to(
+                        "ai",
+                        AI_CMD_SEND_TEXT,
+                        {"text": text, "session_id": tick.world.session_id},
+                    )
                 )
-            )
     elif msg_type == "conversation.config":
         if tick.world.session_id:
             asyncio.ensure_future(

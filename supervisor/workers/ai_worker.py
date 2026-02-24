@@ -29,6 +29,7 @@ from supervisor.messages.types import (
     AI_CMD_REQUEST_PLAN,
     AI_CMD_SEND_AUDIO,
     AI_CMD_SEND_PROFILE,
+    AI_CMD_SEND_TEXT,
     AI_CMD_SET_GENERATION_OVERRIDES,
     AI_CMD_START_CONVERSATION,
     AI_CONFIG_INIT,
@@ -153,6 +154,14 @@ class AIWorker(BaseWorker):
         elif t == AI_CMD_CLEAR_GENERATION_OVERRIDES:
             self._generation_overrides = {}
             log.info("generation overrides cleared")
+
+        elif t == AI_CMD_SEND_TEXT:
+            text = str(p.get("text", ""))
+            session_id = str(p.get("session_id", ""))
+            if text and session_id:
+                self._session_id = session_id
+                self._first_audio_emitted = False
+                asyncio.create_task(self._send_text(text))
 
         elif t == AI_CMD_SEND_AUDIO:
             # Mode B: audio relay from Core
@@ -317,6 +326,19 @@ class AIWorker(BaseWorker):
         self._first_audio_emitted = False
         self._set_state("thinking", "end_utterance_received")
         await self._ws_send({"type": "end_utterance"})
+
+    async def _send_text(self, text: str) -> None:
+        """Send text to server's /converse WebSocket, waiting for connection."""
+        # WS may still be connecting (started by AI_CMD_START_CONVERSATION)
+        for _ in range(50):  # 5s max
+            if self._ws_connected:
+                break
+            await asyncio.sleep(0.1)
+        if not self._ws_connected:
+            self._set_state("error", "ws_connect_timeout_for_text")
+            return
+        self._set_state("thinking", "text_sent")
+        await self._ws_send({"type": "text", "text": text})
 
     async def _end_conversation(self) -> None:
         """Close conversation session."""

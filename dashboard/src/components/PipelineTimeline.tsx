@@ -122,8 +122,9 @@ function deriveTurns(events: ConversationEvent[], maxTurns: number): Turn[] {
     }
 
     // LLM: transcription → emotion (or first_audio if no emotion)
+    // For text-only (no VAD/STT), fall back to session start
     const llmEnd = emotion ?? firstAudio
-    const llmStart = transcription ?? vadEnd
+    const llmStart = transcription ?? vadEnd ?? sessionStart
     if (llmStart !== null && llmEnd !== null) {
       stages.push({ name: 'LLM', color: STAGE_COLORS.LLM, startMs: llmStart, endMs: llmEnd })
     } else if (llmStart !== null && !llmEnd && !firstAudio && !ttsFinished && !sessionEnd) {

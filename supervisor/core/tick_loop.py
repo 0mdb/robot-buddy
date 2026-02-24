@@ -1018,8 +1018,11 @@ class TickLoop:
     # ── Conversation control ─────────────────────────────────────
 
     def _start_conversation(self, trigger: str = "ptt") -> None:
-        """Start a conversation (PTT button or wake word)."""
-        if not self.world.both_audio_links_up:
+        """Start a conversation (PTT button, wake word, or text chat)."""
+        is_text = trigger == "text"
+
+        # Text chat doesn't need audio sockets
+        if not is_text and not self.world.both_audio_links_up:
             log.warning("cannot start conversation: audio links not up")
             return
 
@@ -1057,8 +1060,9 @@ class TickLoop:
             )
         )
 
-        # Tell ear worker to start forwarding mic audio + VAD
-        asyncio.ensure_future(self._workers.send_to("ear", EAR_CMD_START_LISTENING))
+        # Tell ear worker to start forwarding mic audio + VAD (not needed for text)
+        if not is_text:
+            asyncio.ensure_future(self._workers.send_to("ear", EAR_CMD_START_LISTENING))
 
         # Notify personality worker
         asyncio.ensure_future(
@@ -1075,7 +1079,8 @@ class TickLoop:
                 self._workers.send_to("tts", TTS_CMD_PLAY_CHIME, {"chime": "listening"})
             )
 
-        self.robot.face_listening = True
+        if not is_text:
+            self.robot.face_listening = True
 
     def _on_param_change(self, name: str, _value: Any) -> None:
         """Handle param registry changes."""
