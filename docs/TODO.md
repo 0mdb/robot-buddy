@@ -51,16 +51,16 @@ _(all items completed)_
   - System overlays = Sim V3 “face-based” screens + hide border/buttons while SystemMode != NONE
   - PTT semantics = tap-toggle (not strict press/hold)
   - Corner button hitboxes = `BTN_CORNER_*` constants (not stale 48×48 numbers)
-- [ ] Stage 4.0: Port Sim V3 system screens to firmware (`tools/face_sim_v3/render/face.py` → `esp32-face`)
-- [ ] Stage 4.0: Suppress conversation border + corner buttons during system overlays (sim + firmware)
-- [ ] Stage 4.0: Fix corner button visuals parity (MIC/X icons + ACTIVE/IDLE mapping matches `tools/face_sim_v3/__main__.py`)
-- [ ] Stage 4.0: Disable corner-button hit-testing + button telemetry during system overlays (buttons hidden)
+- [x] Stage 4.0: Port Sim V3 system screens to firmware (`tools/face_sim_v3/render/face.py` → `esp32-face`)
+- [x] Stage 4.0: Suppress conversation border + corner buttons during system overlays (sim + firmware)
+- [x] Stage 4.0: Fix corner button visuals parity (MIC/X icons + ACTIVE/IDLE mapping matches `tools/face_sim_v3/__main__.py`)
+- [x] Stage 4.0: Disable corner-button hit-testing + button telemetry during system overlays (buttons hidden)
 - [x] Stage 4.0: Fix firmware to accept Mood.CONFUSED (mood_id 12) in `SET_STATE`
 - [x] Stage 4.0: Gesture gap analysis: Sim V3 gestures 13–19 exist; defer + gate in sim, keep firmware/protocol at 13 for now
 - [x] Stage 4.0: Expand `tools/check_face_parity.py` to catch semantic mismatches (not just constants):
   - CONFUSED mood acceptance, system-mode suppression of border/buttons, corner icon mapping defaults
 - [x] Stage 4.0: Supervisor: send LOW_BATTERY param (0–255) derived from `battery_mv` (battery fill/progress)
-- [ ] Stage 4.0: Doc parity cleanup: reconcile `esp32-face/README.md` with current renderer + corner button semantics
+- [x] Stage 4.0: Doc parity cleanup: reconcile `esp32-face/README.md` with current renderer + corner button semantics
 - [ ] Stage 4.0: Hardware visual pass: Sim V3 vs MCU side-by-side on hardware for all 13 moods (confirm “real” reads match spec intent) `[sonnet]`
 - [ ] Stage 4.0: Refine THINKING face on hardware (currently reads as angry) `[sonnet]`
 - [ ] Stage 4.0: Tune timing values on hardware: ramp durations, hold times, border alpha curves `[sonnet]`
@@ -256,6 +256,16 @@ _(all items completed)_
 - [x] Command bus (all inputs via protocol-equivalent commands)
 - [x] CI parity check (196/196 passed)
 - [x] Visual language remediation (G1-G7) + review cycles (R1-R5, D1-D5, B1-B3)
+
+### Face Stage 4.0 — Parity + Hardware Polish
+- [x] Suppress conversation border + corner buttons during system overlays (sim + firmware, spec §4.4)
+- [x] Fix corner button visuals: right button default MIC→X_MARK, drive icon/state/color from conv state
+- [x] Disable corner-button hit-testing + telemetry during system overlays (g_system_mode guard)
+- [x] Port Sim V3 face-based system screens to firmware (system_face.cpp: BOOTING, ERROR, LOW_BATTERY, UPDATING, SHUTTING_DOWN)
+- [x] Small SDF icon overlays on face: warning triangle, battery bar, progress bar
+- [x] Reconcile esp32-face/README.md with current renderer + corner button semantics
+- [x] Parity tool: fix false negative for comment-referenced function calls; 235/235 passing
+- [x] Justfile: add --passWithNoTests to dashboard test recipe
 
 ### Face Implementation (Phases 0–4)
 - [x] Phase 0: Sim/MCU parity sync (17 divergences ported, 196/196 parity; blink interval, idle gaze, gesture durations, talking speed, BG color, mouth curve all confirmed synced; CONFUSED mood verified end-to-end in constants.ts, types.ts, protocols.md, sim)
