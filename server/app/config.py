@@ -47,6 +47,7 @@ class Settings:
     vllm_temperature: float = float(os.environ.get("VLLM_TEMPERATURE", "0.7"))
     vllm_timeout_s: float = float(os.environ.get("VLLM_TIMEOUT_S", "20.0"))
     vllm_max_output_tokens: int = int(os.environ.get("VLLM_MAX_OUTPUT_TOKENS", "512"))
+    vllm_enable_thinking: bool = _env_bool("VLLM_ENABLE_THINKING", False)
     llm_max_inflight: int = int(os.environ.get("LLM_MAX_INFLIGHT", "1"))
     gpu_utilization_cap: float = float(
         os.environ.get(

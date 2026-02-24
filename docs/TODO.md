@@ -24,7 +24,7 @@ Living section — reorder as priorities shift. Current recommended sequence:
 1. ~~PE↔Face spec compliance fixes~~ ✅ + ~~Server emotion vocab alignment~~ ✅ (B1 complete)
 2. ~~Guardrail config + safety timers~~ ✅ (B1b: GuardrailConfig, RS-1/RS-2 session/daily limits, persistence, parent override)
 3. ~~Conversation response schema v2 + prompt v2 + guided decoding + model defaults~~ ✅ (B2 core: v2 schema, age 4-8 prompt, Qwen3-8B-AWQ, mood_reason forwarding)
-4. ~~Conversation hardening (context-budget, audio overflow, privacy, L1 mood_reason validation)~~ ✅ + chat templates (quality improvement, deferred)
+4. ~~Conversation hardening (context-budget, audio overflow, privacy, L1 mood_reason validation) + chat templates~~ ✅
 5. ~~Personality profile injection (`personality.llm.profile` → `/converse` prompt injection + anchor cadence)~~ ✅
 6. ~~Memory system (local JSON, consent gate, dashboard viewer + forget)~~ ✅
 7. ~~Prosody routing (TTS emotion from PE mood)~~ ✅
@@ -104,7 +104,7 @@ _(all items completed)_
 - [x] Implement RS-1 session time limit (900 s) + RS-2 daily time limit (2700 s): enforcement behavior + “daily” semantics + persistence/reset strategy (PE spec S2 §9.3)
 - [x] Expose time-limit state via telemetry + add a child-safe UX path (stop-and-redirect + cooldown) + parent override controls
 
-**B2 — Conversation Schema V2 + Prompt V2 (Layer 1)** `[opus]` _(core schema + guided decoding done)_
+**B2 — Conversation Schema V2 + Prompt V2 (Layer 1)** `[opus]` ✅
 - [x] Implement ConversationResponse v2 schema (PE spec S2 §12.3): `inner_thought`, `emotion`, `intensity`, `mood_reason`, `emotional_arc`, `child_affect`, `text`, `gestures`, `memory_tags`
 - [x] Normalize target child age range across prompts/specs/eval docs to **age 4–8** (canonical; enforce in system prompt)
 - [x] Rewrite CONVERSATION_SYSTEM_PROMPT v2 (PE spec S2 §12.4): 6 sections (personality rules, emotion intensity limits, speech style, safety, response format, examples)
@@ -117,7 +117,7 @@ _(all items completed)_
 - [x] Extend `personality.event.ai_emotion` payload forwarding: include `session_id`, `turn_id`, `mood_reason`
 - [x] Update PersonalityWorker L1 pipeline (PE spec S2 §13): `mood_reason` validation + modulation factor; rejected reasons substitute THINKING and emit guardrail-trigger event
 - [x] Add `personality.event.memory_extract` emission per turn (memory_tags from v2 schema)
-- [ ] Use model chat templates (Qwen) instead of ad-hoc `ROLE: ...` prompting to avoid behavior drift between backends (quality + token efficiency)
+- [x] Use model chat templates (Qwen) instead of ad-hoc `ROLE: ...` prompting to avoid behavior drift between backends (quality + token efficiency)
 
 **B3 — Personality Profile Injection (server conditioning)** `[opus]` ✅
 - [x] Add outbound `personality.llm.profile` from PersonalityWorker (conv start + 1 Hz during conv) and route it to AI worker
@@ -210,11 +210,66 @@ _(all items completed)_
 
 - [x] `[sonnet]` Telemetry health panel per device (RTT, offset, drift, seq drops)
 - [ ] `[sonnet]` Camera settings panel
-- [ ] `[opus]` Personality engine visualization (affect vector, mood anchors, decay curves)
-- [ ] `[opus]` Personality tuning tool (Dashboard): tune face parameters (mouth sync) + conversation quality
-  - Interaction inputs: physical PTT button, dashboard PTT/mic tool, wake word trigger, and a text chat window
-  - Output modes: normal audio, or silent/text-only (disable speaker playback/TTS and display assistant replies as text)
-  - Face view: accurately mirrors the on-device display for side-by-side tuning
+- [ ] `[opus]` **Tuning Studio (expand Face tab; consolidate dashboard; built to complete B6)** — one place to tune face parameters (mouth sync), personality, models, server settings, and the full voice pipeline
+  - [ ] **Dashboard consolidation (no redundant tuning UI)**
+    - [x] Re-scope existing `dashboard/src/tabs/FaceTab.tsx` into “Tuning Studio” (keep tab id `face`; rename tab label to “Tuning”)
+    - [ ] Keep `Monitor` = health overview, `Protocol` = raw packets, `Params` = param registry; avoid duplicating controls across tabs
+    - [ ] Fold the previously-planned “Personality engine visualization” into this Studio (no separate dashboard feature)
+  - [ ] **Accurate Face Mirror (TypeScript port; protocol-driven)**
+    - [ ] Port canonical sim (`tools/face_sim_v3/`) to `dashboard/src/face_sim/*` (render + state machines + constants) with optional deterministic seed
+    - [ ] Drive mirror from `/ws/protocol` **face TX** stream (mirror commanded output: mood/intensity/gaze/brightness, conv state, flags, system mode, talking/energy, gestures)
+    - [x] Supervisor: extend `supervisor/api/protocol_capture.py` to name+decode Face `SET_CONV_STATE (0x25)` (required for border parity)
+    - [x] Dashboard: allow protocol WS connection while Studio is open (not only on Protocol tab)
+    - [ ] UI: `FaceMirrorCanvas` (320×240 canvas with scale/fit + 30/60 fps) + Mirror Mode (`Live` / `Replay` / `Sandbox`)
+    - [ ] “Deterministic mirror” toggle: disable randomness (idle wander + autoblink) to reduce divergence during tuning
+    - [ ] Parity harness: golden-state suite (mood sweep, conv states, system overlays, talking energy sweep) Python sim vs TS pixel-diff + `just` recipe
+  - [ ] **Conversation harness (multi-input; addresses Conversation & Voice backlog)**
+    - [x] Inputs in one panel: physical PTT, dashboard PTT, wake word, text chat (bypass STT), “simulate wake word” button
+    - [x] Fix PTT semantics: PTT OFF = `end_utterance` (no immediate teardown; teardown after response)
+    - [ ] Multi-turn PTT semantics: keep session open; ACTION cancels session; optional idle timeout ends session
+    - [ ] Supervisor WS commands (extend `supervisor/api/http_server.py` + `supervisor/core/tick_loop.py`):
+      - [x] `conversation.start` / `conversation.cancel` / `conversation.end_utterance` / `conversation.send_text`
+    - [x] AI worker: add `ai.cmd.send_text` (send `{"type":"text"}` to `/converse`) + handle server `assistant_text` → `ai.conversation.assistant_text`
+    - [x] Server `/converse`: always emit `assistant_text` before audio; add client `config` (stream_audio/stream_text/debug); support `stream_audio=false` (true text-only)
+    - [x] Add a conversation event stream for Studio (avoid bloating 20 Hz telemetry): per-turn transcript (opt-in), emotion/intensity/mood_reason, gestures, memory_tags, timings, errors
+  - [ ] **Output modes (two toggles)**
+    - [x] **Mute speaker playback** (still generate TTS + lip-sync energy, but no `aplay` output; optionally mute chimes)
+    - [x] **No TTS generation** (server skips synthesis; Studio shows assistant replies as text only)
+  - [ ] **Voice + latency diagnostics**
+    - [ ] Pipeline timeline per turn: trigger → VAD end → transcription → emotion → first audio chunk → done (+ error states)
+    - [ ] TTS benchmark runner: fixed corpus via `/tts`, time-to-first-byte, total synth time, chunk cadence, max utterance duration safeguards
+    - [ ] Wake word workbench: live score/threshold view + event log + optional ring-buffer capture/export + soak-test summary
+  - [ ] **Personality tuning + B6 completion harness**
+    - [ ] Personality visualization: affect vector, mood anchors, decay curves, layer attribution, guardrail status + last trigger, RS-1/RS-2 timers
+    - [ ] Runtime tuning controls (safe/risky gating): PE axes, guardrail toggles, profile-injection preview/debug
+    - [ ] **B6 scenario suite inside Studio** (scripted conversations + assertions):
+      - clamping behavior + worker intensity caps
+      - planner-emote impulse routing
+      - conv-ended teardown coverage
+      - `confused` server vocab + schema-v2 parsing + guided decoding compliance
+      - RS-1/RS-2 limits (persistence + daily reset)
+      - `/converse` overflow/timeouts/disconnects + “no transcript logs by default” privacy policy
+  - [ ] **Future-proofing (models/prompt/server settings + prototyping)**
+    - [ ] Versioned “prompt packs” selectable per session (no ad-hoc prompt hacking); show active pack in UI + exports
+    - [ ] Show planner server `/health` snapshot (model ids, backend, timeouts, GPU budget) inside Studio; include in exports
+    - [ ] **Model template config visibility + vLLM telemetry (Studio)**
+      - [ ] Server: expose active model name + resolved chat template kwargs (from `server/app/llm/model_config.py`) via `/health` or `/debug/llm` (include family + kwargs + notes + where applied)
+      - [ ] Supervisor: ingest server model/template snapshot (poll or push) and surface in Studio + exports (so tuning sessions always include “what model + template”)
+      - [ ] vLLM metrics: add a lightweight `/debug/vllm` snapshot (queue depth, running/waiting requests, token throughput, KV cache usage, GPU mem/util if available) + show in Studio
+    - [ ] Optional dev-only per-session generation overrides (temperature/max_output_tokens) for fast experiments
+  - [ ] **Record / replay / export (diagnose + share + regressions)**
+    - [ ] Define `TuningSession.v1` export schema: config snapshots, per-turn messages/metadata, protocol slice, timings/errors
+    - [ ] “Record session” (opt-in; default off) + export bundle + replay bundle (offline debugging)
+  - [ ] **Deterministic behavior harness (capture + modify + replay) — keep PE + comm tuning reproducible in one place**
+    - [ ] Define a “determinism contract”: which subsystems must be deterministic given the same inputs (PE L0, speech policy, conv_state, mood sequencer) + list sources of nondeterminism (LLM/STT/TTS, random backchannel, idle wander)
+    - [ ] Studio “Sandbox” mode: apply *temporary* overrides (PE axes/guardrails, speech policy toggles, conv_state timings, face params) without changing prod defaults; export overrides with the session
+    - [ ] Deterministic seed controls: make all Studio randomness seedable (face sim, conv_state backchannel scheduling) and always include seed(s) in exports
+    - [ ] Replay runner: re-run deterministic subsystems from a recorded session (inputs/events) and diff outputs (face TX stream, PE snapshot, guardrail triggers, speech intents)
+    - [ ] Diff UI: show before/after timelines + packet diffs to validate tuning changes quickly
+  - [ ] **Recipes + Codex-friendly skills**
+    - [ ] Declarative tuning recipe runner (YAML/JSON): set toggles/config → run turns (text/audio) → assertions → export
+    - [ ] Supervisor HTTP: list recipes / run recipe (stream progress) / fetch bundles
+    - [ ] Add a Codex CLI skill to list/run recipes and summarize failures from exported bundles
 
 ---
 
@@ -298,6 +353,7 @@ _(all items completed)_
 - [x] Audio buffer overflow protection: 30s/960KB cap, `audio_buffer_overflow` error on exceed
 - [x] Privacy: `LOG_TRANSCRIPTS=false` default — conversation text not in server logs
 - [x] `personality.event.ai_emotion` payload extended: forwards `session_id`, `turn_id`, `mood_reason` from ai_worker through tick_loop to personality worker
+- [x] Chat templates: `model_config.py` registry (Qwen3/Qwen2/Llama families), `vllm_backend.py` rewritten to use `tokenizer.apply_chat_template()` with proper ChatML format, `enable_thinking=False` for Qwen3, fallback flat format for tests, repair loop fixed to append messages not raw strings; 12 new tests; Orpheus TTS confirmed no changes needed (handles own Llama-3.2 template internally)
 
 ### Personality Engine — B1 PE↔Face Compliance
 - [x] Tick loop conversation clamping: LISTENING/PTT → NEUTRAL@0.3, THINKING → THINKING@0.5 (overrides PE snapshot)

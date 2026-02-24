@@ -24,13 +24,14 @@ from app.llm.conversation import (
     ConversationResponseV2,
     parse_conversation_response_content,
 )
+from app.llm.model_config import resolve_template_config
 from app.llm.prompts import SYSTEM_PROMPT, format_user_prompt
 from app.llm.schemas import ModelPlan, WorldState
 
 log = logging.getLogger(__name__)
 
 _JSON_REPAIR_SUFFIX = (
-    "\n\nThe previous output was invalid. Return ONLY one valid JSON object."
+    "The previous output was invalid. Return ONLY one valid JSON object."
 )
 
 _VLLM_DTYPE = Literal["auto", "half", "float16", "bfloat16", "float", "float32"]
@@ -72,6 +73,8 @@ class VLLMBackend(PlannerLLMBackend):
     def __init__(self) -> None:
         self._model_name = settings.vllm_model_name
         self._engine: Any = None
+        self._tokenizer: Any = None
+        self._template_kwargs: dict[str, Any] = {}
         self._SamplingParams: Any = None
         self._GuidedDecodingParams: Any = None
         self._loaded = False
@@ -117,14 +120,51 @@ class VLLMBackend(PlannerLLMBackend):
         self._engine = AsyncLLMEngine.from_engine_args(engine_args)
         self._SamplingParams = SamplingParams
         self._GuidedDecodingParams = GuidedDecodingParams
+
+        # Load tokenizer for chat template application.
+        self._load_tokenizer()
+
         self._loaded = True
         log.info(
-            "vLLM Qwen backend loaded (%s, gpu_mem=%.2f, max_len=%d, guided=%s)",
+            "vLLM backend loaded (%s, gpu_mem=%.2f, max_len=%d, guided=%s, "
+            "chat_template=%s, model_family=%s)",
             self._model_name,
             settings.vllm_gpu_memory_utilization,
             settings.vllm_max_model_len,
             GuidedDecodingParams is not None,
+            self._tokenizer is not None,
+            self._template_kwargs.get("_family", "unknown"),
         )
+
+    def _load_tokenizer(self) -> None:
+        """Load the model tokenizer and resolve template config."""
+        model_cfg = resolve_template_config(self._model_name)
+        self._template_kwargs = dict(model_cfg.chat_template_kwargs)
+
+        # Config-level override for enable_thinking.
+        if "enable_thinking" in self._template_kwargs:
+            self._template_kwargs["enable_thinking"] = settings.vllm_enable_thinking
+
+        # Store family for diagnostics.
+        self._template_kwargs["_family"] = model_cfg.family
+
+        try:
+            from transformers import AutoTokenizer
+
+            self._tokenizer = AutoTokenizer.from_pretrained(self._model_name)
+            log.info(
+                "Loaded tokenizer for %s (family=%s, template_kwargs=%s)",
+                self._model_name,
+                model_cfg.family,
+                {k: v for k, v in self._template_kwargs.items() if k != "_family"},
+            )
+        except Exception as exc:
+            log.warning(
+                "Failed to load tokenizer for %s, falling back to flat format: %s",
+                self._model_name,
+                exc,
+            )
+            self._tokenizer = None
 
     async def close(self) -> None:
         if self._engine is None:
@@ -139,6 +179,8 @@ class VLLMBackend(PlannerLLMBackend):
             log.warning("vLLM shutdown raised unexpectedly", exc_info=True)
         finally:
             self._engine = None
+            self._tokenizer = None
+            self._template_kwargs = {}
             self._SamplingParams = None
             self._GuidedDecodingParams = None
             self._loaded = False
@@ -167,8 +209,9 @@ class VLLMBackend(PlannerLLMBackend):
     async def generate_plan(self, state: WorldState) -> ModelPlan:
         await self._acquire_generation_slot()
         try:
-            prompt = self._build_plan_prompt(state)
+            messages = self._build_plan_messages(state)
             for attempt in (1, 2):
+                prompt = self._apply_chat_template(messages)
                 text = await self._generate_text(
                     prompt, request_tag=f"plan-{state.seq}-{attempt}"
                 )
@@ -179,7 +222,9 @@ class VLLMBackend(PlannerLLMBackend):
                     return plan
                 except Exception as exc:
                     if attempt == 1:
-                        prompt = f"{prompt}{_JSON_REPAIR_SUFFIX}"
+                        messages.append(
+                            {"role": "user", "content": _JSON_REPAIR_SUFFIX}
+                        )
                         continue
                     raise LLMError(f"Failed to parse plan: {exc}") from exc
             raise LLMError("Failed to generate valid plan")
@@ -194,7 +239,8 @@ class VLLMBackend(PlannerLLMBackend):
         history.add_user(user_text)
         await self._acquire_generation_slot()
         try:
-            prompt = self._build_conversation_prompt(history)
+            messages = history.to_ollama_messages()
+            prompt = self._apply_chat_template(messages)
 
             # With guided decoding, the output is guaranteed valid JSON matching
             # the V2 schema — no repair loop needed.
@@ -221,7 +267,10 @@ class VLLMBackend(PlannerLLMBackend):
                     return response
                 except Exception:
                     if attempt == 1:
-                        prompt = f"{prompt}{_JSON_REPAIR_SUFFIX}"
+                        messages.append(
+                            {"role": "user", "content": _JSON_REPAIR_SUFFIX}
+                        )
+                        prompt = self._apply_chat_template(messages)
                         continue
                     raise
             raise LLMError("Failed to generate valid conversation response")
@@ -233,6 +282,7 @@ class VLLMBackend(PlannerLLMBackend):
             await self._release_generation_slot()
 
     def debug_snapshot(self) -> dict:
+        family = self._template_kwargs.get("_family", "unknown")
         return {
             "backend": self.backend_name,
             "model": self.model_name,
@@ -244,7 +294,87 @@ class VLLMBackend(PlannerLLMBackend):
             "max_num_seqs": settings.vllm_max_num_seqs,
             "max_num_batched_tokens": settings.vllm_max_num_batched_tokens,
             "guided_decoding": self._GuidedDecodingParams is not None,
+            "chat_template": self._tokenizer is not None,
+            "model_family": family,
         }
+
+    # -- Chat template formatting -------------------------------------------
+
+    def _apply_chat_template(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        add_generation_prompt: bool = True,
+    ) -> str:
+        """Format messages using the model's built-in chat template.
+
+        Falls back to a flat ``ROLE: content`` format if no tokenizer was
+        loaded (e.g. in unit tests or if transformers is unavailable).
+        """
+        if self._tokenizer is None:
+            return self._flat_format_messages(messages, add_generation_prompt)
+
+        # Build kwargs for apply_chat_template, excluding internal keys.
+        template_kwargs = {
+            k: v for k, v in self._template_kwargs.items() if not k.startswith("_")
+        }
+
+        try:
+            return self._tokenizer.apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=add_generation_prompt,
+                **template_kwargs,
+            )
+        except TypeError as exc:
+            # Model template may not support all kwargs (e.g. enable_thinking
+            # is Qwen3-specific). Retry without extra kwargs.
+            log.warning(
+                "apply_chat_template failed with kwargs %s: %s; retrying without",
+                template_kwargs,
+                exc,
+            )
+            return self._tokenizer.apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=add_generation_prompt,
+            )
+
+    @staticmethod
+    def _flat_format_messages(
+        messages: list[dict[str, str]],
+        add_generation_prompt: bool,
+    ) -> str:
+        """Legacy flat format for environments without a tokenizer."""
+        lines: list[str] = []
+        for msg in messages:
+            role = str(msg.get("role", "user")).strip().upper()
+            content = str(msg.get("content", "")).strip()
+            if not content:
+                continue
+            lines.append(f"{role}: {content}")
+        if add_generation_prompt:
+            lines.append("ASSISTANT:")
+        return "\n\n".join(lines)
+
+    # -- Message builders ---------------------------------------------------
+
+    @staticmethod
+    def _build_plan_messages(state: WorldState) -> list[dict[str, str]]:
+        """Build the messages list for a plan generation request."""
+        user_msg = format_user_prompt(state)
+        return [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {
+                "role": "user",
+                "content": (
+                    f"{user_msg}\n\n"
+                    "Return only one valid JSON object that matches the requested schema."
+                ),
+            },
+        ]
+
+    # -- Internal -----------------------------------------------------------
 
     async def _generate_text(
         self,
@@ -293,28 +423,6 @@ class VLLMBackend(PlannerLLMBackend):
         async for out in agen:
             last = out
         return last
-
-    @staticmethod
-    def _build_plan_prompt(state: WorldState) -> str:
-        user_msg = format_user_prompt(state)
-        return (
-            f"{SYSTEM_PROMPT}\n\n"
-            f"{user_msg}\n\n"
-            "Return only one valid JSON object that matches the requested schema."
-        )
-
-    @staticmethod
-    def _build_conversation_prompt(history: ConversationHistory) -> str:
-        messages = history.to_ollama_messages()
-        lines: list[str] = []
-        for msg in messages:
-            role = str(msg.get("role", "user")).strip().upper()
-            content = str(msg.get("content", "")).strip()
-            if not content:
-                continue
-            lines.append(f"{role}: {content}")
-        lines.append("ASSISTANT:")
-        return "\n\n".join(lines)
 
     async def _acquire_generation_slot(self) -> None:
         async with self._generation_lock:
