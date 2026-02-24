@@ -205,7 +205,7 @@ class VLLMBackend(PlannerLLMBackend):
                     guided_json_schema=_CONVERSATION_V2_JSON_SCHEMA,
                 )
                 response = parse_conversation_response_content(text)
-                history.add_assistant(response.text)
+                history.add_assistant(response.text, emotion=response.emotion)
                 return response
 
             # Fallback: unguided generation with JSON repair loop.
@@ -217,7 +217,7 @@ class VLLMBackend(PlannerLLMBackend):
                 candidate = _extract_json_object(text)
                 try:
                     response = parse_conversation_response_content(candidate)
-                    history.add_assistant(response.text)
+                    history.add_assistant(response.text, emotion=response.emotion)
                     return response
                 except Exception:
                     if attempt == 1:

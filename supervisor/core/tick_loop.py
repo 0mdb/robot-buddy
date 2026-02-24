@@ -503,11 +503,24 @@ class TickLoop:
                 self._conversation_emotion = emotion
                 self._conversation_intensity = intensity
             # Forward to personality worker (PE spec §11.1)
+            pe_payload: dict[str, object] = {
+                "emotion": emotion,
+                "intensity": intensity,
+            }
+            session_id = env.payload.get("session_id", "")
+            if session_id:
+                pe_payload["session_id"] = session_id
+            turn_id = env.payload.get("turn_id")
+            if turn_id is not None:
+                pe_payload["turn_id"] = turn_id
+            mood_reason = env.payload.get("mood_reason", "")
+            if mood_reason:
+                pe_payload["mood_reason"] = mood_reason
             asyncio.ensure_future(
                 self._workers.send_to(
                     "personality",
                     PERSONALITY_EVENT_AI_EMOTION,
-                    {"emotion": emotion, "intensity": intensity},
+                    pe_payload,
                 )
             )
         elif env.type == AI_CONVERSATION_GESTURE:

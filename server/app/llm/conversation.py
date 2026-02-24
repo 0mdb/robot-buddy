@@ -165,26 +165,79 @@ class ConversationMessage:
 
     role: str  # "user" or "assistant"
     content: str
+    emotion: str = ""  # populated for assistant messages (v2)
+
+
+# ── Context budget constants (PE spec S2 §12.6) ─────────────────────────
+
+# Recent turns kept as full messages (user + assistant pairs).
+_RECENT_WINDOW_TURNS = 8
+
+# Rough chars-per-token for token estimation (~4 for English).
+_CHARS_PER_TOKEN = 4
+
+# System prompt token budget (estimated from §12.4 analysis).
+_SYSTEM_PROMPT_TOKEN_ESTIMATE = 800
+
+# Reserve tokens for LLM response generation.
+_RESPONSE_TOKEN_RESERVE = 512
+
+
+def _estimate_tokens(text: str) -> int:
+    """Crude token estimate: len // 4."""
+    return max(1, len(text) // _CHARS_PER_TOKEN)
 
 
 class ConversationHistory:
-    """Sliding-window conversation context."""
+    """Sliding-window conversation context with context-budget compression.
 
-    def __init__(self, max_turns: int = 20) -> None:
+    Per PE spec S2 §12.6:
+    - Recent 6-8 turns stored as full messages (text + emotion, not full JSON)
+    - Older turns compressed to ``(turn_N: topic, emotion)`` tuples
+    - Assistant messages only store text + emotion in history
+    """
+
+    def __init__(self, max_turns: int = 20, *, max_context_tokens: int = 4096) -> None:
         self._messages: deque[ConversationMessage] = deque(maxlen=max_turns * 2)
+        self._max_context_tokens = max_context_tokens
 
     def add_user(self, text: str) -> None:
         self._messages.append(ConversationMessage(role="user", content=text))
 
-    def add_assistant(self, text: str) -> None:
-        self._messages.append(ConversationMessage(role="assistant", content=text))
+    def add_assistant(self, text: str, *, emotion: str = "") -> None:
+        self._messages.append(
+            ConversationMessage(role="assistant", content=text, emotion=emotion)
+        )
 
     def to_ollama_messages(self) -> list[dict[str, str]]:
-        """Build the messages array for Ollama /api/chat."""
+        """Build the messages array with context-budget compression.
+
+        Returns system prompt + optional summary of old turns + recent turns.
+        """
+        all_msgs = list(self._messages)
+        recent_boundary = _RECENT_WINDOW_TURNS * 2  # user + assistant pairs
+
+        if len(all_msgs) <= recent_boundary:
+            # Everything fits in the recent window — no compression.
+            msgs = [{"role": "system", "content": CONVERSATION_SYSTEM_PROMPT}]
+            for m in all_msgs:
+                msgs.append({"role": m.role, "content": m.content})
+            return self._enforce_token_budget(msgs)
+
+        # Split into old (to compress) and recent (keep full).
+        old_msgs = all_msgs[: len(all_msgs) - recent_boundary]
+        recent_msgs = all_msgs[len(all_msgs) - recent_boundary :]
+
+        # Compress old turns into summary tuples.
+        summary = _compress_turns(old_msgs)
+
         msgs = [{"role": "system", "content": CONVERSATION_SYSTEM_PROMPT}]
-        for m in self._messages:
+        if summary:
+            msgs.append({"role": "system", "content": summary})
+        for m in recent_msgs:
             msgs.append({"role": m.role, "content": m.content})
-        return msgs
+
+        return self._enforce_token_budget(msgs)
 
     def clear(self) -> None:
         self._messages.clear()
@@ -192,6 +245,49 @@ class ConversationHistory:
     @property
     def turn_count(self) -> int:
         return sum(1 for m in self._messages if m.role == "user")
+
+    def _enforce_token_budget(self, msgs: list[dict[str, str]]) -> list[dict[str, str]]:
+        """Drop oldest non-system messages if estimated tokens exceed budget."""
+        budget = self._max_context_tokens - _RESPONSE_TOKEN_RESERVE
+
+        while len(msgs) > 1:
+            total = sum(_estimate_tokens(m["content"]) for m in msgs)
+            if total <= budget:
+                break
+            # Drop the first non-system message.
+            for i, m in enumerate(msgs):
+                if m["role"] != "system":
+                    msgs.pop(i)
+                    break
+            else:
+                break  # only system messages left
+        return msgs
+
+
+def _compress_turns(messages: list[ConversationMessage]) -> str:
+    """Compress a sequence of messages into summary tuples.
+
+    Returns a string like:
+    ``Earlier conversation: (turn 1: sky color, curious) (turn 2: school, sad)``
+    """
+    tuples: list[str] = []
+    turn_num = 0
+    for i, m in enumerate(messages):
+        if m.role == "user":
+            turn_num += 1
+            # Use first ~40 chars of user message as "topic".
+            topic = m.content[:40].rstrip()
+            if len(m.content) > 40:
+                topic += "..."
+            # Look ahead for assistant emotion.
+            emotion = ""
+            if i + 1 < len(messages) and messages[i + 1].role == "assistant":
+                emotion = messages[i + 1].emotion or "neutral"
+            tuples.append(f"(turn {turn_num}: {topic}, {emotion})")
+
+    if not tuples:
+        return ""
+    return "Earlier conversation: " + " ".join(tuples)
 
 
 async def generate_conversation_response(
@@ -238,15 +334,24 @@ async def generate_conversation_response(
         raise LLMError("Empty content in Ollama response")
 
     response = parse_conversation_response_content(content)
-    history.add_assistant(response.text)
+    history.add_assistant(response.text, emotion=response.emotion)
 
-    log.info(
-        "Conversation response: emotion=%s intensity=%.1f text=%s gestures=%s",
-        response.emotion,
-        response.intensity,
-        response.text[:80],
-        response.gestures,
-    )
+    if settings.log_transcripts:
+        log.info(
+            "Conversation response: emotion=%s intensity=%.1f text=%s gestures=%s",
+            response.emotion,
+            response.intensity,
+            response.text[:80],
+            response.gestures,
+        )
+    else:
+        log.info(
+            "Conversation response: emotion=%s intensity=%.1f len=%d gestures=%s",
+            response.emotion,
+            response.intensity,
+            len(response.text),
+            response.gestures,
+        )
 
     return response
 

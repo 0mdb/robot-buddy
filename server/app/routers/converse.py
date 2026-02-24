@@ -36,6 +36,11 @@ log = logging.getLogger(__name__)
 
 router = APIRouter()
 
+# ── Audio buffer safety limits ───────────────────────────────────────────
+
+# Max audio buffer size: 16 kHz * 2 bytes/sample * 30 seconds = 960 KB.
+_MAX_AUDIO_BUFFER_BYTES = 16_000 * 2 * 30  # ~30 seconds of PCM 16-bit mono
+
 
 @router.websocket("/converse")
 async def converse(ws: WebSocket):
@@ -80,10 +85,24 @@ async def converse(ws: WebSocket):
             msg_type = msg.get("type", "")
 
             if msg_type == "audio":
-                # Accumulate audio chunks
+                # Accumulate audio chunks with overflow protection.
                 data = msg.get("data", "")
                 if data:
-                    audio_buffer.extend(base64.b64decode(data))
+                    decoded = base64.b64decode(data)
+                    if len(audio_buffer) + len(decoded) > _MAX_AUDIO_BUFFER_BYTES:
+                        log.warning(
+                            "Audio buffer overflow (%d + %d > %d), clearing",
+                            len(audio_buffer),
+                            len(decoded),
+                            _MAX_AUDIO_BUFFER_BYTES,
+                        )
+                        audio_buffer.clear()
+                        await ws.send_json(
+                            {"type": "error", "message": "audio_buffer_overflow"}
+                        )
+                        await ws.send_json({"type": "listening"})
+                        continue
+                    audio_buffer.extend(decoded)
 
             elif msg_type == "end_utterance":
                 # Transcribe accumulated audio → generate response

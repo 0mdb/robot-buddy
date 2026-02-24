@@ -94,6 +94,7 @@ class Settings:
         os.environ.get("ORPHEUS_MIN_FREE_VRAM_GB", "10.0")
     )
     tts_busy_queue_threshold: int = int(os.environ.get("TTS_BUSY_QUEUE_THRESHOLD", "0"))
+    log_transcripts: bool = _env_bool("LOG_TRANSCRIPTS", False)
     host: str = os.environ.get("SERVER_HOST", "0.0.0.0")
     port: int = int(os.environ.get("SERVER_PORT", "8100"))
 

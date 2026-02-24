@@ -111,11 +111,12 @@ _(all items completed)_
 - [x] vLLM schema-guided decoding (PE spec S2 §12.2) for conversation via `GuidedDecodingParams`; eliminates JSON repair loop for conversation
 - [x] Set server defaults: `VLLM_MODEL_NAME=Qwen/Qwen3-8B-Instruct-AWQ` and `VLLM_DTYPE=auto` (PE spec S2 §12.1)
 - [x] `/converse` websocket protocol: include `mood_reason` with emotion metadata; `ai_worker.py` parsing + forwarding
-- [ ] Implement conversation history context-budget enforcement (PE spec S2 §12.6): deterministic truncation + rolling summary/compression
-- [ ] Harden `/converse` websocket: cap per-utterance `audio_buffer` bytes + max utterance seconds; reject/clear on overflow; add overflow/timeout telemetry (server `routers/converse.py`)
-- [ ] Privacy hardening: disable transcript logging by default (no user/assistant text in logs); add redaction hooks + retention note (server `llm/conversation.py`)
+- [x] Implement conversation history context-budget enforcement (PE spec S2 §12.6): recent window (8 turns), older turns compressed to summary tuples, token budget enforcement
+- [x] Harden `/converse` websocket: cap per-utterance `audio_buffer` bytes (~30s / 960KB), reject on overflow with `audio_buffer_overflow` error
+- [x] Privacy hardening: `LOG_TRANSCRIPTS=false` by default — conversation text not logged at INFO level; only emotion/intensity/length logged
+- [x] Extend `personality.event.ai_emotion` payload forwarding: include `session_id`, `turn_id`, `mood_reason`
 - [ ] Update PersonalityWorker L1 pipeline (PE spec S2 §13): `mood_reason` validation + modulation factor; rejected reasons substitute THINKING and emit guardrail-trigger event
-- [ ] Extend `personality.event.ai_emotion` payload forwarding: include `session_id`, `turn_id`, `mood_reason`; add `personality.event.memory_extract` emission per turn
+- [ ] Add `personality.event.memory_extract` emission per turn (memory_tags from v2 schema)
 - [ ] Use model chat templates (Qwen) instead of ad-hoc `ROLE: ...` prompting to avoid behavior drift between backends (quality + token efficiency)
 
 **B3 — Personality Profile Injection (server conditioning)** `[opus]`
@@ -259,6 +260,10 @@ _(all items completed)_
 - [x] `ai_worker.py` parses and forwards `mood_reason` from server emotion messages
 - [x] `ConversationResponse` dataclass extended with `mood_reason` + `memory_tags` fields
 - [x] `parse_conversation_response_content()` accepts both v1 (4 fields) and v2 (9 fields) JSON payloads
+- [x] Conversation history context-budget: 8-turn recent window + older turns compressed to `(turn_N: topic, emotion)` summary tuples + token budget enforcement
+- [x] Audio buffer overflow protection: 30s/960KB cap, `audio_buffer_overflow` error on exceed
+- [x] Privacy: `LOG_TRANSCRIPTS=false` default — conversation text not in server logs
+- [x] `personality.event.ai_emotion` payload extended: forwards `session_id`, `turn_id`, `mood_reason` from ai_worker through tick_loop to personality worker
 
 ### Personality Engine — B1 PE↔Face Compliance
 - [x] Tick loop conversation clamping: LISTENING/PTT → NEUTRAL@0.3, THINKING → THINKING@0.5 (overrides PE snapshot)

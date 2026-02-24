@@ -546,9 +546,13 @@ class PersonalityWorker(BaseWorker):
         )
 
     def _handle_ai_emotion(self, payload: dict) -> None:
-        """L1: Map LLM emotion to VA impulse (spec §5.2)."""
+        """L1: Map LLM emotion to VA impulse (spec §5.2).
+
+        Accepts optional session_id, turn_id, mood_reason from v2 schema.
+        """
         emotion = str(payload.get("emotion", "")).strip().lower()
         intensity = float(payload.get("intensity", 0.7))
+        mood_reason = str(payload.get("mood_reason", ""))
 
         target = EMOTION_VA_TARGETS.get(emotion)
         if target is None:
@@ -563,6 +567,9 @@ class PersonalityWorker(BaseWorker):
             Impulse(target_v, target_a, magnitude, "ai_emotion")
         )
         self._idle_timer_s = 0.0  # interaction resets idle
+
+        if mood_reason:
+            log.debug("ai_emotion mood_reason: %s", mood_reason)
 
         # Event-triggered fast path: immediate processing
         self._fast_path()
