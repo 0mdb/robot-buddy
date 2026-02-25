@@ -47,6 +47,7 @@ _10 items complete (Stage 4.0 spec/port/parity/buttons/gestures/docs) — see ar
 - [x] Stage 4.0: Bug: face device buttons not working (PTT/ACTION) — LVGL touch callbacks registered on parent instead of canvas_obj; canvas absorbed all events `[sonnet]`
 - [ ] Stage 4.0: Mouth parity: device vs Python sim (Sim V3) vs JS sim (Face Mirror) — migrate firmware mouth to sim upper/lower envelope model; accept when scripted side-by-side shows no obvious mismatch in motion `[sonnet]`
 - [ ] Stage 4.0: Gesture parity: HEART_EYES mismatch — port sim heart SDF + scale constants (`HEART_SOLID_SCALE`, `HEART_PUPIL_SCALE`) to firmware; accept when side-by-side scripted checks pass `[sonnet]`
+- [ ] Stage 4.0: Blink parity on hardware — eyelids must fully occlude eye fill at full closure (no blue eye outline leak during blink) `[sonnet]`
 - [ ] Stage 4.0: Refine THINKING face on hardware (currently reads as angry) `[sonnet]`
 - [ ] Stage 4.0: Tune timing values on hardware: ramp durations, hold times, border alpha curves `[sonnet]`
 - [ ] Stage 4.0: Face button UX: instant on-device confirmation on press; faster yellow LED blink on PTT error `[sonnet]`
@@ -55,7 +56,7 @@ _10 items complete (Stage 4.0 spec/port/parity/buttons/gestures/docs) — see ar
 - [ ] Stage 4.1: Low-overhead perf instrumentation in firmware: frame/render/stage timing, dirty px, SPI bytes/s, cmd rx→apply latency (stage sample divisor=8, emit 1 Hz)
 - [ ] Stage 4.1: HEARTBEAT optional perf tail (length-based, backward compatible); supervisor + protocol capture decode old/new payload lengths
 - [ ] Stage 4.1: Baseline benchmark capture (1000 frames each): idle, listening, thinking, speaking+energy, rage/effects; 2026-02-25 avg/max capture complete, p50/p95 + telemetry overhead A/B (<=1% FPS drop) still pending
-- [ ] Stage 4.2: Implement dirty-rectangle invalidation (replace unconditional full-canvas invalidate) and verify normal conversation states stay at p95 frame <= 33.3ms, p50 <= 25ms _(state-aware multi-rect invalidation landed in firmware on 2026-02-25; pending on-device A/B metrics)_
+- [ ] Stage 4.2: Implement dirty-rectangle invalidation (replace unconditional full-canvas invalidate) and verify normal conversation states stay at p95 frame <= 33.3ms, p50 <= 25ms _(state-aware multi-rect invalidation landed in firmware on 2026-02-25; initial A/B captured but idle/listening were confounded by effects flag state; fixed-flags rerun pending)_
 - [x] Stage 4.2: Optimize border/icon hot paths (cache/pre-raster hotspot math) and quantify delta in border-heavy scenarios _(A/B validated on hardware 2026-02-25; see Stage 4.2 snapshot below)_
 - [ ] Stage 4.2: Optimize afterglow bandwidth (reduced-resolution buffer + upscale blend behind flag) and quantify effect-on/effect-off cost
 - [ ] Stage 4.2: Evaluate SPI/LVGL throughput tuning (40/60/80MHz + queue/buffer settings) after dirty-rect landing; keep best measured config
@@ -87,6 +88,17 @@ Stage 4.2 Border Hotspot A/B Snapshot (2026-02-25, post-cache firmware + updated
 - `rage_effects`: frame `86.53 -> 69.80 ms` (`-19.3%`), border `23.10 -> 6.10 ms` (`-73.6%`)
 - Gate check (border tranche): **pass** (`idle border_us_avg <= 8ms`, `thinking border_us_avg <= 20ms`, `thinking frame_us_avg <= 65ms`)
 - Remaining gap: overall Stage 4 conversation-frame target still not met (`p95 <= 33.3 ms`, `p50 <= 25 ms`) and p50/p95 collection is still pending
+
+Stage 4.2 Dirty-Rect A/B Snapshot (2026-02-25, post-dirty firmware + updated supervisor)
+- Artifact (pre-dirty): `docs/perf/face_stage4_post_border_cache_2026-02-25.json`
+- Artifact (post-dirty): `docs/perf/face_stage4_post_dirty_rect_2026-02-25.json`
+- `idle`: frame `58.04 -> 44.21 ms` (`-23.8%`), render `5.37 -> 3.64 ms` (`-32.3%`)
+- `listening_proxy`: frame `58.07 -> 43.52 ms` (`-25.1%`), render `5.41 -> 3.54 ms` (`-34.5%`)
+- `thinking_border`: frame `51.59 -> 51.96 ms` (`+0.7%`), render `4.53 -> 4.55 ms` (`+0.3%`)
+- `talking_energy`: frame `57.19 -> 57.23 ms` (`+0.1%`), render `5.24 -> 5.33 ms` (`+1.7%`)
+- `rage_effects`: frame `69.80 -> 69.73 ms` (`-0.1%`), render `6.78 -> 6.86 ms` (`+1.2%`)
+- Caveat: idle/listening runs are not apples-to-apples with pre-dirty because `effects_us_avg` dropped from ~17k to ~13 (effects/flags mismatch), so those two gains cannot be fully attributed to dirty-rect changes
+- Outcome: keep Stage 4.2 dirty-rect task open; rerun A/B with fixed explicit flags before deciding completion
 
 **Evaluation** `[opus]`
 - [ ] T1: Automated CI tests (parity check, unit tests, linting)
