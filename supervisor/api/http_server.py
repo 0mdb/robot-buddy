@@ -665,6 +665,21 @@ async def _handle_ws_cmd(
             )
             if not started:
                 log.warning("tts_benchmark.start rejected")
+    # -- Conversation benchmark -----------------------------------------------
+    elif msg_type == "conv_benchmark.start":
+        if tts_endpoint and conv_capture:
+            from supervisor.api.conv_benchmark import (
+                start_benchmark as start_conv_benchmark,
+            )
+
+            server_base_url = tts_endpoint.removesuffix("/tts")
+            started = start_conv_benchmark(
+                server_base_url,
+                conv_capture,
+                session_active=bool(tick.world.session_id),
+            )
+            if not started:
+                log.warning("conv_benchmark.start rejected")
     # -- Ear workbench --------------------------------------------------------
     elif msg_type == "ear.stream_scores":
         asyncio.ensure_future(

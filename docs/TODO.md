@@ -206,6 +206,8 @@ _3 items complete (LLM session memory, TTS resampler hardening, conversation stu
   - [x] **Voice + latency diagnostics**
     - [x] Pipeline timeline per turn: trigger → VAD end → transcription → emotion → first audio chunk → done (+ error states) — `PipelineTimeline.tsx` component + `/ws/conversation` endpoint + `ConversationCapture` + first_audio/assistant_text events
     - [x] TTS benchmark runner: fixed corpus via `/tts`, time-to-first-byte, total synth time, chunk cadence — `TtsBenchmark.tsx` + `supervisor/api/tts_benchmark.py` + WS commands
+    - [x] Full-pipeline timing fields: server emits `stt_latency_ms`/`llm_latency_ms`; supervisor forwards those + `roundtrip_ms` on first audio
+    - [x] Conversation benchmark runner (text-mode `/converse`): ws_connect + llm + tts_ttfb + total — `supervisor/api/conv_benchmark.py` + `ConvBenchmark.tsx` + WS command
     - [x] Wake word workbench: live score/threshold view + event log + soak-test summary — `WakeWordWorkbench.tsx` + ear worker score streaming + threshold tuning
   - [x] **Personality tuning + B6 completion harness**
     - [x] Personality visualization: VA scatter plot, mood anchors, mood bar, layer/idle/conv badges, guardrail status + last trigger, RS-1/RS-2 session/daily timers

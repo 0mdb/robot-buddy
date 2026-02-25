@@ -389,14 +389,16 @@ class AIWorker(BaseWorker):
                 msg_type = msg.get("type", "")
 
                 if msg_type == "transcription":
-                    self.send(
-                        AI_CONVERSATION_TRANSCRIPTION,
-                        {
-                            "session_id": self._session_id,
-                            "turn_id": self._turn_id,
-                            "text": msg.get("text", ""),
-                        },
-                    )
+                    transcription_payload: dict[str, object] = {
+                        "session_id": self._session_id,
+                        "turn_id": self._turn_id,
+                        "text": msg.get("text", ""),
+                    }
+                    if "stt_latency_ms" in msg:
+                        transcription_payload["stt_latency_ms"] = int(
+                            msg["stt_latency_ms"]
+                        )
+                    self.send(AI_CONVERSATION_TRANSCRIPTION, transcription_payload)
 
                 elif msg_type == "emotion":
                     emotion_payload: dict[str, object] = {
@@ -408,6 +410,8 @@ class AIWorker(BaseWorker):
                     mood_reason = msg.get("mood_reason", "")
                     if mood_reason:
                         emotion_payload["mood_reason"] = str(mood_reason)
+                    if "llm_latency_ms" in msg:
+                        emotion_payload["llm_latency_ms"] = int(msg["llm_latency_ms"])
                     self.send(AI_CONVERSATION_EMOTION, emotion_payload)
 
                 elif msg_type == "gestures":
@@ -445,13 +449,16 @@ class AIWorker(BaseWorker):
                 elif msg_type == "audio":
                     if not self._first_audio_emitted:
                         self._first_audio_emitted = True
-                        self.send(
-                            AI_CONVERSATION_FIRST_AUDIO,
-                            {
-                                "session_id": self._session_id,
-                                "turn_id": self._turn_id,
-                            },
-                        )
+                        first_audio_payload: dict[str, object] = {
+                            "session_id": self._session_id,
+                            "turn_id": self._turn_id,
+                        }
+                        if self._utterance_end_t is not None:
+                            first_audio_payload["roundtrip_ms"] = round(
+                                (time.monotonic() - self._utterance_end_t) * 1000
+                            )
+                            self._utterance_end_t = None
+                        self.send(AI_CONVERSATION_FIRST_AUDIO, first_audio_payload)
                     self._set_state("speaking", "audio_received")
                     # Forward audio to TTS worker via socket (Mode A) or NDJSON (Mode B)
                     data_b64 = msg.get("data", "")

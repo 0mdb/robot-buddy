@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import ConvBenchmark from '../components/ConvBenchmark'
 import FaceMirrorCanvas, {
   type MirrorMode,
   type SandboxDispatch,
@@ -1261,6 +1262,12 @@ export default function FaceTab() {
       <details className={ft.detailsSection}>
         <summary>TTS Benchmark</summary>
         <TtsBenchmark />
+      </details>
+
+      {/* Conversation Benchmark — collapsible, default closed */}
+      <details className={ft.detailsSection}>
+        <summary>Conv Benchmark</summary>
+        <ConvBenchmark />
       </details>
 
       {/* Phase 2: Wake Word Workbench — collapsible, default closed */}
