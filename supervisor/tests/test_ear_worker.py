@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import struct
 
+import numpy as np
+
 from supervisor.workers.ear_worker import (
     CHUNK_BYTES,
     SAMPLE_RATE,
@@ -13,6 +15,90 @@ from supervisor.workers.ear_worker import (
     _VAD_FRAME_BYTES,
     _WW_COOLDOWN_S,
 )
+
+
+class _FakeNodeArg:
+    def __init__(self, name: str, shape: list[object]):
+        self.name = name
+        self.shape = shape
+
+
+class _FakeStateVadSession:
+    def __init__(self):
+        self._inputs = [
+            _FakeNodeArg("input", [None, None]),
+            _FakeNodeArg("state", [2, None, 128]),
+            _FakeNodeArg("sr", []),
+        ]
+        self._outputs = [
+            _FakeNodeArg("output", [None, 1]),
+            _FakeNodeArg("stateN", [None, None, None]),
+        ]
+        self.last_feed: dict[str, object] | None = None
+        self.next_state = np.full((2, 1, 128), 3.0, dtype=np.float32)
+
+    def get_inputs(self):
+        return self._inputs
+
+    def get_outputs(self):
+        return self._outputs
+
+    def run(self, _output_names, feed):
+        self.last_feed = feed
+        return [np.array([[0.9]], dtype=np.float32), self.next_state.copy()]
+
+
+class _FakeHCVadSession:
+    def __init__(self):
+        self._inputs = [
+            _FakeNodeArg("input", [None, None]),
+            _FakeNodeArg("h", [2, None, 64]),
+            _FakeNodeArg("c", [2, None, 64]),
+            _FakeNodeArg("sr", []),
+        ]
+        self._outputs = [
+            _FakeNodeArg("output", [None, 1]),
+            _FakeNodeArg("hn", [None, None, None]),
+            _FakeNodeArg("cn", [None, None, None]),
+        ]
+        self.last_feed: dict[str, object] | None = None
+        self.next_h = np.full((2, 1, 64), 5.0, dtype=np.float32)
+        self.next_c = np.full((2, 1, 64), 7.0, dtype=np.float32)
+
+    def get_inputs(self):
+        return self._inputs
+
+    def get_outputs(self):
+        return self._outputs
+
+    def run(self, _output_names, feed):
+        self.last_feed = feed
+        return [
+            np.array([[0.9]], dtype=np.float32),
+            self.next_h.copy(),
+            self.next_c.copy(),
+        ]
+
+
+class _FakeUnsupportedVadSession:
+    def __init__(self):
+        self._inputs = [
+            _FakeNodeArg("input", [None, None]),
+            _FakeNodeArg("foo", [2, None, 64]),
+            _FakeNodeArg("sr", []),
+        ]
+        self._outputs = [_FakeNodeArg("output", [None, 1])]
+        self.run_calls = 0
+
+    def get_inputs(self):
+        return self._inputs
+
+    def get_outputs(self):
+        return self._outputs
+
+    def run(self, _output_names, _feed):
+        self.run_calls += 1
+        return [np.array([[0.1]], dtype=np.float32)]
 
 
 # ── VAD state machine tests ──────────────────────────────────────
@@ -70,6 +156,82 @@ class TestVADStateMachine:
         assert w._vad_paused is True
         w._vad_paused = False
         assert w._vad_paused is False
+
+
+class TestVADSchemaCompatibility:
+    def test_check_vad_uses_state_schema_and_updates_recurrent_state(self):
+        w = EarWorker()
+        session = _FakeStateVadSession()
+        w._vad_session = session
+        assert w._configure_vad_schema() is True
+        assert w._vad_schema == "state"
+
+        pcm = b"\x00\x00" * 512
+        w._check_vad(pcm)
+
+        assert session.last_feed is not None
+        assert "state" in session.last_feed
+        assert "h" not in session.last_feed
+        assert "c" not in session.last_feed
+        assert np.array_equal(w._vad_state, session.next_state)
+
+    def test_check_vad_uses_hc_schema_and_updates_hidden_cell_state(self):
+        w = EarWorker()
+        session = _FakeHCVadSession()
+        w._vad_session = session
+        assert w._configure_vad_schema() is True
+        assert w._vad_schema == "hc"
+
+        pcm = b"\x00\x00" * 512
+        w._check_vad(pcm)
+
+        assert session.last_feed is not None
+        assert "h" in session.last_feed
+        assert "c" in session.last_feed
+        assert "state" not in session.last_feed
+        assert np.array_equal(w._vad_h, session.next_h)
+        assert np.array_equal(w._vad_c, session.next_c)
+
+    def test_reset_vad_state_resets_state_schema_tensor(self):
+        w = EarWorker()
+        w._vad_session = _FakeStateVadSession()
+        assert w._configure_vad_schema() is True
+        w._vad_state = np.full((2, 1, 128), 9.0, dtype=np.float32)
+
+        w._reset_vad_state()
+
+        assert w._vad_state is not None
+        assert w._vad_state.shape == (2, 1, 128)
+        assert np.count_nonzero(w._vad_state) == 0
+
+    def test_reset_vad_state_resets_hc_schema_tensors(self):
+        w = EarWorker()
+        w._vad_session = _FakeHCVadSession()
+        assert w._configure_vad_schema() is True
+        w._vad_h = np.full((2, 1, 64), 9.0, dtype=np.float32)
+        w._vad_c = np.full((2, 1, 64), 9.0, dtype=np.float32)
+
+        w._reset_vad_state()
+
+        assert w._vad_h is not None
+        assert w._vad_c is not None
+        assert w._vad_h.shape == (2, 1, 64)
+        assert w._vad_c.shape == (2, 1, 64)
+        assert np.count_nonzero(w._vad_h) == 0
+        assert np.count_nonzero(w._vad_c) == 0
+
+    def test_unsupported_schema_disables_vad_runtime(self):
+        w = EarWorker()
+        session = _FakeUnsupportedVadSession()
+        w._vad_session = session
+
+        assert w._configure_vad_schema() is False
+        assert w._vad_session is None
+        assert w._vad_schema == "disabled"
+
+        pcm = b"\x00\x00" * 512
+        w._check_vad(pcm)  # Should no-op and avoid inference errors.
+        assert session.run_calls == 0
 
 
 # ── Buffer accumulation tests ────────────────────────────────────
@@ -136,6 +298,7 @@ class TestHealthPayload:
         assert h["speech_detected"] is False
         assert h["oww_loaded"] is False
         assert h["vad_loaded"] is False
+        assert h["vad_schema"] == "disabled"
 
     def test_health_reflects_listening(self):
         w = EarWorker()

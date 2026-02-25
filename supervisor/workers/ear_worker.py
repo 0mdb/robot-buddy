@@ -55,6 +55,10 @@ _SOCKET_RETRY_TIMEOUT_S = 30.0
 # Wake word cooldown — suppress re-triggers during active conversation
 _WW_COOLDOWN_S = 3.0
 
+_VAD_SCHEMA_DISABLED = "disabled"
+_VAD_SCHEMA_STATE = "state"
+_VAD_SCHEMA_HC = "hc"
+
 
 class EarWorker(BaseWorker):
     domain = "ear"
@@ -77,8 +81,17 @@ class EarWorker(BaseWorker):
         # Models (loaded lazily in run())
         self._oww_model: Any = None
         self._vad_session: Any = None  # onnxruntime InferenceSession
+        self._vad_schema: str = _VAD_SCHEMA_DISABLED
+        self._vad_state: Any = None  # Silero combined recurrent state
+        self._vad_state_shape: tuple[int, int, int] = (2, 1, 128)
         self._vad_h: Any = None  # Silero VAD hidden state
         self._vad_c: Any = None  # Silero VAD cell state
+        self._vad_h_shape: tuple[int, int, int] = (2, 1, 64)
+        self._vad_c_shape: tuple[int, int, int] = (2, 1, 64)
+        self._vad_prob_output_idx: int = 0
+        self._vad_state_output_idx: int | None = None
+        self._vad_h_output_idx: int | None = None
+        self._vad_c_output_idx: int | None = None
 
         # Buffers
         self._ww_buffer = bytearray()
@@ -96,6 +109,141 @@ class EarWorker(BaseWorker):
         # Socket + process
         self._mic_sock: socket.socket | None = None
         self._arecord_proc: asyncio.subprocess.Process | None = None
+
+    def _reset_vad_runtime(self) -> None:
+        """Disable VAD runtime and clear recurrent buffers."""
+        self._vad_session = None
+        self._vad_schema = _VAD_SCHEMA_DISABLED
+        self._vad_state = None
+        self._vad_h = None
+        self._vad_c = None
+        self._vad_prob_output_idx = 0
+        self._vad_state_output_idx = None
+        self._vad_h_output_idx = None
+        self._vad_c_output_idx = None
+
+    @staticmethod
+    def _resolve_recurrent_shape(
+        raw_shape: Any, fallback: tuple[int, int, int]
+    ) -> tuple[int, int, int]:
+        """Resolve ONNX recurrent tensor shape with fallbacks for dynamic dims."""
+        dims = list(raw_shape) if isinstance(raw_shape, (list, tuple)) else []
+        out: list[int] = []
+        for idx, fb in enumerate(fallback):
+            val = dims[idx] if idx < len(dims) else None
+            if isinstance(val, int) and val > 0:
+                out.append(val)
+            else:
+                out.append(fb)
+        return (out[0], out[1], out[2])
+
+    @staticmethod
+    def _pick_fallback_output_index(total: int, used: set[int]) -> int | None:
+        for idx in range(total):
+            if idx not in used:
+                return idx
+        return None
+
+    def _configure_vad_schema(self) -> bool:
+        """Inspect ONNX I/O and configure recurrent state handling."""
+        if self._vad_session is None:
+            self._reset_vad_runtime()
+            return False
+
+        import numpy as np
+
+        inputs = list(self._vad_session.get_inputs())
+        outputs = list(self._vad_session.get_outputs())
+        input_names = [i.name for i in inputs]
+        output_names = [o.name for o in outputs]
+
+        self._vad_prob_output_idx = (
+            output_names.index("output") if "output" in output_names else 0
+        )
+
+        if "state" in input_names:
+            state_node = inputs[input_names.index("state")]
+            self._vad_state_shape = self._resolve_recurrent_shape(
+                getattr(state_node, "shape", None),
+                (2, 1, 128),
+            )
+
+            if "stateN" in output_names:
+                self._vad_state_output_idx = output_names.index("stateN")
+            else:
+                self._vad_state_output_idx = self._pick_fallback_output_index(
+                    len(output_names), {self._vad_prob_output_idx}
+                )
+
+            if self._vad_state_output_idx is None:
+                log.error(
+                    "Silero VAD schema unsupported (missing state output): inputs=%s outputs=%s",
+                    input_names,
+                    output_names,
+                )
+                self._reset_vad_runtime()
+                return False
+
+            self._vad_schema = _VAD_SCHEMA_STATE
+            self._vad_state = np.zeros(self._vad_state_shape, dtype=np.float32)
+            self._vad_h = None
+            self._vad_c = None
+            self._vad_h_output_idx = None
+            self._vad_c_output_idx = None
+            return True
+
+        if "h" in input_names and "c" in input_names:
+            h_node = inputs[input_names.index("h")]
+            c_node = inputs[input_names.index("c")]
+            self._vad_h_shape = self._resolve_recurrent_shape(
+                getattr(h_node, "shape", None),
+                (2, 1, 64),
+            )
+            self._vad_c_shape = self._resolve_recurrent_shape(
+                getattr(c_node, "shape", None),
+                (2, 1, 64),
+            )
+
+            used = {self._vad_prob_output_idx}
+            if "hn" in output_names:
+                self._vad_h_output_idx = output_names.index("hn")
+            else:
+                self._vad_h_output_idx = self._pick_fallback_output_index(
+                    len(output_names), used
+                )
+            if self._vad_h_output_idx is not None:
+                used.add(self._vad_h_output_idx)
+
+            if "cn" in output_names:
+                self._vad_c_output_idx = output_names.index("cn")
+            else:
+                self._vad_c_output_idx = self._pick_fallback_output_index(
+                    len(output_names), used
+                )
+
+            if self._vad_h_output_idx is None or self._vad_c_output_idx is None:
+                log.error(
+                    "Silero VAD schema unsupported (missing h/c outputs): inputs=%s outputs=%s",
+                    input_names,
+                    output_names,
+                )
+                self._reset_vad_runtime()
+                return False
+
+            self._vad_schema = _VAD_SCHEMA_HC
+            self._vad_h = np.zeros(self._vad_h_shape, dtype=np.float32)
+            self._vad_c = np.zeros(self._vad_c_shape, dtype=np.float32)
+            self._vad_state = None
+            self._vad_state_output_idx = None
+            return True
+
+        log.error(
+            "Silero VAD schema unsupported (expected state or h/c inputs): inputs=%s outputs=%s",
+            input_names,
+            output_names,
+        )
+        self._reset_vad_runtime()
+        return False
 
     # ── Message handling ──────────────────────────────────────────
 
@@ -167,8 +315,11 @@ class EarWorker(BaseWorker):
         if self._vad_session is not None:
             import numpy as np
 
-            self._vad_h = np.zeros((2, 1, 64), dtype=np.float32)
-            self._vad_c = np.zeros((2, 1, 64), dtype=np.float32)
+            if self._vad_schema == _VAD_SCHEMA_STATE:
+                self._vad_state = np.zeros(self._vad_state_shape, dtype=np.float32)
+            elif self._vad_schema == _VAD_SCHEMA_HC:
+                self._vad_h = np.zeros(self._vad_h_shape, dtype=np.float32)
+                self._vad_c = np.zeros(self._vad_c_shape, dtype=np.float32)
 
     def health_payload(self) -> dict[str, Any]:
         return {
@@ -177,6 +328,7 @@ class EarWorker(BaseWorker):
             "speech_detected": self._speech_detected,
             "oww_loaded": self._oww_model is not None,
             "vad_loaded": self._vad_session is not None,
+            "vad_schema": self._vad_schema,
             "wakeword_threshold": self._wakeword_threshold,
             "stream_scores": self._stream_scores,
         }
@@ -224,8 +376,6 @@ class EarWorker(BaseWorker):
 
     def _load_models(self) -> None:
         """Load OpenWakeWord and Silero VAD models (runs in thread)."""
-        import numpy as np
-
         # ── OpenWakeWord ──────────────────────────────────────────
         ww_path = self._wakeword_model_path
         if not ww_path:
@@ -268,13 +418,18 @@ class EarWorker(BaseWorker):
                 self._vad_session = ort.InferenceSession(
                     str(vad_path), sess_options=opts
                 )
-                self._vad_h = np.zeros((2, 1, 64), dtype=np.float32)
-                self._vad_c = np.zeros((2, 1, 64), dtype=np.float32)
-                log.info("Silero VAD loaded: %s", vad_path)
+                if self._configure_vad_schema():
+                    log.info(
+                        "Silero VAD loaded: %s (schema=%s)",
+                        vad_path,
+                        self._vad_schema,
+                    )
             except Exception:
                 log.exception("failed to load Silero VAD")
+                self._reset_vad_runtime()
         else:
             log.warning("Silero VAD model not found at %s — VAD disabled", vad_path)
+            self._reset_vad_runtime()
 
     # ── Capture loop ──────────────────────────────────────────────
 
@@ -357,7 +512,7 @@ class EarWorker(BaseWorker):
 
     def _check_vad(self, pcm_30ms: bytes) -> None:
         """Run Silero VAD inference on a 30 ms frame. Updates state machine."""
-        if self._vad_session is None:
+        if self._vad_session is None or self._vad_schema == _VAD_SCHEMA_DISABLED:
             return
 
         try:
@@ -368,17 +523,44 @@ class EarWorker(BaseWorker):
             )
             samples = samples.reshape(1, -1)
 
-            # Silero VAD ONNX: input, sr, h, c → output, hn, cn
-            ort_inputs = {
+            ort_inputs: dict[str, Any] = {
                 "input": samples,
                 "sr": np.array([SAMPLE_RATE], dtype=np.int64),
-                "h": self._vad_h,
-                "c": self._vad_c,
             }
+            if self._vad_schema == _VAD_SCHEMA_STATE:
+                if self._vad_state is None:
+                    self._reset_vad_state()
+                ort_inputs["state"] = self._vad_state
+            elif self._vad_schema == _VAD_SCHEMA_HC:
+                if self._vad_h is None or self._vad_c is None:
+                    self._reset_vad_state()
+                ort_inputs["h"] = self._vad_h
+                ort_inputs["c"] = self._vad_c
+            else:
+                return
+
             ort_outputs = self._vad_session.run(None, ort_inputs)
-            speech_prob = ort_outputs[0].item()
-            self._vad_h = ort_outputs[1]
-            self._vad_c = ort_outputs[2]
+            speech_prob = float(
+                np.asarray(ort_outputs[self._vad_prob_output_idx]).reshape(-1)[0]
+            )
+
+            if self._vad_schema == _VAD_SCHEMA_STATE:
+                idx = self._vad_state_output_idx
+                if idx is None or idx >= len(ort_outputs):
+                    raise ValueError("VAD state output missing for schema=state")
+                self._vad_state = ort_outputs[idx]
+            elif self._vad_schema == _VAD_SCHEMA_HC:
+                h_idx = self._vad_h_output_idx
+                c_idx = self._vad_c_output_idx
+                if (
+                    h_idx is None
+                    or c_idx is None
+                    or h_idx >= len(ort_outputs)
+                    or c_idx >= len(ort_outputs)
+                ):
+                    raise ValueError("VAD h/c outputs missing for schema=hc")
+                self._vad_h = ort_outputs[h_idx]
+                self._vad_c = ort_outputs[c_idx]
 
             now = time.monotonic()
             is_speech = speech_prob > 0.5
