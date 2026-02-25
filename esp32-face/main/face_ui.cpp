@@ -53,12 +53,30 @@ static int     s_last_touch_y = SCREEN_H / 2;
 static uint8_t s_last_touch_evt = 0xFF;
 static bool    s_last_touch_active = false;
 
-struct DirtyRect {
+struct RectI {
     int  x0 = 0;
     int  y0 = 0;
     int  x1 = 0;
     int  y1 = 0;
     bool valid = false;
+};
+
+struct DirtyRegion {
+    static constexpr uint8_t MAX_RECTS = 8;
+    RectI                    rects[MAX_RECTS] = {};
+    uint8_t                  count = 0;
+    bool                     full = false;
+};
+
+struct PrevBoundsState {
+    RectI eye_l = {};
+    RectI eye_r = {};
+    RectI mouth = {};
+    RectI border = {};
+    RectI btn_left = {};
+    RectI btn_right = {};
+    bool  full = false;
+    bool  valid = false;
 };
 
 struct RenderPerfSnapshot {
@@ -75,15 +93,16 @@ struct RenderPerfSnapshot {
 
 static RenderPerfSnapshot s_last_render_perf = {};
 static bool               s_collect_render_perf = false;
+static PrevBoundsState    s_prev_bounds = {};
 
-static void      publish_touch_sample(uint8_t event_type, int x, int y);
-static void      publish_button_event(FaceButtonId button_id, FaceButtonEventType event_type, uint8_t state);
-static void      root_touch_event_cb(lv_event_t* e);
-static void      render_calibration(pixel_t* buf);
-static void      update_calibration_labels(uint32_t now_ms, uint32_t next_switch_ms);
-static void      afterglow_copy_from_canvas(const pixel_t* canvas);
-static DirtyRect compute_dirty_rect(const FaceState& fs);
-static uint32_t  dirty_rect_area(const DirtyRect& rect);
+static void        publish_touch_sample(uint8_t event_type, int x, int y);
+static void        publish_button_event(FaceButtonId button_id, FaceButtonEventType event_type, uint8_t state);
+static void        root_touch_event_cb(lv_event_t* e);
+static void        render_calibration(pixel_t* buf);
+static void        update_calibration_labels(uint32_t now_ms, uint32_t next_switch_ms);
+static void        afterglow_copy_from_canvas(const pixel_t* canvas);
+static DirtyRegion compute_dirty_region(const FaceState& fs);
+static uint32_t    dirty_region_area(const DirtyRegion& region);
 
 static float clampf(float v, float lo, float hi)
 {
@@ -554,75 +573,251 @@ static float now_s()
     return static_cast<float>(esp_timer_get_time()) / 1'000'000.0f;
 }
 
-static void dirty_rect_add(DirtyRect& rect, int x, int y, int w, int h)
+static RectI make_rect_xyxy(int x0, int y0, int x1, int y1)
 {
-    if (w <= 0 || h <= 0) {
-        return;
+    RectI out = {};
+    if (x1 < x0 || y1 < y0) {
+        return out;
     }
-    int x0 = x;
-    int y0 = y;
-    int x1 = x + w - 1;
-    int y1 = y + h - 1;
     if (x1 < 0 || y1 < 0 || x0 >= SCREEN_W || y0 >= SCREEN_H) {
-        return;
+        return out;
     }
-    if (x0 < 0) x0 = 0;
-    if (y0 < 0) y0 = 0;
-    if (x1 >= SCREEN_W) x1 = SCREEN_W - 1;
-    if (y1 >= SCREEN_H) y1 = SCREEN_H - 1;
-
-    if (!rect.valid) {
-        rect.x0 = x0;
-        rect.y0 = y0;
-        rect.x1 = x1;
-        rect.y1 = y1;
-        rect.valid = true;
-        return;
-    }
-    if (x0 < rect.x0) rect.x0 = x0;
-    if (y0 < rect.y0) rect.y0 = y0;
-    if (x1 > rect.x1) rect.x1 = x1;
-    if (y1 > rect.y1) rect.y1 = y1;
+    out.x0 = (x0 < 0) ? 0 : x0;
+    out.y0 = (y0 < 0) ? 0 : y0;
+    out.x1 = (x1 >= SCREEN_W) ? (SCREEN_W - 1) : x1;
+    out.y1 = (y1 >= SCREEN_H) ? (SCREEN_H - 1) : y1;
+    out.valid = (out.x1 >= out.x0) && (out.y1 >= out.y0);
+    return out;
 }
 
-static DirtyRect compute_dirty_rect(const FaceState& fs)
+static RectI make_rect_xywh(int x, int y, int w, int h)
 {
-    DirtyRect rect = {};
+    if (w <= 0 || h <= 0) return {};
+    return make_rect_xyxy(x, y, x + w - 1, y + h - 1);
+}
+
+static bool rects_touch_or_overlap(const RectI& a, const RectI& b)
+{
+    if (!a.valid || !b.valid) return false;
+    return !(a.x1 + 1 < b.x0 || b.x1 + 1 < a.x0 || a.y1 + 1 < b.y0 || b.y1 + 1 < a.y0);
+}
+
+static void rect_union_inplace(RectI& a, const RectI& b)
+{
+    if (!b.valid) return;
+    if (!a.valid) {
+        a = b;
+        return;
+    }
+    if (b.x0 < a.x0) a.x0 = b.x0;
+    if (b.y0 < a.y0) a.y0 = b.y0;
+    if (b.x1 > a.x1) a.x1 = b.x1;
+    if (b.y1 > a.y1) a.y1 = b.y1;
+    a.valid = true;
+}
+
+static void dirty_region_add_rect(DirtyRegion& region, RectI rect)
+{
+    if (!rect.valid || region.full) return;
+
+    // Merge with any touching/overlapping rectangles to keep rect count small.
+    for (int i = 0; i < region.count; i++) {
+        if (!rects_touch_or_overlap(region.rects[i], rect)) continue;
+        rect_union_inplace(rect, region.rects[i]);
+        region.rects[i] = region.rects[region.count - 1];
+        region.count--;
+        i--;
+    }
+
+    if (region.count >= DirtyRegion::MAX_RECTS) {
+        region.full = true;
+        region.count = 0;
+        return;
+    }
+    region.rects[region.count++] = rect;
+}
+
+static void dirty_region_add_xywh(DirtyRegion& region, int x, int y, int w, int h)
+{
+    dirty_region_add_rect(region, make_rect_xywh(x, y, w, h));
+}
+
+static void dirty_region_add_prev_curr(DirtyRegion& region, const RectI& prev, const RectI& curr)
+{
+    if (prev.valid) dirty_region_add_rect(region, prev);
+    if (curr.valid) dirty_region_add_rect(region, curr);
+}
+
+static RectI compute_eye_bounds(const FaceState& fs, bool is_left, float center_x, float center_y)
+{
+    const EyeState& eye = is_left ? fs.eye_l : fs.eye_r;
+    const float     breath = face_get_breath_scale(fs);
+    const float     ew = EYE_WIDTH * eye.width_scale * breath;
+    const float     eh = EYE_HEIGHT * eye.height_scale * fmaxf(0.25f, eye.openness) * breath;
+    if (eh < 2.0f) {
+        return {};
+    }
+
+    const float ex = center_x + eye.gaze_x * GAZE_EYE_SHIFT - ew / 2.0f;
+    const float ey = center_y + eye.gaze_y * GAZE_EYE_SHIFT - eh / 2.0f;
+    const float edge_pad = fs.fx.edge_glow ? 4.0f : 2.0f;
+
+    float x_min = ex - edge_pad;
+    float x_max = ex + ew + edge_pad;
+    float y_min = ey - edge_pad;
+    float y_max = ey + eh + edge_pad;
+
+    const float max_offset_x = fmaxf(0.0f, ew * 0.5f - PUPIL_R - 5.0f);
+    const float max_offset_y = fmaxf(0.0f, eh * 0.5f - PUPIL_R - 5.0f);
+    const float pupil_x = center_x + clampf(eye.gaze_x * GAZE_PUPIL_SHIFT, -max_offset_x, max_offset_x);
+    const float pupil_y = center_y + clampf(eye.gaze_y * GAZE_PUPIL_SHIFT, -max_offset_y, max_offset_y);
+    const float pupil_r = static_cast<float>(static_cast<int>(PUPIL_R * fmaxf(0.4f, eye.openness)));
+
+    if (fs.solid_eye && fs.anim.heart) {
+        const float heart_r = fminf(ew, eh) * 0.5f * HEART_SOLID_SCALE;
+        x_min = fminf(x_min, center_x - heart_r - 3.0f);
+        x_max = fmaxf(x_max, center_x + heart_r + 3.0f);
+        y_min = fminf(y_min, center_y - heart_r - 3.0f);
+        y_max = fmaxf(y_max, center_y + heart_r + 3.0f);
+    } else if (fs.solid_eye && fs.anim.x_eyes) {
+        const float x_r = fminf(ew, eh) * 0.33f + 4.0f;
+        x_min = fminf(x_min, center_x - x_r);
+        x_max = fmaxf(x_max, center_x + x_r);
+        y_min = fminf(y_min, center_y - x_r);
+        y_max = fmaxf(y_max, center_y + x_r);
+    } else if (!fs.solid_eye) {
+        if (fs.anim.heart) {
+            const float heart_r = PUPIL_R * HEART_PUPIL_SCALE + 3.0f;
+            x_min = fminf(x_min, pupil_x - heart_r);
+            x_max = fmaxf(x_max, pupil_x + heart_r);
+            y_min = fminf(y_min, pupil_y - heart_r);
+            y_max = fmaxf(y_max, pupil_y + heart_r);
+        } else if (fs.anim.x_eyes) {
+            const float x_r = pupil_r + 4.0f;
+            x_min = fminf(x_min, pupil_x - x_r);
+            x_max = fmaxf(x_max, pupil_x + x_r);
+            y_min = fminf(y_min, pupil_y - x_r);
+            y_max = fmaxf(y_max, pupil_y + x_r);
+        } else {
+            const float p_r = pupil_r + 2.0f;
+            x_min = fminf(x_min, pupil_x - p_r);
+            x_max = fmaxf(x_max, pupil_x + p_r);
+            y_min = fminf(y_min, pupil_y - p_r);
+            y_max = fmaxf(y_max, pupil_y + p_r);
+        }
+    }
+
+    // Eyelid vertical strokes can extend beyond eye box.
+    const float lid_top = is_left ? fs.eyelids.top_l : fs.eyelids.top_r;
+    const float lid_bot = is_left ? fs.eyelids.bottom_l : fs.eyelids.bottom_r;
+    const float slope_mag = fabsf(fs.eyelids.slope) * 20.0f;
+    const float top_limit_max = (ey - 0.5f) + eh * 2.0f * lid_top + slope_mag;
+    const float bot_limit = (ey + eh) - eh * 2.0f * lid_bot;
+    y_min = fminf(y_min, bot_limit - 1.0f);
+    y_max = fmaxf(y_max, top_limit_max + 1.0f);
+
+    return make_rect_xyxy(static_cast<int>(floorf(x_min)), static_cast<int>(floorf(y_min)),
+                          static_cast<int>(ceilf(x_max)), static_cast<int>(ceilf(y_max)));
+}
+
+static RectI compute_mouth_bounds(const FaceState& fs)
+{
+    if (!fs.show_mouth) return {};
+
+    const float cx = MOUTH_CX + fs.mouth_offset_x * 10.0f;
+    const float cy = MOUTH_CY;
+    const float w = MOUTH_HALF_W * fs.mouth_width;
+    const float thick = MOUTH_THICKNESS;
+    const float curve = fs.mouth_curve * 40.0f;
+    const float openness = fs.mouth_open * 40.0f;
+    if (w < 1.0f) return {};
+
+    const int x0 = static_cast<int>(floorf(cx - w - thick - 2.0f));
+    const int x1 = static_cast<int>(ceilf(cx + w + thick + 2.0f));
+    const int y0 = static_cast<int>(floorf(cy - fabsf(curve) - openness - thick - 2.0f));
+    const int y1 = static_cast<int>(ceilf(cy + fabsf(curve) + openness + thick + 2.0f));
+    return make_rect_xyxy(x0, y0, x1, y1);
+}
+
+static DirtyRegion compute_dirty_region(const FaceState& fs)
+{
+    DirtyRegion region = {};
 
     if (!FACE_DIRTY_RECT || FACE_CALIBRATION_MODE) {
-        dirty_rect_add(rect, 0, 0, SCREEN_W, SCREEN_H);
-        return rect;
+        region.full = true;
+        s_prev_bounds = {};
+        s_prev_bounds.valid = true;
+        s_prev_bounds.full = true;
+        return region;
     }
 
-    if (fs.system.mode != SystemMode::NONE || fs.fx.afterglow || fs.anim.rage || fs.fx.sparkle) {
-        dirty_rect_add(rect, 0, 0, SCREEN_W, SCREEN_H);
-        return rect;
+    const bool full_now = (fs.system.mode != SystemMode::NONE) || fs.fx.afterglow || fs.anim.rage || fs.fx.sparkle;
+    const bool full_prev = s_prev_bounds.valid && s_prev_bounds.full;
+
+    RectI eye_l = {};
+    RectI eye_r = {};
+    RectI mouth = {};
+    RectI border = {};
+    RectI btn_left = make_rect_xywh(0, SCREEN_H - 46, 60, 46);              // must match conv_border.cpp
+    RectI btn_right = make_rect_xywh(SCREEN_W - 60, SCREEN_H - 46, 60, 46); // must match conv_border.cpp
+
+    if (!full_now) {
+        eye_l = compute_eye_bounds(fs, true, LEFT_EYE_CX, LEFT_EYE_CY);
+        eye_r = compute_eye_bounds(fs, false, RIGHT_EYE_CX, RIGHT_EYE_CY);
+        mouth = compute_mouth_bounds(fs);
+        border.valid = conv_border_active();
     }
 
-    // Conservative central region covering eyes + most gaze motion + mouth.
-    dirty_rect_add(rect, 12, 0, SCREEN_W - 24, 215);
+    if (full_now || full_prev) {
+        region.full = true;
+    } else {
+        dirty_region_add_prev_curr(region, s_prev_bounds.eye_l, eye_l);
+        dirty_region_add_prev_curr(region, s_prev_bounds.eye_r, eye_r);
+        dirty_region_add_prev_curr(region, s_prev_bounds.mouth, mouth);
 
-    // Border and corner buttons only affect edge strips.
-    if (conv_border_active()) {
-        const int edge = 20;
-        dirty_rect_add(rect, 0, 0, SCREEN_W, edge);
-        dirty_rect_add(rect, 0, SCREEN_H - edge, SCREEN_W, edge);
-        dirty_rect_add(rect, 0, edge, edge, SCREEN_H - 2 * edge);
-        dirty_rect_add(rect, SCREEN_W - edge, edge, edge, SCREEN_H - 2 * edge);
+        // Corner buttons are rendered in software and can animate independently.
+        dirty_region_add_rect(region, btn_left);
+        dirty_region_add_rect(region, btn_right);
+
+        if (border.valid || s_prev_bounds.border.valid) {
+            constexpr int edge = 20;
+            dirty_region_add_xywh(region, 0, 0, SCREEN_W, edge);
+            dirty_region_add_xywh(region, 0, SCREEN_H - edge, SCREEN_W, edge);
+            dirty_region_add_xywh(region, 0, edge, edge, SCREEN_H - 2 * edge);
+            dirty_region_add_xywh(region, SCREEN_W - edge, edge, edge, SCREEN_H - 2 * edge);
+        }
+
+        if (region.count == 0) {
+            region.full = true;
+        }
     }
 
-    if (!rect.valid) {
-        dirty_rect_add(rect, 0, 0, SCREEN_W, SCREEN_H);
-    }
-    return rect;
+    s_prev_bounds.eye_l = eye_l;
+    s_prev_bounds.eye_r = eye_r;
+    s_prev_bounds.mouth = mouth;
+    s_prev_bounds.border = border;
+    s_prev_bounds.btn_left = btn_left;
+    s_prev_bounds.btn_right = btn_right;
+    s_prev_bounds.full = full_now;
+    s_prev_bounds.valid = true;
+
+    return region;
 }
 
-static uint32_t dirty_rect_area(const DirtyRect& rect)
+static uint32_t dirty_region_area(const DirtyRegion& region)
 {
-    if (!rect.valid) return static_cast<uint32_t>(SCREEN_W * SCREEN_H);
-    const uint32_t w = static_cast<uint32_t>(rect.x1 - rect.x0 + 1);
-    const uint32_t h = static_cast<uint32_t>(rect.y1 - rect.y0 + 1);
-    return w * h;
+    if (region.full) {
+        return static_cast<uint32_t>(SCREEN_W * SCREEN_H);
+    }
+    uint32_t sum = 0;
+    for (uint8_t i = 0; i < region.count; i++) {
+        const RectI& r = region.rects[i];
+        if (!r.valid) continue;
+        const uint32_t w = static_cast<uint32_t>(r.x1 - r.x0 + 1);
+        const uint32_t h = static_cast<uint32_t>(r.y1 - r.y0 + 1);
+        sum += w * h;
+    }
+    return (sum > 0U) ? sum : static_cast<uint32_t>(SCREEN_W * SCREEN_H);
 }
 
 static void publish_touch_sample(uint8_t event_type, int x, int y)
@@ -844,16 +1039,20 @@ void face_ui_update(const FaceState& fs)
         }
     }
 
-    const DirtyRect dirty = compute_dirty_rect(fs);
-    perf.dirty_px = dirty_rect_area(dirty);
-    if (FACE_DIRTY_RECT && dirty.valid) {
-        lv_area_t area = {
-            .x1 = static_cast<int32_t>(dirty.x0),
-            .y1 = static_cast<int32_t>(dirty.y0),
-            .x2 = static_cast<int32_t>(dirty.x1),
-            .y2 = static_cast<int32_t>(dirty.y1),
-        };
-        lv_obj_invalidate_area(canvas_obj, &area);
+    const DirtyRegion dirty = compute_dirty_region(fs);
+    perf.dirty_px = dirty_region_area(dirty);
+    if (FACE_DIRTY_RECT && !dirty.full && dirty.count > 0) {
+        for (uint8_t i = 0; i < dirty.count; i++) {
+            const RectI& r = dirty.rects[i];
+            if (!r.valid) continue;
+            lv_area_t area = {
+                .x1 = static_cast<int32_t>(r.x0),
+                .y1 = static_cast<int32_t>(r.y0),
+                .x2 = static_cast<int32_t>(r.x1),
+                .y2 = static_cast<int32_t>(r.y1),
+            };
+            lv_obj_invalidate_area(canvas_obj, &area);
+        }
     } else {
         // Invalidate canvas to trigger LVGL refresh
         lv_obj_invalidate(canvas_obj);
