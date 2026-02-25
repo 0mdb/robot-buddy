@@ -56,7 +56,7 @@ _10 items complete (Stage 4.0 spec/port/parity/buttons/gestures/docs) — see ar
 - [ ] Stage 4.1: HEARTBEAT optional perf tail (length-based, backward compatible); supervisor + protocol capture decode old/new payload lengths
 - [ ] Stage 4.1: Baseline benchmark capture (1000 frames each): idle, listening, thinking, speaking+energy, rage/effects; 2026-02-25 avg/max capture complete, p50/p95 + telemetry overhead A/B (<=1% FPS drop) still pending
 - [ ] Stage 4.2: Implement dirty-rectangle invalidation (replace unconditional full-canvas invalidate) and verify normal conversation states stay at p95 frame <= 33.3ms, p50 <= 25ms
-- [ ] Stage 4.2: Optimize border/icon hot paths (cache/pre-raster hotspot math) and quantify delta in border-heavy scenarios _(cache-based border/button/icon masks landed in firmware on 2026-02-25; pending on-device A/B metrics)_
+- [x] Stage 4.2: Optimize border/icon hot paths (cache/pre-raster hotspot math) and quantify delta in border-heavy scenarios _(A/B validated on hardware 2026-02-25; see Stage 4.2 snapshot below)_
 - [ ] Stage 4.2: Optimize afterglow bandwidth (reduced-resolution buffer + upscale blend behind flag) and quantify effect-on/effect-off cost
 - [ ] Stage 4.2: Evaluate SPI/LVGL throughput tuning (40/60/80MHz + queue/buffer settings) after dirty-rect landing; keep best measured config
 - [ ] Stage 4.2: Validate perf headroom knobs (`afterglow`, `sparkle`, `edge_glow`) with measured impact and document recommended fallback order
@@ -75,6 +75,18 @@ Stage 4.1 Baseline Snapshot (2026-02-25, robot `192.168.55.201`, target `1000` f
 - [ ] Next: extend benchmark harness to emit p50/p95 per scenario and run telemetry overhead A/B (`FACE_PERF_TELEMETRY=1` vs `0`)
 - [ ] Next: execute Stage 4.2 in ROI order using this baseline (`thinking_border`/border cache first, then dirty-rect refinement, then transport tuning)
 - [ ] Next: add a bounded supervisor debug command for direct `SET_CONV_STATE` so listening and PTT border states can be benchmarked without proxying
+
+Stage 4.2 Border Hotspot A/B Snapshot (2026-02-25, post-cache firmware + updated supervisor)
+- Artifacts:
+  - baseline: `docs/perf/face_stage4_baseline_2026-02-25.json`
+  - post-cache: `docs/perf/face_stage4_post_border_cache_2026-02-25.json`
+- `idle`: frame `75.12 -> 58.04 ms` (`-22.7%`), border `23.01 -> 5.98 ms` (`-74.0%`)
+- `listening_proxy`: frame `74.98 -> 58.07 ms` (`-22.6%`), border `23.01 -> 5.98 ms` (`-74.0%`)
+- `thinking_border`: frame `88.51 -> 51.59 ms` (`-41.7%`), border `50.62 -> 13.86 ms` (`-72.6%`)
+- `talking_energy`: frame `74.28 -> 57.19 ms` (`-23.0%`), border `23.41 -> 6.20 ms` (`-73.5%`)
+- `rage_effects`: frame `86.53 -> 69.80 ms` (`-19.3%`), border `23.10 -> 6.10 ms` (`-73.6%`)
+- Gate check (border tranche): **pass** (`idle border_us_avg <= 8ms`, `thinking border_us_avg <= 20ms`, `thinking frame_us_avg <= 65ms`)
+- Remaining gap: overall Stage 4 conversation-frame target still not met (`p95 <= 33.3 ms`, `p50 <= 25 ms`) and p50/p95 collection is still pending
 
 **Evaluation** `[opus]`
 - [ ] T1: Automated CI tests (parity check, unit tests, linting)
