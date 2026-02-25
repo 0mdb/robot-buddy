@@ -360,10 +360,13 @@ class TTSWorker(BaseWorker):
         """Scale S16_LE PCM samples by self._volume (0.0–1.0)."""
         if len(pcm) < 2:
             return pcm
-        arr = np.frombuffer(pcm, dtype=np.int16).astype(np.float32)
+        # Load as int16, convert to float32 for scaling
+        arr = np.frombuffer(pcm, dtype=np.int16).copy().astype(np.float32)
+        # Apply volume scale and clip to int16 range
         arr *= self._volume
-        np.clip(arr, -32768, 32767, out=arr)
-        return arr.astype(np.int16).tobytes()
+        arr = np.clip(arr, -32768, 32767)
+        # Convert back to int16 and ensure C-contiguous for tobytes()
+        return arr.astype(np.int16, copy=False).tobytes()
 
     async def _play_pcm_chunk(self, pcm: bytes) -> None:
         """Write a PCM chunk to the aplay subprocess (applies volume + mute)."""
