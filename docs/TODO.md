@@ -54,13 +54,27 @@ _10 items complete (Stage 4.0 spec/port/parity/buttons/gestures/docs) — see ar
 - [ ] Stage 4.1: Protocol correctness: parse `FACE_STATUS` v1 (4B) and v2 (12B) in supervisor; expose `cmd_seq_last_applied` + `t_state_applied_us` in state/debug
 - [ ] Stage 4.1: Low-overhead perf instrumentation in firmware: frame/render/stage timing, dirty px, SPI bytes/s, cmd rx→apply latency (stage sample divisor=8, emit 1 Hz)
 - [ ] Stage 4.1: HEARTBEAT optional perf tail (length-based, backward compatible); supervisor + protocol capture decode old/new payload lengths
-- [ ] Stage 4.1: Baseline benchmark capture (1000 frames each): idle, listening, thinking, speaking+energy, rage/effects; record p50/p95 and compare telemetry overhead (<=1% FPS drop)
+- [ ] Stage 4.1: Baseline benchmark capture (1000 frames each): idle, listening, thinking, speaking+energy, rage/effects; 2026-02-25 avg/max capture complete, p50/p95 + telemetry overhead A/B (<=1% FPS drop) still pending
 - [ ] Stage 4.2: Implement dirty-rectangle invalidation (replace unconditional full-canvas invalidate) and verify normal conversation states stay at p95 frame <= 33.3ms, p50 <= 25ms
 - [ ] Stage 4.2: Optimize border/icon hot paths (cache/pre-raster hotspot math) and quantify delta in border-heavy scenarios
 - [ ] Stage 4.2: Optimize afterglow bandwidth (reduced-resolution buffer + upscale blend behind flag) and quantify effect-on/effect-off cost
 - [ ] Stage 4.2: Evaluate SPI/LVGL throughput tuning (40/60/80MHz + queue/buffer settings) after dirty-rect landing; keep best measured config
 - [ ] Stage 4.2: Validate perf headroom knobs (`afterglow`, `sparkle`, `edge_glow`) with measured impact and document recommended fallback order
 - [ ] Stage 4.x: Post-baseline LVGL component spike — corner buttons as LVGL button objects using `LV_SYMBOL`; adopt only if p95 frame time and visual latency are equal/better with no touch/parity regressions (Font Awesome deferred unless spike wins)
+
+Stage 4.1 Baseline Snapshot (2026-02-25, robot `192.168.55.201`, target `1000` frames/scenario)
+- `idle`: frame_avg `75.12 ms` (`13.31 FPS`), frame_max `80.45 ms`, border_avg `23.01 ms`, effects_avg `17.16 ms`, dirty_px_avg `9600`
+- `listening_proxy` (not direct conv_state=2): frame_avg `74.98 ms` (`13.34 FPS`), frame_max `79.65 ms`, border_avg `23.01 ms`, effects_avg `17.09 ms`, dirty_px_avg `9677`
+- `thinking_border`: frame_avg `88.51 ms` (`11.30 FPS`), frame_max `99.54 ms`, border_avg `50.62 ms`, dirty_px_avg `9590`
+- `talking_energy`: frame_avg `74.28 ms` (`13.46 FPS`), frame_max `91.11 ms`, mouth_avg `19.60 ms`, border_avg `23.41 ms`, dirty_px_avg `9743`
+- `rage_effects`: frame_avg `86.53 ms` (`11.56 FPS`), frame_max `88.88 ms`, mouth_avg `30.66 ms`, border_avg `23.10 ms`, dirty_px_avg `9648`
+- Findings: all sampled states miss Stage 4 target (`p95 <= 33.3 ms`, `p50 <= 25 ms`) by a wide margin; `thinking_border` is the clearest hotspot (`border_us_avg` ~2.2x idle/listening)
+- Findings: `cmd_rx_to_apply_us_avg` is noisy/unreliable in this run (e.g. `thinking_border` outlier); treat as directional until protocol/telemetry validation task is completed
+- Finding: listening scenario is currently a proxy because dashboard `/ws` has no direct `face_set_conv_state` command path for forcing LISTENING (`2`)
+- Artifact: raw capture saved at `docs/perf/face_stage4_baseline_2026-02-25.json` (generated from `/tmp/face_stage4_baseline.json`)
+- [ ] Next: extend benchmark harness to emit p50/p95 per scenario and run telemetry overhead A/B (`FACE_PERF_TELEMETRY=1` vs `0`)
+- [ ] Next: execute Stage 4.2 in ROI order using this baseline (`thinking_border`/border cache first, then dirty-rect refinement, then transport tuning)
+- [ ] Next: add a bounded supervisor debug command for direct `SET_CONV_STATE` so listening and PTT border states can be benchmarked without proxying
 
 **Evaluation** `[opus]`
 - [ ] T1: Automated CI tests (parity check, unit tests, linting)
