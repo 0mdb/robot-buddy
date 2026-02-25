@@ -116,6 +116,12 @@ def parse_args() -> argparse.Namespace:
         "--robot-id", default=os.environ.get("ROBOT_ID", ""), help="Robot ID"
     )
     p.add_argument("--config", default=None, help="YAML config file path")
+    p.add_argument(
+        "--memory-consent",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Enable personality memory storage (requires parental consent)",
+    )
     p.add_argument("--log-level", default="INFO", help="Log level")
     p.add_argument(
         "--usb-speaker-device", default="default", help="ALSA speaker device"
@@ -157,6 +163,8 @@ async def async_main(args: argparse.Namespace) -> None:
         cfg.serial.face_port = args.face_port
     if args.mock:
         cfg.mock = True
+    if args.memory_consent is not None:
+        cfg.personality.memory_consent = bool(args.memory_consent)
     cfg.network.http_port = args.http_port
 
     from supervisor.api.conversation_capture import ConversationCapture

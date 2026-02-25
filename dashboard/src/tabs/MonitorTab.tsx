@@ -757,7 +757,8 @@ function MemoryPanel() {
           <span className={`${styles.badge} ${styles.badgeDim}`}>disabled</span>
         </div>
         <span className={styles.mono} style={{ color: 'var(--text-dim)', fontSize: 12 }}>
-          Memory storage requires parental consent. Set memory_consent: true in config.
+          Memory storage requires parental consent. Start supervisor with --memory-consent (or set
+          personality.memory_consent: true in YAML config).
         </span>
       </div>
     )
