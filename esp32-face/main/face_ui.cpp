@@ -66,6 +66,8 @@ struct RenderPerfSnapshot {
     uint32_t eyes_us = 0;
     uint32_t mouth_us = 0;
     uint32_t border_us = 0;
+    uint32_t border_frame_us = 0;
+    uint32_t border_buttons_us = 0;
     uint32_t effects_us = 0;
     uint32_t overlay_us = 0;
     uint32_t dirty_px = 0;
@@ -822,8 +824,18 @@ void face_ui_update(const FaceState& fs)
 
         // Conversation border overlay + corner buttons — suppress during system overlays (spec §4.4)
         if (fs.system.mode == SystemMode::NONE) {
-            conv_border_render(canvas_buf);
-            conv_border_render_buttons(canvas_buf);
+            if (FACE_PERF_TELEMETRY && s_collect_render_perf) {
+                const uint64_t border_start_us = static_cast<uint64_t>(esp_timer_get_time());
+                conv_border_render(canvas_buf);
+                const uint64_t border_frame_done_us = static_cast<uint64_t>(esp_timer_get_time());
+                conv_border_render_buttons(canvas_buf);
+                const uint64_t border_done_us = static_cast<uint64_t>(esp_timer_get_time());
+                perf.border_frame_us = static_cast<uint32_t>(border_frame_done_us - border_start_us);
+                perf.border_buttons_us = static_cast<uint32_t>(border_done_us - border_frame_done_us);
+            } else {
+                conv_border_render(canvas_buf);
+                conv_border_render_buttons(canvas_buf);
+            }
         }
         sample_stage(perf.border_us);
 
@@ -938,6 +950,9 @@ void face_ui_task(void* arg)
     uint32_t  perf_cmd_latency_samples = 0;
     uint32_t  perf_window_frames = 0;
     uint32_t  latest_cmd_rx_us = 0;
+    uint64_t  log_border_frame_sum_us = 0;
+    uint64_t  log_border_buttons_sum_us = 0;
+    uint32_t  log_border_samples = 0;
 
     apply_face_flags(fs, g_cmd_flags.load(std::memory_order_relaxed));
     if (!afterglow_buf) {
@@ -1141,6 +1156,9 @@ void face_ui_task(void* arg)
                 perf_border_sum_us += rp.border_us;
                 perf_effects_sum_us += rp.effects_us;
                 perf_overlay_sum_us += rp.overlay_us;
+                log_border_samples++;
+                log_border_frame_sum_us += rp.border_frame_us;
+                log_border_buttons_sum_us += rp.border_buttons_us;
             }
 
             if (latest_cmd_rx_us != 0U) {
@@ -1203,11 +1221,21 @@ void face_ui_task(void* arg)
         if (FRAME_TIME_LOG_INTERVAL_MS > 0 && static_cast<int32_t>(now_ms - next_frame_log_ms) >= 0) {
             const uint32_t avg_us = (frame_count > 0) ? static_cast<uint32_t>(frame_accum_us / frame_count) : 0U;
             const float    fps = (avg_us > 0U) ? (1'000'000.0f / static_cast<float>(avg_us)) : 0.0f;
-            ESP_LOGI(TAG, "frame stats avg=%u us max=%u us fps=%.1f system=%u", static_cast<unsigned>(avg_us),
-                     static_cast<unsigned>(frame_max_us), fps, static_cast<unsigned>(fs.system.mode));
+            const uint32_t border_frame_avg =
+                (log_border_samples > 0) ? static_cast<uint32_t>(log_border_frame_sum_us / log_border_samples) : 0U;
+            const uint32_t border_buttons_avg =
+                (log_border_samples > 0) ? static_cast<uint32_t>(log_border_buttons_sum_us / log_border_samples) : 0U;
+            ESP_LOGI(TAG,
+                     "frame stats avg=%u us max=%u us fps=%.1f system=%u border_frame=%u border_buttons=%u samples=%u",
+                     static_cast<unsigned>(avg_us), static_cast<unsigned>(frame_max_us), fps,
+                     static_cast<unsigned>(fs.system.mode), static_cast<unsigned>(border_frame_avg),
+                     static_cast<unsigned>(border_buttons_avg), static_cast<unsigned>(log_border_samples));
             frame_count = 0;
             frame_accum_us = 0;
             frame_max_us = 0;
+            log_border_samples = 0;
+            log_border_frame_sum_us = 0;
+            log_border_buttons_sum_us = 0;
             next_frame_log_ms = now_ms + FRAME_TIME_LOG_INTERVAL_MS;
         }
 

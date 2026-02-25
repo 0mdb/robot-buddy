@@ -56,7 +56,7 @@ _10 items complete (Stage 4.0 spec/port/parity/buttons/gestures/docs) — see ar
 - [ ] Stage 4.1: HEARTBEAT optional perf tail (length-based, backward compatible); supervisor + protocol capture decode old/new payload lengths
 - [ ] Stage 4.1: Baseline benchmark capture (1000 frames each): idle, listening, thinking, speaking+energy, rage/effects; 2026-02-25 avg/max capture complete, p50/p95 + telemetry overhead A/B (<=1% FPS drop) still pending
 - [ ] Stage 4.2: Implement dirty-rectangle invalidation (replace unconditional full-canvas invalidate) and verify normal conversation states stay at p95 frame <= 33.3ms, p50 <= 25ms
-- [ ] Stage 4.2: Optimize border/icon hot paths (cache/pre-raster hotspot math) and quantify delta in border-heavy scenarios
+- [ ] Stage 4.2: Optimize border/icon hot paths (cache/pre-raster hotspot math) and quantify delta in border-heavy scenarios _(cache-based border/button/icon masks landed in firmware on 2026-02-25; pending on-device A/B metrics)_
 - [ ] Stage 4.2: Optimize afterglow bandwidth (reduced-resolution buffer + upscale blend behind flag) and quantify effect-on/effect-off cost
 - [ ] Stage 4.2: Evaluate SPI/LVGL throughput tuning (40/60/80MHz + queue/buffer settings) after dirty-rect landing; keep best measured config
 - [ ] Stage 4.2: Validate perf headroom knobs (`afterglow`, `sparkle`, `edge_glow`) with measured impact and document recommended fallback order

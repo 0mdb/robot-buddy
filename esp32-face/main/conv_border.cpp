@@ -115,6 +115,54 @@ struct ButtonZone {
 static ButtonZone s_btn_left; // default: MIC / IDLE
 static ButtonZone s_btn_right = {BtnIcon::X_MARK, BtnState::IDLE, 0, 0, 0, 0.0f};
 
+// Cached render masks (built once at startup to remove per-frame SDF/trig work)
+static constexpr int         BORDER_DEPTH = BORDER_FRAME_W + BORDER_GLOW_W;
+static constexpr std::size_t MAX_FRAME_CACHE =
+    static_cast<std::size_t>(2 * BORDER_DEPTH * (SCREEN_W + SCREEN_H - 2 * BORDER_DEPTH));
+static constexpr std::size_t BTN_ZONE_PIXELS = static_cast<std::size_t>(BTN_CORNER_W * BTN_CORNER_H);
+static constexpr std::size_t MAX_MIC_BODY_PIXELS = 512;
+static constexpr std::size_t MAX_MIC_BASE_PIXELS = 256;
+static constexpr std::size_t MAX_MIC_ARC_PIXELS = 512;
+static constexpr std::size_t MAX_X_ICON_PIXELS = 512;
+
+struct __attribute__((packed)) FrameMaskPixel {
+    uint32_t idx;
+    uint8_t  alpha_u8;
+};
+
+struct __attribute__((packed)) ZoneMaskPixel {
+    uint8_t x;
+    uint8_t y;
+    uint8_t alpha_u8;
+};
+
+struct __attribute__((packed)) IconMaskPixel {
+    int8_t  dx;
+    int8_t  dy;
+    uint8_t alpha_u8;
+};
+
+static bool  s_cache_ready = false;
+static float s_alpha_lut[256] = {};
+
+static FrameMaskPixel s_frame_mask[MAX_FRAME_CACHE];
+static std::size_t    s_frame_mask_count = 0;
+
+static ZoneMaskPixel s_zone_bg_mask[BTN_ZONE_PIXELS];
+static std::size_t   s_zone_bg_mask_count = 0;
+static ZoneMaskPixel s_zone_border_mask[BTN_ZONE_PIXELS];
+static std::size_t   s_zone_border_mask_count = 0;
+static uint32_t      s_zone_row_base[BTN_CORNER_H] = {};
+
+static IconMaskPixel s_mic_body_mask[MAX_MIC_BODY_PIXELS];
+static std::size_t   s_mic_body_mask_count = 0;
+static IconMaskPixel s_mic_base_mask[MAX_MIC_BASE_PIXELS];
+static std::size_t   s_mic_base_mask_count = 0;
+static IconMaskPixel s_mic_arc_masks[3][MAX_MIC_ARC_PIXELS];
+static std::size_t   s_mic_arc_mask_count[3] = {0, 0, 0};
+static IconMaskPixel s_x_icon_mask[MAX_X_ICON_PIXELS];
+static std::size_t   s_x_icon_mask_count = 0;
+
 // ══════════════════════════════════════════════════════════════════════
 // Helpers
 // ══════════════════════════════════════════════════════════════════════
@@ -192,16 +240,263 @@ static float sdf_alpha(float dist, float aa_width = 1.0f)
     return 1.0f - t * t * (3.0f - 2.0f * t);
 }
 
-static float sd_line_seg(float px, float py, float ax, float ay, float bx, float by)
+static uint8_t alpha_to_u8(float alpha)
 {
-    const float dx = bx - ax, dy = by - ay;
-    const float len_sq = dx * dx + dy * dy;
-    if (len_sq < 1e-10f) {
-        return sqrtf((px - ax) * (px - ax) + (py - ay) * (py - ay));
+    const float a = clampf(alpha, 0.0f, 1.0f);
+    return static_cast<uint8_t>(a * 255.0f + 0.5f);
+}
+
+static uint8_t scale_alpha_u8(uint8_t base, uint8_t scale)
+{
+    return static_cast<uint8_t>((static_cast<uint16_t>(base) * static_cast<uint16_t>(scale) + 127U) / 255U);
+}
+
+static void push_frame_mask(uint32_t idx, uint8_t alpha_u8)
+{
+    if (alpha_u8 == 0 || s_frame_mask_count >= MAX_FRAME_CACHE) return;
+    s_frame_mask[s_frame_mask_count++] = {idx, alpha_u8};
+}
+
+static void push_zone_mask(ZoneMaskPixel* dst, std::size_t& count, std::size_t max_count, uint8_t x, uint8_t y,
+                           uint8_t alpha_u8)
+{
+    if (alpha_u8 == 0 || count >= max_count) return;
+    dst[count++] = {x, y, alpha_u8};
+}
+
+static void push_icon_mask(IconMaskPixel* dst, std::size_t& count, std::size_t max_count, int dx, int dy,
+                           uint8_t alpha_u8)
+{
+    if (alpha_u8 == 0 || count >= max_count) return;
+    if (dx < -127 || dx > 127 || dy < -127 || dy > 127) return;
+    dst[count++] = {static_cast<int8_t>(dx), static_cast<int8_t>(dy), alpha_u8};
+}
+
+static void init_alpha_lut()
+{
+    for (int i = 0; i < 256; i++) {
+        s_alpha_lut[i] = static_cast<float>(i) / 255.0f;
     }
-    const float t = clampf(((px - ax) * dx + (py - ay) * dy) / len_sq, 0.0f, 1.0f);
-    const float cx = ax + t * dx, cy = ay + t * dy;
-    return sqrtf((px - cx) * (px - cx) + (py - cy) * (py - cy));
+}
+
+static void init_frame_mask()
+{
+    s_frame_mask_count = 0;
+    for (int y = 0; y < SCREEN_H; y++) {
+        for (int x = 0; x < SCREEN_W; x++) {
+            if (y >= BORDER_DEPTH && y < (SCREEN_H - BORDER_DEPTH) && x >= BORDER_DEPTH &&
+                x < (SCREEN_W - BORDER_DEPTH)) {
+                continue;
+            }
+            const float d = inner_sdf(static_cast<float>(x) + 0.5f, static_cast<float>(y) + 0.5f);
+            float       a = 0.0f;
+            if (d > 0.0f) {
+                a = 1.0f;
+            } else if (d > -BORDER_GLOW_W) {
+                const float t = (d + BORDER_GLOW_W) / static_cast<float>(BORDER_GLOW_W);
+                a = t * t;
+            }
+            push_frame_mask(static_cast<uint32_t>(y * SCREEN_W + x), alpha_to_u8(a));
+        }
+    }
+}
+
+static void init_zone_masks()
+{
+    s_zone_bg_mask_count = 0;
+    s_zone_border_mask_count = 0;
+
+    for (int y = 0; y < BTN_CORNER_H; y++) {
+        s_zone_row_base[y] = static_cast<uint32_t>((BTN_ZONE_Y_TOP + y) * SCREEN_W);
+    }
+
+    const float R = static_cast<float>(BTN_CORNER_INNER_R);
+    const float rcx = static_cast<float>(BTN_LEFT_ZONE_X1 - BTN_CORNER_INNER_R);
+    const float rcy = static_cast<float>(BTN_CORNER_INNER_R);
+
+    for (int y = 0; y < BTN_CORNER_H; y++) {
+        const float py = static_cast<float>(y) + 0.5f;
+        for (int x = 0; x < BTN_CORNER_W; x++) {
+            const float px = static_cast<float>(x) + 0.5f;
+            const bool  in_corner_quad = (px > rcx && py < rcy);
+
+            float bg_cov = 1.0f;
+            float border_alpha = 0.0f;
+            bool  visible = true;
+
+            if (in_corner_quad) {
+                const float ddx = px - rcx;
+                const float ddy = py - rcy;
+                const float dist = sqrtf(ddx * ddx + ddy * ddy);
+                if (dist > R + 0.5f) {
+                    visible = false;
+                } else if (dist > R - 0.5f) {
+                    bg_cov = clampf(R + 0.5f - dist, 0.0f, 1.0f);
+                    border_alpha = clampf(1.0f - fabsf(dist - R), 0.0f, 1.0f) * 0.6f;
+                }
+            }
+
+            if (!visible) continue;
+
+            const uint8_t bg_cov_u8 = alpha_to_u8(bg_cov);
+            push_zone_mask(s_zone_bg_mask, s_zone_bg_mask_count, BTN_ZONE_PIXELS, static_cast<uint8_t>(x),
+                           static_cast<uint8_t>(y), bg_cov_u8);
+
+            if (!in_corner_quad) {
+                const bool on_inner_side = (x == (BTN_CORNER_W - 1)) && (py >= rcy);
+                const bool on_top = (y == 0);
+                if (on_inner_side) {
+                    border_alpha = 0.6f;
+                } else if (on_top && px <= rcx) {
+                    border_alpha = 0.6f;
+                }
+            }
+
+            push_zone_mask(s_zone_border_mask, s_zone_border_mask_count, BTN_ZONE_PIXELS, static_cast<uint8_t>(x),
+                           static_cast<uint8_t>(y), alpha_to_u8(border_alpha));
+        }
+    }
+}
+
+static void init_icon_masks()
+{
+    s_mic_body_mask_count = 0;
+    s_mic_base_mask_count = 0;
+    s_x_icon_mask_count = 0;
+    for (int i = 0; i < 3; i++) {
+        s_mic_arc_mask_count[i] = 0;
+    }
+
+    const float sz = static_cast<float>(BTN_ICON_SIZE);
+    const float mic_cx = -sz * 0.22f;
+    const float body_hw = sz * 0.19f;
+    const float body_hh = sz * 0.39f;
+    const float body_r = body_hw;
+    const float base_y = sz * 0.5f;
+    const float base_hw = sz * 0.22f;
+    const float base_hh = sz * 0.06f;
+    const float arc_radii[] = {sz * 0.44f, sz * 0.67f, sz * 0.89f};
+    const float arc_thick = sz * 0.072f;
+    const float arc_min = -70.0f * PI / 180.0f;
+    const float arc_max = 70.0f * PI / 180.0f;
+
+    const int ix0 = static_cast<int>(floorf(-sz - 1.0f));
+    const int ix1 = static_cast<int>(ceilf(sz + 1.0f));
+    const int iy0 = static_cast<int>(floorf(-sz - 1.0f));
+    const int iy1 = static_cast<int>(ceilf(sz + 1.0f));
+
+    for (int y = iy0; y < iy1; y++) {
+        for (int x = ix0; x < ix1; x++) {
+            const float ppx = static_cast<float>(x) + 0.5f;
+            const float ppy = static_cast<float>(y) + 0.5f;
+
+            const float d_body = sd_rounded_box(ppx, ppy, mic_cx, 0.0f, body_hw, body_hh, body_r);
+            const float a_body = sdf_alpha(d_body) * 0.9f;
+            if (a_body > 0.01f) {
+                push_icon_mask(s_mic_body_mask, s_mic_body_mask_count, MAX_MIC_BODY_PIXELS, x, y, alpha_to_u8(a_body));
+                continue;
+            }
+
+            const float d_base = sd_rounded_box(ppx, ppy, mic_cx, base_y, base_hw, base_hh, 0.5f);
+            const float a_base = sdf_alpha(d_base) * 0.7f;
+            if (a_base > 0.01f) {
+                push_icon_mask(s_mic_base_mask, s_mic_base_mask_count, MAX_MIC_BASE_PIXELS, x, y, alpha_to_u8(a_base));
+                continue;
+            }
+
+            const float dx_a = ppx - mic_cx;
+            const float dy_a = ppy;
+            const float dist = sqrtf(dx_a * dx_a + dy_a * dy_a);
+            const float angle = atan2f(dy_a, dx_a);
+            if (angle >= arc_min && angle <= arc_max) {
+                for (int ai = 0; ai < 3; ai++) {
+                    const float ad = fabsf(dist - arc_radii[ai]);
+                    if (ad < arc_thick) {
+                        const float a_arc = (1.0f - ad / arc_thick) * 0.9f;
+                        push_icon_mask(s_mic_arc_masks[ai], s_mic_arc_mask_count[ai], MAX_MIC_ARC_PIXELS, x, y,
+                                       alpha_to_u8(a_arc));
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    const float arm = sz * 0.5f;
+    const float thick = sz * 0.14f;
+    const int   xx0 = static_cast<int>(floorf(-arm - 2.0f));
+    const int   xx1 = static_cast<int>(ceilf(arm + 2.0f));
+    const int   yy0 = static_cast<int>(floorf(-arm - 2.0f));
+    const int   yy1 = static_cast<int>(ceilf(arm + 2.0f));
+
+    for (int y = yy0; y < yy1; y++) {
+        for (int x = xx0; x < xx1; x++) {
+            const float ppx = static_cast<float>(x) + 0.5f;
+            const float ppy = static_cast<float>(y) + 0.5f;
+            const float rx = ppx * 0.707f - ppy * 0.707f;
+            const float ry = ppx * 0.707f + ppy * 0.707f;
+            const float d1 = sd_rounded_box(rx, ry, 0.0f, 0.0f, thick, arm, 1.0f);
+            const float d2 = sd_rounded_box(rx, ry, 0.0f, 0.0f, arm, thick, 1.0f);
+            const float a = sdf_alpha(fminf(d1, d2)) * 0.9f;
+            if (a > 0.01f) {
+                push_icon_mask(s_x_icon_mask, s_x_icon_mask_count, MAX_X_ICON_PIXELS, x, y, alpha_to_u8(a));
+            }
+        }
+    }
+}
+
+static void ensure_render_cache()
+{
+    if (s_cache_ready) return;
+    init_alpha_lut();
+    init_frame_mask();
+    init_zone_masks();
+    init_icon_masks();
+    s_cache_ready = true;
+}
+
+static void blend_idx_u8(pixel_t* buf, uint32_t idx, uint8_t r, uint8_t g, uint8_t b, uint8_t alpha_u8)
+{
+    if (alpha_u8 == 0) return;
+    buf[idx] = px_blend(buf[idx], r, g, b, s_alpha_lut[alpha_u8]);
+}
+
+static void blend_frame_mask(pixel_t* buf, uint8_t r, uint8_t g, uint8_t b, uint8_t scale_u8)
+{
+    if (scale_u8 == 0) return;
+    for (std::size_t i = 0; i < s_frame_mask_count; i++) {
+        const auto&   p = s_frame_mask[i];
+        const uint8_t a = scale_alpha_u8(p.alpha_u8, scale_u8);
+        blend_idx_u8(buf, p.idx, r, g, b, a);
+    }
+}
+
+static void blend_zone_mask(pixel_t* buf, const ZoneMaskPixel* mask, std::size_t count, bool is_left, uint8_t r,
+                            uint8_t g, uint8_t b, uint8_t scale_u8)
+{
+    if (scale_u8 == 0) return;
+    const uint32_t x_base = is_left ? 0U : static_cast<uint32_t>(BTN_RIGHT_ZONE_X0);
+    for (std::size_t i = 0; i < count; i++) {
+        const auto&    p = mask[i];
+        const uint8_t  x = is_left ? p.x : static_cast<uint8_t>((BTN_CORNER_W - 1) - p.x);
+        const uint32_t idx = s_zone_row_base[p.y] + x_base + x;
+        const uint8_t  a = scale_alpha_u8(p.alpha_u8, scale_u8);
+        blend_idx_u8(buf, idx, r, g, b, a);
+    }
+}
+
+static void blend_icon_mask(pixel_t* buf, const IconMaskPixel* mask, std::size_t count, int cx, int cy, uint8_t r,
+                            uint8_t g, uint8_t b, uint8_t scale_u8)
+{
+    if (scale_u8 == 0) return;
+    for (std::size_t i = 0; i < count; i++) {
+        const auto& p = mask[i];
+        const int   x = cx + static_cast<int>(p.dx);
+        const int   y = cy + static_cast<int>(p.dy);
+        if (x < 0 || x >= SCREEN_W || y < 0 || y >= SCREEN_H) continue;
+        const uint8_t a = scale_alpha_u8(p.alpha_u8, scale_u8);
+        blend_idx_u8(buf, static_cast<uint32_t>(y * SCREEN_W + x), r, g, b, a);
+    }
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -369,24 +664,6 @@ bool conv_border_active()
 // Border rendering
 // ══════════════════════════════════════════════════════════════════════
 
-static void render_frame_px(pixel_t* buf, int idx, int x, int y)
-{
-    const float d = inner_sdf(static_cast<float>(x) + 0.5f, static_cast<float>(y) + 0.5f);
-    float       a;
-    if (d > 0.0f) {
-        a = s_border.alpha;
-    } else if (d > -BORDER_GLOW_W) {
-        const float t = (d + BORDER_GLOW_W) / static_cast<float>(BORDER_GLOW_W);
-        a = s_border.alpha * t * t;
-    } else {
-        return;
-    }
-    if (a > 0.01f) {
-        buf[idx] = px_blend(buf[idx], static_cast<uint8_t>(s_border.color_r), static_cast<uint8_t>(s_border.color_g),
-                            static_cast<uint8_t>(s_border.color_b), a);
-    }
-}
-
 static void render_attention(pixel_t* buf)
 {
     const float progress = s_border.timer / ATTENTION_DURATION;
@@ -481,6 +758,7 @@ static void render_dots(pixel_t* buf)
 
 void conv_border_render(pixel_t* buf)
 {
+    ensure_render_cache();
     const auto s = static_cast<FaceConvState>(s_border.state);
 
     if (s_border.alpha < 0.01f && s != FaceConvState::ATTENTION) {
@@ -493,29 +771,12 @@ void conv_border_render(pixel_t* buf)
         return;
     }
 
-    // Standard SDF frame + glow
-    constexpr int depth = BORDER_FRAME_W + BORDER_GLOW_W;
-
-    for (int y = 0; y < SCREEN_H; y++) {
-        const int dv = (y < SCREEN_H - 1 - y) ? y : (SCREEN_H - 1 - y);
-        const int row = y * SCREEN_W;
-        if (dv >= depth) {
-            // Middle rows — only left/right border bands
-            for (int x = 0; x < depth; x++) {
-                render_frame_px(buf, row + x, x, y);
-            }
-            for (int x = SCREEN_W - depth; x < SCREEN_W; x++) {
-                render_frame_px(buf, row + x, x, y);
-            }
-        } else {
-            // Top/bottom rows — full width
-            for (int x = 0; x < SCREEN_W; x++) {
-                const int dh = (x < SCREEN_W - 1 - x) ? x : (SCREEN_W - 1 - x);
-                if (dh >= depth && dv >= depth) continue;
-                render_frame_px(buf, row + x, x, y);
-            }
-        }
-    }
+    // Cached rounded-frame mask + per-frame alpha scale.
+    const uint8_t frame_alpha_u8 = alpha_to_u8(s_border.alpha);
+    const uint8_t cr = static_cast<uint8_t>(s_border.color_r);
+    const uint8_t cg = static_cast<uint8_t>(s_border.color_g);
+    const uint8_t cb = static_cast<uint8_t>(s_border.color_b);
+    blend_frame_mask(buf, cr, cg, cb, frame_alpha_u8);
 
     // THINKING: orbit dots
     if (s == FaceConvState::THINKING && s_border.alpha > 0.01f) {
@@ -568,6 +829,8 @@ bool conv_border_hit_test_right(int x, int y)
 
 static void render_corner_zone(pixel_t* buf, bool is_left, const ButtonZone& btn)
 {
+    ensure_render_cache();
+
     uint8_t bg_r, bg_g, bg_b;
     float   bg_alpha;
     uint8_t brd_r, brd_g, brd_b;
@@ -608,149 +871,33 @@ static void render_corner_zone(pixel_t* buf, bool is_left, const ButtonZone& btn
         ico_b = BTN_ICON_COLOR_B;
     }
 
-    const int   x0 = is_left ? 0 : BTN_RIGHT_ZONE_X0;
-    const int   x1 = is_left ? BTN_LEFT_ZONE_X1 : SCREEN_W;
-    const float R = static_cast<float>(BTN_CORNER_INNER_R);
-    const float rcx = is_left ? static_cast<float>(BTN_LEFT_ZONE_X1 - BTN_CORNER_INNER_R)
-                              : static_cast<float>(BTN_RIGHT_ZONE_X0 + BTN_CORNER_INNER_R);
-    const float rcy = static_cast<float>(BTN_ZONE_Y_TOP + BTN_CORNER_INNER_R);
-
-    for (int y = BTN_ZONE_Y_TOP; y < SCREEN_H; y++) {
-        const int row = y * SCREEN_W;
-        for (int x = x0; x < x1; x++) {
-            const float px = static_cast<float>(x) + 0.5f;
-            const float py = static_cast<float>(y) + 0.5f;
-
-            bool in_corner_quad = is_left ? (px > rcx && py < rcy) : (px < rcx && py < rcy);
-            if (in_corner_quad) {
-                const float ddx = px - rcx;
-                const float ddy = py - rcy;
-                const float dist = sqrtf(ddx * ddx + ddy * ddy);
-                if (dist > R + 0.5f) continue;
-                if (dist > R - 0.5f) {
-                    float a = bg_alpha * clampf(R + 0.5f - dist, 0.0f, 1.0f);
-                    if (a > 0.01f) {
-                        buf[row + x] = px_blend(buf[row + x], bg_r, bg_g, bg_b, a);
-                    }
-                    float ba = clampf(1.0f - fabsf(dist - R), 0.0f, 1.0f) * 0.6f;
-                    if (ba > 0.01f) {
-                        buf[row + x] = px_blend(buf[row + x], brd_r, brd_g, brd_b, ba);
-                    }
-                    continue;
-                }
-            }
-
-            buf[row + x] = px_blend(buf[row + x], bg_r, bg_g, bg_b, bg_alpha);
-
-            // Thin border on inner edges
-            bool on_top = (y == BTN_ZONE_Y_TOP) && !in_corner_quad;
-            bool on_inner_side = (is_left && x == x1 - 1) || (!is_left && x == x0);
-            if (on_inner_side && py >= rcy) {
-                buf[row + x] = px_blend(buf[row + x], brd_r, brd_g, brd_b, 0.6f);
-            } else if (on_top) {
-                bool on_top_valid = is_left ? (px <= rcx) : (px >= rcx);
-                if (on_top_valid) {
-                    buf[row + x] = px_blend(buf[row + x], brd_r, brd_g, brd_b, 0.6f);
-                }
-            }
-        }
-    }
+    blend_zone_mask(buf, s_zone_bg_mask, s_zone_bg_mask_count, is_left, bg_r, bg_g, bg_b, alpha_to_u8(bg_alpha));
+    blend_zone_mask(buf, s_zone_border_mask, s_zone_border_mask_count, is_left, brd_r, brd_g, brd_b, 255U);
 
     // Icon rendering
-    const float icx = is_left ? static_cast<float>(BTN_LEFT_ICON_CX) : static_cast<float>(BTN_RIGHT_ICON_CX);
-    const float icy = is_left ? static_cast<float>(BTN_LEFT_ICON_CY) : static_cast<float>(BTN_RIGHT_ICON_CY);
-    const float sz = static_cast<float>(BTN_ICON_SIZE);
-    const bool  active = btn.state != BtnState::IDLE;
+    const int  icx = is_left ? BTN_LEFT_ICON_CX : BTN_RIGHT_ICON_CX;
+    const int  icy = is_left ? BTN_LEFT_ICON_CY : BTN_RIGHT_ICON_CY;
+    const bool active = btn.state != BtnState::IDLE;
 
     if (btn.icon == BtnIcon::MIC) {
-        // Microphone: capsule body + base bar + sound arcs
-        const float mic_cx = icx - sz * 0.22f;
-        const float body_hw = sz * 0.19f;
-        const float body_hh = sz * 0.39f;
-        const float body_r = body_hw;
-        const float base_y = icy + sz * 0.5f;
-        const float base_hw = sz * 0.22f;
-        const float base_hh = sz * 0.06f;
+        const float sz = static_cast<float>(BTN_ICON_SIZE);
         const float arc_radii[] = {sz * 0.44f, sz * 0.67f, sz * 0.89f};
-        const float arc_thick = sz * 0.072f;
-        const float arc_min = -70.0f * PI / 180.0f;
-        const float arc_max = 70.0f * PI / 180.0f;
 
-        const int ix0 = static_cast<int>(fmaxf(0.0f, icx - sz - 1.0f));
-        const int ix1 = static_cast<int>(fminf(static_cast<float>(SCREEN_W), icx + sz + 1.0f));
-        const int iy0 = static_cast<int>(fmaxf(0.0f, icy - sz - 1.0f));
-        const int iy1 = static_cast<int>(fminf(static_cast<float>(SCREEN_H), icy + sz + 1.0f));
+        blend_icon_mask(buf, s_mic_body_mask, s_mic_body_mask_count, icx, icy, ico_r, ico_g, ico_b, 255U);
+        blend_icon_mask(buf, s_mic_base_mask, s_mic_base_mask_count, icx, icy, ico_r, ico_g, ico_b, 255U);
 
-        for (int y = iy0; y < iy1; y++) {
-            const int row = y * SCREEN_W;
-            for (int x = ix0; x < ix1; x++) {
-                const float ppx = static_cast<float>(x) + 0.5f;
-                const float ppy = static_cast<float>(y) + 0.5f;
-
-                // Mic body (capsule)
-                float d_body = sd_rounded_box(ppx, ppy, mic_cx, icy, body_hw, body_hh, body_r);
-                float a_body = sdf_alpha(d_body);
-                if (a_body > 0.01f) {
-                    buf[row + x] = px_blend(buf[row + x], ico_r, ico_g, ico_b, a_body * 0.9f);
-                    continue;
-                }
-
-                // Base bar
-                float d_base = sd_rounded_box(ppx, ppy, mic_cx, base_y, base_hw, base_hh, 0.5f);
-                float a_base = sdf_alpha(d_base);
-                if (a_base > 0.01f) {
-                    buf[row + x] = px_blend(buf[row + x], ico_r, ico_g, ico_b, a_base * 0.7f);
-                    continue;
-                }
-
-                // Sound wave arcs (right side)
-                const float dx_a = ppx - mic_cx;
-                const float dy_a = ppy - icy;
-                const float dist = sqrtf(dx_a * dx_a + dy_a * dy_a);
-                const float angle = atan2f(dy_a, dx_a);
-                if (angle >= arc_min && angle <= arc_max) {
-                    for (int ai = 0; ai < 3; ai++) {
-                        const float ad = fabsf(dist - arc_radii[ai]);
-                        if (ad < arc_thick) {
-                            float a = 1.0f - ad / arc_thick;
-                            if (active) {
-                                const float phase = fmodf(s_border.timer * 3.0f - arc_radii[ai] / (sz * 0.78f), 1.0f);
-                                a *= 0.5f + 0.5f * fmaxf(0.0f, sinf(phase * PI));
-                            }
-                            buf[row + x] = px_blend(buf[row + x], ico_r, ico_g, ico_b, a * 0.9f);
-                            break;
-                        }
-                    }
-                }
+        for (int ai = 0; ai < 3; ai++) {
+            uint8_t arc_scale_u8 = 255U;
+            if (active) {
+                const float phase = fmodf(s_border.timer * 3.0f - arc_radii[ai] / (sz * 0.78f), 1.0f);
+                const float pulse = 0.5f + 0.5f * fmaxf(0.0f, sinf(phase * PI));
+                arc_scale_u8 = alpha_to_u8(pulse);
             }
+            blend_icon_mask(buf, s_mic_arc_masks[ai], s_mic_arc_mask_count[ai], icx, icy, ico_r, ico_g, ico_b,
+                            arc_scale_u8);
         }
     } else if (btn.icon == BtnIcon::X_MARK) {
-        // X/cross mark
-        const float arm = sz * 0.5f;
-        const float thick = sz * 0.14f;
-
-        const int ix0 = static_cast<int>(fmaxf(0.0f, icx - arm - 2.0f));
-        const int ix1 = static_cast<int>(fminf(static_cast<float>(SCREEN_W), icx + arm + 2.0f));
-        const int iy0 = static_cast<int>(fmaxf(0.0f, icy - arm - 2.0f));
-        const int iy1 = static_cast<int>(fminf(static_cast<float>(SCREEN_H), icy + arm + 2.0f));
-
-        for (int y = iy0; y < iy1; y++) {
-            const int row = y * SCREEN_W;
-            for (int x = ix0; x < ix1; x++) {
-                const float ppx = static_cast<float>(x) + 0.5f;
-                const float ppy = static_cast<float>(y) + 0.5f;
-                // Rotate 45 degrees
-                const float rx = (ppx - icx) * 0.707f - (ppy - icy) * 0.707f;
-                const float ry = (ppx - icx) * 0.707f + (ppy - icy) * 0.707f;
-                const float d1 = sd_rounded_box(rx, ry, 0, 0, thick, arm, 1.0f);
-                const float d2 = sd_rounded_box(rx, ry, 0, 0, arm, thick, 1.0f);
-                const float d = fminf(d1, d2);
-                const float a = sdf_alpha(d);
-                if (a > 0.01f) {
-                    buf[row + x] = px_blend(buf[row + x], ico_r, ico_g, ico_b, a * 0.9f);
-                }
-            }
-        }
+        blend_icon_mask(buf, s_x_icon_mask, s_x_icon_mask_count, icx, icy, ico_r, ico_g, ico_b, 255U);
     }
 }
 
