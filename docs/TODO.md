@@ -133,6 +133,7 @@ _2 items complete (B6 test extensions: guardrail/schema/privacy/RS limits) — s
 
 _3 items complete (LLM session memory, TTS resampler hardening, conversation studio session_id fix) — see archive_
 - [x] `[sonnet]` Bug: conversation studio chat + PTT not working — envelope deserializer pops `session_id` from payload into header field; AI worker read from payload (always empty); fixed to read `envelope.session_id`; added error events + logging for silent failures
+- [x] `[sonnet]` Bug: dashboard text chat replied in `espeak` while supervisor speech used Orpheus — implement conversation priority-1 speech arbitration (preempt in-flight `/tts`; hold planner `say` + suppress speech_policy during active sessions)
 - [ ] `[sonnet]` Bug: wake word not working — `--wakeword-model` CLI flag added + ear worker now accepts built-in model names (`alexa`, `hey_jarvis`, etc.); `just download-wakewords` downloads them; test on Pi to confirm pipeline works, then diagnose custom model (threshold? audio device?)
 - [ ] `[sonnet]` “Quiet mode” while working: pause deterministic speech-policy comments/backchannels (dashboard toggle; ideally without affecting explicit user-initiated turns)
 - [ ] `[opus]` Voice consistency: Buddy’s voice sometimes switches between “male” and “female” — investigate why and make voice selection consistent (pin voice/engine + persist config)

@@ -175,8 +175,16 @@ class ActionScheduler:
 
             self._queue.append(_QueuedAction(action=action, expires_mono_ms=expires_at))
 
-    def pop_due_actions(self, *, now_mono_ms: float, face_locked: bool) -> list[dict]:
+    def pop_due_actions(
+        self,
+        *,
+        now_mono_ms: float,
+        face_locked: bool,
+        hold_say: bool = False,
+    ) -> list[dict]:
         due: list[dict] = []
+        held: list[_QueuedAction] = []
+
         while self._queue:
             item = self._queue.popleft()
             if item.expires_mono_ms < now_mono_ms:
@@ -184,10 +192,20 @@ class ActionScheduler:
                 continue
 
             action_type = str(item.action.get("action", ""))
+            if hold_say and action_type == "say":
+                held.append(item)
+                continue
+
             if face_locked and action_type in {"emote", "gesture"}:
                 self.plan_dropped_cooldown += 1
                 continue
+
             due.append(item.action)
+
+        # Reinsert held say actions at the front (preserve original order).
+        for item in reversed(held):
+            self._queue.appendleft(item)
+
         return due
 
     def snapshot(self) -> dict:

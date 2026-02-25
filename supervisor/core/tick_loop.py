@@ -900,14 +900,19 @@ class TickLoop:
         self, now_ms: float, recent: list[PlannerEvent]
     ) -> None:
         """Send actions to workers: speech, plan execution."""
+        conversation_active = bool(self.world.session_id)
+
         # Execute due planner actions
         face_locked = (
-            self.robot.face_talking
+            conversation_active
+            or self.robot.face_talking
             or self.robot.face_listening
             or self.robot.face_manual_lock
         )
         due = self._scheduler.pop_due_actions(
-            now_mono_ms=now_ms, face_locked=face_locked
+            now_mono_ms=now_ms,
+            face_locked=face_locked,
+            hold_say=conversation_active,
         )
 
         for action in due:
@@ -922,13 +927,15 @@ class TickLoop:
                 self._apply_gesture(action)
 
         # Speech policy (deterministic, idle-priority speech)
-        intents, drops = self._speech_policy.generate(
-            state=self.robot,
-            events=recent,
-            now_mono_ms=now_ms,
-        )
-        for intent in intents:
-            await self._enqueue_say(intent.text, source="speech_policy", priority=3)
+        # Conversation owns priority-1 speech; suppress idle chatter during sessions.
+        if not conversation_active:
+            intents, drops = self._speech_policy.generate(
+                state=self.robot,
+                events=recent,
+                now_mono_ms=now_ms,
+            )
+            for intent in intents:
+                await self._enqueue_say(intent.text, source="speech_policy", priority=3)
 
         # Periodic plan requests
         _plan_period_s = (
@@ -1051,6 +1058,12 @@ class TickLoop:
         if self.world.personality_daily_limit_reached:
             log.info("conversation blocked: daily time limit reached")
             return
+
+        # Conversation is priority-1: preempt in-flight planner/idle speech so chat
+        # can use Orpheus without hitting busy shedding (PROTOCOL.md §8.1).
+        conversation_priority = 1
+        if self.world.speaking and self.world.speech_priority > conversation_priority:
+            asyncio.ensure_future(self._workers.send_to("tts", TTS_CMD_CANCEL))
 
         import uuid
 

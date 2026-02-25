@@ -11,7 +11,7 @@ from supervisor.core.action_scheduler import (
     PlanValidator,
 )
 from supervisor.core.behavior_engine import BehaviorEngine
-from supervisor.core.event_bus import PlannerEventBus
+from supervisor.core.event_bus import PlannerEvent, PlannerEventBus
 from supervisor.core.event_router import EventRouter
 from supervisor.core.safety import apply_safety
 from supervisor.core.skill_executor import SkillExecutor
@@ -24,6 +24,7 @@ from supervisor.core.state import (
 from supervisor.core.state_machine import SupervisorSM
 from supervisor.devices.protocol import Fault, RangeStatus
 from supervisor.messages.envelope import Envelope
+from supervisor.messages.types import TTS_CMD_CANCEL, TTS_CMD_SPEAK
 
 
 # ── State Machine ────────────────────────────────────────────────
@@ -177,7 +178,7 @@ class TestActionScheduler:
         v = PlanValidator()
         plan = v.validate([{"action": "say", "text": "Hello"}], ttl_ms=2000)
         s.schedule_plan(plan, now_mono_ms=1000, issued_mono_ms=1000)
-        due = s.pop_due_actions(now_mono_ms=1000, face_locked=False)
+        due = s.pop_due_actions(now_mono_ms=1000, face_locked=False, hold_say=False)
         assert len(due) == 1
         assert due[0]["text"] == "Hello"
 
@@ -190,7 +191,7 @@ class TestActionScheduler:
         s.schedule_plan(plan, now_mono_ms=1000, issued_mono_ms=1000)
         assert s.active_skill == "investigate_ball"
         # Skills are not queued
-        due = s.pop_due_actions(now_mono_ms=1000, face_locked=False)
+        due = s.pop_due_actions(now_mono_ms=1000, face_locked=False, hold_say=False)
         assert len(due) == 0
 
     def test_ttl_expiry(self):
@@ -199,7 +200,7 @@ class TestActionScheduler:
         plan = v.validate([{"action": "say", "text": "Hello"}], ttl_ms=500)
         s.schedule_plan(plan, now_mono_ms=1000, issued_mono_ms=1000)
         # Pop after TTL expires
-        due = s.pop_due_actions(now_mono_ms=2000, face_locked=False)
+        due = s.pop_due_actions(now_mono_ms=2000, face_locked=False, hold_say=False)
         assert len(due) == 0
 
     def test_cooldown(self):
@@ -207,13 +208,35 @@ class TestActionScheduler:
         v = PlanValidator()
         plan1 = v.validate([{"action": "say", "text": "A"}], ttl_ms=5000)
         s.schedule_plan(plan1, now_mono_ms=1000, issued_mono_ms=1000)
-        s.pop_due_actions(now_mono_ms=1000, face_locked=False)
+        s.pop_due_actions(now_mono_ms=1000, face_locked=False, hold_say=False)
 
         # Same type within cooldown (3s)
         plan2 = v.validate([{"action": "say", "text": "B"}], ttl_ms=5000)
         s.schedule_plan(plan2, now_mono_ms=2000, issued_mono_ms=2000)
-        due = s.pop_due_actions(now_mono_ms=2000, face_locked=False)
+        due = s.pop_due_actions(now_mono_ms=2000, face_locked=False, hold_say=False)
         assert len(due) == 0  # dropped by cooldown
+
+    def test_hold_say_holds_planner_speech(self):
+        s = ActionScheduler()
+        v = PlanValidator()
+        plan = v.validate(
+            [
+                {"action": "say", "text": "Hello"},
+                {"action": "gesture", "name": "nod"},
+            ],
+            ttl_ms=2000,
+        )
+        s.schedule_plan(plan, now_mono_ms=1000, issued_mono_ms=1000)
+
+        # During conversation, hold say actions (and continue dropping gestures when face is locked).
+        due = s.pop_due_actions(now_mono_ms=1000, face_locked=True, hold_say=True)
+        assert due == []
+
+        # After conversation ends, the held say can run (gesture was dropped while locked).
+        due2 = s.pop_due_actions(now_mono_ms=1000, face_locked=False, hold_say=False)
+        assert len(due2) == 1
+        assert due2[0]["action"] == "say"
+        assert due2[0]["text"] == "Hello"
 
 
 # ── Plan Validator ───────────────────────────────────────────────
@@ -446,3 +469,50 @@ class TestProsodyRouting:
         await loop._enqueue_say("oh no")
         payload = loop._workers.send_to.call_args[0][2]
         assert payload["emotion"] == "sad"
+
+
+# ── Conversation speech arbitration ──────────────────────────────
+
+
+class TestConversationSpeechArbitration:
+    def _make_tick_loop(self):
+        from supervisor.core.tick_loop import TickLoop
+
+        workers = MagicMock()
+        workers.send_to = AsyncMock(return_value=True)
+        loop = TickLoop(reflex=None, face=None, workers=workers)
+        return loop
+
+    @pytest.mark.asyncio
+    async def test_speech_policy_suppressed_during_conversation(self):
+        loop = self._make_tick_loop()
+        loop.world.session_id = "sess-test"
+
+        evt = PlannerEvent(
+            "mode.changed",
+            {"to": "WANDER"},
+            1000.0,
+        )
+        await loop._emit_worker_actions(1000.0, [evt])
+
+        speak_calls = [
+            c
+            for c in loop._workers.send_to.call_args_list
+            if len(c.args) >= 2 and c.args[0] == "tts" and c.args[1] == TTS_CMD_SPEAK
+        ]
+        assert speak_calls == []
+
+    @pytest.mark.asyncio
+    async def test_start_conversation_preempts_planner_speech(self):
+        loop = self._make_tick_loop()
+        loop.world.speaking = True
+        loop.world.speech_priority = 2  # planner
+
+        loop._start_conversation("text")
+
+        cancel_calls = [
+            c
+            for c in loop._workers.send_to.call_args_list
+            if len(c.args) >= 2 and c.args[0] == "tts" and c.args[1] == TTS_CMD_CANCEL
+        ]
+        assert cancel_calls
