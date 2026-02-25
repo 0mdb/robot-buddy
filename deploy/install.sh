@@ -80,6 +80,15 @@ cd "$SUPERVISOR_DIR"
 # and is visible in the venv via --system-site-packages; we must not pip-install it.
 # `uv pip install -e .` installs only the base [project.dependencies], no extras.
 uv pip install --python "$VENV/bin/python" -e .
+
+# Ear worker deps: onnxruntime, scipy, scikit-learn (resolved normally) +
+# openwakeword (--no-deps because it hard-depends on tflite-runtime which has
+# no wheels for py3.12+/aarch64; we only use the onnx inference backend).
+info "Installing ear worker dependencies..."
+uv pip install --python "$VENV/bin/python" \
+    'onnxruntime>=1.16' 'scipy>=1.3' 'scikit-learn>=1' 'tqdm' 'requests'
+uv pip install --python "$VENV/bin/python" --no-deps 'openwakeword>=0.6'
+
 ok "dependencies installed"
 
 # ── 5. Create tools venv + install dependencies ─────────────────────────────

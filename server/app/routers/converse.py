@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import base64
 import logging
+import time
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
@@ -138,7 +139,9 @@ async def converse(ws: WebSocket):
                     )
                     continue
 
+                t_stt = time.monotonic()
                 user_text = await _transcribe_audio(bytes(audio_buffer))
+                stt_latency_ms = round((time.monotonic() - t_stt) * 1000)
                 audio_buffer.clear()
 
                 if not user_text.strip():
@@ -148,7 +151,13 @@ async def converse(ws: WebSocket):
                     await ws.send_json({"type": "listening"})
                     continue
 
-                await ws.send_json({"type": "transcription", "text": user_text})
+                await ws.send_json(
+                    {
+                        "type": "transcription",
+                        "text": user_text,
+                        "stt_latency_ms": stt_latency_ms,
+                    }
+                )
                 await _generate_and_stream(
                     ws,
                     llm,
@@ -254,6 +263,7 @@ async def _generate_and_stream(
     override_max_output_tokens: int | None = None,
 ) -> None:
     """Generate LLM response and stream emotion + TTS audio to client."""
+    t_llm = time.monotonic()
     try:
         response = await llm.generate_conversation(
             history,
@@ -270,12 +280,14 @@ async def _generate_and_stream(
     except (LLMUnavailableError, LLMError) as e:
         await ws.send_json({"type": "error", "message": str(e)})
         return
+    llm_latency_ms = round((time.monotonic() - t_llm) * 1000)
 
     # 1. Send emotion immediately (face changes before speech)
     emotion_msg: dict[str, object] = {
         "type": "emotion",
         "emotion": response.emotion,
         "intensity": response.intensity,
+        "llm_latency_ms": llm_latency_ms,
     }
     if response.mood_reason:
         emotion_msg["mood_reason"] = response.mood_reason

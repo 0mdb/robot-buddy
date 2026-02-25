@@ -94,6 +94,7 @@ class AIWorker(BaseWorker):
         # WebSocket
         self._ws = None
         self._ws_connected = False
+        self._utterance_end_t: float | None = None  # for round-trip timing
 
         # Server connection
         self._server_connected = False
@@ -331,6 +332,7 @@ class AIWorker(BaseWorker):
     async def _end_utterance(self) -> None:
         """Signal end of user speech to server."""
         self._first_audio_emitted = False
+        self._utterance_end_t = time.monotonic()
         self._set_state("thinking", "end_utterance_received")
         await self._ws_send({"type": "end_utterance"})
 
@@ -346,6 +348,7 @@ class AIWorker(BaseWorker):
             self._set_state("error", "ws_connect_timeout_for_text")
             self.send(AI_CONVERSATION_ERROR, {"error": "ws_connect_timeout"})
             return
+        self._utterance_end_t = time.monotonic()
         self._set_state("thinking", "text_sent")
         self.send(AI_CONVERSATION_USER_TEXT, {"text": text})
         await self._ws_send({"type": "text", "text": text})

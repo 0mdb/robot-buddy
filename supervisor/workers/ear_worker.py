@@ -322,7 +322,9 @@ class EarWorker(BaseWorker):
                 self.send(
                     EAR_EVENT_OWW_SCORE,
                     {
-                        "scores": {k: round(v, 4) for k, v in prediction.items()},
+                        "scores": {
+                            k: float(round(v, 4)) for k, v in prediction.items()
+                        },
                         "threshold": self._wakeword_threshold,
                     },
                 )
@@ -344,7 +346,7 @@ class EarWorker(BaseWorker):
                         EAR_EVENT_WAKE_WORD,
                         {
                             "model": name,
-                            "score": round(score, 3),
+                            "score": float(round(score, 3)),
                         },
                     )
                     # Reset OWW internal buffers to prevent double-trigger

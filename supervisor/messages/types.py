@@ -81,6 +81,11 @@ CONV_SESSION_ENDED = "conv.session.ended"
 TTS_BENCHMARK_PROGRESS = "tts.benchmark.progress"
 TTS_BENCHMARK_DONE = "tts.benchmark.done"
 
+# ── Conversation Benchmark (dashboard diagnostics) ─────────────
+
+CONV_BENCHMARK_PROGRESS = "conv.benchmark.progress"
+CONV_BENCHMARK_DONE = "conv.benchmark.done"
+
 # ── System (§4.7) ───────────────────────────────────────────────
 
 SYSTEM_CLOCK_SYNC_UPDATE = "system.clock.sync_update"
