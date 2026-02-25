@@ -628,6 +628,8 @@ async def _handle_ws_cmd(
                         {"text": text, "session_id": tick.world.session_id},
                     )
                 )
+            else:
+                log.warning("conversation.send_text: session not started, text dropped")
     elif msg_type == "conversation.config":
         if tick.world.session_id:
             asyncio.ensure_future(

@@ -122,7 +122,8 @@ class AIWorker(BaseWorker):
             asyncio.create_task(self._request_plan(world_state))
 
         elif t == AI_CMD_START_CONVERSATION:
-            self._session_id = str(p.get("session_id", ""))
+            # session_id is a header field, not payload (envelope deserializer pops it)
+            self._session_id = envelope.session_id or str(p.get("session_id", ""))
             self._turn_id = int(p.get("turn_id", 1))
             self._first_audio_emitted = False
             asyncio.create_task(self._start_conversation())
@@ -157,7 +158,8 @@ class AIWorker(BaseWorker):
 
         elif t == AI_CMD_SEND_TEXT:
             text = str(p.get("text", ""))
-            session_id = str(p.get("session_id", ""))
+            # session_id is a header field, not payload (envelope deserializer pops it)
+            session_id = envelope.session_id or str(p.get("session_id", ""))
             if text and session_id:
                 self._session_id = session_id
                 self._first_audio_emitted = False

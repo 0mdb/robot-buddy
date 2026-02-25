@@ -1040,6 +1040,11 @@ class TickLoop:
 
         # Prevent double-start
         if self.world.session_id:
+            log.debug(
+                "_start_conversation(%s): blocked by active session %s",
+                trigger,
+                self.world.session_id,
+            )
             return
 
         # RS-2: block new conversations when daily time limit reached
