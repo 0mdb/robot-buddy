@@ -385,8 +385,29 @@ class TickLoop:
             self.robot.face_gesture = tel.active_gesture
             self.robot.face_system_mode = tel.system_mode
             self.robot.face_touch_active = tel.touch_active
+            self.robot.face_cmd_seq_last_applied = tel.cmd_seq_last_applied
+            self.robot.face_t_state_applied_us = tel.t_state_applied_us
             self.robot.face_seq = tel.seq
             self.robot.face_rx_mono_ms = tel.rx_mono_ms
+
+        hb = self._face.last_heartbeat
+        if hb:
+            self.robot.face_perf_window_frames = hb.perf_window_frames
+            self.robot.face_perf_frame_us_avg = hb.perf_frame_us_avg
+            self.robot.face_perf_frame_us_max = hb.perf_frame_us_max
+            self.robot.face_perf_render_us_avg = hb.perf_render_us_avg
+            self.robot.face_perf_render_us_max = hb.perf_render_us_max
+            self.robot.face_perf_eyes_us_avg = hb.perf_eyes_us_avg
+            self.robot.face_perf_mouth_us_avg = hb.perf_mouth_us_avg
+            self.robot.face_perf_border_us_avg = hb.perf_border_us_avg
+            self.robot.face_perf_effects_us_avg = hb.perf_effects_us_avg
+            self.robot.face_perf_overlay_us_avg = hb.perf_overlay_us_avg
+            self.robot.face_perf_dirty_px_avg = hb.perf_dirty_px_avg
+            self.robot.face_perf_spi_bytes_per_s = hb.perf_spi_bytes_per_s
+            self.robot.face_perf_cmd_rx_to_apply_us_avg = hb.perf_cmd_rx_to_apply_us_avg
+            self.robot.face_perf_sample_div = hb.perf_sample_div
+            self.robot.face_perf_dirty_rect_enabled = hb.perf_dirty_rect_enabled
+            self.robot.face_perf_afterglow_downsample = hb.perf_afterglow_downsample
 
         # Sync face button state
         btn = self._face.last_button

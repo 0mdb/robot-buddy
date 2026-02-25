@@ -45,21 +45,22 @@ _(all items completed)_
 _10 items complete (Stage 4.0 spec/port/parity/buttons/gestures/docs) — see archive_
 - [ ] Stage 4.0: Hardware visual pass: Sim V3 vs MCU side-by-side on hardware for all 13 moods (confirm “real” reads match spec intent) `[sonnet]`
 - [x] Stage 4.0: Bug: face device buttons not working (PTT/ACTION) — LVGL touch callbacks registered on parent instead of canvas_obj; canvas absorbed all events `[sonnet]`
-- [ ] Stage 4.0: Mouth parity: device vs Python sim (Sim V3) vs JS sim (Face Mirror) — fix mouth shape/animation mismatch `[sonnet]`
-- [ ] Stage 4.0: Gesture parity: HEART_EYES on face device doesn’t match sim — fix device vs Sim V3/Face Mirror mismatch `[sonnet]`
+- [ ] Stage 4.0: Mouth parity: device vs Python sim (Sim V3) vs JS sim (Face Mirror) — migrate firmware mouth to sim upper/lower envelope model; accept when scripted side-by-side shows no obvious mismatch in motion `[sonnet]`
+- [ ] Stage 4.0: Gesture parity: HEART_EYES mismatch — port sim heart SDF + scale constants (`HEART_SOLID_SCALE`, `HEART_PUPIL_SCALE`) to firmware; accept when side-by-side scripted checks pass `[sonnet]`
 - [ ] Stage 4.0: Refine THINKING face on hardware (currently reads as angry) `[sonnet]`
 - [ ] Stage 4.0: Tune timing values on hardware: ramp durations, hold times, border alpha curves `[sonnet]`
 - [ ] Stage 4.0: Face button UX: instant on-device confirmation on press; faster yellow LED blink on PTT error `[sonnet]`
-- [ ] Stage 4.1: Profile current render loop (esp_timer instrumentation, 1000-frame stats)
-- [ ] Stage 4.1: Profile border SDF render cost for all 8 conv states
-- [ ] Stage 4.1: Profile command-to-pixel latency end-to-end (button/wake/PTT → first pixel)
-- [ ] Stage 4.1: Profile sparkle/fire/afterglow effects budget
-- [ ] Stage 4.2: Implement dirty-rectangle tracking (LVGL invalidation areas and/or ILI9341 CASET/RASET windowing)
-- [ ] Stage 4.2: Evaluate/implement DMA overlap + buffering strategy (LVGL flush + SPI transfer overlap)
-- [ ] Stage 4.2: Optimize border SDF with precomputed lookup table / SDF map
-- [ ] Stage 4.2: Audit 13 mood colors for RGB565 fidelity — corrected palette
-- [ ] Stage 4.2: Temporal dithering + gamma correction (only if gradients/banding are visible on hardware)
-- [ ] Stage 4.2: Add “perf headroom” knobs (feature kill switches: afterglow/sparkle/edge_glow)
+- [ ] Stage 4.1: Baseline integrity gate: revert to float `px_blend(..., float alpha)` as active path; keep fixed-point/u8 helpers disabled/commented with A/B notes; baseline build must pass (`just build-face`)
+- [ ] Stage 4.1: Protocol correctness: parse `FACE_STATUS` v1 (4B) and v2 (12B) in supervisor; expose `cmd_seq_last_applied` + `t_state_applied_us` in state/debug
+- [ ] Stage 4.1: Low-overhead perf instrumentation in firmware: frame/render/stage timing, dirty px, SPI bytes/s, cmd rx→apply latency (stage sample divisor=8, emit 1 Hz)
+- [ ] Stage 4.1: HEARTBEAT optional perf tail (length-based, backward compatible); supervisor + protocol capture decode old/new payload lengths
+- [ ] Stage 4.1: Baseline benchmark capture (1000 frames each): idle, listening, thinking, speaking+energy, rage/effects; record p50/p95 and compare telemetry overhead (<=1% FPS drop)
+- [ ] Stage 4.2: Implement dirty-rectangle invalidation (replace unconditional full-canvas invalidate) and verify normal conversation states stay at p95 frame <= 33.3ms, p50 <= 25ms
+- [ ] Stage 4.2: Optimize border/icon hot paths (cache/pre-raster hotspot math) and quantify delta in border-heavy scenarios
+- [ ] Stage 4.2: Optimize afterglow bandwidth (reduced-resolution buffer + upscale blend behind flag) and quantify effect-on/effect-off cost
+- [ ] Stage 4.2: Evaluate SPI/LVGL throughput tuning (40/60/80MHz + queue/buffer settings) after dirty-rect landing; keep best measured config
+- [ ] Stage 4.2: Validate perf headroom knobs (`afterglow`, `sparkle`, `edge_glow`) with measured impact and document recommended fallback order
+- [ ] Stage 4.x: Post-baseline LVGL component spike — corner buttons as LVGL button objects using `LV_SYMBOL`; adopt only if p95 frame time and visual latency are equal/better with no touch/parity regressions (Font Awesome deferred unless spike wins)
 
 **Evaluation** `[opus]`
 - [ ] T1: Automated CI tests (parity check, unit tests, linting)

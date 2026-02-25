@@ -241,14 +241,30 @@ class FaceStatusPayload:
     active_gesture: int
     system_mode: int
     flags: int
+    cmd_seq_last_applied: int | None = None
+    t_state_applied_us: int | None = None
 
-    _FMT = struct.Struct("<BBBB")  # 4 bytes
+    _FMT_V1 = struct.Struct("<BBBB")  # 4 bytes
+    _FMT_V2 = struct.Struct("<BBBBII")  # 12 bytes
 
     @classmethod
     def unpack(cls, data: bytes) -> FaceStatusPayload:
-        if len(data) < cls._FMT.size:
+        if len(data) < cls._FMT_V1.size:
             raise ValueError(f"FACE_STATUS payload too short: {len(data)}")
-        return cls(*cls._FMT.unpack_from(data))
+        if len(data) >= cls._FMT_V2.size:
+            mood, gesture, system_mode, flags, cmd_seq, t_applied = (
+                cls._FMT_V2.unpack_from(data)
+            )
+            return cls(
+                mood_id=mood,
+                active_gesture=gesture,
+                system_mode=system_mode,
+                flags=flags,
+                cmd_seq_last_applied=cmd_seq,
+                t_state_applied_us=t_applied,
+            )
+        mood, gesture, system_mode, flags = cls._FMT_V1.unpack_from(data)
+        return cls(mood, gesture, system_mode, flags)
 
 
 @dataclass(slots=True)
@@ -304,10 +320,27 @@ class FaceHeartbeatPayload:
     usb_rts: int
     ptt_listening: int
     reserved: int
+    perf_window_frames: int = 0
+    perf_frame_us_avg: int = 0
+    perf_frame_us_max: int = 0
+    perf_render_us_avg: int = 0
+    perf_render_us_max: int = 0
+    perf_eyes_us_avg: int = 0
+    perf_mouth_us_avg: int = 0
+    perf_border_us_avg: int = 0
+    perf_effects_us_avg: int = 0
+    perf_overlay_us_avg: int = 0
+    perf_dirty_px_avg: int = 0
+    perf_spi_bytes_per_s: int = 0
+    perf_cmd_rx_to_apply_us_avg: int = 0
+    perf_sample_div: int = 0
+    perf_dirty_rect_enabled: int = 0
+    perf_afterglow_downsample: int = 0
 
     _BASE_FMT = struct.Struct("<IIII")  # 16 bytes
     _USB_FMT = struct.Struct("<IIIIIIIIIIII")  # 48 bytes
     _TAIL_FMT = struct.Struct("<BBBB")  # dtr, rts, ptt_listening, reserved
+    _PERF_FMT = struct.Struct("<IIIIIIIIIIIIIHBB")
 
     @classmethod
     def unpack(cls, data: bytes) -> FaceHeartbeatPayload:
@@ -342,6 +375,28 @@ class FaceHeartbeatPayload:
         if len(data) >= (tail_off + cls._TAIL_FMT.size):
             tail = cls._TAIL_FMT.unpack_from(data, tail_off)
 
+        perf = (
+            0,  # perf_window_frames
+            0,  # perf_frame_us_avg
+            0,  # perf_frame_us_max
+            0,  # perf_render_us_avg
+            0,  # perf_render_us_max
+            0,  # perf_eyes_us_avg
+            0,  # perf_mouth_us_avg
+            0,  # perf_border_us_avg
+            0,  # perf_effects_us_avg
+            0,  # perf_overlay_us_avg
+            0,  # perf_dirty_px_avg
+            0,  # perf_spi_bytes_per_s
+            0,  # perf_cmd_rx_to_apply_us_avg
+            0,  # perf_sample_div
+            0,  # perf_dirty_rect_enabled
+            0,  # perf_afterglow_downsample
+        )
+        perf_off = tail_off + cls._TAIL_FMT.size
+        if len(data) >= (perf_off + cls._PERF_FMT.size):
+            perf = cls._PERF_FMT.unpack_from(data, perf_off)
+
         return cls(
             uptime_ms=base[0],
             status_tx_count=base[1],
@@ -363,6 +418,22 @@ class FaceHeartbeatPayload:
             usb_rts=tail[1],
             ptt_listening=tail[2],
             reserved=tail[3],
+            perf_window_frames=perf[0],
+            perf_frame_us_avg=perf[1],
+            perf_frame_us_max=perf[2],
+            perf_render_us_avg=perf[3],
+            perf_render_us_max=perf[4],
+            perf_eyes_us_avg=perf[5],
+            perf_mouth_us_avg=perf[6],
+            perf_border_us_avg=perf[7],
+            perf_effects_us_avg=perf[8],
+            perf_overlay_us_avg=perf[9],
+            perf_dirty_px_avg=perf[10],
+            perf_spi_bytes_per_s=perf[11],
+            perf_cmd_rx_to_apply_us_avg=perf[12],
+            perf_sample_div=perf[13],
+            perf_dirty_rect_enabled=perf[14],
+            perf_afterglow_downsample=perf[15],
         )
 
 

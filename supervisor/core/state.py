@@ -114,6 +114,24 @@ class RobotState:
     face_seq_mood_id: int = 0  # Current sequencer mood
     face_seq_intensity: float = 0.0  # Current sequencer intensity
     face_choreo_active: bool = False  # Transition choreographer running
+    face_cmd_seq_last_applied: int = 0
+    face_t_state_applied_us: int = 0
+    face_perf_window_frames: int = 0
+    face_perf_frame_us_avg: int = 0
+    face_perf_frame_us_max: int = 0
+    face_perf_render_us_avg: int = 0
+    face_perf_render_us_max: int = 0
+    face_perf_eyes_us_avg: int = 0
+    face_perf_mouth_us_avg: int = 0
+    face_perf_border_us_avg: int = 0
+    face_perf_effects_us_avg: int = 0
+    face_perf_overlay_us_avg: int = 0
+    face_perf_dirty_px_avg: int = 0
+    face_perf_spi_bytes_per_s: int = 0
+    face_perf_cmd_rx_to_apply_us_avg: int = 0
+    face_perf_sample_div: int = 0
+    face_perf_dirty_rect_enabled: bool = False
+    face_perf_afterglow_downsample: int = 0
     face_seq: int = 0
     face_rx_mono_ms: float = 0.0
 
@@ -177,6 +195,26 @@ class RobotState:
             "face_seq_mood_id": self.face_seq_mood_id,
             "face_seq_intensity": round(self.face_seq_intensity, 3),
             "face_choreo_active": self.face_choreo_active,
+            "face_cmd_seq_last_applied": self.face_cmd_seq_last_applied,
+            "face_t_state_applied_us": self.face_t_state_applied_us,
+            "face_perf": {
+                "window_frames": self.face_perf_window_frames,
+                "frame_us_avg": self.face_perf_frame_us_avg,
+                "frame_us_max": self.face_perf_frame_us_max,
+                "render_us_avg": self.face_perf_render_us_avg,
+                "render_us_max": self.face_perf_render_us_max,
+                "eyes_us_avg": self.face_perf_eyes_us_avg,
+                "mouth_us_avg": self.face_perf_mouth_us_avg,
+                "border_us_avg": self.face_perf_border_us_avg,
+                "effects_us_avg": self.face_perf_effects_us_avg,
+                "overlay_us_avg": self.face_perf_overlay_us_avg,
+                "dirty_px_avg": self.face_perf_dirty_px_avg,
+                "spi_bytes_per_s": self.face_perf_spi_bytes_per_s,
+                "cmd_rx_to_apply_us_avg": self.face_perf_cmd_rx_to_apply_us_avg,
+                "sample_div": self.face_perf_sample_div,
+                "dirty_rect_enabled": self.face_perf_dirty_rect_enabled,
+                "afterglow_downsample": self.face_perf_afterglow_downsample,
+            },
             "face_seq": self.face_seq,
             "face_rx_mono_ms": round(self.face_rx_mono_ms, 1),
             "speed_caps": [

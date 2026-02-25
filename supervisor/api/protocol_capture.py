@@ -37,6 +37,7 @@ _FACE_CMD_NAMES: dict[int, str] = {
     0x22: "SET_SYSTEM",
     0x23: "SET_TALKING",
     0x24: "SET_FLAGS",
+    0x25: "SET_CONV_STATE",
 }
 
 _FACE_TEL_NAMES: dict[int, str] = {
@@ -52,6 +53,11 @@ ALL_TYPE_NAMES: dict[int, str] = {
     **_FACE_CMD_NAMES,
     **_FACE_TEL_NAMES,
 }
+
+_HEARTBEAT_BASE_FMT = struct.Struct("<IIII")
+_HEARTBEAT_USB_FMT = struct.Struct("<IIIIIIIIIIII")
+_HEARTBEAT_TAIL_FMT = struct.Struct("<BBBB")
+_HEARTBEAT_PERF_FMT = struct.Struct("<IIIIIIIIIIIIIHBB")
 
 
 @dataclass(slots=True)
@@ -218,16 +224,23 @@ def _decode_fields(pkt_type: int, payload: bytes) -> dict[str, Any]:
             return {"talking": bool(talking), "energy": energy}
         if pkt_type == 0x24 and len(payload) >= 1:  # SET_FLAGS
             return {"flags": f"0x{payload[0]:02X}"}
+        if pkt_type == 0x25 and len(payload) >= 1:  # SET_CONV_STATE
+            return {"conv_state": payload[0]}
 
         # -- Face telemetry ------------------------------------------------
         if pkt_type == 0x90 and len(payload) >= 4:  # FACE_STATUS
             mood, gesture, sysmode, flags = struct.unpack_from("<BBBB", payload)
-            return {
+            decoded = {
                 "mood": mood,
                 "gesture": gesture,
                 "system_mode": sysmode,
                 "flags": f"0x{flags:02X}",
             }
+            if len(payload) >= 12:
+                cmd_seq, t_state_us = struct.unpack_from("<II", payload, 4)
+                decoded["cmd_seq_last_applied"] = cmd_seq
+                decoded["t_state_applied_us"] = t_state_us
+            return decoded
         if pkt_type == 0x91 and len(payload) >= 5:  # TOUCH_EVENT
             evt, x, y = struct.unpack_from("<BHH", payload)
             return {"event_type": evt, "x": x, "y": y}
@@ -235,13 +248,40 @@ def _decode_fields(pkt_type: int, payload: bytes) -> dict[str, Any]:
             bid, etype, state, _ = struct.unpack_from("<BBBB", payload)
             return {"button_id": bid, "event_type": etype, "state": state}
         if pkt_type == 0x93 and len(payload) >= 16:  # HEARTBEAT
-            up, stx, ttx, btx = struct.unpack_from("<IIII", payload)
-            return {
+            up, stx, ttx, btx = _HEARTBEAT_BASE_FMT.unpack_from(payload)
+            decoded = {
                 "uptime_ms": up,
                 "status_tx": stx,
                 "touch_tx": ttx,
                 "button_tx": btx,
             }
+            # Optional perf tail is appended after base+usb+tail fields.
+            perf_off = (
+                _HEARTBEAT_BASE_FMT.size
+                + _HEARTBEAT_USB_FMT.size
+                + _HEARTBEAT_TAIL_FMT.size
+            )
+            if len(payload) >= perf_off + _HEARTBEAT_PERF_FMT.size:
+                perf = _HEARTBEAT_PERF_FMT.unpack_from(payload, perf_off)
+                decoded["perf"] = {
+                    "window_frames": perf[0],
+                    "frame_us_avg": perf[1],
+                    "frame_us_max": perf[2],
+                    "render_us_avg": perf[3],
+                    "render_us_max": perf[4],
+                    "eyes_us_avg": perf[5],
+                    "mouth_us_avg": perf[6],
+                    "border_us_avg": perf[7],
+                    "effects_us_avg": perf[8],
+                    "overlay_us_avg": perf[9],
+                    "dirty_px_avg": perf[10],
+                    "spi_bytes_per_s": perf[11],
+                    "cmd_rx_to_apply_us_avg": perf[12],
+                    "sample_div": perf[13],
+                    "dirty_rect_enabled": bool(perf[14]),
+                    "afterglow_downsample": perf[15],
+                }
+            return decoded
     except (struct.error, IndexError):
         pass
 

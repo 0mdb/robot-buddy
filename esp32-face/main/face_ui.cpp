@@ -31,9 +31,13 @@ static constexpr uint8_t  BG_B = 0;
 // Canvas uses RGB565 to match the ILI9341 display format (no conversion needed).
 static constexpr lv_color_format_t CANVAS_COLOR_FORMAT = LV_COLOR_FORMAT_RGB565;
 static constexpr std::size_t       CANVAS_BYTES = SCREEN_W * SCREEN_H * sizeof(pixel_t);
+static constexpr int               AFTERGLOW_W = SCREEN_W / FACE_AFTERGLOW_DOWNSAMPLE;
+static constexpr int               AFTERGLOW_H = SCREEN_H / FACE_AFTERGLOW_DOWNSAMPLE;
+static constexpr std::size_t       AFTERGLOW_BYTES = AFTERGLOW_W * AFTERGLOW_H * sizeof(pixel_t);
 
 static float now_s();
 static float clampf(float v, float lo, float hi);
+static float smoothstepf(float edge0, float edge1, float x);
 
 // ---- LVGL objects ----
 static lv_obj_t* canvas_obj = nullptr;
@@ -49,17 +53,50 @@ static int     s_last_touch_y = SCREEN_H / 2;
 static uint8_t s_last_touch_evt = 0xFF;
 static bool    s_last_touch_active = false;
 
-static void publish_touch_sample(uint8_t event_type, int x, int y);
-static void publish_button_event(FaceButtonId button_id, FaceButtonEventType event_type, uint8_t state);
-static void root_touch_event_cb(lv_event_t* e);
-static void render_calibration(pixel_t* buf);
-static void update_calibration_labels(uint32_t now_ms, uint32_t next_switch_ms);
+struct DirtyRect {
+    int  x0 = 0;
+    int  y0 = 0;
+    int  x1 = 0;
+    int  y1 = 0;
+    bool valid = false;
+};
+
+struct RenderPerfSnapshot {
+    uint32_t render_us = 0;
+    uint32_t eyes_us = 0;
+    uint32_t mouth_us = 0;
+    uint32_t border_us = 0;
+    uint32_t effects_us = 0;
+    uint32_t overlay_us = 0;
+    uint32_t dirty_px = 0;
+};
+
+static RenderPerfSnapshot s_last_render_perf = {};
+static bool               s_collect_render_perf = false;
+
+static void      publish_touch_sample(uint8_t event_type, int x, int y);
+static void      publish_button_event(FaceButtonId button_id, FaceButtonEventType event_type, uint8_t state);
+static void      root_touch_event_cb(lv_event_t* e);
+static void      render_calibration(pixel_t* buf);
+static void      update_calibration_labels(uint32_t now_ms, uint32_t next_switch_ms);
+static void      afterglow_copy_from_canvas(const pixel_t* canvas);
+static DirtyRect compute_dirty_rect(const FaceState& fs);
+static uint32_t  dirty_rect_area(const DirtyRect& rect);
 
 static float clampf(float v, float lo, float hi)
 {
     if (v < lo) return lo;
     if (v > hi) return hi;
     return v;
+}
+
+static float smoothstepf(float edge0, float edge1, float x)
+{
+    if (fabsf(edge1 - edge0) < 1e-6f) {
+        return x < edge0 ? 0.0f : 1.0f;
+    }
+    const float t = clampf((x - edge0) / (edge1 - edge0), 0.0f, 1.0f);
+    return t * t * (3.0f - 2.0f * t);
 }
 
 // ---- Drawing helpers (RGB565 pixel_t) ----
@@ -156,21 +193,49 @@ static void draw_filled_circle(pixel_t* buf, int cx, int cy, int radius, pixel_t
 
 // ---- Face rendering ----
 
-static void draw_heart_shape(pixel_t* buf, int cx, int cy, int size, pixel_t color)
+static float sd_heart(float px, float py, float cx, float cy, float size)
 {
-    if (size < 1) {
+    const float x = fabsf(px - cx) / size;
+    const float y = (cy - py) / size + 0.5f;
+
+    float d = 0.0f;
+    if (y + x > 1.0f) {
+        const float dx = x - 0.25f;
+        const float dy = y - 0.75f;
+        d = sqrtf(dx * dx + dy * dy) - 0.35355339f;
+    } else {
+        const float dy1 = y - 1.0f;
+        const float d1 = x * x + dy1 * dy1;
+        const float t = fmaxf(x + y, 0.0f) * 0.5f;
+        const float dx2 = x - t;
+        const float dy2 = y - t;
+        const float d2 = dx2 * dx2 + dy2 * dy2;
+        d = sqrtf(fminf(d1, d2));
+        if (x < y) {
+            d = -d;
+        }
+    }
+
+    return d * size;
+}
+
+static void draw_heart_shape(pixel_t* buf, float cx, float cy, float size, uint8_t r, uint8_t g, uint8_t b)
+{
+    if (size < 1.0f) {
         return;
     }
-    for (int y = cy - size; y <= cy + size; y++) {
-        if (y < 0 || y >= SCREEN_H) continue;
-        for (int x = cx - size; x <= cx + size; x++) {
-            if (x < 0 || x >= SCREEN_W) continue;
-            const float xf = static_cast<float>(x - cx) / static_cast<float>(size);
-            const float yf = static_cast<float>(y - cy) / static_cast<float>(size);
-            const float a = xf * xf + yf * yf - 1.0f;
-            const float f = a * a * a - xf * xf * yf * yf * yf;
-            if (f <= 0.0f) {
-                buf[y * SCREEN_W + x] = color;
+    const int x0 = static_cast<int>(fmaxf(0.0f, cx - size - 2.0f));
+    const int x1 = static_cast<int>(fminf(static_cast<float>(SCREEN_W), cx + size + 2.0f));
+    const int y0 = static_cast<int>(fmaxf(0.0f, cy - size - 2.0f));
+    const int y1 = static_cast<int>(fminf(static_cast<float>(SCREEN_H), cy + size + 2.0f));
+
+    for (int y = y0; y < y1; y++) {
+        const int row = y * SCREEN_W;
+        for (int x = x0; x < x1; x++) {
+            const float d = sd_heart(static_cast<float>(x) + 0.5f, static_cast<float>(y) + 0.5f, cx, cy, size);
+            const float a = 1.0f - smoothstepf(-0.5f, 0.5f, d);
+            if (a > 0.01f) {
+                buf[row + x] = px_blend(buf[row + x], r, g, b, a);
             }
         }
     }
@@ -211,8 +276,7 @@ static void render_eye(pixel_t* buf, const EyeState& eye, const FaceState& fs, b
     const int   corner = static_cast<int>(EYE_CORNER_R * fminf(eye.width_scale, eye.height_scale));
 
     if (fs.solid_eye && fs.anim.heart) {
-        draw_heart_shape(buf, static_cast<int>(center_x), static_cast<int>(center_y),
-                         static_cast<int>(fminf(ew, eh) * 0.33f), eye_color);
+        draw_heart_shape(buf, center_x, center_y, fminf(ew, eh) * 0.5f * HEART_SOLID_SCALE, r, g, b);
     } else if (fs.solid_eye && fs.anim.x_eyes) {
         draw_x_shape(buf, static_cast<int>(center_x), static_cast<int>(center_y),
                      static_cast<int>(fminf(ew, eh) * 0.33f), 3, eye_color);
@@ -233,7 +297,7 @@ static void render_eye(pixel_t* buf, const EyeState& eye, const FaceState& fs, b
         const float py = center_y + clampf(eye.gaze_y * GAZE_PUPIL_SHIFT, -max_offset_y, max_offset_y);
         const int   pr = static_cast<int>(PUPIL_R * fmaxf(0.4f, eye.openness));
         if (fs.anim.heart) {
-            draw_heart_shape(buf, static_cast<int>(px), static_cast<int>(py), pr, rgb_to_color(10, 15, 30));
+            draw_heart_shape(buf, px, py, PUPIL_R * HEART_PUPIL_SCALE, 10, 15, 30);
         } else if (fs.anim.x_eyes) {
             draw_x_shape(buf, static_cast<int>(px), static_cast<int>(py), pr, 2, rgb_to_color(10, 15, 30));
         } else if (pr > 1) {
@@ -275,36 +339,46 @@ static void render_mouth(pixel_t* buf, const FaceState& fs)
 
     uint8_t r, g, b;
     face_get_emotion_color(fs, r, g, b);
-    pixel_t color = rgb_to_color(r, g, b);
 
-    float cx = MOUTH_CX + fs.mouth_offset_x * 10.0f;
-    float cy = MOUTH_CY;
-    float hw = MOUTH_HALF_W * fs.mouth_width;
-    float curve = fs.mouth_curve * 40.0f;
-    float thick = MOUTH_THICKNESS;
-    float openness = fs.mouth_open * 40.0f;
+    const float cx = MOUTH_CX + fs.mouth_offset_x * 10.0f;
+    const float cy = MOUTH_CY;
+    const float w = MOUTH_HALF_W * fs.mouth_width;
+    const float thick = MOUTH_THICKNESS;
+    const float curve = fs.mouth_curve * 40.0f;
+    const float openness = fs.mouth_open * 40.0f;
+    if (w < 1.0f) {
+        return;
+    }
 
-    int num_points = static_cast<int>(hw * 2);
-    for (int i = 0; i < num_points; i++) {
-        float t = static_cast<float>(i) / static_cast<float>(num_points - 1); // 0..1
-        float x_off = -hw + 2.0f * hw * t;
-        float parabola = 1.0f - 4.0f * (t - 0.5f) * (t - 0.5f);
-        float y_off = curve * parabola;
+    const int   x0 = static_cast<int>(cx - w - thick);
+    const int   x1 = static_cast<int>(cx + w + thick);
+    const int   y0 = static_cast<int>(cy - fabsf(curve) - openness - thick);
+    const int   y1 = static_cast<int>(cy + fabsf(curve) + openness + thick);
+    const float half_thick = thick * 0.5f;
 
-        if (fs.mouth_wave > 0.01f) {
-            y_off += fs.mouth_wave * 5.0f * sinf(t * 12.0f + now_s() * 8.0f);
-        }
+    for (int y = (y0 < 0 ? 0 : y0); y < (y1 > SCREEN_H ? SCREEN_H : y1); y++) {
+        const int row = y * SCREEN_W;
+        for (int x = (x0 < 0 ? 0 : x0); x < (x1 > SCREEN_W ? SCREEN_W : x1); x++) {
+            const float px = static_cast<float>(x) + 0.5f;
+            const float py = static_cast<float>(y) + 0.5f;
+            const float nx = (px - cx) / w;
+            if (fabsf(nx) > 1.0f) continue;
 
-        int px = static_cast<int>(cx + x_off);
-        int py = static_cast<int>(cy + y_off);
+            const float shape = 1.0f - nx * nx;
+            const float curve_y = curve * shape;
+            const float upper_y = cy + curve_y - openness * shape;
+            const float lower_y = cy + curve_y + openness * shape;
 
-        int th = static_cast<int>(thick < 1.0f ? 1.0f : thick);
-        draw_filled_rect(buf, px - th / 2, py - th / 2, th, th, color);
+            float dist = 0.0f;
+            if (openness > 1.0f && upper_y < py && py < lower_y) {
+                dist = 0.0f;
+            } else {
+                dist = fminf(fabsf(py - upper_y), fabsf(py - lower_y));
+            }
 
-        if (fs.mouth_open > 0.05f && openness > 0.0f) {
-            int open_h = static_cast<int>(openness * parabola);
-            if (open_h > 0) {
-                draw_filled_rect(buf, px - th / 2, py, th, open_h, color);
+            const float alpha = 1.0f - smoothstepf(half_thick - 1.0f, half_thick + 1.0f, dist);
+            if (alpha > 0.01f) {
+                buf[row + x] = px_blend(buf[row + x], r, g, b, alpha);
             }
         }
     }
@@ -345,12 +419,33 @@ static void apply_afterglow(pixel_t* buf, const FaceState& fs)
         return;
     }
     const pixel_t bg = rgb_to_color(BG_R, BG_G, BG_B);
-    for (int i = 0; i < SCREEN_W * SCREEN_H; i++) {
-        if (buf[i] == bg && afterglow_buf[i] != bg) {
-            buf[i] = scale_color(afterglow_buf[i], 2, 5);
+    for (int y = 0; y < SCREEN_H; y++) {
+        const int ay = (y / FACE_AFTERGLOW_DOWNSAMPLE) * AFTERGLOW_W;
+        const int row = y * SCREEN_W;
+        for (int x = 0; x < SCREEN_W; x++) {
+            const int     aidx = ay + (x / FACE_AFTERGLOW_DOWNSAMPLE);
+            const pixel_t prev = afterglow_buf[aidx];
+            if (buf[row + x] == bg && prev != bg) {
+                buf[row + x] = scale_color(prev, 2, 5);
+            }
         }
     }
-    memcpy(afterglow_buf, buf, CANVAS_BYTES);
+    afterglow_copy_from_canvas(buf);
+}
+
+static void afterglow_copy_from_canvas(const pixel_t* canvas)
+{
+    if (!afterglow_buf || !canvas) {
+        return;
+    }
+    for (int y = 0; y < AFTERGLOW_H; y++) {
+        const int src_y = y * FACE_AFTERGLOW_DOWNSAMPLE;
+        const int dst_row = y * AFTERGLOW_W;
+        const int src_row = src_y * SCREEN_W;
+        for (int x = 0; x < AFTERGLOW_W; x++) {
+            afterglow_buf[dst_row + x] = canvas[src_row + (x * FACE_AFTERGLOW_DOWNSAMPLE)];
+        }
+    }
 }
 
 static void render_calibration(pixel_t* buf)
@@ -457,6 +552,77 @@ static float now_s()
     return static_cast<float>(esp_timer_get_time()) / 1'000'000.0f;
 }
 
+static void dirty_rect_add(DirtyRect& rect, int x, int y, int w, int h)
+{
+    if (w <= 0 || h <= 0) {
+        return;
+    }
+    int x0 = x;
+    int y0 = y;
+    int x1 = x + w - 1;
+    int y1 = y + h - 1;
+    if (x1 < 0 || y1 < 0 || x0 >= SCREEN_W || y0 >= SCREEN_H) {
+        return;
+    }
+    if (x0 < 0) x0 = 0;
+    if (y0 < 0) y0 = 0;
+    if (x1 >= SCREEN_W) x1 = SCREEN_W - 1;
+    if (y1 >= SCREEN_H) y1 = SCREEN_H - 1;
+
+    if (!rect.valid) {
+        rect.x0 = x0;
+        rect.y0 = y0;
+        rect.x1 = x1;
+        rect.y1 = y1;
+        rect.valid = true;
+        return;
+    }
+    if (x0 < rect.x0) rect.x0 = x0;
+    if (y0 < rect.y0) rect.y0 = y0;
+    if (x1 > rect.x1) rect.x1 = x1;
+    if (y1 > rect.y1) rect.y1 = y1;
+}
+
+static DirtyRect compute_dirty_rect(const FaceState& fs)
+{
+    DirtyRect rect = {};
+
+    if (!FACE_DIRTY_RECT || FACE_CALIBRATION_MODE) {
+        dirty_rect_add(rect, 0, 0, SCREEN_W, SCREEN_H);
+        return rect;
+    }
+
+    if (fs.system.mode != SystemMode::NONE || fs.fx.afterglow || fs.anim.rage || fs.fx.sparkle) {
+        dirty_rect_add(rect, 0, 0, SCREEN_W, SCREEN_H);
+        return rect;
+    }
+
+    // Conservative central region covering eyes + most gaze motion + mouth.
+    dirty_rect_add(rect, 12, 0, SCREEN_W - 24, 215);
+
+    // Border and corner buttons only affect edge strips.
+    if (conv_border_active()) {
+        const int edge = 20;
+        dirty_rect_add(rect, 0, 0, SCREEN_W, edge);
+        dirty_rect_add(rect, 0, SCREEN_H - edge, SCREEN_W, edge);
+        dirty_rect_add(rect, 0, edge, edge, SCREEN_H - 2 * edge);
+        dirty_rect_add(rect, SCREEN_W - edge, edge, edge, SCREEN_H - 2 * edge);
+    }
+
+    if (!rect.valid) {
+        dirty_rect_add(rect, 0, 0, SCREEN_W, SCREEN_H);
+    }
+    return rect;
+}
+
+static uint32_t dirty_rect_area(const DirtyRect& rect)
+{
+    if (!rect.valid) return static_cast<uint32_t>(SCREEN_W * SCREEN_H);
+    const uint32_t w = static_cast<uint32_t>(rect.x1 - rect.x0 + 1);
+    const uint32_t h = static_cast<uint32_t>(rect.y1 - rect.y0 + 1);
+    return w * h;
+}
+
 static void publish_touch_sample(uint8_t event_type, int x, int y)
 {
     TouchSample* slot = g_touch.write_slot();
@@ -551,11 +717,11 @@ void face_ui_create(lv_obj_t* parent)
         ESP_LOGE(TAG, "failed to allocate canvas buffer in PSRAM!");
         return;
     }
-    afterglow_buf = static_cast<pixel_t*>(heap_caps_malloc(CANVAS_BYTES, MALLOC_CAP_SPIRAM));
+    afterglow_buf = static_cast<pixel_t*>(heap_caps_malloc(AFTERGLOW_BYTES, MALLOC_CAP_SPIRAM));
     if (!afterglow_buf) {
         ESP_LOGW(TAG, "failed to allocate afterglow buffer; disabling afterglow effect");
     } else {
-        memset(afterglow_buf, 0, CANVAS_BYTES);
+        memset(afterglow_buf, 0, AFTERGLOW_BYTES);
     }
 
     canvas_obj = lv_canvas_create(parent);
@@ -602,27 +768,47 @@ void face_ui_create(lv_obj_t* parent)
         lv_obj_move_foreground(calib_header_bg);
     }
 
-    ESP_LOGI(TAG, "face UI created (%dx%d canvas in PSRAM)", SCREEN_W, SCREEN_H);
+    ESP_LOGI(TAG, "face UI created (%dx%d canvas in PSRAM, afterglow=%dx%d)", SCREEN_W, SCREEN_H, AFTERGLOW_W,
+             AFTERGLOW_H);
 }
 
 void face_ui_update(const FaceState& fs)
 {
     if (!canvas_buf) return;
 
+    const uint64_t render_start_us =
+        (FACE_PERF_TELEMETRY && s_collect_render_perf) ? static_cast<uint64_t>(esp_timer_get_time()) : 0ULL;
+    uint64_t stage_start_us = render_start_us;
+    auto     sample_stage = [&](uint32_t& out_us) {
+        if (!(FACE_PERF_TELEMETRY && s_collect_render_perf)) {
+            return;
+        }
+        const uint64_t now = static_cast<uint64_t>(esp_timer_get_time());
+        out_us = static_cast<uint32_t>(now - stage_start_us);
+        stage_start_us = now;
+    };
+
+    RenderPerfSnapshot perf = {};
     draw_filled_rect(canvas_buf, 0, 0, SCREEN_W, SCREEN_H, rgb_to_color(BG_R, BG_G, BG_B));
 
     if (FACE_CALIBRATION_MODE) {
         render_calibration(canvas_buf);
+        sample_stage(perf.overlay_us);
     } else {
         // Always render face (system modes drive face state via system_face_apply)
         render_eye(canvas_buf, fs.eye_l, fs, true, LEFT_EYE_CX, LEFT_EYE_CY);
         render_eye(canvas_buf, fs.eye_r, fs, false, RIGHT_EYE_CX, RIGHT_EYE_CY);
+        sample_stage(perf.eyes_us);
+
         render_mouth(canvas_buf, fs);
+        sample_stage(perf.mouth_us);
+
         if (fs.anim.rage) {
             render_fire_effect(canvas_buf, fs);
         }
         render_sparkles(canvas_buf, fs);
         apply_afterglow(canvas_buf, fs);
+        sample_stage(perf.effects_us);
 
         // System mode icon overlays (drawn on top of face)
         if (fs.system.mode == SystemMode::ERROR_DISPLAY) {
@@ -632,20 +818,39 @@ void face_ui_update(const FaceState& fs)
         } else if (fs.system.mode == SystemMode::UPDATING) {
             system_face_render_updating_bar(canvas_buf, fs.system.param);
         }
+        sample_stage(perf.overlay_us);
 
         // Conversation border overlay + corner buttons — suppress during system overlays (spec §4.4)
         if (fs.system.mode == SystemMode::NONE) {
             conv_border_render(canvas_buf);
             conv_border_render_buttons(canvas_buf);
         }
+        sample_stage(perf.border_us);
 
         if ((fs.system.mode != SystemMode::NONE || !fs.fx.afterglow) && afterglow_buf) {
-            memcpy(afterglow_buf, canvas_buf, CANVAS_BYTES);
+            afterglow_copy_from_canvas(canvas_buf);
         }
     }
 
-    // Invalidate canvas to trigger LVGL refresh
-    lv_obj_invalidate(canvas_obj);
+    const DirtyRect dirty = compute_dirty_rect(fs);
+    perf.dirty_px = dirty_rect_area(dirty);
+    if (FACE_DIRTY_RECT && dirty.valid) {
+        lv_area_t area = {
+            .x1 = static_cast<int32_t>(dirty.x0),
+            .y1 = static_cast<int32_t>(dirty.y0),
+            .x2 = static_cast<int32_t>(dirty.x1),
+            .y2 = static_cast<int32_t>(dirty.y1),
+        };
+        lv_obj_invalidate_area(canvas_obj, &area);
+    } else {
+        // Invalidate canvas to trigger LVGL refresh
+        lv_obj_invalidate(canvas_obj);
+    }
+
+    if (FACE_PERF_TELEMETRY && s_collect_render_perf && render_start_us > 0ULL) {
+        perf.render_us = static_cast<uint32_t>(static_cast<uint64_t>(esp_timer_get_time()) - render_start_us);
+        s_last_render_perf = perf;
+    }
 }
 
 static void apply_face_flags(FaceState& fs, uint8_t flags)
@@ -688,6 +893,7 @@ GestureQueue g_gesture_queue;
 
 TouchBuffer           g_touch;
 ButtonEventBuffer     g_button;
+FacePerfBuffer        g_face_perf;
 std::atomic<bool>     g_touch_active{false};
 std::atomic<bool>     g_talking_active{false};
 std::atomic<bool>     g_ptt_listening{false};
@@ -714,6 +920,24 @@ void face_ui_task(void* arg)
     uint32_t  frame_count = 0;
     uint64_t  frame_accum_us = 0;
     uint32_t  frame_max_us = 0;
+    uint32_t  frame_idx = 0;
+    uint32_t  next_perf_pub_ms = static_cast<uint32_t>(esp_timer_get_time() / 1000ULL) + 1000U;
+    uint64_t  perf_frame_sum_us = 0;
+    uint32_t  perf_frame_max_us = 0;
+    uint64_t  perf_render_sum_us = 0;
+    uint32_t  perf_render_max_us = 0;
+    uint64_t  perf_eyes_sum_us = 0;
+    uint64_t  perf_mouth_sum_us = 0;
+    uint64_t  perf_border_sum_us = 0;
+    uint64_t  perf_effects_sum_us = 0;
+    uint64_t  perf_overlay_sum_us = 0;
+    uint32_t  perf_stage_samples = 0;
+    uint64_t  perf_dirty_px_sum = 0;
+    uint64_t  perf_spi_bytes_sum = 0;
+    uint64_t  perf_cmd_latency_sum_us = 0;
+    uint32_t  perf_cmd_latency_samples = 0;
+    uint32_t  perf_window_frames = 0;
+    uint32_t  latest_cmd_rx_us = 0;
 
     apply_face_flags(fs, g_cmd_flags.load(std::memory_order_relaxed));
     if (!afterglow_buf) {
@@ -743,6 +967,7 @@ void face_ui_task(void* arg)
         const uint32_t state_cmd_us = g_cmd_state_us.load(std::memory_order_acquire);
         if (state_cmd_us != 0 && state_cmd_us != last_state_cmd_us) {
             last_state_cmd_us = state_cmd_us;
+            latest_cmd_rx_us = state_cmd_us;
             const uint8_t mood_id = g_cmd_state_mood.load(std::memory_order_relaxed);
             const uint8_t intensity_u8 = g_cmd_state_intensity.load(std::memory_order_relaxed);
             const int8_t  gaze_x_i8 = g_cmd_state_gaze_x.load(std::memory_order_relaxed);
@@ -766,6 +991,7 @@ void face_ui_task(void* arg)
         while (g_gesture_queue.pop(&ev)) {
             if (ev.gesture_id <= static_cast<uint8_t>(GestureId::WIGGLE)) {
                 face_trigger_gesture(fs, static_cast<GestureId>(ev.gesture_id), ev.duration_ms);
+                latest_cmd_rx_us = ev.timestamp_us;
             }
         }
 
@@ -773,6 +999,7 @@ void face_ui_task(void* arg)
         const uint32_t system_cmd_us = g_cmd_system_us.load(std::memory_order_acquire);
         if (system_cmd_us != 0 && system_cmd_us != last_system_cmd_us) {
             last_system_cmd_us = system_cmd_us;
+            latest_cmd_rx_us = system_cmd_us;
             const uint8_t mode_u8 = g_cmd_system_mode.load(std::memory_order_relaxed);
             const uint8_t param_u8 = g_cmd_system_param.load(std::memory_order_relaxed);
             if (mode_u8 <= static_cast<uint8_t>(SystemMode::SHUTTING_DOWN)) {
@@ -785,6 +1012,7 @@ void face_ui_task(void* arg)
         const uint32_t talking_cmd_us = g_cmd_talking_us.load(std::memory_order_acquire);
         if (talking_cmd_us != 0 && talking_cmd_us != last_talking_cmd_us) {
             last_talking_cmd_us = talking_cmd_us;
+            latest_cmd_rx_us = talking_cmd_us;
             fs.talking = g_cmd_talking.load(std::memory_order_relaxed) != 0;
             fs.talking_energy = static_cast<float>(g_cmd_talking_energy.load(std::memory_order_relaxed)) / 255.0f;
             if (!fs.talking) {
@@ -804,6 +1032,7 @@ void face_ui_task(void* arg)
         const uint32_t flags_cmd_us = g_cmd_flags_us.load(std::memory_order_acquire);
         if (flags_cmd_us != 0 && flags_cmd_us != last_flags_cmd_us) {
             last_flags_cmd_us = flags_cmd_us;
+            latest_cmd_rx_us = flags_cmd_us;
             const uint8_t flags = g_cmd_flags.load(std::memory_order_relaxed);
             apply_face_flags(fs, flags);
             if (!afterglow_buf) {
@@ -815,6 +1044,7 @@ void face_ui_task(void* arg)
         const uint32_t conv_state_cmd_us = g_cmd_conv_state_us.load(std::memory_order_acquire);
         if (conv_state_cmd_us != 0 && conv_state_cmd_us != last_conv_state_cmd_us) {
             last_conv_state_cmd_us = conv_state_cmd_us;
+            latest_cmd_rx_us = conv_state_cmd_us;
             conv_border_set_state(g_cmd_conv_state.load(std::memory_order_relaxed));
         }
 
@@ -868,6 +1098,8 @@ void face_ui_task(void* arg)
         }
 
         // 6. Render under LVGL lock
+        s_collect_render_perf = FACE_PERF_TELEMETRY && ((frame_idx % FACE_PERF_SAMPLE_DIV) == 0U);
+        s_last_render_perf = {};
         if (lvgl_port_lock(100)) {
             face_ui_update(fs);
             if (FACE_CALIBRATION_MODE) {
@@ -878,12 +1110,95 @@ void face_ui_task(void* arg)
             // v2: record when display buffer was committed (render completion)
             g_cmd_applied_us.store(static_cast<uint32_t>(esp_timer_get_time()), std::memory_order_release);
         }
+        s_collect_render_perf = false;
 
         const uint32_t frame_us = static_cast<uint32_t>(static_cast<uint64_t>(esp_timer_get_time()) - frame_start_us);
         frame_accum_us += frame_us;
         frame_count++;
         if (frame_us > frame_max_us) {
             frame_max_us = frame_us;
+        }
+
+        if (FACE_PERF_TELEMETRY) {
+            perf_window_frames++;
+            perf_frame_sum_us += frame_us;
+            if (frame_us > perf_frame_max_us) {
+                perf_frame_max_us = frame_us;
+            }
+
+            const RenderPerfSnapshot rp = s_last_render_perf;
+            perf_render_sum_us += rp.render_us;
+            if (rp.render_us > perf_render_max_us) {
+                perf_render_max_us = rp.render_us;
+            }
+            perf_dirty_px_sum += rp.dirty_px;
+            perf_spi_bytes_sum += static_cast<uint64_t>(rp.dirty_px) * 2ULL;
+
+            if ((frame_idx % FACE_PERF_SAMPLE_DIV) == 0U) {
+                perf_stage_samples++;
+                perf_eyes_sum_us += rp.eyes_us;
+                perf_mouth_sum_us += rp.mouth_us;
+                perf_border_sum_us += rp.border_us;
+                perf_effects_sum_us += rp.effects_us;
+                perf_overlay_sum_us += rp.overlay_us;
+            }
+
+            if (latest_cmd_rx_us != 0U) {
+                const uint32_t applied_us = g_cmd_applied_us.load(std::memory_order_acquire);
+                if (applied_us > latest_cmd_rx_us) {
+                    perf_cmd_latency_sum_us += static_cast<uint64_t>(applied_us - latest_cmd_rx_us);
+                    perf_cmd_latency_samples++;
+                }
+            }
+
+            if (static_cast<int32_t>(now_ms - next_perf_pub_ms) >= 0) {
+                FacePerfSnapshot* out = g_face_perf.write_slot();
+                out->window_frames = perf_window_frames;
+                out->frame_us_avg =
+                    perf_window_frames > 0U ? static_cast<uint32_t>(perf_frame_sum_us / perf_window_frames) : 0U;
+                out->frame_us_max = perf_frame_max_us;
+                out->render_us_avg =
+                    perf_window_frames > 0U ? static_cast<uint32_t>(perf_render_sum_us / perf_window_frames) : 0U;
+                out->render_us_max = perf_render_max_us;
+                out->eyes_us_avg =
+                    perf_stage_samples > 0U ? static_cast<uint32_t>(perf_eyes_sum_us / perf_stage_samples) : 0U;
+                out->mouth_us_avg =
+                    perf_stage_samples > 0U ? static_cast<uint32_t>(perf_mouth_sum_us / perf_stage_samples) : 0U;
+                out->border_us_avg =
+                    perf_stage_samples > 0U ? static_cast<uint32_t>(perf_border_sum_us / perf_stage_samples) : 0U;
+                out->effects_us_avg =
+                    perf_stage_samples > 0U ? static_cast<uint32_t>(perf_effects_sum_us / perf_stage_samples) : 0U;
+                out->overlay_us_avg =
+                    perf_stage_samples > 0U ? static_cast<uint32_t>(perf_overlay_sum_us / perf_stage_samples) : 0U;
+                out->dirty_px_avg =
+                    perf_window_frames > 0U ? static_cast<uint32_t>(perf_dirty_px_sum / perf_window_frames) : 0U;
+                out->spi_bytes_per_s = static_cast<uint32_t>(perf_spi_bytes_sum);
+                out->cmd_rx_to_apply_us_avg =
+                    perf_cmd_latency_samples > 0U
+                        ? static_cast<uint32_t>(perf_cmd_latency_sum_us / perf_cmd_latency_samples)
+                        : 0U;
+                out->perf_sample_div = FACE_PERF_SAMPLE_DIV;
+                out->dirty_rect_enabled = FACE_DIRTY_RECT ? 1U : 0U;
+                out->afterglow_downsample = FACE_AFTERGLOW_DOWNSAMPLE;
+                g_face_perf.publish();
+
+                perf_frame_sum_us = 0;
+                perf_frame_max_us = 0;
+                perf_render_sum_us = 0;
+                perf_render_max_us = 0;
+                perf_eyes_sum_us = 0;
+                perf_mouth_sum_us = 0;
+                perf_border_sum_us = 0;
+                perf_effects_sum_us = 0;
+                perf_overlay_sum_us = 0;
+                perf_stage_samples = 0;
+                perf_dirty_px_sum = 0;
+                perf_spi_bytes_sum = 0;
+                perf_cmd_latency_sum_us = 0;
+                perf_cmd_latency_samples = 0;
+                perf_window_frames = 0;
+                next_perf_pub_ms = now_ms + 1000U;
+            }
         }
         if (FRAME_TIME_LOG_INTERVAL_MS > 0 && static_cast<int32_t>(now_ms - next_frame_log_ms) >= 0) {
             const uint32_t avg_us = (frame_count > 0) ? static_cast<uint32_t>(frame_accum_us / frame_count) : 0U;
@@ -897,6 +1212,7 @@ void face_ui_task(void* arg)
         }
 
         // 7. Sleep for frame period
+        frame_idx++;
         vTaskDelay(pdMS_TO_TICKS(1000 / ANIM_FPS));
     }
 }

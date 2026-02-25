@@ -45,8 +45,8 @@ The legacy abstract overlay renderer (`system_overlay_v2.cpp`) is retained but n
 
 ## Rendering Note
 
-- The face canvas uses explicit `LV_COLOR_FORMAT_RGB888` to match `lv_color_t` buffer layout.
-- This removed the earlier garbled text/color corruption seen with native-format assumptions.
+- The face canvas uses explicit `LV_COLOR_FORMAT_RGB565` to match the ILI9341 panel format.
+- This keeps the render path in native panel format and avoids extra color conversion work.
 
 ## Current Parity Gaps
 
@@ -67,10 +67,10 @@ Commands (host → face):
 
 Telemetry (face → host):
 
-- `0x90` `FACE_STATUS` (20 Hz)
+- `0x90` `FACE_STATUS` (20 Hz, v1=4B or v2=12B with command-causality fields)
 - `0x91` `TOUCH_EVENT` (on change)
 - `0x92` `BUTTON_EVENT` (on change)
-- `0x93` `HEARTBEAT` (1 Hz)
+- `0x93` `HEARTBEAT` (1 Hz, 68B base + optional perf tail)
 
 ## Build
 

@@ -100,10 +100,10 @@ Command channel semantics in `esp32-face`:
 
 | Telemetry    | ID   | Payload                                                            |
 | ------------ | ---- | ------------------------------------------------------------------ |
-| FACE_STATUS  | 0x90 | mood_id(u8) active_gesture(u8) system_mode(u8) flags(u8) — 4 bytes |
+| FACE_STATUS  | 0x90 | v1: mood_id(u8) active_gesture(u8) system_mode(u8) flags(u8) — 4 bytes; v2: adds cmd_seq_last_applied(u32) + t_state_applied_us(u32) — 12 bytes total |
 | TOUCH_EVENT  | 0x91 | event_type(u8) x(u16) y(u16) — 5 bytes                             |
 | BUTTON_EVENT | 0x92 | button_id(u8) event_type(u8) state(u8) reserved(u8) — 4 bytes      |
-| HEARTBEAT    | 0x93 | uptime + tx counters + USB diagnostics + ptt_listening             |
+| HEARTBEAT    | 0x93 | base payload: uptime + tx counters + USB diagnostics + ptt_listening (68 bytes) + optional perf tail (56 bytes, parsed by length) |
 
 `BUTTON_EVENT` IDs:
 - button `0`: PTT (tap-toggle)
@@ -116,6 +116,14 @@ UI note: face-v2 renders these as small bottom-corner icon controls; telemetry I
 - `1`: RELEASE
 - `2`: TOGGLE
 - `3`: CLICK
+
+`HEARTBEAT` optional perf tail fields (appended only when present):
+- `window_frames(u32)`
+- `frame_us_avg(u32)`, `frame_us_max(u32)`
+- `render_us_avg(u32)`, `render_us_max(u32)`
+- `eyes_us_avg(u32)`, `mouth_us_avg(u32)`, `border_us_avg(u32)`, `effects_us_avg(u32)`, `overlay_us_avg(u32)`
+- `dirty_px_avg(u32)`, `spi_bytes_per_s(u32)`, `cmd_rx_to_apply_us_avg(u32)`
+- `perf_sample_div(u16)`, `dirty_rect_enabled(u8)`, `afterglow_downsample(u8)`
 
 ### Mood IDs (canonical — C++ `face_state.h` is source of truth)
 

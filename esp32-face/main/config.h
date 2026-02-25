@@ -29,6 +29,8 @@ constexpr float MOUTH_CX = 160.0f;
 constexpr float MOUTH_CY = 185.0f;
 constexpr float MOUTH_HALF_W = 60.0f;
 constexpr float MOUTH_THICKNESS = 8.0f;
+constexpr float HEART_SOLID_SCALE = 1.0f; // sim parity: full-eye heart scale factor
+constexpr float HEART_PUPIL_SCALE = 2.5f; // sim parity: pupil heart scale factor
 
 // ---- Timing ----
 constexpr int   ANIM_FPS = 30;          // TFT refresh, 30 FPS is sufficient
@@ -57,6 +59,10 @@ constexpr bool SYSTEM_FX_GLITCH = true;
 
 // ---- Runtime diagnostics ----
 constexpr uint32_t FRAME_TIME_LOG_INTERVAL_MS = 5000;
+constexpr bool     FACE_PERF_TELEMETRY = true;
+constexpr uint8_t  FACE_PERF_SAMPLE_DIV = 8;
+constexpr bool     FACE_DIRTY_RECT = true;
+constexpr uint8_t  FACE_AFTERGLOW_DOWNSAMPLE = 2;
 
 // ---- Telemetry ----
 constexpr int TELEMETRY_HZ = 20;

@@ -9,6 +9,8 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 
+#include <cstring>
+
 static const char*        TAG = "telemetry";
 static constexpr int64_t  HEARTBEAT_PERIOD_US = 1000 * 1000;
 static constexpr uint32_t TELEMETRY_LOOP_MS = 10;
@@ -145,9 +147,37 @@ void telemetry_task(void* arg)
             hb.ptt_listening = g_ptt_listening.load(std::memory_order_relaxed) ? 1 : 0;
             hb.reserved = 0;
 
-            const size_t hlen =
-                packet_build_v2(static_cast<uint8_t>(FaceTelId::HEARTBEAT), next_seq(), t_src,
-                                reinterpret_cast<const uint8_t*>(&hb), sizeof(hb), tx_buf, sizeof(tx_buf));
+            uint8_t payload[sizeof(FaceHeartbeatPayload) + sizeof(FaceHeartbeatPerfTailPayload)] = {};
+            memcpy(payload, &hb, sizeof(hb));
+            size_t payload_len = sizeof(hb);
+
+            if (FACE_PERF_TELEMETRY) {
+                const FacePerfSnapshot* perf = g_face_perf.read();
+                if (perf && perf->window_frames > 0) {
+                    FaceHeartbeatPerfTailPayload tail = {};
+                    tail.window_frames = perf->window_frames;
+                    tail.frame_us_avg = perf->frame_us_avg;
+                    tail.frame_us_max = perf->frame_us_max;
+                    tail.render_us_avg = perf->render_us_avg;
+                    tail.render_us_max = perf->render_us_max;
+                    tail.eyes_us_avg = perf->eyes_us_avg;
+                    tail.mouth_us_avg = perf->mouth_us_avg;
+                    tail.border_us_avg = perf->border_us_avg;
+                    tail.effects_us_avg = perf->effects_us_avg;
+                    tail.overlay_us_avg = perf->overlay_us_avg;
+                    tail.dirty_px_avg = perf->dirty_px_avg;
+                    tail.spi_bytes_per_s = perf->spi_bytes_per_s;
+                    tail.cmd_rx_to_apply_us_avg = perf->cmd_rx_to_apply_us_avg;
+                    tail.perf_sample_div = perf->perf_sample_div;
+                    tail.dirty_rect_enabled = perf->dirty_rect_enabled;
+                    tail.afterglow_downsample = perf->afterglow_downsample;
+                    memcpy(payload + payload_len, &tail, sizeof(tail));
+                    payload_len += sizeof(tail);
+                }
+            }
+
+            const size_t hlen = packet_build_v2(static_cast<uint8_t>(FaceTelId::HEARTBEAT), next_seq(), t_src, payload,
+                                                payload_len, tx_buf, sizeof(tx_buf));
             if (hlen > 0) {
                 usb_cdc_write(tx_buf, hlen);
                 last_heartbeat_us = now_us;

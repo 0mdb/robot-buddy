@@ -490,7 +490,39 @@ struct __attribute__((packed)) FaceStatusPayloadV2 {
 };
 ```
 
-### 5.4 Command Causality
+Pi parser uses payload length to distinguish v1 (4B) from v2 (12B).
+
+### 5.4 Face HEARTBEAT Optional Perf Tail (type `0x93`)
+
+Base heartbeat payload remains 68 bytes. When present, an optional perf tail is
+appended and parsed by payload length:
+
+```c
+struct __attribute__((packed)) FaceHeartbeatPerfTailPayload {
+    uint32_t window_frames;
+    uint32_t frame_us_avg;
+    uint32_t frame_us_max;
+    uint32_t render_us_avg;
+    uint32_t render_us_max;
+    uint32_t eyes_us_avg;
+    uint32_t mouth_us_avg;
+    uint32_t border_us_avg;
+    uint32_t effects_us_avg;
+    uint32_t overlay_us_avg;
+    uint32_t dirty_px_avg;
+    uint32_t spi_bytes_per_s;
+    uint32_t cmd_rx_to_apply_us_avg;
+    uint16_t perf_sample_div;
+    uint8_t  dirty_rect_enabled;
+    uint8_t  afterglow_downsample;
+};
+```
+
+Total heartbeat sizes:
+- base only: 68 bytes
+- base + perf tail: 124 bytes
+
+### 5.5 Command Causality
 
 When Core sends a command (e.g., SET_TWIST), it records:
 - `cmd_seq` — the v2 `u32` sequence number
@@ -500,7 +532,7 @@ MCU echoes `cmd_seq_last_applied` + `t_cmd_applied_us` in every telemetry packet
 - **Command latency:** `t_applied_us * 1000 + offset_ns - t_cmd_tx_ns`
 - **Round-trip:** `t_pi_rx_ns - t_cmd_tx_ns`
 
-### 5.5 Type ID Registry
+### 5.6 Type ID Registry
 
 | ID | Direction | Name | Payload |
 |----|-----------|------|---------|
@@ -523,9 +555,9 @@ MCU echoes `cmd_seq_last_applied` + `t_cmd_applied_us` in every telemetry packet
 | `0x90` | Face → Pi | FACE_STATUS | v1: 4B, v2: 12B |
 | `0x91` | Face → Pi | TOUCH_EVENT | `{event_type:u8, x:u16, y:u16}` |
 | `0x92` | Face → Pi | BUTTON_EVENT | `{button_id:u8, event_type:u8, state:u8, reserved:u8}` |
-| `0x93` | Face → Pi | HEARTBEAT | 68B (uptime + counters + USB diagnostics) |
+| `0x93` | Face → Pi | HEARTBEAT | 68B base, optional +56B perf tail |
 
-### 5.6 Enums (Canonical, Unchanged)
+### 5.7 Enums (Canonical, Unchanged)
 
 **Fault Flags (u16 bitfield):**
 | Bit | Name | Description |

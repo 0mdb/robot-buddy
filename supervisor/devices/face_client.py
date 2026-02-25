@@ -40,6 +40,8 @@ class FaceTelemetry:
     active_gesture: int = 0xFF
     system_mode: int = 0
     flags: int = 0
+    cmd_seq_last_applied: int = 0
+    t_state_applied_us: int = 0
     rx_mono_ms: float = 0.0
     seq: int = 0
 
@@ -93,6 +95,22 @@ class HeartbeatTelemetry:
     usb_dtr: bool = False
     usb_rts: bool = False
     ptt_listening: bool = False
+    perf_window_frames: int = 0
+    perf_frame_us_avg: int = 0
+    perf_frame_us_max: int = 0
+    perf_render_us_avg: int = 0
+    perf_render_us_max: int = 0
+    perf_eyes_us_avg: int = 0
+    perf_mouth_us_avg: int = 0
+    perf_border_us_avg: int = 0
+    perf_effects_us_avg: int = 0
+    perf_overlay_us_avg: int = 0
+    perf_dirty_px_avg: int = 0
+    perf_spi_bytes_per_s: int = 0
+    perf_cmd_rx_to_apply_us_avg: int = 0
+    perf_sample_div: int = 0
+    perf_dirty_rect_enabled: bool = False
+    perf_afterglow_downsample: int = 0
     seq: int = 0
     rx_mono_ms: float = 0.0
 
@@ -305,6 +323,8 @@ class FaceClient:
             "last_status_seq": self.telemetry.seq,
             "last_status_age_ms": round(age_ms, 1),
             "last_status_flags": self.telemetry.flags,
+            "last_status_cmd_seq_last_applied": self.telemetry.cmd_seq_last_applied,
+            "last_status_t_state_applied_us": self.telemetry.t_state_applied_us,
             "last_talking_energy_cmd": self.last_talking_energy_cmd,
             "last_render_flags_cmd": self.last_flags_cmd,
             "last_button": self._button_snapshot(),
@@ -338,6 +358,8 @@ class FaceClient:
             t.active_gesture = status.active_gesture
             t.system_mode = status.system_mode
             t.flags = status.flags
+            t.cmd_seq_last_applied = status.cmd_seq_last_applied or 0
+            t.t_state_applied_us = status.t_state_applied_us or 0
             t.rx_mono_ms = (
                 pkt.t_pi_rx_ns / 1_000_000.0
                 if pkt.t_pi_rx_ns
@@ -414,6 +436,22 @@ class FaceClient:
                 usb_dtr=bool(hb.usb_dtr),
                 usb_rts=bool(hb.usb_rts),
                 ptt_listening=bool(hb.ptt_listening),
+                perf_window_frames=hb.perf_window_frames,
+                perf_frame_us_avg=hb.perf_frame_us_avg,
+                perf_frame_us_max=hb.perf_frame_us_max,
+                perf_render_us_avg=hb.perf_render_us_avg,
+                perf_render_us_max=hb.perf_render_us_max,
+                perf_eyes_us_avg=hb.perf_eyes_us_avg,
+                perf_mouth_us_avg=hb.perf_mouth_us_avg,
+                perf_border_us_avg=hb.perf_border_us_avg,
+                perf_effects_us_avg=hb.perf_effects_us_avg,
+                perf_overlay_us_avg=hb.perf_overlay_us_avg,
+                perf_dirty_px_avg=hb.perf_dirty_px_avg,
+                perf_spi_bytes_per_s=hb.perf_spi_bytes_per_s,
+                perf_cmd_rx_to_apply_us_avg=hb.perf_cmd_rx_to_apply_us_avg,
+                perf_sample_div=hb.perf_sample_div,
+                perf_dirty_rect_enabled=bool(hb.perf_dirty_rect_enabled),
+                perf_afterglow_downsample=hb.perf_afterglow_downsample,
                 seq=pkt.seq,
                 rx_mono_ms=pkt.t_pi_rx_ns / 1_000_000.0
                 if pkt.t_pi_rx_ns
@@ -461,6 +499,24 @@ class FaceClient:
                 "rts": hb.usb_rts,
             },
             "ptt_listening": hb.ptt_listening,
+            "perf": {
+                "window_frames": hb.perf_window_frames,
+                "frame_us_avg": hb.perf_frame_us_avg,
+                "frame_us_max": hb.perf_frame_us_max,
+                "render_us_avg": hb.perf_render_us_avg,
+                "render_us_max": hb.perf_render_us_max,
+                "eyes_us_avg": hb.perf_eyes_us_avg,
+                "mouth_us_avg": hb.perf_mouth_us_avg,
+                "border_us_avg": hb.perf_border_us_avg,
+                "effects_us_avg": hb.perf_effects_us_avg,
+                "overlay_us_avg": hb.perf_overlay_us_avg,
+                "dirty_px_avg": hb.perf_dirty_px_avg,
+                "spi_bytes_per_s": hb.perf_spi_bytes_per_s,
+                "cmd_rx_to_apply_us_avg": hb.perf_cmd_rx_to_apply_us_avg,
+                "sample_div": hb.perf_sample_div,
+                "dirty_rect_enabled": hb.perf_dirty_rect_enabled,
+                "afterglow_downsample": hb.perf_afterglow_downsample,
+            },
             "seq": hb.seq,
             "rx_mono_ms": round(hb.rx_mono_ms, 1),
         }

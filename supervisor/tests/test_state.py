@@ -39,6 +39,9 @@ class TestRobotState:
         d = s.to_dict()
         assert "mode" in d
         assert "fault_flags" in d
+        assert "face_cmd_seq_last_applied" in d
+        assert "face_perf" in d
+        assert "frame_us_avg" in d["face_perf"]
         assert "clock_sync" in d
         assert "reflex" in d["clock_sync"]
         assert "face" in d["clock_sync"]

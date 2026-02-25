@@ -159,6 +159,26 @@ struct __attribute__((packed)) FaceHeartbeatPayload {
     uint8_t  reserved;
 };
 
+// Optional HEARTBEAT tail (appended by payload length when perf telemetry is enabled).
+struct __attribute__((packed)) FaceHeartbeatPerfTailPayload {
+    uint32_t window_frames;
+    uint32_t frame_us_avg;
+    uint32_t frame_us_max;
+    uint32_t render_us_avg;
+    uint32_t render_us_max;
+    uint32_t eyes_us_avg;
+    uint32_t mouth_us_avg;
+    uint32_t border_us_avg;
+    uint32_t effects_us_avg;
+    uint32_t overlay_us_avg;
+    uint32_t dirty_px_avg;
+    uint32_t spi_bytes_per_s;
+    uint32_t cmd_rx_to_apply_us_avg;
+    uint16_t perf_sample_div;
+    uint8_t  dirty_rect_enabled;
+    uint8_t  afterglow_downsample;
+};
+
 // ---- v2 extended payloads ----
 
 struct __attribute__((packed)) FaceStatusPayloadV2 {

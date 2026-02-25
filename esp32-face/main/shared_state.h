@@ -132,9 +132,51 @@ struct ButtonEventBuffer {
     }
 };
 
+// ---- Face perf snapshot buffer (writer: face_ui_task, reader: telemetry_task) ----
+
+struct FacePerfSnapshot {
+    uint32_t window_frames = 0;
+    uint32_t frame_us_avg = 0;
+    uint32_t frame_us_max = 0;
+    uint32_t render_us_avg = 0;
+    uint32_t render_us_max = 0;
+    uint32_t eyes_us_avg = 0;
+    uint32_t mouth_us_avg = 0;
+    uint32_t border_us_avg = 0;
+    uint32_t effects_us_avg = 0;
+    uint32_t overlay_us_avg = 0;
+    uint32_t dirty_px_avg = 0;
+    uint32_t spi_bytes_per_s = 0;
+    uint32_t cmd_rx_to_apply_us_avg = 0;
+    uint16_t perf_sample_div = 0;
+    uint8_t  dirty_rect_enabled = 0;
+    uint8_t  afterglow_downsample = 0;
+};
+
+struct FacePerfBuffer {
+    FacePerfSnapshot               buf[2]{};
+    std::atomic<FacePerfSnapshot*> current{&buf[0]};
+    uint8_t                        write_idx = 0;
+
+    FacePerfSnapshot* write_slot()
+    {
+        return &buf[write_idx];
+    }
+    void publish()
+    {
+        current.store(&buf[write_idx], std::memory_order_release);
+        write_idx ^= 1;
+    }
+    const FacePerfSnapshot* read() const
+    {
+        return current.load(std::memory_order_acquire);
+    }
+};
+
 // ---- Globals ----
 extern TouchBuffer       g_touch;
 extern ButtonEventBuffer g_button;
+extern FacePerfBuffer    g_face_perf;
 extern std::atomic<bool> g_touch_active;
 extern std::atomic<bool> g_talking_active;
 extern std::atomic<bool> g_ptt_listening;
