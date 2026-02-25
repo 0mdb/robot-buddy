@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { List, useListRef } from 'react-window'
+import { countVisiblePrepends, isAtPinnedEdge } from '../lib/liveListPinning'
 import { useLogStore } from '../lib/wsLogs'
 import styles from '../styles/global.module.css'
 import type { LogEntry } from '../types'
@@ -125,6 +126,7 @@ function LogRow({
 
 export default function LogsTab() {
   const entries = useLogStore((s) => s.entries)
+  const version = useLogStore((s) => s.version)
   const connected = useLogStore((s) => s.connected)
   const clearStore = useLogStore((s) => s.clear)
 
@@ -138,12 +140,13 @@ export default function LogsTab() {
 
   const listRef = useListRef(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const prevVersionRef = useRef(version)
 
-  const filtered = useMemo(() => {
-    const searchLower = search.toLowerCase()
-    return entries.filter((e) => {
+  const matchesEntry = useCallback(
+    (e: LogEntry): boolean => {
       const lvl = e.level.toUpperCase() as Level
       if (!enabledLevels.has(lvl)) return false
+      const searchLower = search.toLowerCase()
       if (
         search &&
         !e.msg.toLowerCase().includes(searchLower) &&
@@ -152,8 +155,30 @@ export default function LogsTab() {
         return false
       }
       return true
+    },
+    [enabledLevels, search],
+  )
+
+  const filtered = useMemo(() => entries.filter(matchesEntry), [entries, matchesEntry])
+
+  useLayoutEffect(() => {
+    const prevVersion = prevVersionRef.current
+    const versionDelta = version - prevVersion
+    prevVersionRef.current = version
+
+    const prependCount = countVisiblePrepends({
+      pinned,
+      newestFirst,
+      versionDelta,
+      entries,
+      matches: matchesEntry,
     })
-  }, [entries, enabledLevels, search])
+    if (prependCount <= 0) return
+
+    const el = listRef.current?.element
+    if (!el) return
+    el.scrollTop += prependCount * ROW_HEIGHT
+  }, [entries, listRef, matchesEntry, newestFirst, pinned, version])
 
   const displayed = useMemo(
     () => (newestFirst ? [...filtered].reverse() : filtered),
@@ -161,9 +186,12 @@ export default function LogsTab() {
   )
 
   useEffect(() => {
-    if (pinned && !newestFirst && listRef.current && displayed.length > 0) {
-      listRef.current.scrollToRow({ index: displayed.length - 1, align: 'end' })
+    if (!pinned || !listRef.current || displayed.length === 0) return
+    if (newestFirst) {
+      listRef.current.scrollToRow({ index: 0, align: 'start' })
+      return
     }
+    listRef.current.scrollToRow({ index: displayed.length - 1, align: 'end' })
   }, [displayed.length, pinned, newestFirst, listRef])
 
   const handleRowsRendered = useCallback(
@@ -175,13 +203,28 @@ export default function LogsTab() {
       if (!pinned) return
       const el = listRef.current?.element
       if (!el) return
-      const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - ROW_HEIGHT
-      if (!atBottom) {
+      const atPinned = isAtPinnedEdge({
+        scrollTop: el.scrollTop,
+        clientHeight: el.clientHeight,
+        scrollHeight: el.scrollHeight,
+        rowHeight: ROW_HEIGHT,
+        newestFirst,
+      })
+      if (!atPinned) {
         setPinned(false)
       }
     },
-    [pinned, listRef],
+    [newestFirst, pinned, listRef],
   )
+
+  const snapToPinnedEdge = useCallback(() => {
+    if (!listRef.current || displayed.length === 0) return
+    if (newestFirst) {
+      listRef.current.scrollToRow({ index: 0, align: 'start' })
+      return
+    }
+    listRef.current.scrollToRow({ index: displayed.length - 1, align: 'end' })
+  }, [displayed.length, listRef, newestFirst])
 
   const toggleLevel = (lvl: Level) => {
     setEnabledLevels((prev) => {
@@ -303,9 +346,11 @@ export default function LogsTab() {
         <button
           type="button"
           onClick={() => {
-            setPinned((p) => !p)
-            if (!pinned && listRef.current && displayed.length > 0)
-              listRef.current.scrollToRow({ index: displayed.length - 1, align: 'end' })
+            setPinned((prev) => {
+              const next = !prev
+              if (next) snapToPinnedEdge()
+              return next
+            })
           }}
           style={{
             padding: '3px 10px',

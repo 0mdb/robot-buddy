@@ -10,6 +10,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import sys
 import time
 from dataclasses import dataclass, field
@@ -22,6 +23,30 @@ from supervisor.messages.types import (
 )
 
 log = logging.getLogger(__name__)
+
+_WORKER_STDERR_LEVEL_RE = re.compile(
+    r"^(DEBUG|INFO|WARNING|ERROR|CRITICAL)\b(?:\s+|$)(.*)"
+)
+
+
+def _parse_worker_stderr_level(line: str) -> tuple[int, str]:
+    """Extract Python log level from worker stderr formatter prefix."""
+    match = _WORKER_STDERR_LEVEL_RE.match(line)
+    if not match:
+        return logging.INFO, line
+    level_name, message = match.groups()
+    level = getattr(logging, level_name, logging.INFO)
+    return level, message.lstrip() if message else ""
+
+
+def _log_worker_stderr_line(worker_name: str, line: str) -> None:
+    """Forward one worker stderr line using parsed severity."""
+    level, message = _parse_worker_stderr_level(line)
+    if message:
+        log.log(level, "[%s] %s", worker_name, message)
+    else:
+        log.log(level, "[%s]", worker_name)
+
 
 # Type for the event callback: async fn(worker_name, envelope)
 EventCallback = Callable[[str, Envelope], Coroutine[Any, Any, None]]
@@ -259,7 +284,8 @@ class WorkerManager:
                 line = await proc.stderr.readline()
                 if not line:
                     break
-                log.info("[%s] %s", info.name, line.decode(errors="replace").rstrip())
+                decoded = line.decode(errors="replace").rstrip()
+                _log_worker_stderr_line(info.name, decoded)
         except (asyncio.CancelledError, Exception):
             pass
 

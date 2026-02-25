@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { List, useListRef } from 'react-window'
+import { countVisiblePrepends, isAtPinnedEdge } from '../lib/liveListPinning'
 import type { CapturedPacket } from '../lib/wsProtocol'
 import { useProtocolStore } from '../lib/wsProtocol'
 import styles from '../styles/global.module.css'
@@ -154,6 +155,7 @@ function ProtocolRow({
 
 export default function ProtocolTab() {
   const packets = useProtocolStore((s) => s.packets)
+  const version = useProtocolStore((s) => s.version)
   const connected = useProtocolStore((s) => s.connected)
   const paused = useProtocolStore((s) => s.paused)
   const clearStore = useProtocolStore((s) => s.clear)
@@ -171,15 +173,16 @@ export default function ProtocolTab() {
 
   const listRef = useListRef(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const prevVersionRef = useRef(version)
 
   // Base timestamp for relative time display (anchored to first packet)
   const firstTs = packets.length > 0 ? packets[0].ts_mono_ms : 0
   const baseTs = useMemo(() => firstTs, [firstTs])
 
-  const filtered = useMemo(() => {
-    const searchLower = search.toLowerCase()
-    const typeFilterUpper = typeFilter.toUpperCase()
-    return packets.filter((p) => {
+  const matchesPacket = useCallback(
+    (p: CapturedPacket): boolean => {
+      const typeFilterUpper = typeFilter.toUpperCase()
+      const searchLower = search.toLowerCase()
       if (!enabledDirs.has(p.direction as Direction)) return false
       if (!enabledDevices.has(p.device as Device)) return false
       if (typeFilterUpper && !p.type_name.toUpperCase().includes(typeFilterUpper)) return false
@@ -190,8 +193,30 @@ export default function ProtocolTab() {
         }
       }
       return true
+    },
+    [enabledDevices, enabledDirs, search, typeFilter],
+  )
+
+  const filtered = useMemo(() => packets.filter(matchesPacket), [matchesPacket, packets])
+
+  useLayoutEffect(() => {
+    const prevVersion = prevVersionRef.current
+    const versionDelta = version - prevVersion
+    prevVersionRef.current = version
+
+    const prependCount = countVisiblePrepends({
+      pinned,
+      newestFirst,
+      versionDelta,
+      entries: packets,
+      matches: matchesPacket,
     })
-  }, [packets, enabledDirs, enabledDevices, typeFilter, search])
+    if (prependCount <= 0) return
+
+    const el = listRef.current?.element
+    if (!el) return
+    el.scrollTop += prependCount * ROW_HEIGHT
+  }, [listRef, matchesPacket, newestFirst, packets, pinned, version])
 
   const displayed = useMemo(
     () => (newestFirst ? [...filtered].reverse() : filtered),
@@ -199,9 +224,12 @@ export default function ProtocolTab() {
   )
 
   useEffect(() => {
-    if (pinned && !newestFirst && listRef.current && displayed.length > 0) {
-      listRef.current.scrollToRow({ index: displayed.length - 1, align: 'end' })
+    if (!pinned || !listRef.current || displayed.length === 0) return
+    if (newestFirst) {
+      listRef.current.scrollToRow({ index: 0, align: 'start' })
+      return
     }
+    listRef.current.scrollToRow({ index: displayed.length - 1, align: 'end' })
   }, [displayed.length, pinned, newestFirst, listRef])
 
   const handleRowsRendered = useCallback(
@@ -212,13 +240,28 @@ export default function ProtocolTab() {
       if (!pinned) return
       const el = listRef.current?.element
       if (!el) return
-      const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - ROW_HEIGHT
-      if (!atBottom) {
+      const atPinned = isAtPinnedEdge({
+        scrollTop: el.scrollTop,
+        clientHeight: el.clientHeight,
+        scrollHeight: el.scrollHeight,
+        rowHeight: ROW_HEIGHT,
+        newestFirst,
+      })
+      if (!atPinned) {
         setPinned(false)
       }
     },
-    [pinned, listRef],
+    [newestFirst, pinned, listRef],
   )
+
+  const snapToPinnedEdge = useCallback(() => {
+    if (!listRef.current || displayed.length === 0) return
+    if (newestFirst) {
+      listRef.current.scrollToRow({ index: 0, align: 'start' })
+      return
+    }
+    listRef.current.scrollToRow({ index: displayed.length - 1, align: 'end' })
+  }, [displayed.length, listRef, newestFirst])
 
   const toggleDir = (d: Direction) => {
     setEnabledDirs((prev) => {
@@ -422,9 +465,11 @@ export default function ProtocolTab() {
         <button
           type="button"
           onClick={() => {
-            setPinned((p) => !p)
-            if (!pinned && listRef.current && displayed.length > 0)
-              listRef.current.scrollToRow({ index: displayed.length - 1, align: 'end' })
+            setPinned((prev) => {
+              const next = !prev
+              if (next) snapToPinnedEdge()
+              return next
+            })
           }}
           style={{
             padding: '3px 10px',

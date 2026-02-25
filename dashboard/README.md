@@ -30,7 +30,7 @@ Outputs to `../supervisor/static/`. The supervisor serves it automatically — n
 | **Drive** | Joystick (touch + mouse), mode buttons (IDLE/TELEOP/WANDER), E-STOP, sparkline gauge cards (speeds, gyro, range, battery, tick dt), fault badges, speed caps, video feed toggle |
 | **Telemetry** | 4 uPlot time-series charts (wheel speeds, rotation, range, battery) with adjustable window (30s/60s/120s) and pause/resume |
 | **Devices** | Reflex/Face MCU cards (packet counts, seq, age), clock sync (offset, RTT, drift), transport stats. Polled at 2s via `/debug/devices` + `/debug/clocks` |
-| **Logs** | Live log stream via `WS /ws/logs`. Virtualized list (react-window, 5000 entries). Level filter buttons, text search, pin-to-bottom auto-scroll, click-to-expand detail panel |
+| **Logs** | Live log stream via `WS /ws/logs`. Virtualized list (react-window, 5000 entries). Level filter buttons, text search, edge-aware pin auto-scroll (top in `Newest`, bottom in `Oldest`), click-to-expand detail panel |
 | **Calibration** | PID tuner (kV, kS, Kp, Ki, K_yaw + rate limits), Vision/HSV sliders, Range thresholds, IMU panel. Debounced 150ms with Apply for batch updates |
 | **Parameters** | AG Grid table of all params. Grouped by owner, quick filter search, inline edit with debounced POST, safety badges |
 | **Face** | Mood/intensity/gaze/brightness, 13 gesture buttons, system mode, talking + energy, 7 flag toggles, manual lock |
