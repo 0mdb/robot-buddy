@@ -36,6 +36,7 @@ from supervisor.messages.types import (
     AI_CONVERSATION_ASSISTANT_TEXT,
     AI_CONVERSATION_DONE,
     AI_CONVERSATION_EMOTION,
+    AI_CONVERSATION_ERROR,
     AI_CONVERSATION_FIRST_AUDIO,
     AI_CONVERSATION_GESTURE,
     AI_CONVERSATION_TRANSCRIPTION,
@@ -161,6 +162,10 @@ class AIWorker(BaseWorker):
                 self._session_id = session_id
                 self._first_audio_emitted = False
                 asyncio.create_task(self._send_text(text))
+            else:
+                log.warning(
+                    "AI_CMD_SEND_TEXT dropped: text=%r session_id=%r", text, session_id
+                )
 
         elif t == AI_CMD_SEND_AUDIO:
             # Mode B: audio relay from Core
@@ -319,6 +324,7 @@ class AIWorker(BaseWorker):
         except Exception as e:
             self._set_state("error", str(e))
             log.warning("conversation connect failed: %s", e)
+            self.send(AI_CONVERSATION_ERROR, {"error": f"ws_connect_failed: {e}"})
 
     async def _end_utterance(self) -> None:
         """Signal end of user speech to server."""
@@ -334,7 +340,9 @@ class AIWorker(BaseWorker):
                 break
             await asyncio.sleep(0.1)
         if not self._ws_connected:
+            log.warning("send_text failed: ws not connected after 5s")
             self._set_state("error", "ws_connect_timeout_for_text")
+            self.send(AI_CONVERSATION_ERROR, {"error": "ws_connect_timeout"})
             return
         self._set_state("thinking", "text_sent")
         self.send(AI_CONVERSATION_USER_TEXT, {"text": text})
@@ -517,8 +525,9 @@ class AIWorker(BaseWorker):
         if self._ws and self._ws_connected:
             try:
                 await self._ws.send(json.dumps(msg))
-            except Exception:
-                pass
+            except Exception as e:
+                log.warning("ws_send failed (type=%s): %s", msg.get("type"), e)
+                self._ws_connected = False
 
     async def _close_ws(self) -> None:
         """Close the WebSocket connection."""
