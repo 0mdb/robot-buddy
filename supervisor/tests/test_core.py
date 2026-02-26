@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -392,6 +393,89 @@ class TestEventRouter:
             ),
         )
         assert world.both_audio_links_up
+
+    async def test_ai_conversation_error_logged(self, caplog):
+        router, _, _ = self._make_router()
+        with caplog.at_level(logging.ERROR, logger="supervisor.core.event_router"):
+            await router.route(
+                "ai",
+                Envelope(
+                    type="ai.conversation.error",
+                    src="ai",
+                    seq=1,
+                    t_ns=0,
+                    payload={"error": "ws_connect_failed"},
+                ),
+            )
+
+        assert any(
+            r.levelno == logging.ERROR and "ws_connect_failed" in r.getMessage()
+            for r in caplog.records
+        )
+
+    async def test_tts_event_error_logged_and_state_reset(self, caplog):
+        router, world, _ = self._make_router()
+        world.speaking = True
+        world.current_energy = 123
+
+        with caplog.at_level(logging.ERROR, logger="supervisor.core.event_router"):
+            await router.route(
+                "tts",
+                Envelope(
+                    type="tts.event.error",
+                    src="tts",
+                    seq=1,
+                    t_ns=0,
+                    payload={"error": "TTS HTTP 500"},
+                ),
+            )
+
+        assert world.speaking is False
+        assert world.current_energy == 0
+        assert any(
+            r.levelno == logging.ERROR and "TTS HTTP 500" in r.getMessage()
+            for r in caplog.records
+        )
+
+    async def test_vision_lifecycle_error_logged(self, caplog):
+        router, _, _ = self._make_router()
+        with caplog.at_level(logging.ERROR, logger="supervisor.core.event_router"):
+            await router.route(
+                "vision",
+                Envelope(
+                    type="vision.lifecycle.error",
+                    src="vision",
+                    seq=1,
+                    t_ns=0,
+                    payload={"error": "camera disconnected"},
+                ),
+            )
+
+        assert any(
+            r.levelno == logging.ERROR and "camera disconnected" in r.getMessage()
+            for r in caplog.records
+        )
+
+    async def test_unknown_lifecycle_error_logged_by_generic_handler(self, caplog):
+        router, _, _ = self._make_router()
+        with caplog.at_level(logging.ERROR, logger="supervisor.core.event_router"):
+            await router.route(
+                "mystery",
+                Envelope(
+                    type="mystery.lifecycle.error",
+                    src="mystery",
+                    seq=1,
+                    t_ns=0,
+                    payload={"error": "unexpected boom"},
+                ),
+            )
+
+        assert any(
+            r.levelno == logging.ERROR
+            and "mystery.lifecycle.error" in r.getMessage()
+            and "unexpected boom" in r.getMessage()
+            for r in caplog.records
+        )
 
 
 # ── Behavior Engine ──────────────────────────────────────────────

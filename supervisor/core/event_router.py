@@ -17,6 +17,7 @@ from supervisor.core.action_scheduler import (
 from supervisor.core.state import WorldState
 from supervisor.messages.envelope import Envelope
 from supervisor.messages.types import (
+    AI_CONVERSATION_ERROR,
     AI_CONVERSATION_DONE,
     AI_CONVERSATION_EMOTION,
     AI_CONVERSATION_GESTURE,
@@ -28,6 +29,7 @@ from supervisor.messages.types import (
     AI_STATUS_HEALTH,
     EAR_EVENT_END_OF_UTTERANCE,
     EAR_EVENT_WAKE_WORD,
+    EAR_LIFECYCLE_ERROR,
     EAR_STATUS_HEALTH,
     SYSTEM_AUDIO_LINK_DOWN,
     SYSTEM_AUDIO_LINK_UP,
@@ -43,6 +45,7 @@ from supervisor.messages.types import (
     PERSONALITY_STATUS_HEALTH,
     VISION_DETECTION_SNAPSHOT,
     VISION_FRAME_JPEG,
+    VISION_LIFECYCLE_ERROR,
     VISION_STATUS_HEALTH,
 )
 
@@ -110,6 +113,11 @@ class EventRouter:
         elif t == TTS_EVENT_ERROR:
             self._world.speaking = False
             self._world.current_energy = 0
+            log.error(
+                "tts error (from %s): %s",
+                worker_name,
+                p.get("error", "unknown"),
+            )
 
         elif t == TTS_EVENT_MIC_DROPPED:
             pass  # logged but no state update needed
@@ -134,6 +142,13 @@ class EventRouter:
         elif t == AI_CONVERSATION_DONE:
             pass  # handled by tick_loop
 
+        elif t == AI_CONVERSATION_ERROR:
+            log.error(
+                "ai conversation error (from %s): %s",
+                worker_name,
+                p.get("error", "unknown"),
+            )
+
         elif t == AI_STATE_CHANGED:
             self._world.ai_state = str(p.get("state", "idle"))
 
@@ -148,6 +163,18 @@ class EventRouter:
 
         elif t == AI_LIFECYCLE_ERROR:
             self._world.planner_connected = False
+            log.error(
+                "ai lifecycle error (from %s): %s",
+                worker_name,
+                p.get("error", "unknown"),
+            )
+
+        elif t == VISION_LIFECYCLE_ERROR:
+            log.error(
+                "vision lifecycle error (from %s): %s",
+                worker_name,
+                p.get("error", "unknown"),
+            )
 
         # ── Ear (wake word + VAD) ─────────────────────────────────
         elif t == EAR_EVENT_WAKE_WORD:
@@ -159,6 +186,21 @@ class EventRouter:
         elif t == EAR_STATUS_HEALTH:
             self._world.worker_last_heartbeat_ms["ear"] = now_ms
             self._world.worker_alive["ear"] = True
+
+        elif t == EAR_LIFECYCLE_ERROR:
+            log.error(
+                "ear lifecycle error (from %s): %s",
+                worker_name,
+                p.get("error", "unknown"),
+            )
+
+        elif t.endswith(".lifecycle.error"):
+            log.error(
+                "%s (from %s): %s",
+                t,
+                worker_name,
+                p.get("error", "unknown"),
+            )
 
         # ── System audio link ────────────────────────────────────
         elif t == SYSTEM_AUDIO_LINK_UP:

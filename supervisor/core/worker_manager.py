@@ -27,6 +27,9 @@ log = logging.getLogger(__name__)
 _WORKER_STDERR_LEVEL_RE = re.compile(
     r"^(DEBUG|INFO|WARNING|ERROR|CRITICAL)\b(?:\s+|$)(.*)"
 )
+_TRACEBACK_EXCEPTION_RE = re.compile(
+    r"^(?:[A-Za-z_][A-Za-z0-9_]*)(?:\.[A-Za-z_][A-Za-z0-9_]*)*(?:: .*)?$"
+)
 
 
 def _parse_worker_stderr_level(line: str) -> tuple[int, str]:
@@ -39,13 +42,68 @@ def _parse_worker_stderr_level(line: str) -> tuple[int, str]:
     return level, message.lstrip() if message else ""
 
 
+def _is_traceback_continuation(line: str, traceback_active: bool) -> bool:
+    """Return True if this line is part of a Python traceback block."""
+    stripped = line.lstrip()
+    if stripped.startswith("Traceback (most recent call last):"):
+        return True
+    if stripped.startswith('File "') and ", line " in stripped:
+        return True
+    if stripped.startswith("^"):
+        return True
+    if stripped.startswith("During handling of the above exception"):
+        return True
+    if stripped.startswith("The above exception was the direct cause"):
+        return True
+
+    if not traceback_active:
+        return False
+
+    if line.startswith((" ", "\t")):
+        return True
+    return bool(_TRACEBACK_EXCEPTION_RE.match(stripped))
+
+
 def _log_worker_stderr_line(worker_name: str, line: str) -> None:
     """Forward one worker stderr line using parsed severity."""
-    level, message = _parse_worker_stderr_level(line)
+    _log_worker_stderr_line_with_context(worker_name, line)
+
+
+def _log_worker_stderr_line_with_context(
+    worker_name: str,
+    line: str,
+    *,
+    inherited_level: int | None = None,
+    traceback_active: bool = False,
+) -> tuple[int | None, bool]:
+    """Forward one worker stderr line with traceback-aware severity inheritance."""
+    if not line.strip():
+        # Blank separator resets traceback context.
+        return None, False
+
+    match = _WORKER_STDERR_LEVEL_RE.match(line)
+    if match:
+        level, message = _parse_worker_stderr_level(line)
+        next_level = level
+        next_traceback_active = False
+    elif inherited_level is not None and _is_traceback_continuation(
+        line, traceback_active
+    ):
+        level = inherited_level
+        message = line
+        next_level = inherited_level
+        next_traceback_active = True
+    else:
+        level = logging.INFO
+        message = line
+        next_level = None
+        next_traceback_active = False
+
     if message:
         log.log(level, "[%s] %s", worker_name, message)
     else:
         log.log(level, "[%s]", worker_name)
+    return next_level, next_traceback_active
 
 
 # Type for the event callback: async fn(worker_name, envelope)
@@ -279,13 +337,22 @@ class WorkerManager:
         proc = info.process
         if not proc or not proc.stderr:
             return
+        inherited_level: int | None = None
+        traceback_active = False
         try:
             while True:
                 line = await proc.stderr.readline()
                 if not line:
                     break
                 decoded = line.decode(errors="replace").rstrip()
-                _log_worker_stderr_line(info.name, decoded)
+                inherited_level, traceback_active = (
+                    _log_worker_stderr_line_with_context(
+                        info.name,
+                        decoded,
+                        inherited_level=inherited_level,
+                        traceback_active=traceback_active,
+                    )
+                )
         except (asyncio.CancelledError, Exception):
             pass
 
