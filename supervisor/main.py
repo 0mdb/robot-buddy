@@ -292,8 +292,12 @@ async def async_main(args: argparse.Namespace) -> None:
                 "mic_socket_path": workers.mic_socket_path,
                 "wakeword_model_path": args.wakeword_model,
                 "wakeword_threshold": 0.5,
-                "vad_silence_ms": 1200,
-                "vad_min_speech_ms": 300,
+                # EoU tuning: Silero v5 on this mic often peaks above 0.5
+                # only briefly during short phrases, so the stricter
+                # defaults block end-of-utterance from firing at all.
+                "vad_silence_ms": 800,
+                "vad_min_speech_ms": 150,
+                "vad_speech_prob_threshold": 0.3,
             }
             await workers.send_to("ear", "ear.config.init", ear_init)
 

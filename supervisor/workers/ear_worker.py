@@ -70,8 +70,14 @@ class EarWorker(BaseWorker):
         self._mic_socket_path: str = ""
         self._wakeword_model_path: str = ""
         self._wakeword_threshold: float = 0.5
-        self._vad_silence_ms: int = 1200
-        self._vad_min_speech_ms: int = 300
+        # VAD end-of-utterance knobs. Empirically (2026-04-18 session),
+        # Silero v5 only spikes above 0.5 briefly for short/quick phrases,
+        # so a 0.5 prob gate + 300 ms min_speech blocks EoU from ever
+        # firing. Loosened defaults catch normal speech; override via
+        # EAR_CONFIG_INIT payload (see on_message EAR_CONFIG_INIT handler).
+        self._vad_silence_ms: int = 800
+        self._vad_min_speech_ms: int = 150
+        self._vad_speech_prob_threshold: float = 0.3
         self._configured = asyncio.Event()
 
         # State
@@ -271,8 +277,11 @@ class EarWorker(BaseWorker):
             self._mic_socket_path = str(p.get("mic_socket_path", ""))
             self._wakeword_model_path = str(p.get("wakeword_model_path", ""))
             self._wakeword_threshold = float(p.get("wakeword_threshold", 0.5))
-            self._vad_silence_ms = int(p.get("vad_silence_ms", 1200))
-            self._vad_min_speech_ms = int(p.get("vad_min_speech_ms", 300))
+            self._vad_silence_ms = int(p.get("vad_silence_ms", 800))
+            self._vad_min_speech_ms = int(p.get("vad_min_speech_ms", 150))
+            self._vad_speech_prob_threshold = float(
+                p.get("vad_speech_prob_threshold", 0.3)
+            )
             log.info(
                 "configured: mic=%s, ww_model=%s, threshold=%.2f",
                 self._mic_device,
@@ -627,7 +636,7 @@ class EarWorker(BaseWorker):
                 self._vad_c = ort_outputs[c_idx]
 
             now = time.monotonic()
-            is_speech = speech_prob > 0.5
+            is_speech = speech_prob > self._vad_speech_prob_threshold
 
             # Diagnostics: track max prob and peak sample amplitude per
             # window. amp=0 → VAD is receiving silence (input pipeline bug);
