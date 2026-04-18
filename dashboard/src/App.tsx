@@ -9,6 +9,7 @@ import { wsProtocolManager } from './lib/wsProtocol'
 import { useUiStore } from './stores/uiStore'
 import styles from './styles/global.module.css'
 import CalibrationTab from './tabs/CalibrationTab'
+import ConversationStudioTab from './tabs/ConversationStudioTab'
 import DevicesTab from './tabs/DevicesTab'
 import DriveTab from './tabs/DriveTab'
 import FaceTab from './tabs/FaceTab'
@@ -47,6 +48,8 @@ function TabContent() {
       return <ParamsTab />
     case 'face':
       return <FaceTab />
+    case 'studio':
+      return <ConversationStudioTab />
     case 'monitor':
       return <MonitorTab />
     default:
@@ -77,9 +80,9 @@ export default function App() {
     }
   }, [activeTab])
 
-  // Connect conversation WS when Face tab is active (pipeline timeline + studio)
+  // Connect conversation WS when Face tab or Conversation Studio is active
   useEffect(() => {
-    if (activeTab === 'face') {
+    if (activeTab === 'face' || activeTab === 'studio') {
       wsConversationManager.connect()
     } else {
       wsConversationManager.dispose()

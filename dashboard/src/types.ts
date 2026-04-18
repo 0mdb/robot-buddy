@@ -285,4 +285,5 @@ export type TabId =
   | 'calibration'
   | 'params'
   | 'face'
+  | 'studio'
   | 'monitor'

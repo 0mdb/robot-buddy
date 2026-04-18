@@ -103,6 +103,7 @@ export const TABS: { id: TabId; label: string }[] = [
   { id: 'calibration', label: 'Calibration' },
   { id: 'params', label: 'Parameters' },
   { id: 'face', label: 'Tuning' },
+  { id: 'studio', label: 'Conversation' },
   { id: 'monitor', label: 'Monitor' },
 ]
 
