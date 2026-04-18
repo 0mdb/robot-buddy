@@ -105,6 +105,7 @@ class EarWorker(BaseWorker):
         # VAD diagnostics — periodic dump of recent max prob while listening.
         self._vad_diag_max_prob: float = 0.0
         self._vad_diag_max_amp: float = 0.0
+        self._vad_diag_max_amp_oww: float = 0.0
         self._vad_diag_next_log_mono: float = 0.0
 
         # Wake word timing
@@ -301,6 +302,7 @@ class EarWorker(BaseWorker):
         self._reset_vad_state()
         self._vad_diag_max_prob = 0.0
         self._vad_diag_max_amp = 0.0
+        self._vad_diag_max_amp_oww = 0.0
         self._vad_diag_next_log_mono = time.monotonic() + 1.5
         # Connect mic socket if not yet connected
         if not self._mic_sock and self._mic_socket_path:
@@ -478,6 +480,15 @@ class EarWorker(BaseWorker):
 
             # OWW expects int16 samples
             samples = np.frombuffer(pcm_80ms, dtype=np.int16)
+
+            # Diagnostic: track peak amplitude on the OWW path for direct
+            # comparison with the VAD path, since both should see the same
+            # mic stream.
+            if samples.size:
+                oww_peak = float(np.abs(samples).max()) / 32768.0
+                if oww_peak > self._vad_diag_max_amp_oww:
+                    self._vad_diag_max_amp_oww = oww_peak
+
             prediction = self._oww_model.predict(samples)
 
             # Stream scores to dashboard workbench (opt-in, 12.5 Hz)
@@ -584,14 +595,16 @@ class EarWorker(BaseWorker):
                 self._vad_diag_max_amp = frame_peak
             if now >= self._vad_diag_next_log_mono:
                 log.info(
-                    "VAD diag: max_prob=%.3f max_amp=%.3f speech_detected=%s silence_start=%.1f",
+                    "VAD diag: max_prob=%.3f vad_amp=%.3f oww_amp=%.3f speech_detected=%s silence_start=%.1f",
                     self._vad_diag_max_prob,
                     self._vad_diag_max_amp,
+                    self._vad_diag_max_amp_oww,
                     self._speech_detected,
                     self._silence_start_mono,
                 )
                 self._vad_diag_max_prob = 0.0
                 self._vad_diag_max_amp = 0.0
+                self._vad_diag_max_amp_oww = 0.0
                 self._vad_diag_next_log_mono = now + 1.5
 
             if is_speech:
