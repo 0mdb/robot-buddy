@@ -56,6 +56,11 @@ _ENERGY_MIN_INTERVAL_S = 1.0 / 20  # 20 Hz max
 _SOCKET_RETRY_INTERVAL_S = 0.1
 _SOCKET_RETRY_TIMEOUT_S = 30.0
 
+# Spk socket stream idle detection — gap > this ends the current playback stream.
+# Conversation audio arrives as a burst; the server does not send an explicit
+# end marker, so the socket reader treats a chunk gap as end-of-turn.
+_SPK_IDLE_END_S = 0.8
+
 # Chime assets directory
 _CHIME_DIR = Path(__file__).parent.parent / "assets" / "chimes"
 
@@ -441,11 +446,50 @@ class TTSWorker(BaseWorker):
         log.error("failed to connect spk socket after %.0fs", _SOCKET_RETRY_TIMEOUT_S)
 
     async def _spk_read_loop(self) -> None:
-        """Read TTS audio from speaker socket and play via aplay."""
+        """Read TTS audio from speaker socket and play via aplay.
+
+        Conversation audio arrives here as a burst of PCM chunks from the
+        AI worker (forwarded from server /converse). aplay is started
+        lazily on the first chunk of a stream and torn down after an idle
+        gap of `_SPK_IDLE_END_S`, which serves as an implicit end-of-turn
+        marker. TTS_EVENT_STARTED/FINISHED bracket the stream so the
+        conversation pipeline timeline reflects actual playback, not just
+        audio receipt.
+        """
         loop = asyncio.get_running_loop()
         sock = self._spk_sock
         if not sock:
             return
+
+        stream_t0 = 0.0
+        stream_chunks = 0
+        idle_task: asyncio.Task[None] | None = None
+
+        async def _end_stream() -> None:
+            nonlocal stream_chunks
+            if self._aplay_proc is None:
+                return
+            duration_ms = int((time.monotonic() - stream_t0) * 1000)
+            chunks_played = stream_chunks
+            await self._drain_aplay()
+            self._aplay_proc = None
+            self._speaking = False
+            self.send(
+                TTS_EVENT_FINISHED,
+                {
+                    "ref_seq": 0,
+                    "duration_ms": duration_ms,
+                    "chunks_played": chunks_played,
+                },
+            )
+            stream_chunks = 0
+
+        async def _idle_watchdog() -> None:
+            try:
+                await asyncio.sleep(_SPK_IDLE_END_S)
+                await _end_stream()
+            except asyncio.CancelledError:
+                pass
 
         try:
             while self.running and sock:
@@ -469,7 +513,27 @@ class TTSWorker(BaseWorker):
                         raise ConnectionError("speaker socket closed")
                     pcm += data
 
+                # A new chunk resets the idle watchdog.
+                if idle_task and not idle_task.done():
+                    idle_task.cancel()
+
+                # Lazy-start aplay on the first chunk of a new stream.
+                if self._aplay_proc is None:
+                    await self._start_aplay()
+                    if self._aplay_proc is None:
+                        # aplay failed to start — drop this chunk and wait for recovery
+                        continue
+                    stream_t0 = time.monotonic()
+                    stream_chunks = 0
+                    self._speaking = True
+                    self._lip_sync.reset()
+                    self.send(TTS_EVENT_STARTED, {"ref_seq": 0, "text": ""})
+
                 await self._play_pcm_chunk(pcm)
+                stream_chunks += 1
+
+                # Schedule a fresh idle watchdog.
+                idle_task = asyncio.create_task(_idle_watchdog())
 
                 # Energy
                 energy = self._lip_sync.update_chunk(pcm)
@@ -479,6 +543,9 @@ class TTSWorker(BaseWorker):
                     self.send(TTS_EVENT_ENERGY, {"energy": energy})
 
         except (ConnectionError, OSError) as e:
+            if idle_task and not idle_task.done():
+                idle_task.cancel()
+            await _end_stream()
             self.send(SYSTEM_AUDIO_LINK_DOWN, {"socket": "spk", "reason": str(e)})
             log.warning("speaker socket disconnected: %s", e)
         except asyncio.CancelledError:
