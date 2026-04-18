@@ -92,6 +92,10 @@ class EarWorker(BaseWorker):
         self._vad_state_output_idx: int | None = None
         self._vad_h_output_idx: int | None = None
         self._vad_c_output_idx: int | None = None
+        # Silero v5 requires a 64-sample (at 16kHz) context buffer prepended
+        # to each 512-sample frame. Without it the model silently returns
+        # near-constant ~0.0005 probability regardless of input.
+        self._vad_context: Any = None  # np.ndarray shape (1, 64), reset on listen start
 
         # Buffers
         self._ww_buffer = bytearray()
@@ -325,6 +329,8 @@ class EarWorker(BaseWorker):
         if self._vad_session is not None:
             import numpy as np
 
+            # Silero v5 at 16kHz: 64-sample context prepended to each frame.
+            self._vad_context = np.zeros((1, 64), dtype=np.float32)
             if self._vad_schema == _VAD_SCHEMA_STATE:
                 self._vad_state = np.zeros(self._vad_state_shape, dtype=np.float32)
             elif self._vad_schema == _VAD_SCHEMA_HC:
@@ -542,9 +548,19 @@ class EarWorker(BaseWorker):
             )
             samples = samples.reshape(1, -1)
 
+            # Silero v5 at 16 kHz expects 64 samples of context prepended to
+            # each 512-sample frame (total 576 samples). Without this the
+            # model silently returns near-constant ~0.0005 regardless of
+            # input. Roll the last 64 samples of the previous frame as the
+            # next context.
+            if self._vad_context is None:
+                self._vad_context = np.zeros((1, 64), dtype=np.float32)
+            model_input = np.concatenate([self._vad_context, samples], axis=1)
+            self._vad_context = samples[:, -64:].copy()
+
             ort_inputs: dict[str, Any] = {
-                "input": samples,
-                "sr": np.array([SAMPLE_RATE], dtype=np.int64),
+                "input": model_input,
+                "sr": np.array(SAMPLE_RATE, dtype=np.int64),
             }
             if self._vad_schema == _VAD_SCHEMA_STATE:
                 if self._vad_state is None:
