@@ -104,6 +104,7 @@ class EarWorker(BaseWorker):
 
         # VAD diagnostics — periodic dump of recent max prob while listening.
         self._vad_diag_max_prob: float = 0.0
+        self._vad_diag_max_amp: float = 0.0
         self._vad_diag_next_log_mono: float = 0.0
 
         # Wake word timing
@@ -299,6 +300,7 @@ class EarWorker(BaseWorker):
         self._vad_paused = False
         self._reset_vad_state()
         self._vad_diag_max_prob = 0.0
+        self._vad_diag_max_amp = 0.0
         self._vad_diag_next_log_mono = time.monotonic() + 1.5
         # Connect mic socket if not yet connected
         if not self._mic_sock and self._mic_socket_path:
@@ -571,17 +573,25 @@ class EarWorker(BaseWorker):
             now = time.monotonic()
             is_speech = speech_prob > 0.5
 
-            # Diagnostics: track max prob per second during listening.
+            # Diagnostics: track max prob and peak sample amplitude per
+            # window. amp=0 → VAD is receiving silence (input pipeline bug);
+            # amp>0.1 with prob<0.1 → model sees audio but doesn't classify
+            # as speech.
             if speech_prob > self._vad_diag_max_prob:
                 self._vad_diag_max_prob = speech_prob
+            frame_peak = float(np.abs(samples).max()) if samples.size else 0.0
+            if frame_peak > self._vad_diag_max_amp:
+                self._vad_diag_max_amp = frame_peak
             if now >= self._vad_diag_next_log_mono:
                 log.info(
-                    "VAD diag: max_prob=%.3f speech_detected=%s silence_start=%.1f",
+                    "VAD diag: max_prob=%.3f max_amp=%.3f speech_detected=%s silence_start=%.1f",
                     self._vad_diag_max_prob,
+                    self._vad_diag_max_amp,
                     self._speech_detected,
                     self._silence_start_mono,
                 )
                 self._vad_diag_max_prob = 0.0
+                self._vad_diag_max_amp = 0.0
                 self._vad_diag_next_log_mono = now + 1.5
 
             if is_speech:
