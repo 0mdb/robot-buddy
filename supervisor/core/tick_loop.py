@@ -615,9 +615,14 @@ class TickLoop:
                         {"session_id": self.world.session_id},
                     )
                 )
-            # If wake-word conversation, clean up session after response
+            # If wake-word conversation, tear down the full session so the
+            # AI worker closes its /converse WS cleanly. _finish_session
+            # alone just clears session_id locally and leaves the WS +
+            # the pending _mic_to_ws_loop's sock_recv hanging — the next
+            # turn's ear writes then race the stale reader on the same
+            # mic socket and stall VAD entirely.
             if self.world.conversation_trigger == "wake_word" and self.world.session_id:
-                self._finish_session()
+                self._end_conversation()
 
         # Guardrail events — session/daily time limits (PE spec S2 §9.3)
         elif env.type == PERSONALITY_EVENT_GUARDRAIL_TRIGGERED:

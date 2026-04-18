@@ -95,6 +95,10 @@ class AIWorker(BaseWorker):
         self._ws = None
         self._ws_connected = False
         self._utterance_end_t: float | None = None  # for round-trip timing
+        # Tracked so end_conversation can cancel it — otherwise the loop's
+        # pending sock_recv lingers across sessions and races the new
+        # session's reader on the same mic socket.
+        self._mic_loop_task: asyncio.Task[None] | None = None
 
         # Server connection
         self._server_connected = False
@@ -320,9 +324,12 @@ class AIWorker(BaseWorker):
             # Start reading server messages
             asyncio.create_task(self._ws_read_loop())
 
-            # Start forwarding mic audio (Mode A)
+            # Start forwarding mic audio (Mode A). Cancel any prior loop
+            # first so we don't race multiple readers on _mic_client.
             if self._audio_mode == "direct":
-                asyncio.create_task(self._mic_to_ws_loop())
+                if self._mic_loop_task is not None and not self._mic_loop_task.done():
+                    self._mic_loop_task.cancel()
+                self._mic_loop_task = asyncio.create_task(self._mic_to_ws_loop())
 
         except Exception as e:
             self._set_state("error", str(e))
@@ -357,6 +364,11 @@ class AIWorker(BaseWorker):
         """Close conversation session."""
         await self._ws_send({"type": "cancel"})
         await self._close_ws()
+        # Cancel the mic forwarder so its pending sock_recv doesn't
+        # outlive the session and collide with the next session's reader.
+        if self._mic_loop_task is not None and not self._mic_loop_task.done():
+            self._mic_loop_task.cancel()
+            self._mic_loop_task = None
         self._set_state("idle", "end_conversation")
         self._session_id = ""
         self._turn_id = 0
