@@ -711,16 +711,13 @@ class TickLoop:
                         self._conv.set_state(FaceConvState.DONE)
                         self._start_multi_turn_timeout()
                     else:
-                        # Wake word multi-turn: resume listening. EAR_CMD_
-                        # STOP_LISTENING fired when EoU hit in this turn, so
-                        # ear is idle — re-arm it or the user gets stuck
-                        # with an active session and no one listening.
-                        self._conv.set_state(FaceConvState.LISTENING)
-                        asyncio.ensure_future(
-                            self._workers.send_to("ear", EAR_CMD_START_LISTENING)
-                        )
-                        self.robot.face_listening = True
-                        self._start_multi_turn_timeout()
+                        # Wake word: single-turn — fully end the session
+                        # after TTS so the next "alexa" creates a fresh
+                        # session cleanly. Implicit multi-turn re-arm has
+                        # a race with mic-socket draining that leaves the
+                        # user stuck; defer until that's settled.
+                        self._conv.set_state(FaceConvState.DONE)
+                        self._end_conversation()
                 else:
                     self._conv.set_state(FaceConvState.DONE)
 
