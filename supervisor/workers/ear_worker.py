@@ -112,6 +112,11 @@ class EarWorker(BaseWorker):
         self._vad_diag_max_amp_oww: float = 0.0
         self._vad_diag_next_log_mono: float = 0.0
 
+        # OWW always-on diag — fires even when not listening, so we can see
+        # whether audio is reaching OWW and what max score it's producing.
+        self._oww_diag_max_score: float = 0.0
+        self._oww_diag_next_log_mono: float = 0.0
+
         # Wake word timing
         self._last_ww_mono: float = 0.0
         self._stream_scores: bool = False
@@ -496,6 +501,24 @@ class EarWorker(BaseWorker):
                     self._vad_diag_max_amp_oww = oww_peak
 
             prediction = self._oww_model.predict(samples)
+
+            # Diagnostic: track max alexa (or any OWW) score so we can log
+            # even when wake never crosses the threshold.
+            if prediction:
+                best = max(prediction.values()) if prediction else 0.0
+                if best > self._oww_diag_max_score:
+                    self._oww_diag_max_score = float(best)
+            now = time.monotonic()
+            if now >= self._oww_diag_next_log_mono:
+                log.info(
+                    "OWW diag: max_score=%.3f oww_amp=%.3f listening=%s",
+                    self._oww_diag_max_score,
+                    self._vad_diag_max_amp_oww,
+                    self._listening,
+                )
+                self._oww_diag_max_score = 0.0
+                self._vad_diag_max_amp_oww = 0.0
+                self._oww_diag_next_log_mono = now + 2.0
 
             # Stream scores to dashboard workbench (opt-in, 12.5 Hz)
             if self._stream_scores:
