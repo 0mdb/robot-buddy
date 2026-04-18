@@ -240,6 +240,12 @@ def create_app(
             }
         )
 
+    @app.get("/debug/mcu_benchmark")
+    async def get_mcu_benchmark():
+        from supervisor.api.mcu_benchmark import get_status
+
+        return JSONResponse(get_status())
+
     @app.get("/debug/system")
     async def get_system_debug():
         import time
@@ -586,10 +592,22 @@ async def _handle_ws_cmd(
                 bool(msg.get("talking", False)),
                 energy=int(msg.get("energy", 0)),
             )
+    elif msg_type == "face_set_conv_state":
+        if tick._face and tick._face.connected:
+            tick._face.send_conv_state(int(msg.get("conv_state", 0)))
     # -- Conversation commands -----------------------------------------------
     elif msg_type == "conversation.start":
         trigger = str(msg.get("trigger", "dashboard"))
         tick._start_conversation(trigger)
+        # Mirror the real-wake handler at tick_loop.py:663: transition
+        # the face/conv state machine into ATTENTION so session_active
+        # flips True. Without this, downstream handlers gated on
+        # session_active (e.g. TTS_EVENT_FINISHED → re-arm listening for
+        # multi-turn wake word) silently skip their work.
+        if tick.world.session_id:
+            from supervisor.devices.protocol import FaceConvState
+
+            tick._conv.set_state(FaceConvState.ATTENTION)
     elif msg_type == "conversation.cancel":
         from supervisor.devices.protocol import FaceConvState
 
@@ -680,6 +698,54 @@ async def _handle_ws_cmd(
             )
             if not started:
                 log.warning("conv_benchmark.start rejected")
+    # -- MCU benchmark ----------------------------------------------------------
+    elif msg_type == "mcu_benchmark.start":
+        from supervisor.api.mcu_benchmark import start_benchmark as start_mcu_bench
+
+        target = str(msg.get("target", "face"))
+        profile = str(msg.get("profile", f"stage4_{target}"))
+        samples = int(msg.get("samples", 100))
+        allow_motion = bool(msg.get("allow_motion", False))
+        base_url = str(msg.get("base_url", "http://localhost:8080"))
+        out_dir = str(msg.get("out_dir", "docs/perf"))
+
+        if target == "face":
+            from supervisor.api.mcu_benchmark_face import create_face_adapter
+
+            adapter, scenarios = create_face_adapter(
+                base_url=base_url, target_samples=samples
+            )
+        elif target == "reflex":
+            from supervisor.api.mcu_benchmark_reflex import create_reflex_adapter
+
+            adapter, scenarios = create_reflex_adapter(
+                base_url=base_url,
+                target_samples=samples,
+                allow_motion=allow_motion,
+            )
+        else:
+            log.warning("mcu_benchmark.start: unknown target %r", target)
+            adapter = None  # type: ignore[assignment]
+
+        if adapter is not None:
+            started = start_mcu_bench(
+                target=target,
+                profile=profile,
+                adapter=adapter,
+                scenarios=scenarios,
+                conv_capture=conv_capture,
+                base_url=base_url,
+                out_dir=out_dir,
+                notes=[f"WS-triggered, target={target}"],
+            )
+            if not started:
+                log.warning("mcu_benchmark.start rejected (already running)")
+    elif msg_type == "mcu_benchmark.cancel":
+        from supervisor.api.mcu_benchmark import cancel_benchmark
+
+        cancelled = cancel_benchmark()
+        if not cancelled:
+            log.warning("mcu_benchmark.cancel: no benchmark running")
     # -- Ear workbench --------------------------------------------------------
     elif msg_type == "ear.stream_scores":
         asyncio.ensure_future(
