@@ -510,11 +510,17 @@ class EarWorker(BaseWorker):
                     self._oww_diag_max_score = float(best)
             now = time.monotonic()
             if now >= self._oww_diag_next_log_mono:
+                pred_dump = (
+                    {k: round(float(v), 4) for k, v in prediction.items()}
+                    if prediction
+                    else None
+                )
                 log.info(
-                    "OWW diag: max_score=%.3f oww_amp=%.3f listening=%s",
+                    "OWW diag: max_score=%.3f oww_amp=%.3f listening=%s pred=%s",
                     self._oww_diag_max_score,
                     self._vad_diag_max_amp_oww,
                     self._listening,
+                    pred_dump,
                 )
                 self._oww_diag_max_score = 0.0
                 self._vad_diag_max_amp_oww = 0.0
