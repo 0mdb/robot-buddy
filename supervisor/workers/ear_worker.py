@@ -102,6 +102,10 @@ class EarWorker(BaseWorker):
         self._speech_start_mono: float = 0.0
         self._silence_start_mono: float = 0.0
 
+        # VAD diagnostics — periodic dump of recent max prob while listening.
+        self._vad_diag_max_prob: float = 0.0
+        self._vad_diag_next_log_mono: float = 0.0
+
         # Wake word timing
         self._last_ww_mono: float = 0.0
         self._stream_scores: bool = False
@@ -294,6 +298,8 @@ class EarWorker(BaseWorker):
         self._listening = True
         self._vad_paused = False
         self._reset_vad_state()
+        self._vad_diag_max_prob = 0.0
+        self._vad_diag_next_log_mono = time.monotonic() + 1.5
         # Connect mic socket if not yet connected
         if not self._mic_sock and self._mic_socket_path:
             asyncio.create_task(self._connect_mic_socket())
@@ -565,17 +571,30 @@ class EarWorker(BaseWorker):
             now = time.monotonic()
             is_speech = speech_prob > 0.5
 
+            # Diagnostics: track max prob per second during listening.
+            if speech_prob > self._vad_diag_max_prob:
+                self._vad_diag_max_prob = speech_prob
+            if now >= self._vad_diag_next_log_mono:
+                log.info(
+                    "VAD diag: max_prob=%.3f speech_detected=%s silence_start=%.1f",
+                    self._vad_diag_max_prob,
+                    self._speech_detected,
+                    self._silence_start_mono,
+                )
+                self._vad_diag_max_prob = 0.0
+                self._vad_diag_next_log_mono = now + 1.5
+
             if is_speech:
                 if not self._speech_detected:
                     self._speech_detected = True
                     self._speech_start_mono = now
-                    log.debug("VAD: speech started")
+                    log.info("VAD: speech started (prob=%.3f)", speech_prob)
                 # Reset silence timer
                 self._silence_start_mono = 0.0
             else:
                 if self._speech_detected and self._silence_start_mono == 0.0:
                     self._silence_start_mono = now
-                    log.debug("VAD: silence started after speech")
+                    log.info("VAD: silence started after speech")
 
             # Check for end-of-utterance: enough speech followed by enough silence
             if self._speech_detected and self._silence_start_mono > 0.0:
