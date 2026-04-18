@@ -711,8 +711,16 @@ class TickLoop:
                         self._conv.set_state(FaceConvState.DONE)
                         self._start_multi_turn_timeout()
                     else:
-                        # Wake word: return to LISTENING
+                        # Wake word multi-turn: resume listening. EAR_CMD_
+                        # STOP_LISTENING fired when EoU hit in this turn, so
+                        # ear is idle — re-arm it or the user gets stuck
+                        # with an active session and no one listening.
                         self._conv.set_state(FaceConvState.LISTENING)
+                        asyncio.ensure_future(
+                            self._workers.send_to("ear", EAR_CMD_START_LISTENING)
+                        )
+                        self.robot.face_listening = True
+                        self._start_multi_turn_timeout()
                 else:
                     self._conv.set_state(FaceConvState.DONE)
 
