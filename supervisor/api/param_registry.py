@@ -1159,7 +1159,7 @@ def create_default_registry() -> ParamRegistry:
             min=0.0,
             max=14400.0,
             step=60.0,
-            default=2700.0,
+            default=14400.0,
             owner="supervisor",
             safety="risky",
             doc="RS-2: max daily conversation time (seconds)",

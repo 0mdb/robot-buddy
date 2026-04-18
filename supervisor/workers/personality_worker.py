@@ -627,7 +627,7 @@ class PersonalityWorker(BaseWorker):
                 gr.get("session_time_limit_s", 900.0)
             )
             self._guardrails.daily_time_limit_s = float(
-                gr.get("daily_time_limit_s", 2700.0)
+                gr.get("daily_time_limit_s", 14400.0)
             )
 
         # Memory config

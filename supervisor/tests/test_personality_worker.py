@@ -724,7 +724,7 @@ class TestGuardrailConfigInit:
         await w.on_message(_env(PERSONALITY_CONFIG_INIT, {"axes": {}}))
         # Defaults preserved
         assert w._guardrails.session_time_limit_s == 900.0
-        assert w._guardrails.daily_time_limit_s == 2700.0
+        assert w._guardrails.daily_time_limit_s == 14400.0
         assert w._guardrails.context_gate is True
 
     @pytest.mark.asyncio

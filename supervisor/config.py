@@ -85,7 +85,12 @@ class GuardrailConfig:
     negative_intensity_caps: bool = True
     context_gate: bool = True
     session_time_limit_s: float = 900.0  # RS-1: 15 min
-    daily_time_limit_s: float = 2700.0  # RS-2: 45 min
+    # RS-2 default bumped from 2700 (45 min) to 14400 (4 h) — the prior
+    # value was silently blocking all new conversations once a debug
+    # session ran long, with only a single INFO log on each refusal.
+    # Param registry still caps at 14400 for safety. Change via
+    # /params personality.guardrail.daily_time_limit_s at runtime.
+    daily_time_limit_s: float = 14400.0  # 4 h
 
 
 @dataclass

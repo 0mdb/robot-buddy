@@ -328,12 +328,17 @@ class EarWorker(BaseWorker):
         log.info("listening started")
 
     def _stop_listening(self) -> None:
-        """Stop forwarding mic audio."""
+        """Stop forwarding mic audio. Idempotent — multiple cleanup paths
+        (EoU handler, AI_CONVERSATION_DONE, TTS_EVENT_FINISHED) all send
+        EAR_CMD_STOP_LISTENING around the same time; only log the first
+        actual transition."""
+        was_listening = self._listening
         self._listening = False
         self._vad_paused = False
         self._reset_vad_state()
         self._vad_buffer.clear()
-        log.info("listening stopped")
+        if was_listening:
+            log.info("listening stopped")
 
     def _reset_vad_state(self) -> None:
         self._speech_detected = False

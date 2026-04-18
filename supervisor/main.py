@@ -477,7 +477,7 @@ async def async_main(args: argparse.Namespace) -> None:
                     "daily_time_limit_s": _get_float(
                         registry,
                         "personality.guardrail.daily_time_limit_s",
-                        2700.0,
+                        14400.0,
                     ),
                 },
             )
