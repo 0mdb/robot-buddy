@@ -5,6 +5,7 @@ from __future__ import annotations
 import struct
 
 import numpy as np
+import pytest
 
 from supervisor.workers.ear_worker import (
     CHUNK_BYTES,
@@ -311,10 +312,11 @@ class TestHealthPayload:
 
 
 class TestMicSocketFraming:
-    def test_forward_skipped_without_socket(self):
+    @pytest.mark.asyncio
+    async def test_forward_skipped_without_socket(self):
         """No exception when mic socket is None."""
         w = EarWorker()
-        w._forward_to_mic_socket(b"\x00" * CHUNK_BYTES)  # should not raise
+        await w._forward_to_mic_socket(b"\x00" * CHUNK_BYTES)  # should not raise
 
     def test_frame_format(self):
         """Verify binary framing: [chunk_len:u16-LE][pcm_data]."""

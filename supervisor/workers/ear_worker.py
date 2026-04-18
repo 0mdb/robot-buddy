@@ -451,7 +451,7 @@ class EarWorker(BaseWorker):
 
             # During conversation: forward audio and run VAD
             if self._listening:
-                self._forward_to_mic_socket(data)
+                await self._forward_to_mic_socket(data)
 
                 if not self._vad_paused:
                     self._vad_buffer.extend(data)
@@ -607,14 +607,21 @@ class EarWorker(BaseWorker):
 
     # ── Mic socket (Mode A) ───────────────────────────────────────
 
-    def _forward_to_mic_socket(self, pcm_chunk: bytes) -> None:
-        """Forward a PCM chunk to the AI worker via the rb-mic socket."""
+    async def _forward_to_mic_socket(self, pcm_chunk: bytes) -> None:
+        """Forward a PCM chunk to the AI worker via the rb-mic socket.
+
+        Uses ``loop.sock_sendall`` because the socket is non-blocking; the
+        blocking ``socket.sendall`` raises ``BlockingIOError`` (an OSError
+        subclass) whenever the send buffer fills before the AI worker drains,
+        which causes the mic link to bounce even during healthy listening.
+        """
         if not self._mic_sock:
             return
         try:
             frame = struct.pack("<H", len(pcm_chunk)) + pcm_chunk
-            self._mic_sock.sendall(frame)
-        except (BrokenPipeError, OSError):
+            loop = asyncio.get_running_loop()
+            await loop.sock_sendall(self._mic_sock, frame)
+        except (BrokenPipeError, ConnectionError, OSError):
             log.warning("mic socket write failed, disconnecting")
             self._close_mic_socket()
 

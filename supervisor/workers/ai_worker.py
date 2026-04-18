@@ -497,18 +497,48 @@ class AIWorker(BaseWorker):
             self._ws_connected = False
 
     async def _mic_to_ws_loop(self) -> None:
-        """Read mic PCM from socket and forward to server WebSocket."""
+        """Read mic PCM from socket and forward to server WebSocket.
+
+        The ear worker connects to the mic socket in parallel with this
+        task starting, so ``_mic_client`` may not be set yet when this
+        runs. Poll briefly for it before giving up — otherwise a lost
+        race leaves ear's writes with no reader and the mic link bounces
+        a second later when the socket buffer fills.
+        """
+        if not self._ws:
+            return
+
+        # Wait for ear to connect (accept loop sets _mic_client).
         sock = self._mic_client
-        if not sock or not self._ws:
+        for _ in range(40):  # ~2s
+            if sock is not None:
+                break
+            await asyncio.sleep(0.05)
+            sock = self._mic_client
+        if sock is None:
+            log.warning("mic_to_ws: mic client never connected; giving up")
             return
 
         loop = asyncio.get_running_loop()
         try:
             while self._ws_connected and self._state in ("listening",):
+                # Refresh sock in case ear reconnected mid-session.
+                current = self._mic_client
+                if current is not sock:
+                    sock = current
+                    if sock is None:
+                        break
+
                 # Read frame: [chunk_len:u16-LE][pcm_data]
-                header = await loop.sock_recv(sock, 2)
-                if not header or len(header) < 2:
+                header = b""
+                while len(header) < 2:
+                    data = await loop.sock_recv(sock, 2 - len(header))
+                    if not data:
+                        break
+                    header += data
+                if len(header) < 2:
                     break
+
                 chunk_len = struct.unpack("<H", header)[0]
                 if chunk_len == 0 or chunk_len > 4096:
                     continue
