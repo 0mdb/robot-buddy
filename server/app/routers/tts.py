@@ -20,6 +20,9 @@ router = APIRouter()
 class TTSRequest(BaseModel):
     text: str
     emotion: str = "neutral"
+    # 0.0–1.0; gates high-intensity paralinguistic cues (see
+    # EMOTION_HIGH_INTENSITY_CUES in app.tts.orpheus).
+    intensity: float = 0.5
     stream: bool = True
     robot_id: str | None = None
     seq: int | None = None
@@ -50,7 +53,7 @@ async def generate_speech(req: TTSRequest) -> StreamingResponse:
     # so TTSBusyError is raised here — before the StreamingResponse is created
     # — allowing us to return a proper 503.
     try:
-        audio_iter = tts.stream(req.text, req.emotion)
+        audio_iter = tts.stream(req.text, req.emotion, intensity=req.intensity)
     except TTSBusyError:
         raise HTTPException(status_code=503, detail="tts_busy_no_fallback") from None
 

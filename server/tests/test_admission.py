@@ -55,7 +55,9 @@ async def test_tts_busy_no_fallback_returns_503(monkeypatch):
         def debug_snapshot(self) -> dict:
             return {"loaded": False, "init_error": None}
 
-        def stream(self, text: str, emotion: str = "neutral"):
+        def stream(
+            self, text: str, emotion: str = "neutral", *, intensity: float = 0.5
+        ):
             raise TTSBusyError("tts_busy_no_fallback")
 
     monkeypatch.setattr("app.routers.tts.get_tts", lambda: _BusyTTS())

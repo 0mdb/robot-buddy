@@ -55,10 +55,12 @@ class _FakeTTS:
 
     def __init__(self, *, chunk_bytes: bytes = b"\x00\x01") -> None:
         self.chunk_bytes = chunk_bytes
-        self.calls: list[tuple[str, str]] = []
+        self.calls: list[tuple[str, str, float]] = []
 
-    async def stream(self, text: str, emotion: str) -> AsyncIterator[bytes]:
-        self.calls.append((text, emotion))
+    async def stream(
+        self, text: str, emotion: str, *, intensity: float = 0.5
+    ) -> AsyncIterator[bytes]:
+        self.calls.append((text, emotion, intensity))
         # Three chunks so we can see boundary behaviour.
         for _ in range(3):
             yield self.chunk_bytes
@@ -163,7 +165,7 @@ async def test_tts_called_once_per_sentence(patched_runtime) -> None:
     # The first call carries the emotional prosody. Any later coalesced call
     # uses `neutral` to avoid a second prosody tag being prepended.
     assert patched_runtime.calls[0][1] == "happy"
-    for _text, emotion in patched_runtime.calls[1:]:
+    for _text, emotion, _intensity in patched_runtime.calls[1:]:
         assert emotion == "neutral"
 
 
@@ -189,9 +191,10 @@ async def test_multisentence_coalesces_to_two_tts_calls(patched_runtime) -> None
     # with `neutral` so no second prosody tag is prepended — that second
     # tag is the root cause of the "excited excited" vocalization leak.
     assert len(patched_runtime.calls) == 2
-    first_text, first_emotion = patched_runtime.calls[0]
-    rest_text, rest_emotion = patched_runtime.calls[1]
+    first_text, first_emotion, first_intensity = patched_runtime.calls[0]
+    rest_text, rest_emotion, _ = patched_runtime.calls[1]
     assert first_emotion == "happy"
+    assert first_intensity == pytest.approx(0.6)  # from the canned metadata
     assert rest_emotion == "neutral"
     assert "first long sentence" in first_text
     assert "Another long sentence" in rest_text

@@ -40,9 +40,9 @@ log = logging.getLogger(__name__)
 # Canonical tags Orpheus actually renders as sounds:
 #   <laugh>, <chuckle>, <sigh>, <cough>, <sniffle>, <groan>, <yawn>, <gasp>
 #
-# Emotional colour for everything else must come from word choice in the
-# LLM-generated text itself (e.g. "Ooh, wow!" for excited) — not from a
-# prepended tag.
+# Emotional colour for everything else comes from word choice in the
+# LLM-generated text itself (e.g. "Ooh, wow!" for excited), with optional
+# intensity-gated flourishes from EMOTION_HIGH_INTENSITY_CUES below.
 EMOTION_TO_PROSODY_TAG: dict[str, str] = {
     "neutral": "",
     "happy": "",
@@ -58,6 +58,20 @@ EMOTION_TO_PROSODY_TAG: dict[str, str] = {
     "thinking": "",
 }
 
+# Paralinguistic cues applied ONLY when the emotion's intensity meets the
+# per-entry threshold. Kept rare on purpose — a gasp before every happy
+# reply gets old fast, but at peak excitement it adds character. Thresholds
+# account for the per-emotion intensity caps in CONVERSATION_SYSTEM_PROMPT
+# (e.g. `sad` caps at 0.5 so its threshold must sit in that range).
+EMOTION_HIGH_INTENSITY_CUES: dict[str, tuple[str, float]] = {
+    "happy": ("<chuckle>", 0.8),
+    "excited": ("<gasp>", 0.8),
+    "surprised": ("<gasp>", 0.5),
+    "sad": ("<sigh>", 0.4),
+    "scared": ("<gasp>", 0.4),
+    "angry": ("<groan>", 0.3),
+}
+
 # Output PCM format for the robot
 OUTPUT_SAMPLE_RATE = 16000
 OUTPUT_SAMPLE_WIDTH = 2  # 16-bit signed
@@ -71,9 +85,21 @@ class TTSBusyError(RuntimeError):
     """Raised when Orpheus is busy and no fallback backend is available."""
 
 
-def apply_prosody_tag(emotion: str, text: str) -> str:
-    """Prepend the Orpheus emotion tag to the text."""
+def apply_prosody_tag(emotion: str, text: str, *, intensity: float = 0.5) -> str:
+    """Prepend an Orpheus paralinguistic cue to the text, if applicable.
+
+    Always applies the entry from ``EMOTION_TO_PROSODY_TAG`` if one exists
+    (e.g. `sleepy` → `<yawn>` fires at any intensity). Otherwise consults
+    ``EMOTION_HIGH_INTENSITY_CUES`` and prepends that tag only when the
+    turn's intensity meets the per-emotion threshold.
+    """
     tag = EMOTION_TO_PROSODY_TAG.get(emotion, "")
+    if not tag:
+        cue = EMOTION_HIGH_INTENSITY_CUES.get(emotion)
+        if cue is not None:
+            cue_tag, threshold = cue
+            if intensity >= threshold:
+                tag = cue_tag
     if tag:
         return f"{tag} {text}"
     return text
@@ -654,10 +680,14 @@ class OrpheusTTS:
 
         return self._wav_to_pcm16_16k(proc.stdout)
 
-    async def synthesize(self, text: str, emotion: str = "neutral") -> bytes:
+    async def synthesize(
+        self, text: str, emotion: str = "neutral", *, intensity: float = 0.5
+    ) -> bytes:
         """Synthesize speech from text with emotional prosody.
 
-        Returns complete PCM audio (16-bit, 16 kHz, mono).
+        Returns complete PCM audio (16-bit, 16 kHz, mono). ``intensity``
+        (0.0–1.0) gates high-intensity paralinguistic cues such as
+        ``<gasp>`` for peak surprise.
         """
         if not isinstance(text, str) or not text.strip():
             return b""
@@ -682,16 +712,20 @@ class OrpheusTTS:
             return await asyncio.to_thread(self._synthesize_with_espeak, text)
 
         try:
-            return await asyncio.to_thread(self._synthesize_sync, text, emotion)
+            return await asyncio.to_thread(
+                self._synthesize_sync, text, emotion, intensity
+            )
         finally:
             with self._active_lock:
                 if self._active_requests > 0:
                     self._active_requests -= 1
 
-    def _synthesize_sync(self, text: str, emotion: str) -> bytes:
+    def _synthesize_sync(
+        self, text: str, emotion: str, intensity: float = 0.5
+    ) -> bytes:
         """Synchronous synthesis."""
         self._ensure_model()
-        tagged_text = apply_prosody_tag(emotion, text)
+        tagged_text = apply_prosody_tag(emotion, text, intensity=intensity)
 
         if self._backend == "off":
             return b""
@@ -761,7 +795,9 @@ class OrpheusTTS:
         if False:  # noqa: SIM210
             yield b""
 
-    def stream(self, text: str, emotion: str = "neutral") -> AsyncIterator[bytes]:
+    def stream(
+        self, text: str, emotion: str = "neutral", *, intensity: float = 0.5
+    ) -> AsyncIterator[bytes]:
         """Return an async iterator of PCM audio chunks.
 
         For the orpheus_tts backend, first bytes arrive within ~200–500 ms
@@ -771,6 +807,10 @@ class OrpheusTTS:
 
         The busy check runs synchronously here so callers can catch
         TTSBusyError *before* committing to a streaming HTTP response.
+
+        ``intensity`` (0.0–1.0) gates the high-intensity paralinguistic
+        cues (``<chuckle>`` for peak happy, ``<gasp>`` for peak excited,
+        etc.) — see ``EMOTION_HIGH_INTENSITY_CUES``.
 
         Yields 16-bit 16 kHz mono PCM in CHUNK_SAMPLES (10 ms) increments.
         """
@@ -793,10 +833,14 @@ class OrpheusTTS:
             if not should_shed_to_espeak:
                 self._active_requests += 1
 
-        return self._stream_gen(text, emotion, should_shed_to_espeak)
+        return self._stream_gen(text, emotion, should_shed_to_espeak, intensity)
 
     async def _stream_gen(
-        self, text: str, emotion: str, should_shed_to_espeak: bool
+        self,
+        text: str,
+        emotion: str,
+        should_shed_to_espeak: bool,
+        intensity: float = 0.5,
     ) -> AsyncIterator[bytes]:
         """Async generator body for stream(). Do not call directly."""
         chunk_bytes = CHUNK_SAMPLES * OUTPUT_SAMPLE_WIDTH
@@ -823,7 +867,7 @@ class OrpheusTTS:
 
                 def _producer() -> None:
                     try:
-                        tagged = apply_prosody_tag(emotion, text)
+                        tagged = apply_prosody_tag(emotion, text, intensity=intensity)
                         req_id = f"req-{int(time.time() * 1000)}-{uuid.uuid4().hex[:8]}"
                         for raw_chunk in model.generate_speech(
                             prompt=tagged,

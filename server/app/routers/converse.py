@@ -342,7 +342,9 @@ async def _generate_and_stream_batch(
         tts = get_tts()
         chunk_index = 0
         try:
-            async for chunk in tts.stream(response.text, response.emotion):
+            async for chunk in tts.stream(
+                response.text, response.emotion, intensity=response.intensity
+            ):
                 if chunk:
                     await ws.send_json(
                         {
@@ -394,6 +396,7 @@ async def _generate_and_stream_live(
     first_audio_latency_ms: int | None = None
     metadata_seen = False
     emotion_for_tts = "neutral"
+    intensity_for_tts = 0.5
 
     # tts_queues: FIFO of per-sentence chunk queues. Size 2 enforces the
     # pipeline-depth-2 cap recommended by review — producer blocks when
@@ -404,13 +407,16 @@ async def _generate_and_stream_live(
     )
 
     async def _spawn_tts_runner(
-        sentence: str, emotion: str, tg: asyncio.TaskGroup
+        sentence: str,
+        emotion: str,
+        intensity: float,
+        tg: asyncio.TaskGroup,
     ) -> asyncio.Queue[bytes | None]:
         q: asyncio.Queue[bytes | None] = asyncio.Queue(maxsize=_TTS_CHUNK_BUFFER)
 
         async def _runner() -> None:
             try:
-                async for chunk in tts.stream(sentence, emotion):
+                async for chunk in tts.stream(sentence, emotion, intensity=intensity):
                     if chunk:
                         await q.put(chunk)
             finally:
@@ -430,15 +436,27 @@ async def _generate_and_stream_live(
     sent_first = False
     coalesce_buf: list[str] = []
 
-    async def _dispatch_tts(text: str, tg: asyncio.TaskGroup, *, emotion: str) -> None:
+    async def _dispatch_tts(
+        text: str,
+        tg: asyncio.TaskGroup,
+        *,
+        emotion: str,
+        intensity: float,
+    ) -> None:
         if not text:
             return
-        log.info("tts dispatch: emotion=%s len=%d", emotion, len(text))
-        q = await _spawn_tts_runner(text, emotion, tg)
+        log.info(
+            "tts dispatch: emotion=%s intensity=%.2f len=%d",
+            emotion,
+            intensity,
+            len(text),
+        )
+        q = await _spawn_tts_runner(text, emotion, intensity, tg)
         await sentence_chunk_queues.put(q)
 
     async def _produce(tg: asyncio.TaskGroup) -> None:
-        nonlocal metadata_seen, emotion_for_tts, llm_latency_ms, sent_first
+        nonlocal metadata_seen, emotion_for_tts, intensity_for_tts
+        nonlocal llm_latency_ms, sent_first
 
         stream = llm.stream_conversation(
             history,
@@ -453,6 +471,7 @@ async def _generate_and_stream_live(
                         metadata_seen = True
                         resp = event.response
                         emotion_for_tts = resp.emotion
+                        intensity_for_tts = resp.intensity
                         llm_latency_ms = round((time.monotonic() - t_start) * 1000)
                         emotion_msg: dict[str, object] = {
                             "type": "emotion",
@@ -473,7 +492,12 @@ async def _generate_and_stream_live(
                             )
                     elif isinstance(event, Sentence):
                         if not sent_first:
-                            await _dispatch_tts(event.text, tg, emotion=emotion_for_tts)
+                            await _dispatch_tts(
+                                event.text,
+                                tg,
+                                emotion=emotion_for_tts,
+                                intensity=intensity_for_tts,
+                            )
                             sent_first = True
                         else:
                             coalesce_buf.append(event.text)
@@ -482,14 +506,25 @@ async def _generate_and_stream_live(
             for event in parser.close():
                 if isinstance(event, Sentence):
                     if not sent_first:
-                        await _dispatch_tts(event.text, tg, emotion=emotion_for_tts)
+                        await _dispatch_tts(
+                            event.text,
+                            tg,
+                            emotion=emotion_for_tts,
+                            intensity=intensity_for_tts,
+                        )
                         sent_first = True
                     else:
                         coalesce_buf.append(event.text)
             # Coalesce everything after the first sentence into a single
-            # TTS call with `neutral` so no second prosody tag is prepended.
+            # TTS call with `neutral` so no paralinguistic cue is prepended
+            # a second time.
             if coalesce_buf:
-                await _dispatch_tts(" ".join(coalesce_buf), tg, emotion="neutral")
+                await _dispatch_tts(
+                    " ".join(coalesce_buf),
+                    tg,
+                    emotion="neutral",
+                    intensity=0.0,
+                )
                 coalesce_buf.clear()
             # EOF signal to consumer. Guarded so we don't deadlock if the
             # group is already tearing down.
