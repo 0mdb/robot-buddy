@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass
+
+log = logging.getLogger(__name__)
 
 try:
     from dotenv import load_dotenv
@@ -22,7 +25,15 @@ def _env_bool(name: str, default: bool) -> bool:
 
 
 _NUM_CTX_CAP = 4096
-_GPU_UTILIZATION_CAP_DEFAULT = 0.80
+_GPU_UTILIZATION_CAP_DEFAULT = 0.88
+_VALID_STT_DEVICES = {"cpu", "cuda"}
+_VALID_STT_COMPUTE_TYPES = {
+    "int8",
+    "int8_float16",
+    "int8_float32",
+    "float16",
+    "float32",
+}
 
 
 @dataclass(slots=True)
@@ -146,6 +157,19 @@ class Settings:
             raise ValueError("TTS_BUSY_QUEUE_THRESHOLD must be >= 0")
         if self.tts_max_utterance_s < 1.0:
             raise ValueError("TTS_MAX_UTTERANCE_S must be >= 1.0")
+        self.stt_device = self.stt_device.strip().lower()
+        if self.stt_device not in _VALID_STT_DEVICES:
+            raise ValueError(f"STT_DEVICE must be one of: {sorted(_VALID_STT_DEVICES)}")
+        self.stt_compute_type = self.stt_compute_type.strip().lower()
+        if self.stt_compute_type not in _VALID_STT_COMPUTE_TYPES:
+            raise ValueError(
+                f"STT_COMPUTE_TYPE must be one of: {sorted(_VALID_STT_COMPUTE_TYPES)}"
+            )
+        if self.stt_device == "cuda" and self.stt_compute_type == "int8":
+            log.warning(
+                "STT on cuda with compute_type=int8 runs but underuses the GPU; "
+                "prefer int8_float16 or float16."
+            )
 
         self.orpheus_voice = str(self.orpheus_voice or "").strip().lower()
         if not self.orpheus_voice:

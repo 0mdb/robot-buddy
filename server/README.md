@@ -15,7 +15,7 @@ Supervisor (Pi 5) ──POST /plan / WS /converse──► FastAPI server
 - **Planner model:** default `Qwen/Qwen3-8B-AWQ` when `LLM_BACKEND=vllm`
 - **Rollout backend switch:** `LLM_BACKEND=ollama|vllm` (default `vllm`)
 - **Server:** FastAPI + uvicorn on port 8100
-- **STT:** faster-whisper, CPU-first (`STT_DEVICE=cpu`)
+- **STT:** faster-whisper (default `base.en` on CPU). For best quality on children's voices, run `large-v3-turbo` on CUDA with `int8_float16` (~0.9 GB VRAM).
 
 ## Current Conversational Audio Status (2026-02-18)
 
@@ -92,7 +92,7 @@ OLLAMA_PULL_TIMEOUT_S=1800
 ```
 
 Notes:
-- `STT_DEVICE=cpu` avoids STT contention with Qwen/Orpheus GPU inference.
+- `STT_DEVICE=cpu` avoids STT contention with Qwen/Orpheus GPU inference. On a 3090-class GPU, `STT_DEVICE=cuda STT_MODEL_SIZE=large-v3-turbo STT_COMPUTE_TYPE=int8_float16` adds ~0.9 GB VRAM and substantially improves accuracy on short phrases and young-child speech.
 - Keep `CONVERSE_KEEP_ALIVE=0s` and `PLAN_KEEP_ALIVE=0s` when using Ollama compatibility mode.
 - `PERFORMANCE_MODE=0` keeps Orpheus disabled (espeak/off fallback only).
 
@@ -127,9 +127,9 @@ All settings are overridable via environment variables:
 | `NUM_CTX` | `4096` | Ollama context window size |
 | `CONVERSE_KEEP_ALIVE` | `0s` | Ollama keep-alive for `/converse` calls |
 | `PERFORMANCE_MODE` | `0` | Enables Orpheus path only when true |
-| `STT_MODEL_SIZE` | `base.en` | faster-whisper model size for `/converse` |
-| `STT_DEVICE` | `cpu` | faster-whisper device (`cpu` or `cuda`) |
-| `STT_COMPUTE_TYPE` | `int8` | faster-whisper compute type |
+| `STT_MODEL_SIZE` | `base.en` | faster-whisper model size for `/converse` (recommended for GPU: `large-v3-turbo`) |
+| `STT_DEVICE` | `cpu` | faster-whisper device (`cpu` or `cuda`; recommended: `cuda` when a GPU is available) |
+| `STT_COMPUTE_TYPE` | `int8` | faster-whisper compute type (recommended with `cuda`: `int8_float16`) |
 | `TTS_BACKEND` | `auto` | `auto`, `orpheus`, `espeak`, or `off` |
 | `TTS_MODEL_NAME` | `canopylabs/orpheus-3b-0.1-ft` | Orpheus model repo when using Orpheus |
 | `TTS_VOICE` | `en-us` | Voice for `espeak` fallback backend (ignored by Orpheus) |
@@ -170,7 +170,7 @@ Returns server and LLM backend status.
     "cap": 0.8
   },
   "ai": {
-    "stt": {"model_size": "base.en", "device": "cpu", "compute_type": "int8", "loaded": false},
+    "stt": {"model_size": "large-v3-turbo", "device": "cuda", "compute_type": "int8_float16", "loaded": false},
     "tts": {"backend_pref": "auto", "backend_active": "espeak", "loaded": true}
   }
 }

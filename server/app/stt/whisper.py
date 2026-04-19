@@ -86,6 +86,9 @@ class WhisperSTT:
             language="en",
             vad_filter=True,
             beam_size=5,
+            condition_on_previous_text=False,
+            no_speech_threshold=0.6,
+            temperature=0.0,
         )
 
         text = " ".join(seg.text.strip() for seg in segments)
