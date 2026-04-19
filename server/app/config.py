@@ -95,7 +95,13 @@ class Settings:
     orpheus_min_free_vram_gb: float = float(
         os.environ.get("ORPHEUS_MIN_FREE_VRAM_GB", "10.0")
     )
-    tts_busy_queue_threshold: int = int(os.environ.get("TTS_BUSY_QUEUE_THRESHOLD", "0"))
+    # Streaming path pipelines two Orpheus calls per turn (current + next-sentence
+    # prefetch), so the default busy threshold must allow that without shedding
+    # to espeak mid-utterance.
+    tts_busy_queue_threshold: int = int(os.environ.get("TTS_BUSY_QUEUE_THRESHOLD", "2"))
+    # Stream LLM → TTS per sentence (vs batching the full response). Cuts
+    # first-audio latency by ~1–3s on multi-sentence replies.
+    llm_stream_enabled: bool = _env_bool("RB_LLM_STREAM", True)
     tts_max_utterance_s: float = float(os.environ.get("TTS_MAX_UTTERANCE_S", "15.0"))
     log_transcripts: bool = _env_bool("LOG_TRANSCRIPTS", False)
     host: str = os.environ.get("SERVER_HOST", "0.0.0.0")

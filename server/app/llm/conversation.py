@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import json
 from collections import deque
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -71,9 +72,9 @@ RESPONSE FORMAT
   "mood_reason": "<5-15 words>",
   "emotional_arc": "<rising|stable|falling|peak|recovery>",
   "child_affect": "<positive|neutral|negative|unclear>",
-  "text": "<spoken response>",
   "gestures": ["<{_GESTURES_LIST}>"],
-  "memory_tags": [{{"tag": "<semantic label>", "category": "<name|topic|ritual|tone|preference>"}}]
+  "memory_tags": [{{"tag": "<semantic label>", "category": "<name|topic|ritual|tone|preference>"}}],
+  "text": "<spoken response>"
 }}
 
 MEMORY TAG CATEGORIES
@@ -86,13 +87,13 @@ MEMORY TAG CATEGORIES
 EXAMPLES
 
 User: "Why is the sky blue?"
-{{"inner_thought": "Science question — a learning moment. Buddy should be curious and warm.", "emotion": "curious", "intensity": 0.6, "mood_reason": "child asking a science question", "emotional_arc": "rising", "child_affect": "positive", "text": "Ooh, great question! The sun sends light in all colors, and the blue light bounces around the sky the most. It's like the sky is playing catch with blue!", "gestures": ["nod"], "memory_tags": [{{"tag": "interested_in_science", "category": "topic"}}]}}
+{{"inner_thought": "Science question — a learning moment. Buddy should be curious and warm.", "emotion": "curious", "intensity": 0.6, "mood_reason": "child asking a science question", "emotional_arc": "rising", "child_affect": "positive", "gestures": ["nod"], "memory_tags": [{{"tag": "interested_in_science", "category": "topic"}}], "text": "Ooh, great question! The sun sends light in all colors, and the blue light bounces around the sky the most. It's like the sky is playing catch with blue!"}}
 
 User: "I don't want to go to school tomorrow."
-{{"inner_thought": "Child is unhappy about school. Be gently empathetic, not dismissive or overly cheerful.", "emotion": "sad", "intensity": 0.3, "mood_reason": "empathizing with child's reluctance", "emotional_arc": "stable", "child_affect": "negative", "text": "Hmm, that sounds tough. Is there something about school that's been bugging you?", "gestures": [], "memory_tags": []}}
+{{"inner_thought": "Child is unhappy about school. Be gently empathetic, not dismissive or overly cheerful.", "emotion": "sad", "intensity": 0.3, "mood_reason": "empathizing with child's reluctance", "emotional_arc": "stable", "child_affect": "negative", "gestures": [], "memory_tags": [], "text": "Hmm, that sounds tough. Is there something about school that's been bugging you?"}}
 
 User: "Look, I can do a handstand!"
-{{"inner_thought": "Child is showing off a physical achievement — match their excitement but stay calm.", "emotion": "excited", "intensity": 0.6, "mood_reason": "child proud of physical skill", "emotional_arc": "peak", "child_affect": "positive", "text": "Wow, that's amazing! You must have practiced a lot. How long can you hold it?", "gestures": ["wiggle"], "memory_tags": [{{"tag": "likes_gymnastics", "category": "topic"}}]}}\
+{{"inner_thought": "Child is showing off a physical achievement — match their excitement but stay calm.", "emotion": "excited", "intensity": 0.6, "mood_reason": "child proud of physical skill", "emotional_arc": "peak", "child_affect": "positive", "gestures": ["wiggle"], "memory_tags": [{{"tag": "likes_gymnastics", "category": "topic"}}], "text": "Wow, that's amazing! You must have practiced a lot. How long can you hold it?"}}\
 """
 
 
@@ -115,7 +116,10 @@ class ConversationResponseV2(BaseModel):
     """Extended response schema with personality-relevant fields.
 
     inner_thought is first to force chain-of-thought reasoning before
-    the model commits to an emotion (Bucket 6 §3.3).
+    the model commits to an emotion (Bucket 6 §3.3). `text` is LAST so
+    the streaming converse path can extract all metadata from the JSON
+    prefix and dispatch emotion/gestures/memory_tags to the client before
+    the spoken response begins — shaving first-audio latency.
     """
 
     inner_thought: str = Field(
@@ -129,12 +133,12 @@ class ConversationResponseV2(BaseModel):
     mood_reason: str = Field(default="", description="5-15 words: why this emotion")
     emotional_arc: Literal["rising", "stable", "falling", "peak", "recovery"] = "stable"
     child_affect: Literal["positive", "neutral", "negative", "unclear"] = "neutral"
-    text: str = Field(default="", description="Spoken response to the child")
     gestures: list[str] = Field(default_factory=list)
     memory_tags: list[MemoryTagV2] = Field(
         default_factory=list,
         description="Things to remember from this turn, with decay-tier category",
     )
+    text: str = Field(default="", description="Spoken response to the child")
 
 
 # ── Legacy V1 Ollama schema ─────────────────────────────────────────────
@@ -461,6 +465,64 @@ async def generate_conversation_response(
         )
 
     return response
+
+
+async def stream_conversation_response(
+    client: httpx.AsyncClient,
+    history: ConversationHistory,
+    user_text: str,
+    *,
+    override_temperature: float | None = None,
+    override_max_output_tokens: int | None = None,
+) -> AsyncIterator[str]:
+    """Stream a V2-schema conversation response from Ollama as content deltas.
+
+    Adds the user message to history; the CALLER must call
+    ``history.add_assistant(parsed_text, emotion=...)`` once the stream is
+    consumed. On non-200 responses raises LLMError.
+    """
+    history.add_user(user_text)
+
+    messages = history.to_ollama_messages()
+    options: dict[str, object] = {
+        "temperature": (
+            override_temperature
+            if override_temperature is not None
+            else settings.temperature
+        ),
+        "num_ctx": settings.num_ctx,
+    }
+    if override_max_output_tokens is not None:
+        # Ollama uses num_predict for output-token caps; clamp to a safe range.
+        options["num_predict"] = max(64, min(2048, int(override_max_output_tokens)))
+
+    body = {
+        "model": settings.model_name,
+        "messages": messages,
+        "stream": True,
+        "format": ConversationResponseV2.model_json_schema(),
+        "keep_alive": settings.converse_keep_alive,
+        "options": options,
+    }
+
+    async with client.stream("POST", "/api/chat", json=body) as resp:
+        if resp.status_code != 200:
+            body_bytes = await resp.aread()
+            raise LLMError(f"Ollama returned {resp.status_code}: {body_bytes[:200]!r}")
+        async for line in resp.aiter_lines():
+            if not line:
+                continue
+            try:
+                data = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if err := data.get("error"):
+                raise LLMError(f"Ollama stream error: {err}")
+            content = data.get("message", {}).get("content", "")
+            if content:
+                yield content
+            if data.get("done"):
+                break
 
 
 def parse_conversation_response_content(content: str) -> ConversationResponse:

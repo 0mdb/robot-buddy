@@ -21,6 +21,7 @@ Protocol:
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import logging
 import time
@@ -28,10 +29,16 @@ import time
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from app.ai_runtime import get_stt, get_tts
+from app.config import settings
 from app.llm.base import LLMBusyError, LLMError, LLMTimeoutError, LLMUnavailableError
 from app.llm.base import PlannerLLMBackend
 from app.llm.conversation import (
     ConversationHistory,
+)
+from app.llm.stream_parser import (
+    ConversationStreamParser,
+    MetadataReady,
+    Sentence,
 )
 from app.tts.orpheus import TTSBusyError
 
@@ -262,7 +269,37 @@ async def _generate_and_stream(
     override_temperature: float | None = None,
     override_max_output_tokens: int | None = None,
 ) -> None:
-    """Generate LLM response and stream emotion + TTS audio to client."""
+    """Dispatch to the streaming or batch generator based on config."""
+    if settings.llm_stream_enabled:
+        await _generate_and_stream_live(
+            ws,
+            llm,
+            history,
+            user_text,
+            override_temperature=override_temperature,
+            override_max_output_tokens=override_max_output_tokens,
+        )
+    else:
+        await _generate_and_stream_batch(
+            ws,
+            llm,
+            history,
+            user_text,
+            override_temperature=override_temperature,
+            override_max_output_tokens=override_max_output_tokens,
+        )
+
+
+async def _generate_and_stream_batch(
+    ws: WebSocket,
+    llm: PlannerLLMBackend,
+    history: ConversationHistory,
+    user_text: str,
+    *,
+    override_temperature: float | None = None,
+    override_max_output_tokens: int | None = None,
+) -> None:
+    """Original atomic-LLM path. Kept behind RB_LLM_STREAM=0 as a rollback lever."""
     t_llm = time.monotonic()
     try:
         response = await llm.generate_conversation(
@@ -282,7 +319,6 @@ async def _generate_and_stream(
         return
     llm_latency_ms = round((time.monotonic() - t_llm) * 1000)
 
-    # 1. Send emotion immediately (face changes before speech)
     emotion_msg: dict[str, object] = {
         "type": "emotion",
         "emotion": response.emotion,
@@ -293,24 +329,15 @@ async def _generate_and_stream(
         emotion_msg["mood_reason"] = response.mood_reason
     await ws.send_json(emotion_msg)
 
-    # 2. Send gestures if any
     if response.gestures:
-        await ws.send_json(
-            {
-                "type": "gestures",
-                "names": response.gestures,
-            }
-        )
+        await ws.send_json({"type": "gestures", "names": response.gestures})
 
-    # 2b. Send memory tags if any (PE spec S2 §8)
     if response.memory_tags:
         await ws.send_json({"type": "memory_tags", "tags": response.memory_tags})
 
-    # 3. Send assistant text (before audio so dashboard can display immediately)
     if response.text:
         await ws.send_json({"type": "assistant_text", "text": response.text})
 
-    # 4. Stream TTS audio
     if response.text:
         tts = get_tts()
         chunk_index = 0
@@ -338,3 +365,176 @@ async def _generate_and_stream(
             return
 
     await ws.send_json({"type": "done"})
+
+
+async def _generate_and_stream_live(
+    ws: WebSocket,
+    llm: PlannerLLMBackend,
+    history: ConversationHistory,
+    user_text: str,
+    *,
+    override_temperature: float | None = None,
+    override_max_output_tokens: int | None = None,
+) -> None:
+    """Streaming LLM → per-sentence TTS pipeline.
+
+    Producer drives the LLM token stream through a ``ConversationStreamParser``.
+    On ``MetadataReady`` it emits the usual WS metadata messages immediately.
+    On each ``Sentence`` it spawns a TTS runner (bounded to depth-2 concurrency
+    via ``_TTS_PIPELINE_DEPTH``) and hands a chunk-queue to the consumer, which
+    drains them strictly in order and forwards PCM to the WS. One
+    ``assistant_text`` + ``done`` is sent at end of turn — matching the batch
+    contract, so supervisor/dashboard code is unchanged.
+    """
+    parser = ConversationStreamParser()
+    tts = get_tts()
+    t_start = time.monotonic()
+
+    llm_latency_ms: int | None = None
+    first_audio_latency_ms: int | None = None
+    metadata_seen = False
+    emotion_for_tts = "neutral"
+
+    # tts_queues: FIFO of per-sentence chunk queues. Size 2 enforces the
+    # pipeline-depth-2 cap recommended by review — producer blocks when
+    # two TTS syntheses are already in flight, keeping us under the Orpheus
+    # busy threshold.
+    sentence_chunk_queues: asyncio.Queue[asyncio.Queue[bytes | None] | None] = (
+        asyncio.Queue(maxsize=_TTS_PIPELINE_DEPTH)
+    )
+
+    async def _spawn_tts_runner(
+        sentence: str, emotion: str, tg: asyncio.TaskGroup
+    ) -> asyncio.Queue[bytes | None]:
+        q: asyncio.Queue[bytes | None] = asyncio.Queue(maxsize=_TTS_CHUNK_BUFFER)
+
+        async def _runner() -> None:
+            try:
+                async for chunk in tts.stream(sentence, emotion):
+                    if chunk:
+                        await q.put(chunk)
+            finally:
+                await q.put(None)
+
+        tg.create_task(_runner())
+        return q
+
+    async def _produce(tg: asyncio.TaskGroup) -> None:
+        nonlocal metadata_seen, emotion_for_tts, llm_latency_ms
+
+        stream = llm.stream_conversation(
+            history,
+            user_text,
+            override_temperature=override_temperature,
+            override_max_output_tokens=override_max_output_tokens,
+        )
+        try:
+            async for delta in stream:
+                for event in parser.feed(delta):
+                    if isinstance(event, MetadataReady):
+                        metadata_seen = True
+                        resp = event.response
+                        emotion_for_tts = resp.emotion
+                        llm_latency_ms = round((time.monotonic() - t_start) * 1000)
+                        emotion_msg: dict[str, object] = {
+                            "type": "emotion",
+                            "emotion": resp.emotion,
+                            "intensity": resp.intensity,
+                            "llm_latency_ms": llm_latency_ms,
+                        }
+                        if resp.mood_reason:
+                            emotion_msg["mood_reason"] = resp.mood_reason
+                        await ws.send_json(emotion_msg)
+                        if resp.gestures:
+                            await ws.send_json(
+                                {"type": "gestures", "names": resp.gestures}
+                            )
+                        if resp.memory_tags:
+                            await ws.send_json(
+                                {"type": "memory_tags", "tags": resp.memory_tags}
+                            )
+                    elif isinstance(event, Sentence):
+                        q = await _spawn_tts_runner(event.text, emotion_for_tts, tg)
+                        await sentence_chunk_queues.put(q)
+        finally:
+            # Flush the final buffered fragment (short-sentence tail).
+            for event in parser.close():
+                if isinstance(event, Sentence):
+                    q = await _spawn_tts_runner(event.text, emotion_for_tts, tg)
+                    await sentence_chunk_queues.put(q)
+            # EOF signal to consumer. Guarded so we don't deadlock if the
+            # group is already tearing down.
+            try:
+                await sentence_chunk_queues.put(None)
+            except (asyncio.CancelledError, RuntimeError):
+                raise
+
+    async def _consume() -> None:
+        nonlocal first_audio_latency_ms
+        chunk_index = 0
+        while True:
+            q = await sentence_chunk_queues.get()
+            if q is None:
+                return
+            while True:
+                chunk = await q.get()
+                if chunk is None:
+                    break
+                if first_audio_latency_ms is None:
+                    first_audio_latency_ms = round((time.monotonic() - t_start) * 1000)
+                await ws.send_json(
+                    {
+                        "type": "audio",
+                        "data": base64.b64encode(chunk).decode("ascii"),
+                        "sample_rate": 16000,
+                        "chunk_index": chunk_index,
+                    }
+                )
+                chunk_index += 1
+
+    error_message: str | None = None
+    try:
+        async with asyncio.TaskGroup() as tg:
+            tg.create_task(_produce(tg))
+            tg.create_task(_consume())
+    except* LLMBusyError:
+        error_message = "llm_busy"
+    except* LLMTimeoutError:
+        error_message = "LLM timeout"
+    except* (LLMUnavailableError, LLMError) as eg:
+        error_message = str(next(iter(eg.exceptions))) if eg.exceptions else "llm_error"
+    except* TTSBusyError:
+        error_message = "tts_busy_no_fallback"
+    except* Exception:
+        log.exception("Streaming conversation failed")
+        error_message = "internal_error"
+
+    if error_message is not None:
+        await ws.send_json({"type": "error", "message": error_message})
+        return
+
+    full_text = parser.full_text()
+
+    if metadata_seen:
+        history.add_assistant(full_text, emotion=emotion_for_tts)
+
+    if full_text:
+        await ws.send_json({"type": "assistant_text", "text": full_text})
+
+    if first_audio_latency_ms is not None and llm_latency_ms is not None:
+        log.info(
+            "streaming turn: llm=%dms first_audio=%dms text_len=%d",
+            llm_latency_ms,
+            first_audio_latency_ms,
+            len(full_text),
+        )
+
+    await ws.send_json({"type": "done"})
+
+
+# Depth-2 cap on concurrent TTS syntheses per turn. Must not exceed
+# settings.tts_busy_queue_threshold or Orpheus will shed to espeak mid-turn.
+_TTS_PIPELINE_DEPTH = 2
+# Per-sentence chunk queue size. 32 × 10ms = 320ms of audio buffered per
+# runner — comfortable without starving the Orpheus internal queue.
+_TTS_CHUNK_BUFFER = 32

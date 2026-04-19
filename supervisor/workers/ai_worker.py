@@ -487,6 +487,18 @@ class AIWorker(BaseWorker):
                             self.send("ai.conversation.audio", {"data_b64": data_b64})
 
                 elif msg_type == "done":
+                    # Explicit end-of-stream to the TTS worker so playback can
+                    # flush immediately without waiting for the idle watchdog.
+                    # Only meaningful in direct (Mode A) mode — relay mode
+                    # has no spk socket.
+                    if self._audio_mode == "direct" and self._spk_client:
+                        try:
+                            loop = asyncio.get_running_loop()
+                            await loop.sock_sendall(
+                                self._spk_client, struct.pack("<H", 0)
+                            )
+                        except (BrokenPipeError, OSError):
+                            pass
                     self.send(
                         AI_CONVERSATION_DONE,
                         {

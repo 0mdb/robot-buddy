@@ -8,6 +8,7 @@ import inspect
 import logging
 import time
 import uuid
+from collections.abc import AsyncIterator
 from typing import Any, Literal, cast
 
 from app.config import settings
@@ -285,6 +286,71 @@ class VLLMBackend(PlannerLLMBackend):
             raise
         except Exception as exc:
             raise LLMError(f"Conversation generation failed: {exc}") from exc
+        finally:
+            await self._release_generation_slot()
+
+    async def stream_conversation(
+        self,
+        history: ConversationHistory,
+        user_text: str,
+        *,
+        override_temperature: float | None = None,
+        override_max_output_tokens: int | None = None,
+    ) -> AsyncIterator[str]:
+        """Stream V2 JSON content deltas from vLLM.
+
+        Each RequestOutput yielded by ``_engine.generate()`` carries the
+        *cumulative* text so far; we track the running length and yield
+        only the new tail. Guided decoding (if available) constrains the
+        output to valid V2 JSON — the streaming parser relies on the
+        field order defined by ``ConversationResponseV2``.
+        """
+        history.add_user(user_text)
+        await self._acquire_generation_slot()
+        try:
+            if self._engine is None or self._SamplingParams is None:
+                raise LLMUnavailableError("vllm backend not initialized")
+
+            messages = history.to_ollama_messages()
+            prompt = self._apply_chat_template(messages)
+
+            temperature = settings.vllm_temperature
+            max_tokens = settings.vllm_max_output_tokens
+            if override_temperature is not None:
+                temperature = max(0.0, min(2.0, override_temperature))
+            if override_max_output_tokens is not None:
+                max_tokens = max(64, min(2048, override_max_output_tokens))
+
+            sp_kwargs: dict[str, Any] = {
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+            }
+            if self._GuidedDecodingParams is not None:
+                sp_kwargs["guided_decoding"] = self._GuidedDecodingParams(
+                    json_object=_CONVERSATION_V2_JSON_SCHEMA,
+                )
+            sampling_params = self._SamplingParams(**sp_kwargs)
+            request_id = (
+                f"conv-stream-{history.turn_count}-"
+                f"{int(time.time() * 1000)}-{uuid.uuid4().hex[:8]}"
+            )
+            agen = self._engine.generate(prompt, sampling_params, request_id=request_id)
+
+            last_len = 0
+            try:
+                async with asyncio.timeout(settings.vllm_timeout_s):
+                    async for out in agen:
+                        outputs = getattr(out, "outputs", None) or []
+                        if not outputs:
+                            continue
+                        text = getattr(outputs[0], "text", "") or ""
+                        if not isinstance(text, str):
+                            continue
+                        if len(text) > last_len:
+                            yield text[last_len:]
+                            last_len = len(text)
+            except asyncio.TimeoutError as exc:
+                raise LLMTimeoutError("llm_timeout") from exc
         finally:
             await self._release_generation_slot()
 

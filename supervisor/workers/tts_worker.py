@@ -58,9 +58,12 @@ _SOCKET_RETRY_INTERVAL_S = 0.1
 _SOCKET_RETRY_TIMEOUT_S = 30.0
 
 # Spk socket stream idle detection — gap > this ends the current playback stream.
-# Conversation audio arrives as a burst; the server does not send an explicit
-# end marker, so the socket reader treats a chunk gap as end-of-turn.
-_SPK_IDLE_END_S = 0.8
+# Conversation audio arrives as a burst from the server; primarily terminated
+# by an explicit zero-length frame sent by ai_worker on WS `done`, with the
+# idle watchdog as a safety net for WS drops or crashes. 2 s gives the
+# streaming path headroom across sentence boundaries (~200–500 ms of TTS
+# first-chunk latency plus LLM stall jitter).
+_SPK_IDLE_END_S = 2.0
 
 # Chime assets directory
 _CHIME_DIR = Path(__file__).parent.parent / "assets" / "chimes"
@@ -513,11 +516,12 @@ class TTSWorker(BaseWorker):
 
         Conversation audio arrives here as a burst of PCM chunks from the
         AI worker (forwarded from server /converse). aplay is started
-        lazily on the first chunk of a stream and torn down after an idle
-        gap of `_SPK_IDLE_END_S`, which serves as an implicit end-of-turn
-        marker. TTS_EVENT_STARTED/FINISHED bracket the stream so the
-        conversation pipeline timeline reflects actual playback, not just
-        audio receipt.
+        lazily on the first chunk of a stream. End-of-stream is signalled
+        explicitly by a zero-length frame (``chunk_len == 0``) sent by
+        ai_worker on the server's WS ``done`` event; the idle watchdog at
+        ``_SPK_IDLE_END_S`` remains as a safety net for crashes or WS drops.
+        TTS_EVENT_STARTED/FINISHED bracket the stream so the conversation
+        pipeline timeline reflects actual playback, not just audio receipt.
         """
         loop = asyncio.get_running_loop()
         sock = self._spk_sock
@@ -565,7 +569,13 @@ class TTSWorker(BaseWorker):
                     header += data
 
                 chunk_len = struct.unpack("<H", header)[0]
-                if chunk_len == 0 or chunk_len > 4096:
+                if chunk_len == 0:
+                    # Explicit end-of-stream marker from ai_worker.
+                    if idle_task and not idle_task.done():
+                        idle_task.cancel()
+                    await _end_stream()
+                    continue
+                if chunk_len > 4096:
                     continue
 
                 # Read PCM data

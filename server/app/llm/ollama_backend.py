@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import AsyncIterator
 
 import httpx
 
@@ -19,6 +20,7 @@ from app.llm.conversation import (
     ConversationHistory,
     ConversationResponse,
     generate_conversation_response,
+    stream_conversation_response,
 )
 from app.llm.prompts import SYSTEM_PROMPT, format_user_prompt
 from app.llm.schemas import ModelPlan, WorldState
@@ -205,6 +207,39 @@ class OllamaBackend(PlannerLLMBackend):
                 return await generate_conversation_response(
                     self._client, history, user_text
                 )
+            except httpx.TimeoutException as exc:
+                raise LLMTimeoutError("llm_timeout") from exc
+            except httpx.ConnectError as exc:
+                raise LLMUnavailableError("ollama_unreachable") from exc
+        finally:
+            await self._release_generation_slot()
+
+    async def stream_conversation(
+        self,
+        history: ConversationHistory,
+        user_text: str,
+        *,
+        override_temperature: float | None = None,
+        override_max_output_tokens: int | None = None,
+    ) -> AsyncIterator[str]:
+        """Stream V2 JSON content deltas from Ollama.
+
+        The generation slot is held for the full iterator lifetime —
+        callers MUST iterate to completion or call ``.aclose()`` to
+        avoid leaking the slot.
+        """
+        assert self._client is not None
+        await self._acquire_generation_slot()
+        try:
+            try:
+                async for delta in stream_conversation_response(
+                    self._client,
+                    history,
+                    user_text,
+                    override_temperature=override_temperature,
+                    override_max_output_tokens=override_max_output_tokens,
+                ):
+                    yield delta
             except httpx.TimeoutException as exc:
                 raise LLMTimeoutError("llm_timeout") from exc
             except httpx.ConnectError as exc:
