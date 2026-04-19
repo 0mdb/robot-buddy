@@ -29,19 +29,32 @@ from app.config import settings
 
 log = logging.getLogger(__name__)
 
-# Map robot emotion names → Orpheus prosody tags
+# Map robot emotion names → Orpheus paralinguistic tags.
+#
+# IMPORTANT: Orpheus 3B has NO special tokens for prosody or emotion. The
+# only tags it recognises are paralinguistic cues baked into its fine-tune
+# training data (canopylabs/orpheus-3b-0.1-ft model card). Everything
+# outside that set tokenises as sub-word BPE and will be PRONOUNCED as
+# literal speech — e.g. `<happy>` produced the "happy happy …" leak.
+#
+# Canonical tags Orpheus actually renders as sounds:
+#   <laugh>, <chuckle>, <sigh>, <cough>, <sniffle>, <groan>, <yawn>, <gasp>
+#
+# Emotional colour for everything else must come from word choice in the
+# LLM-generated text itself (e.g. "Ooh, wow!" for excited) — not from a
+# prepended tag.
 EMOTION_TO_PROSODY_TAG: dict[str, str] = {
     "neutral": "",
-    "happy": "<happy>",
-    "excited": "<excited>",
+    "happy": "",
+    "excited": "",
     "curious": "",
-    "sad": "<sad>",
-    "scared": "<scared>",
-    "angry": "<angry>",
-    "surprised": "<surprised>",
+    "sad": "",
+    "scared": "",
+    "angry": "",
+    "surprised": "",
     "sleepy": "<yawn>",
-    "love": "<happy>",
-    "silly": "<laughing>",
+    "love": "",
+    "silly": "<laugh>",
     "thinking": "",
 }
 
