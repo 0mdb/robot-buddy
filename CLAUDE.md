@@ -85,6 +85,8 @@ robot-buddy/
 - `supervisor/workers/ai_worker.py` — LLM plan requests + conversation + profile forwarding to server
 - `supervisor/workers/vision_worker.py` — ball/clear detection via OpenCV
 
+**Voice loop (wake → speak):** ear_worker (wake word + VAD) → ai_worker (stream conversation to server) → tts_worker (playback + energy) → face (talking border + mouth). TTS energy drives face animation in real time.
+
 **Reflex MCU:**
 - Entry: `esp32-reflex/main/app_main.cpp`
 - Pins: `esp32-reflex/main/pin_map.h`
@@ -114,24 +116,43 @@ robot-buddy/
 All commands are available via `just` (see `justfile` for full list):
 
 ```bash
-just test-all              # run all tests (supervisor, server, dashboard)
-just test-supervisor       # supervisor tests only
-just test-server           # server tests only
-just test-dashboard        # dashboard tests only (Vitest)
+# Testing — all three test recipes accept a positional filter
+just test-all                                         # all tests (supervisor, server, dashboard)
+just test-supervisor tests/test_api.py::test_foo      # single pytest node
+just test-supervisor -k "face and not slow"           # any pytest args pass through
+just test-server <filter>                             # same pattern
+just test-dashboard SpecificComponent                 # Vitest name filter
+
+# Lint
 just lint                  # check Python + C++ + dashboard
 just lint-fix              # auto-fix everything
-just lint-dashboard        # check dashboard only (biome + tsc)
-just preflight             # full pre-commit check (lint + tests + parity)
-just run-mock              # run supervisor with mock hardware
-just run-server            # run planner server
-just run-dashboard         # run dashboard dev server (Vite)
-just build-dashboard       # build dashboard → supervisor/static/
-just build-reflex          # build reflex firmware (needs ESP-IDF env)
-just flash-reflex          # build + flash reflex
+just lint-dashboard        # biome + tsc only
+just lint-cpp-tidy         # deep clang-tidy on firmware (requires prior build-reflex/build-face)
+
+# Running
+just run-mock [args]       # supervisor with mock hardware (no robot needed)
+just run [args]            # supervisor against real hardware
+just run-server            # planner server (sources .env if present)
+just run-dashboard         # dashboard dev server (Vite)
+just build-dashboard       # dashboard production build → supervisor/static/
+
+# Firmware (face and reflex are symmetric)
+just build-reflex / build-face
+just flash-reflex / flash-face      # build + flash
+just monitor-reflex / monitor-face  # serial console
+
+# Tools, deploy, misc
 just deploy                # update + restart on Pi
-just sim                   # run face sim V3
+just install               # first-time Pi install
+just sim                   # face sim V3
 just check-parity          # verify sim↔MCU constant parity
+just serial-diag [args]    # scan connected MCUs
+just mcu-benchmark --target face --base-url http://<ip>:8080
+just tool <script> [args]  # run any tools/*.py with the tools venv
+just preflight             # lint + test-all + check-parity (pre-commit gate)
 ```
+
+**ESP-IDF note:** the `build-*` / `flash-*` / `monitor-*` recipes auto-source `~/esp/esp-idf/export.sh` (override via `ESP_IDF_EXPORT=/path/to/export.sh`) and skip sourcing if `idf.py` is already on PATH. Prefer the `just` recipes over manual `idf.py` invocation — they also detect build-dir path mismatches and run `fullclean` when needed, and regenerate `compile_commands.json` for clang-tidy.
 
 ## Code Conventions
 
@@ -166,6 +187,28 @@ just check-parity          # verify sim↔MCU constant parity
 - Planner / AI features are optional and network-remote
 - Safety-critical code lives in the MCU; supervisor applies additional caps
 - Prefer simple, direct code over abstractions
+
+## Safety (defense in depth)
+
+The Reflex MCU enforces acceleration limits, command TTL, and hard stop independently. The supervisor then applies these layers in order — any one can zero the twist:
+
+1. Mode gate — no motion outside TELEOP/WANDER
+2. Fault gate — any active fault → zero twist
+3. Reflex disconnect → zero twist
+4. Ultrasonic range scaling — hard stop at 250 mm, 50% at 500 mm
+5. Stale range fallback — 50% cap if range telemetry is stale
+6. Vision confidence scaling
+7. Stale vision timeout — 500 ms
+
+## Serial Protocol
+
+Binary packets over USB serial with COBS framing:
+
+```
+[type:u8][seq:u8][payload:N][crc16:u16-LE]
+```
+
+Little-endian, fixed-size payloads per message type. Auto-reconnect with exponential backoff (0.5s–5s). The face link carries face state/gesture/system/talking commands and touch/button/status telemetry only — audio is supervisor-side USB audio, not serial. See `docs/protocols.md` for packet definitions.
 
 ## Testing
 
