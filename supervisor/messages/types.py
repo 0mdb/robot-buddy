@@ -86,6 +86,12 @@ TTS_BENCHMARK_DONE = "tts.benchmark.done"
 CONV_BENCHMARK_PROGRESS = "conv.benchmark.progress"
 CONV_BENCHMARK_DONE = "conv.benchmark.done"
 
+# ── MCU Benchmark (cross-MCU perf harness) ───────────────
+
+
+MCU_BENCHMARK_PROGRESS = "mcu.benchmark.progress"
+MCU_BENCHMARK_DONE = "mcu.benchmark.done"
+
 # ── System (§4.7) ───────────────────────────────────────────────
 
 SYSTEM_CLOCK_SYNC_UPDATE = "system.clock.sync_update"

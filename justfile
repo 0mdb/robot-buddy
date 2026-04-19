@@ -262,6 +262,12 @@ download-wakewords:
     cd {{project}}/supervisor && uv run python -c "from openwakeword.utils import download_models; download_models(['alexa', 'hey_jarvis', 'hey_mycroft'])"
     @echo "Built-in models downloaded. Use: just run --wakeword-model alexa"
 
+# ── MCU Benchmark ───────────────────────────────────────
+
+# Run MCU benchmark harness (e.g. just mcu-benchmark --target face --base-url http://192.168.55.201:8080)
+mcu-benchmark *args:
+    cd {{project}}/supervisor && uv run python -m supervisor.api.mcu_benchmark {{args}}
+
 # ── Parity ──────────────────────────────────────────────
 
 # Check V3 sim / MCU face parity

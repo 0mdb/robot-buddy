@@ -1,0 +1,90 @@
+Stage 4 Cross-MCU Benchmark Harness Plan (Face-First, Reflex-Compatible)
+Summary
+Build a reusable benchmark harness with a shared core and target adapters, so esp32-face and esp32-reflex use the same execution/reporting model.
+Implement face coverage now for Stage 4 needs (including p50/p95 output and telemetry A/B support).
+Implement minimal reflex coverage now (rate/jitter/latency proxy + optional motion step), so later reflex tuning reuses the same harness without redesign.
+Locked decisions: Hybrid Core and Minimal Reflex Metrics Now.
+Public API / Interface Changes
+Add WS command mcu_benchmark.start and mcu_benchmark.cancel in http_server.py.
+Add benchmark status endpoint GET /debug/mcu_benchmark in http_server.py.
+Add a shared benchmark core module in mcu_benchmark.py with a target-adapter interface:
+prepare()
+setup_scenario(name)
+tick(now_s)
+ingest_sample(snapshot)
+is_complete()
+teardown()
+Add CLI wrapper in mcu_benchmark.py that starts runs and polls /debug/mcu_benchmark.
+Add just recipe for harness execution in justfile.
+Implementation Plan
+Phase 0: Migrate Existing Face Baseline Logic Into Harness
+Port behavior from face_stage4_capture.py into the new face adapter so scenario behavior remains comparable.
+Keep scenario names unchanged for continuity: idle, listening_proxy, thinking_border, talking_energy, rage_effects.
+Keep legacy averages/max fields in output for backward comparison with existing artifacts in /docs/perf.
+Phase 1: Shared Core
+Implement run lifecycle, scenario sequencing, retries/timeouts, teardown guarantees, and artifact writing in mcu_benchmark.py.
+Implement shared stats helpers:
+weighted averages
+weighted p50/p95
+min/max
+elapsed/dropped/error counters
+Store run state in memory for /debug/mcu_benchmark (running/completed/failed, scenario progress, latest error, artifact path).
+Phase 2: Face Adapter (Stage 4 Requirements)
+Data source: face.last_heartbeat.perf from supervisor debug surface.
+Metrics per scenario:
+existing fields: frame_us_avg, frame_us_max, render_us_avg, stage buckets, dirty_px_avg, spi_bytes_per_s, cmd_rx_to_apply_us_avg
+new fields: frame_us_p50, frame_us_p95, render_us_p50, render_us_p95, border_us_p50, border_us_p95, mouth_us_p50, mouth_us_p95
+Add compare mode in CLI (--compare A B) to report telemetry overhead and pass/fail against <=1% FPS drop.
+Phase 3: Reflex Adapter (Minimal Now, Reusable Later)
+Data sources:
+/debug/devices for last_state_seq and state age proxy
+/status for speed/gyro/fault snapshots
+Default scenarios:
+idle_hold (no motion, safe default)
+step_response only when --allow-motion is set
+Metrics:
+state_rate_hz_mean
+state_period_ms_p50/p95/max
+state_age_ms_p50/p95/max
+cmd_to_state_ms_p50/p95/max (proxy from command send to next state seq advance)
+fault_nonzero_samples and fault_nonzero_pct
+motion scenario only: v_error_abs_mm_s_p50/p95/max
+Phase 4: Supervisor + CLI Integration
+Wire mcu_benchmark.start/cancel in WS command handler in http_server.py.
+Add /debug/mcu_benchmark payload shape with run metadata and per-scenario progress.
+Add thin CLI in mcu_benchmark.py:
+--target face|reflex
+--profile stage4_face|reflex_minimal
+--base-url
+--out
+--allow-motion
+--compare
+Add just mcu-benchmark ... in justfile.
+Phase 5: Tests + Docs + TODO
+Add unit tests for stats helpers and adapter ingestion in:
+test_mcu_benchmark_stats.py
+test_mcu_benchmark_face.py
+test_mcu_benchmark_reflex.py
+Add smoke test for benchmark status endpoint in test_http_server.py.
+Update Stage 4 TODO lines in TODO.md:
+replace “extend benchmark harness” note with completed harness scope
+add explicit reflex-compatible harness line for future tuning reuse
+Add usage docs in README.md or docs/protocols.md benchmark section.
+Test Cases and Scenarios
+Face run writes artifact with legacy + p50/p95 metrics for all five Stage 4 scenarios.
+Face compare mode computes telemetry overhead A/B and returns pass/fail against <=1%.
+Reflex idle run outputs stable rate/jitter metrics without motion.
+Reflex motion run requires --allow-motion; verifies cmd-to-state and tracking error metrics are populated.
+Start/cancel/status API behavior:
+rejects concurrent run
+reports progress while running
+marks failed with explicit reason on timeout/disconnect
+Backward compatibility:
+existing face perf fields still present
+no protocol changes required for reflex.
+Assumptions and Defaults
+Harness runs against an already-running supervisor endpoint; flashing/deploy remains manual.
+Face p50/p95 are computed from sampled perf windows exposed by heartbeat telemetry.
+Reflex minimal metrics use supervisor-visible telemetry only (no reflex firmware protocol changes in this step).
+Motion scenarios are opt-in (--allow-motion) for safety.
+Output artifacts remain under docs/perf/ with versioned schema and stable scenario names.

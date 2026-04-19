@@ -73,9 +73,11 @@ Stage 4.1 Baseline Snapshot (2026-02-25, robot `192.168.55.201`, target `1000` f
 - Findings: `cmd_rx_to_apply_us_avg` is noisy/unreliable in this run (e.g. `thinking_border` outlier); treat as directional until protocol/telemetry validation task is completed
 - Finding: listening scenario is currently a proxy because dashboard `/ws` has no direct `face_set_conv_state` command path for forcing LISTENING (`2`)
 - Artifact: raw capture saved at `docs/perf/face_stage4_baseline_2026-02-25.json` (generated from `/tmp/face_stage4_baseline.json`)
-- [ ] Next: extend benchmark harness to emit p50/p95 per scenario and run telemetry overhead A/B (`FACE_PERF_TELEMETRY=1` vs `0`)
+- [x] Cross-MCU benchmark harness: shared core (`supervisor/api/mcu_benchmark.py`) + face adapter (`mcu_benchmark_face.py`) + reflex adapter (`mcu_benchmark_reflex.py`); p50/p95 per scenario; compare mode (`--compare A B`, <=1% FPS drop gate); WS commands (`mcu_benchmark.start`/`.cancel`), `GET /debug/mcu_benchmark`, CLI (`just mcu-benchmark --target face ...`); 29 unit tests
+- [x] Bounded supervisor debug command for direct `SET_CONV_STATE` via WS (`face_set_conv_state` command) — listening/PTT border states can now be benchmarked directly
+- [ ] Next: run face benchmark with harness on hardware (p50/p95 capture) and execute telemetry overhead A/B (`--compare` baseline vs `FACE_PERF_TELEMETRY=0`)
 - [ ] Next: execute Stage 4.2 in ROI order using this baseline (`thinking_border`/border cache first, then dirty-rect refinement, then transport tuning)
-- [ ] Next: add a bounded supervisor debug command for direct `SET_CONV_STATE` so listening and PTT border states can be benchmarked without proxying
+- [ ] Next: reflex MCU benchmark — run `just mcu-benchmark --target reflex` after commissioning Phase 1+ to validate state rate/jitter baselines
 
 Stage 4.2 Border Hotspot A/B Snapshot (2026-02-25, post-cache firmware + updated supervisor)
 - Artifacts:

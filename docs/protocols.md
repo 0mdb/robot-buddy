@@ -214,3 +214,135 @@ The server exposes `WS /converse` for bidirectional streaming. Emotion metadata
 is sent before audio so the face changes expression before the robot starts speaking.
 
 See the full pipeline design in the plan document.
+
+## MCU Benchmark Harness
+
+Cross-MCU performance benchmark with a shared core and target-specific adapters.
+Collects time-series telemetry samples, computes percentile stats, writes versioned
+JSON artifacts, and supports A/B comparison.
+
+### Quick Start
+
+```bash
+# Face benchmark against live supervisor (5 scenarios, 100 samples each)
+just mcu-benchmark --target face --base-url http://192.168.55.201:8080
+
+# Custom sample count + output directory
+just mcu-benchmark --target face --samples 200 --out docs/perf
+
+# Reflex benchmark (idle only — safe default)
+just mcu-benchmark --target reflex --base-url http://192.168.55.201:8080
+
+# Reflex with motion scenario (requires explicit opt-in)
+just mcu-benchmark --target reflex --allow-motion --base-url http://...
+
+# Compare two artifacts (A/B telemetry overhead, <=1% FPS drop gate)
+just mcu-benchmark --compare docs/perf/baseline.json docs/perf/test.json
+```
+
+### Supervisor API
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/debug/mcu_benchmark` | GET | Current run status (idle/running/completed/failed) |
+| `/ws` | WS `mcu_benchmark.start` | Start a benchmark run |
+| `/ws` | WS `mcu_benchmark.cancel` | Cancel a running benchmark |
+
+WS start payload:
+```json
+{
+  "type": "mcu_benchmark.start",
+  "target": "face",
+  "profile": "stage4_face",
+  "samples": 100,
+  "base_url": "http://localhost:8080",
+  "out_dir": "docs/perf",
+  "allow_motion": false
+}
+```
+
+### Face Scenarios
+
+| Scenario | Setup | What it stresses |
+|---|---|---|
+| `idle` | Neutral mood, no animation | Baseline frame cost |
+| `listening_proxy` | LISTENING conv state | Border pulse animation |
+| `thinking_border` | THINKING conv state | Heavy border animation (hotspot) |
+| `talking_energy` | Happy + talking + energy=180 | Mouth animation + energy |
+| `rage_effects` | Angry mood | Effects pipeline |
+
+### Reflex Scenarios
+
+| Scenario | Requires | What it measures |
+|---|---|---|
+| `idle_hold` | (always) | State update rate, jitter, age |
+| `step_response` | `--allow-motion` | Velocity tracking error |
+
+### Output Artifacts
+
+Written to `docs/perf/` as versioned JSON (schema v2):
+
+```json
+{
+  "version": 2,
+  "target": "face",
+  "profile": "stage4_face",
+  "captured_at": "2026-02-26T...",
+  "endpoint": "http://...",
+  "scenarios": {
+    "idle": {
+      "frames": 6400,
+      "frame_us_avg": 75000,
+      "frame_us_max": 80000,
+      "frame_us_p50": 74500.0,
+      "frame_us_p95": 79200.0,
+      "render_us_avg": 7500,
+      "render_us_p50": 7200.0,
+      "render_us_p95": 8100.0,
+      "border_us_avg": 23000,
+      "border_us_p50": 22800.0,
+      "border_us_p95": 24100.0,
+      "mouth_us_avg": 6900,
+      "mouth_us_p50": 6800.0,
+      "mouth_us_p95": 7200.0,
+      "fps_est": 13.33,
+      "eyes_us_avg": 12700,
+      "effects_us_avg": 17000,
+      "overlay_us_avg": 5,
+      "dirty_px_avg": 9600,
+      "spi_bytes_per_s": 192000,
+      "cmd_rx_to_apply_us_avg": 1000,
+      "samples": 100,
+      "elapsed_s": 99.1
+    }
+  }
+}
+```
+
+Legacy fields (`frame_us_avg`, `frame_us_max`, etc.) are preserved for backward
+comparison with v1 artifacts. New fields: `frame_us_p50`, `frame_us_p95`,
+`render_us_p50/p95`, `border_us_p50/p95`, `mouth_us_p50/p95`.
+
+### Compare Mode
+
+Compares two artifacts and reports per-scenario FPS delta with pass/fail:
+
+```bash
+just mcu-benchmark --compare docs/perf/baseline.json docs/perf/with_telemetry.json
+```
+
+Output includes `fps_drop_pct` per scenario and `overall_pass` (true if all
+scenarios stay within the threshold, default <=1% FPS drop).
+
+### Architecture
+
+```
+supervisor/api/
+├── mcu_benchmark.py          # Shared core: stats, lifecycle, artifact I/O, compare, CLI
+├── mcu_benchmark_face.py     # Face adapter: 5 scenarios, heartbeat polling, p50/p95
+└── mcu_benchmark_reflex.py   # Reflex adapter: rate/jitter/age, opt-in motion
+```
+
+The harness runs against an already-running supervisor endpoint. It polls
+`/debug/devices` for telemetry and sends face/reflex commands via `/ws`.
+Flashing/deploy remains manual.

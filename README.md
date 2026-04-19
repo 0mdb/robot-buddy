@@ -241,6 +241,7 @@ When the supervisor is running, open `http://<robot_ip>:8080` in a browser for:
 | `/video` | GET | MJPEG stream (if vision enabled) |
 | `/debug/devices` | GET | Device connection state |
 | `/debug/planner` | GET | Planner state |
+| `/debug/mcu_benchmark` | GET | MCU benchmark run status |
 | `/ws` | WS | Telemetry stream (20 Hz, JSON) |
 | `/ws/logs` | WS | Live log stream |
 

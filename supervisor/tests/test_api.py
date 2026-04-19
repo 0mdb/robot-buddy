@@ -201,6 +201,15 @@ class TestDebug:
         assert "face" in data
         assert "state" in data["reflex"]
 
+    def test_debug_mcu_benchmark(self, client):
+        tc, *_ = client
+        resp = tc.get("/debug/mcu_benchmark")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "idle"
+        assert "target" in data
+        assert "scenario_index" in data
+
 
 # ── GET /video ───────────────────────────────────────────────────
 
