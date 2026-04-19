@@ -306,6 +306,12 @@ async def async_main(args: argparse.Namespace) -> None:
                 "spk_socket_path": workers.spk_socket_path,
                 "speaker_device": args.usb_speaker_device,
                 "tts_endpoint": args.planner_api + "/tts" if args.planner_api else "",
+                # Ring modulator defaults (Dalek-ish robot voice). 0 Hz = off.
+                # 30 Hz growlier, 50 Hz classic Dalek, 80 Hz cartoony/cheery.
+                "ring_mod_hz": float(os.environ.get("RB_RING_MOD_HZ", "0") or "0"),
+                "ring_mod_mix": float(
+                    os.environ.get("RB_RING_MOD_MIX", "1.0") or "1.0"
+                ),
             }
             await workers.send_to("tts", "tts.config.init", tts_init)
 

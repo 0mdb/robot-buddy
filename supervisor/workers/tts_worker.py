@@ -30,6 +30,7 @@ from supervisor.messages.types import (
     TTS_CMD_PLAY_AUDIO,
     TTS_CMD_PLAY_CHIME,
     TTS_CMD_SET_MUTE,
+    TTS_CMD_SET_RING_MOD,
     TTS_CMD_SET_VOLUME,
     TTS_CMD_SPEAK,
     TTS_CONFIG_INIT,
@@ -111,6 +112,13 @@ class TTSWorker(BaseWorker):
         self._muted: bool = False
         self._mute_chimes: bool = False
 
+        # Ring modulator (Dalek-ish robot voice). hz=0 disables the effect.
+        # Phase is stored as normalised cycles in [0, 1) for precision across
+        # long streams and is carried across chunks for sample-accurate continuity.
+        self._ring_mod_hz: float = 0.0
+        self._ring_mod_mix: float = 1.0
+        self._ring_mod_phase: float = 0.0
+
         # State
         self._speaking = False
         self._cancel_event = asyncio.Event()
@@ -142,7 +150,18 @@ class TTSWorker(BaseWorker):
             self._spk_socket_path = str(p.get("spk_socket_path", ""))
             self._speaker_device = str(p.get("speaker_device", "default"))
             self._tts_endpoint = str(p.get("tts_endpoint", ""))
-            log.info("configured: mode=%s", self._audio_mode)
+            if "ring_mod_hz" in p:
+                self._ring_mod_hz = max(0.0, float(p.get("ring_mod_hz", 0.0)))
+            if "ring_mod_mix" in p:
+                self._ring_mod_mix = max(
+                    0.0, min(1.0, float(p.get("ring_mod_mix", 1.0)))
+                )
+            log.info(
+                "configured: mode=%s ring_mod=%.1fHz mix=%.2f",
+                self._audio_mode,
+                self._ring_mod_hz,
+                self._ring_mod_mix,
+            )
             self._configured.set()
 
         elif t == TTS_CMD_SPEAK:
@@ -174,6 +193,15 @@ class TTSWorker(BaseWorker):
             self._muted = bool(p.get("muted", False))
             self._mute_chimes = bool(p.get("mute_chimes", False))
             log.info("mute=%s mute_chimes=%s", self._muted, self._mute_chimes)
+
+        elif t == TTS_CMD_SET_RING_MOD:
+            self._ring_mod_hz = max(0.0, float(p.get("hz", 0.0)))
+            self._ring_mod_mix = max(0.0, min(1.0, float(p.get("mix", 1.0))))
+            # Reset phase so toggling on/off starts from a clean sin(0)=0.
+            self._ring_mod_phase = 0.0
+            log.info(
+                "ring_mod: hz=%.1f mix=%.2f", self._ring_mod_hz, self._ring_mod_mix
+            )
 
         elif t == TTS_CMD_PLAY_AUDIO:
             # Mode B: audio relay from Core
@@ -373,10 +401,45 @@ class TTSWorker(BaseWorker):
         # Convert back to int16 and ensure C-contiguous for tobytes()
         return arr.astype(np.int16, copy=False).tobytes()
 
+    def _apply_ring_mod(self, pcm: bytes) -> bytes:
+        """Multiply PCM by a phase-continuous sine carrier (ring modulator).
+
+        mix=0 → dry (unchanged), mix=1 → pure ring mod (audio * sin).
+        Phase is tracked in normalised cycles so it stays accurate across
+        thousands of chunks without drifting.
+        """
+        if self._ring_mod_hz <= 0.0 or self._ring_mod_mix <= 0.0 or len(pcm) < 2:
+            return pcm
+
+        arr = np.frombuffer(pcm, dtype=np.int16).astype(np.float32)
+        n = arr.shape[0]
+        cycles_per_sample = self._ring_mod_hz / SAMPLE_RATE
+        # Phase (in cycles) for each sample in this chunk.
+        phase = self._ring_mod_phase + cycles_per_sample * np.arange(
+            n, dtype=np.float32
+        )
+        sine = np.sin(2.0 * np.pi * phase)
+
+        mix = self._ring_mod_mix
+        if mix >= 1.0:
+            arr *= sine
+        else:
+            arr *= (1.0 - mix) + mix * sine
+
+        # Advance phase for the next chunk and wrap to keep it in [0, 1).
+        self._ring_mod_phase = float(
+            (self._ring_mod_phase + cycles_per_sample * n) % 1.0
+        )
+
+        np.clip(arr, -32768.0, 32767.0, out=arr)
+        return arr.astype(np.int16, copy=False).tobytes()
+
     async def _play_pcm_chunk(self, pcm: bytes) -> None:
         """Write a PCM chunk to the aplay subprocess (applies volume + mute)."""
         if self._muted:
             return
+        if self._ring_mod_hz > 0.0 and self._ring_mod_mix > 0.0:
+            pcm = self._apply_ring_mod(pcm)
         if self._volume < 0.999:
             pcm = self._scale_pcm(pcm)
         if self._aplay_proc and self._aplay_proc.stdin:

@@ -121,6 +121,7 @@ TTS_CMD_PLAY_AUDIO = "tts.cmd.play_audio"
 TTS_CMD_PLAY_CHIME = "tts.cmd.play_chime"
 TTS_CMD_SET_MUTE = "tts.cmd.set_mute"
 TTS_CMD_SET_VOLUME = "tts.cmd.set_volume"
+TTS_CMD_SET_RING_MOD = "tts.cmd.set_ring_mod"
 
 # ── Ear — wake word + VAD (§4.9) ─────────────────────────────────
 
