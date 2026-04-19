@@ -160,8 +160,11 @@ async def test_tts_called_once_per_sentence(patched_runtime) -> None:
     # This test just documents that behavior — the primary guarantee is
     # that TTS is called at least once when there's text.
     assert len(patched_runtime.calls) >= 1
-    for _text, emotion in patched_runtime.calls:
-        assert emotion == "happy"
+    # The first call carries the emotional prosody. Any later coalesced call
+    # uses `neutral` to avoid a second prosody tag being prepended.
+    assert patched_runtime.calls[0][1] == "happy"
+    for _text, emotion in patched_runtime.calls[1:]:
+        assert emotion == "neutral"
 
 
 @pytest.mark.asyncio
@@ -180,12 +183,16 @@ async def test_multisentence_coalesces_to_two_tts_calls(patched_runtime) -> None
     ws = _FakeWebSocket()
     await _generate_and_stream_live(ws, llm, history, "hi")
 
-    # Call 1: first natural sentence (early, for first-audio latency).
+    # Call 1: first natural sentence (early, for first-audio latency) with
+    # the turn's emotional prosody.
     # Call 2: everything after, coalesced into one continuous Orpheus call
-    # so the <happy> prosody tag is applied once rather than per sentence.
+    # with `neutral` so no second prosody tag is prepended — that second
+    # tag is the root cause of the "excited excited" vocalization leak.
     assert len(patched_runtime.calls) == 2
-    first_text, _ = patched_runtime.calls[0]
-    rest_text, _ = patched_runtime.calls[1]
+    first_text, first_emotion = patched_runtime.calls[0]
+    rest_text, rest_emotion = patched_runtime.calls[1]
+    assert first_emotion == "happy"
+    assert rest_emotion == "neutral"
     assert "first long sentence" in first_text
     assert "Another long sentence" in rest_text
     assert "third sentence" in rest_text

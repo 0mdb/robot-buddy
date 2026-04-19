@@ -421,19 +421,20 @@ async def _generate_and_stream_live(
 
     # Limit TTS calls to 2 per turn: the FIRST natural sentence early (for
     # latency), then one coalesced call for everything after. Each Orpheus
-    # call re-applies the `<happy>` prosody tag (apply_prosody_tag in
+    # call re-applies a prosody tag like `<excited>` (apply_prosody_tag in
     # orpheus.py), and on short inputs the tokenizer occasionally vocalises
-    # that tag rather than treating it as a control — the "happy happy"
-    # artifact. Two calls keeps the tag count down and gives the second
-    # call enough content for natural prosody.
+    # that tag rather than treating it as a control — the "excited excited"
+    # artifact. The first call carries the emotional prosody; the coalesced
+    # continuation uses `neutral` so no tag is prepended, leaving at most
+    # one tag application per turn.
     sent_first = False
     coalesce_buf: list[str] = []
 
-    async def _dispatch_tts(text: str, tg: asyncio.TaskGroup) -> None:
+    async def _dispatch_tts(text: str, tg: asyncio.TaskGroup, *, emotion: str) -> None:
         if not text:
             return
-        log.info("tts dispatch: emotion=%s len=%d", emotion_for_tts, len(text))
-        q = await _spawn_tts_runner(text, emotion_for_tts, tg)
+        log.info("tts dispatch: emotion=%s len=%d", emotion, len(text))
+        q = await _spawn_tts_runner(text, emotion, tg)
         await sentence_chunk_queues.put(q)
 
     async def _produce(tg: asyncio.TaskGroup) -> None:
@@ -472,7 +473,7 @@ async def _generate_and_stream_live(
                             )
                     elif isinstance(event, Sentence):
                         if not sent_first:
-                            await _dispatch_tts(event.text, tg)
+                            await _dispatch_tts(event.text, tg, emotion=emotion_for_tts)
                             sent_first = True
                         else:
                             coalesce_buf.append(event.text)
@@ -481,14 +482,14 @@ async def _generate_and_stream_live(
             for event in parser.close():
                 if isinstance(event, Sentence):
                     if not sent_first:
-                        await _dispatch_tts(event.text, tg)
+                        await _dispatch_tts(event.text, tg, emotion=emotion_for_tts)
                         sent_first = True
                     else:
                         coalesce_buf.append(event.text)
             # Coalesce everything after the first sentence into a single
-            # TTS call.
+            # TTS call with `neutral` so no second prosody tag is prepended.
             if coalesce_buf:
-                await _dispatch_tts(" ".join(coalesce_buf), tg)
+                await _dispatch_tts(" ".join(coalesce_buf), tg, emotion="neutral")
                 coalesce_buf.clear()
             # EOF signal to consumer. Guarded so we don't deadlock if the
             # group is already tearing down.
