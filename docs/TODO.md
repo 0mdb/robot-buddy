@@ -188,12 +188,16 @@ _3 items complete (LLM session memory, TTS resampler hardening, conversation stu
 - [ ] `[sonnet]` Wake word: record 20–50 real "hey buddy" utterances from family
 - [ ] `[sonnet]` Wake word: soak test 1+ hours idle with household noise
 - [x] `[sonnet]` Wake word: pin openWakeWord commit, skip tflite, add `just retrain-wakeword`
+- [ ] `[sonnet]` Server VRAM: reduce `ORPHEUS_MAX_NUM_SEQS` 8 → 4. Robot is single-user; current headroom on 3090 Ti is only ~1.6 GB free with Qwen + Orpheus + STT large-v3-turbo all loaded. Expected reclaim ~1 GB. Validate no TTS quality/latency regression.
+- [ ] `[sonnet]` Server health: reconcile `orpheus_vram_free_gb` (reports ~14 GB free) vs actual `nvidia-smi` free (~1.6 GB). The health field appears to compute "budget available under cap" rather than measured free memory — rename or add a true `gpu_free_vram_gb` field from an `nvmlDeviceGetMemoryInfo` query so false confidence doesn't mask OOM risk.
+- [ ] `[sonnet]` Orpheus lifecycle: under `PERFORMANCE_MODE=1`, Orpheus stays permanently resident — `orpheus_idle_timeout_s=8` never unloads. Either the unload path is broken or `orpheus_min_free_vram_gb=10` is effectively dead config. Audit `server/app/tts/orpheus.py` lifecycle and either fix the unload path or remove the now-misleading config knobs.
+- [ ] `[sonnet]` Server: add CUDA OOM alerting in `/health` (or a dedicated `/metrics` endpoint) — surface measured VRAM headroom, recent OOM counts, and a warning flag when free VRAM drops below a threshold (e.g. 512 MB). Belt-and-suspenders now that STT runs on GPU alongside LLM+TTS.
 
 ---
 
 ### Camera & Vision
 
-- [ ] `[sonnet]` Arducam IMX708 integration — proper V4L2/Picamera2 setup, autofocus config (needs on-hardware validation)
+- [x] `[sonnet]` Arducam IMX708 integration — validated on-hardware 2026-04-19. Sensor detected by libcamera (imx708 @ 4608×2592, ISP via pisp); supervisor vision worker streams at 640×480 BGR888. Fix was runtime config, not code: supervisor venv had `include-system-site-packages = false` so the apt-installed `python3-picamera2` was invisible — flipped the flag to `true` in `supervisor/.venv/pyvenv.cfg`. Default `vision.hfov_deg=66` is correct for the standard Camera Module 3 lens (75° diagonal ≈ 66° horizontal).
 - [x] `[sonnet]` Camera calibration/CV settings in dashboard (HSV + min radius + safety thresholds + /video preview + eyedropper)
 - [x] `[sonnet]` Mask editor + camera calibration tooling in dashboard (floor + ball exclusion polygons; persisted to `./data/vision_mask.json`)
 - [x] `[sonnet]` Upgrade camera settings for new hardware (camera/ISP params + dashboard UI; Picamera2 controls + rotate/FOV/JPEG quality)

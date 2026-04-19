@@ -224,20 +224,23 @@ class VisionWorker(BaseWorker):
             from picamera2 import Picamera2
 
             cam = Picamera2(0)
+            # Picamera2 format names are inverted vs OpenCV: "RGB888" yields
+            # B,G,R bytes in memory (what cv2 expects), "BGR888" yields R,G,B.
+            # Prefer "RGB888" so no conversion is needed on the hot path.
             try:
-                cam.configure(
-                    cam.create_video_configuration(
-                        main={"size": self._capture_size, "format": "BGR888"},
-                    )
-                )
-                self._camera_main_format = "BGR888"
-            except Exception:
                 cam.configure(
                     cam.create_video_configuration(
                         main={"size": self._capture_size, "format": "RGB888"},
                     )
                 )
                 self._camera_main_format = "RGB888"
+            except Exception:
+                cam.configure(
+                    cam.create_video_configuration(
+                        main={"size": self._capture_size, "format": "BGR888"},
+                    )
+                )
+                self._camera_main_format = "BGR888"
             cam.start()
             self._camera_ok = True
             log.info("camera opened (format=%s)", self._camera_main_format)
@@ -381,8 +384,9 @@ class VisionWorker(BaseWorker):
                     await asyncio.sleep(0.1)
                     continue
 
-                # Process
-                if self._camera_main_format == "RGB888":
+                # Process — "BGR888" in picamera2 is RGB-in-memory, so it's
+                # what needs converting; "RGB888" already gives BGR bytes.
+                if self._camera_main_format == "BGR888":
                     frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 
                 if self._rotate_deg == 90:

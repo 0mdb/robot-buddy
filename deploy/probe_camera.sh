@@ -33,8 +33,9 @@ except ImportError as e:
 cameras = Picamera2.global_camera_info()
 if not cameras:
     print("FAIL: no cameras detected by libcamera")
-    print("      Check: libcamera-hello --list-cameras")
-    print("      Check: vcgencmd get_camera  (for legacy CSI)")
+    print("      Check: rpicam-hello --list-cameras  (Pi OS Bookworm+)")
+    print("      Check: libcamera-hello --list-cameras  (older Pi OS)")
+    print("      Check: vcgencmd get_camera  (for legacy CSI on Pi 4 and earlier)")
     sys.exit(1)
 
 print(f"Found {len(cameras)} camera(s):")
