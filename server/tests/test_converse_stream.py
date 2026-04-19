@@ -165,7 +165,7 @@ async def test_tts_called_once_per_sentence(patched_runtime) -> None:
 
 
 @pytest.mark.asyncio
-async def test_multisentence_pipelines_per_sentence(patched_runtime) -> None:
+async def test_multisentence_coalesces_to_two_tts_calls(patched_runtime) -> None:
     from app.routers.converse import _generate_and_stream_live
 
     # Three long-enough sentences to flush in-stream (all ≥12 chars).
@@ -180,11 +180,15 @@ async def test_multisentence_pipelines_per_sentence(patched_runtime) -> None:
     ws = _FakeWebSocket()
     await _generate_and_stream_live(ws, llm, history, "hi")
 
-    assert len(patched_runtime.calls) == 3
-    all_tts_text = " ".join(t for t, _ in patched_runtime.calls)
-    assert "first long sentence" in all_tts_text
-    assert "Another long sentence" in all_tts_text
-    assert "third sentence" in all_tts_text
+    # Call 1: first natural sentence (early, for first-audio latency).
+    # Call 2: everything after, coalesced into one continuous Orpheus call
+    # so the <happy> prosody tag is applied once rather than per sentence.
+    assert len(patched_runtime.calls) == 2
+    first_text, _ = patched_runtime.calls[0]
+    rest_text, _ = patched_runtime.calls[1]
+    assert "first long sentence" in first_text
+    assert "Another long sentence" in rest_text
+    assert "third sentence" in rest_text
 
 
 @pytest.mark.asyncio

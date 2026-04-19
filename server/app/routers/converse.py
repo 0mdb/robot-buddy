@@ -419,8 +419,25 @@ async def _generate_and_stream_live(
         tg.create_task(_runner())
         return q
 
+    # Limit TTS calls to 2 per turn: the FIRST natural sentence early (for
+    # latency), then one coalesced call for everything after. Each Orpheus
+    # call re-applies the `<happy>` prosody tag (apply_prosody_tag in
+    # orpheus.py), and on short inputs the tokenizer occasionally vocalises
+    # that tag rather than treating it as a control — the "happy happy"
+    # artifact. Two calls keeps the tag count down and gives the second
+    # call enough content for natural prosody.
+    sent_first = False
+    coalesce_buf: list[str] = []
+
+    async def _dispatch_tts(text: str, tg: asyncio.TaskGroup) -> None:
+        if not text:
+            return
+        log.info("tts dispatch: emotion=%s len=%d", emotion_for_tts, len(text))
+        q = await _spawn_tts_runner(text, emotion_for_tts, tg)
+        await sentence_chunk_queues.put(q)
+
     async def _produce(tg: asyncio.TaskGroup) -> None:
-        nonlocal metadata_seen, emotion_for_tts, llm_latency_ms
+        nonlocal metadata_seen, emotion_for_tts, llm_latency_ms, sent_first
 
         stream = llm.stream_conversation(
             history,
@@ -454,14 +471,25 @@ async def _generate_and_stream_live(
                                 {"type": "memory_tags", "tags": resp.memory_tags}
                             )
                     elif isinstance(event, Sentence):
-                        q = await _spawn_tts_runner(event.text, emotion_for_tts, tg)
-                        await sentence_chunk_queues.put(q)
+                        if not sent_first:
+                            await _dispatch_tts(event.text, tg)
+                            sent_first = True
+                        else:
+                            coalesce_buf.append(event.text)
         finally:
             # Flush the final buffered fragment (short-sentence tail).
             for event in parser.close():
                 if isinstance(event, Sentence):
-                    q = await _spawn_tts_runner(event.text, emotion_for_tts, tg)
-                    await sentence_chunk_queues.put(q)
+                    if not sent_first:
+                        await _dispatch_tts(event.text, tg)
+                        sent_first = True
+                    else:
+                        coalesce_buf.append(event.text)
+            # Coalesce everything after the first sentence into a single
+            # TTS call.
+            if coalesce_buf:
+                await _dispatch_tts(" ".join(coalesce_buf), tg)
+                coalesce_buf.clear()
             # EOF signal to consumer. Guarded so we don't deadlock if the
             # group is already tearing down.
             try:
