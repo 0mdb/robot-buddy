@@ -60,7 +60,7 @@ class TestPiPMICMonitor:
         assert "raspberrypi_hwmon" in mon.label()
 
     @pytest.mark.asyncio
-    async def test_poll_reads_voltage(self, tmp_path, monkeypatch):
+    async def test_poll_clean_state(self, tmp_path, monkeypatch):
         root = _make_hwmon(tmp_path, name="rp1_adc", voltage_mv=5012)
         mon = PiPMICMonitor(sysfs_root=root)
 
@@ -72,7 +72,9 @@ class TestPiPMICMonitor:
 
         state = await mon.poll()
         assert state.source == "usb"
-        assert state.voltage_mv == 5012
+        # voltage_mv stays 0 on Pi-PMIC-only (hwmon channels aren't the 5V
+        # rail; see PiPMICMonitor.poll() for the rationale).
+        assert state.voltage_mv == 0
         assert state.pmic_undervoltage is False
         assert state.pmic_throttled is False
 
@@ -102,8 +104,9 @@ class TestPiPMICMonitor:
         monkeypatch.setattr(power_monitor.asyncio, "create_subprocess_exec", boom)
 
         state = await mon.poll()
-        # Voltage still read; throttled fields stay at defaults.
-        assert state.voltage_mv == 5010
+        # Throttled fields stay at defaults; voltage_mv is 0 by design
+        # (see PiPMICMonitor.poll() note — hwmon can't see the 5V input).
+        assert state.voltage_mv == 0
         assert state.pmic_undervoltage is False
 
 

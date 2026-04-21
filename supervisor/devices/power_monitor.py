@@ -120,13 +120,14 @@ class PiPMICMonitor:
             t_last_update_ms=time.monotonic() * 1000.0,
         )
 
-        if self._voltage_path is not None:
-            try:
-                raw = self._voltage_path.read_text().strip()
-                # hwmon convention: voltage inputs are in millivolts.
-                state.voltage_mv = int(raw)
-            except (OSError, ValueError) as e:
-                log.debug("PiPMICMonitor voltage read failed: %s", e)
+        # NOTE: hwmon2/in*_input channels on Pi 5 expose internal PMIC rails
+        # (VDD_CORE, DDR_VDDQ, etc.) — NOT the 5V USB-C input. The raw input
+        # isn't monitored via hwmon at all on Pi 5. Leave voltage_mv = 0 for
+        # now; Phase 2 will parse `vcgencmd pmic_read_adc` for labeled rail
+        # readings (3V3_SYS_V is a reasonable proxy for overall rail health).
+        # The pmic_undervoltage bit below is the authoritative brownout
+        # signal regardless.
+        _ = self._voltage_path  # kept for future use; see above
 
         # Throttled bitmask — asynchronous subprocess with bounded timeout.
         try:
