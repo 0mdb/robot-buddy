@@ -47,6 +47,11 @@ _MIN_SAMPLES_FOR_SYNCED = 5
 _CONSECUTIVE_BAD_RTT_FOR_DEGRADED = 10
 _DRIFT_ALPHA = 0.1
 _DRIFT_WARN_THRESHOLD = 100.0  # us/s
+# Skip filter update when a single-interval offset jump exceeds this. On the face
+# link, LVGL/TinyUSB jitter causes the RTT-window min to turn over to a worse-
+# but-still-accepted sample, producing a one-shot offset step that the filter
+# otherwise reads as hundreds of us/s of "drift".
+_DRIFT_OUTLIER_US = 200.0
 
 
 @dataclass(slots=True)
@@ -71,6 +76,9 @@ class ClockSyncEngine:
         self._clock = clock_state
         self._label = label
         self._rtt_threshold_ns = rtt_threshold_ns
+        # Face link has high inherent jitter (LVGL + TinyUSB); its drift
+        # estimate is noisy enough that "high drift" at WARN is just spam.
+        self._drift_log = log.debug if label == "face" else log.warning
 
         self._ping_seq: int = 0
         self._pending_ping_seq: int | None = None
@@ -239,15 +247,19 @@ class ClockSyncEngine:
             dt_ns = t_ns - self._prev_offset_t_ns
             if dt_ns > 0:
                 d_offset_us = (offset_ns - self._prev_offset_ns) / 1000.0
-                dt_s = dt_ns / 1_000_000_000.0
-                raw_drift = d_offset_us / dt_s
-                self._drift_filtered = (
-                    _DRIFT_ALPHA * raw_drift + (1 - _DRIFT_ALPHA) * self._drift_filtered
-                )
-                if abs(self._drift_filtered) > _DRIFT_WARN_THRESHOLD:
-                    log.warning(
-                        "%s: high drift %.1f us/s", self._label, self._drift_filtered
+                if abs(d_offset_us) <= _DRIFT_OUTLIER_US:
+                    dt_s = dt_ns / 1_000_000_000.0
+                    raw_drift = d_offset_us / dt_s
+                    self._drift_filtered = (
+                        _DRIFT_ALPHA * raw_drift
+                        + (1 - _DRIFT_ALPHA) * self._drift_filtered
                     )
+                    if abs(self._drift_filtered) > _DRIFT_WARN_THRESHOLD:
+                        self._drift_log(
+                            "%s: high drift %.1f us/s",
+                            self._label,
+                            self._drift_filtered,
+                        )
 
         self._prev_offset_ns = offset_ns
         self._prev_offset_t_ns = t_ns

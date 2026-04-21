@@ -48,6 +48,18 @@ class SupervisorSM:
         elif self._mode == Mode.BOOT and reflex_connected and fault_flags == 0:
             self._transition(Mode.IDLE, "reflex ready")
 
+        # ERROR → IDLE when the entry conditions have cleared. Without this, a
+        # transient USB hiccup or a one-shot fault keeps the robot stuck in
+        # ERROR (and the face stuck on ERROR_DISPLAY) until someone calls
+        # clear_error() by hand. Explicit clear_error() stays for non-severe
+        # edge cases and remains the API contract.
+        elif (
+            self._mode == Mode.ERROR
+            and reflex_connected
+            and not (fault_flags & _SEVERE_FAULTS)
+        ):
+            self._transition(Mode.IDLE, "reflex healthy, faults cleared")
+
         return self._mode
 
     def request_mode(

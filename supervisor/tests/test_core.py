@@ -62,6 +62,24 @@ class TestStateMachine:
         ok, msg = sm.clear_error(True, 0)
         assert ok
 
+    def test_error_auto_recovers_when_reflex_healthy(self):
+        sm = SupervisorSM()
+        sm.update(True, 0)
+        # Reflex drops → ERROR
+        mode = sm.update(reflex_connected=False, fault_flags=0)
+        assert mode == Mode.ERROR
+        # Reflex comes back, no faults → auto-clear to IDLE
+        mode = sm.update(reflex_connected=True, fault_flags=0)
+        assert mode == Mode.IDLE
+
+    def test_error_persists_while_faults_active(self):
+        sm = SupervisorSM()
+        sm.update(True, 0)
+        sm.update(True, Fault.ESTOP)
+        # Reflex healthy but fault still latched → stay in ERROR
+        mode = sm.update(reflex_connected=True, fault_flags=Fault.ESTOP)
+        assert mode == Mode.ERROR
+
 
 # ── Safety Policies ──────────────────────────────────────────────
 

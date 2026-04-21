@@ -22,6 +22,12 @@ log = logging.getLogger(__name__)
 _RECONNECT_MIN_S = 0.5
 _RECONNECT_MAX_S = 5.0
 
+# If no frames arrive for this long on a "connected" link, treat it as a silent
+# hang (pyserial can keep timing out on .read() without raising when a USB
+# device wedges). Reflex heartbeat is 10 Hz and the face is similarly chatty,
+# so 3 s is well past any healthy gap.
+_RX_STALL_TIMEOUT_MS = 3000.0
+
 
 class SerialTransport:
     """Async wrapper around pyserial with COBS frame extraction and reconnect."""
@@ -214,6 +220,20 @@ class SerialTransport:
                 data = await loop.run_in_executor(None, self._blocking_read)
                 if data:
                     self._feed(data)
+                elif (
+                    self._connected
+                    and self._last_rx_mono_ms > 0
+                    and time.monotonic() * 1000.0 - self._last_rx_mono_ms
+                    > _RX_STALL_TIMEOUT_MS
+                ):
+                    stall_ms = time.monotonic() * 1000.0 - self._last_rx_mono_ms
+                    self._last_error = f"rx stalled {stall_ms:.0f} ms"
+                    log.warning(
+                        "%s: rx stalled %.0f ms, treating as disconnect",
+                        self.label,
+                        stall_ms,
+                    )
+                    self._handle_disconnect()
             except (serial.SerialException, OSError) as e:
                 self._last_error = str(e)
                 log.warning("%s: read error: %s", self.label, e)
@@ -243,6 +263,8 @@ class SerialTransport:
             self._connect_count += 1
             self._connected = True
             self._buf.clear()
+            # Seed so the RX-stall watchdog doesn't trip before the first frame.
+            self._last_rx_mono_ms = self._connect_mono * 1000.0
             log.info("%s: connected to %s", self.label, self.port)
             if self._on_connect:
                 self._on_connect()

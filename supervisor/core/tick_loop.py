@@ -86,6 +86,13 @@ from supervisor.messages.types import (
 # PE snapshot staleness threshold (spec §11.3: 3× worker tick rate)
 _PE_STALE_MS = 3000.0
 
+# Reflex telemetry is 10 Hz. If no STATE packet has arrived in this long,
+# treat the link as functionally disconnected even if the serial transport
+# still reports connected — this covers silent USB hangs where pyserial
+# never raises. The transport's own RX-stall watchdog also catches this,
+# but this guard is belt-and-suspenders at the state-machine input.
+_REFLEX_STALE_MS = 2000.0
+
 log = logging.getLogger(__name__)
 
 TICK_HZ = 50
@@ -363,7 +370,16 @@ class TickLoop:
         )
 
     def _snapshot_reflex(self) -> None:
-        self.robot.reflex_connected = self._reflex.connected if self._reflex else False
+        if not self._reflex:
+            self.robot.reflex_connected = False
+            return
+        transport_connected = self._reflex.connected
+        last_rx_ms = self.robot.reflex_rx_mono_ms
+        if last_rx_ms <= 0:
+            self.robot.reflex_connected = transport_connected
+            return
+        age_ms = time.monotonic() * 1000.0 - last_rx_ms
+        self.robot.reflex_connected = transport_connected and age_ms < _REFLEX_STALE_MS
 
     def _snapshot_face(self) -> None:
         if not self._face:
