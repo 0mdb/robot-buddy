@@ -37,14 +37,45 @@ def test_format_user_prompt_basic():
         seq=1,
         monotonic_ts_ms=1000,
         mode="IDLE",
-        battery_mv=8000,
+        battery_mv=8000,  # legacy, ignored by formatter
         range_mm=1000,
     )
     prompt = format_user_prompt(ws)
     assert "Mode: IDLE" in prompt
-    assert "Battery: 8000 mV" in prompt
+    # No explicit power source → "unknown" rendering.
+    assert "Power: unknown" in prompt
     assert "Range sensor: 1000 mm" in prompt
     assert "Trigger: heartbeat" in prompt
+
+
+def test_format_user_prompt_renders_power_known_soc():
+    from app.llm.schemas import PowerSnapshot
+
+    ws = WorldState(
+        robot_id="robot-1",
+        seq=1,
+        monotonic_ts_ms=1000,
+        mode="IDLE",
+        range_mm=1000,
+        power=PowerSnapshot(source="battery", soc_pct=72, charging=False),
+    )
+    prompt = format_user_prompt(ws)
+    assert "Power: battery 72%" in prompt
+
+
+def test_format_user_prompt_renders_pmic_undervoltage():
+    from app.llm.schemas import PowerSnapshot
+
+    ws = WorldState(
+        robot_id="robot-1",
+        seq=1,
+        monotonic_ts_ms=1000,
+        mode="IDLE",
+        range_mm=1000,
+        power=PowerSnapshot(source="usb", pmic_undervoltage=True),
+    )
+    prompt = format_user_prompt(ws)
+    assert "PMIC undervoltage" in prompt
 
 
 def test_format_user_prompt_ball_detected():

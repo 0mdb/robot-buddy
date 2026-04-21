@@ -74,6 +74,9 @@ export interface TelemetryPayload {
     face: ClockSyncInfo
   }
 
+  // Power (Pi-side)
+  power: PowerStateInfo
+
   // Speed caps
   speed_caps: SpeedCap[]
 
@@ -122,6 +125,17 @@ export interface ClockSyncInfo {
   drift_us_per_s: number
   samples: number
   t_last_sync_ns: number
+}
+
+export interface PowerStateInfo {
+  source: 'unknown' | 'usb' | 'battery' | 'ac_charging' | string
+  voltage_mv: number
+  current_ma: number
+  soc_pct: number // -1 = unknown
+  charging: boolean
+  ac_present: boolean
+  pmic_undervoltage: boolean
+  pmic_throttled: boolean
 }
 
 export interface SpeedCap {

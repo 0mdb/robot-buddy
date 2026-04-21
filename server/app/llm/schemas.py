@@ -20,6 +20,18 @@ from app.llm.expressions import (
 # ---------------------------------------------------------------------------
 
 
+class PowerSnapshot(BaseModel):
+    """Pi-side power state. Fields are '0/-1 = unknown' sentinels matching
+    supervisor.core.state.PowerState."""
+
+    source: str = "unknown"  # "unknown" | "usb" | "battery" | "ac_charging"
+    voltage_mv: int = 0
+    soc_pct: int = -1
+    charging: bool = False
+    ac_present: bool = False
+    pmic_undervoltage: bool = False
+
+
 class WorldState(BaseModel):
     """Compact snapshot of the robot's world, sent by the supervisor."""
 
@@ -27,7 +39,8 @@ class WorldState(BaseModel):
     seq: int = Field(ge=0)
     monotonic_ts_ms: int = Field(ge=0)
     mode: str
-    battery_mv: int
+    battery_mv: int = 0  # legacy; reflex-reported, always 0 on current HW
+    power: PowerSnapshot = Field(default_factory=PowerSnapshot)
     range_mm: int
     faults: list[str] = Field(default_factory=list)
     clear_confidence: float = -1.0

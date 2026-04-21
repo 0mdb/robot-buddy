@@ -14,6 +14,7 @@ import type {
   ClockSyncInfo,
   ClocksDebug,
   DeviceDebug,
+  PowerStateInfo,
   SystemDebug,
   TelemetryPayload,
   WorkersDebug,
@@ -410,48 +411,59 @@ const BATTERY_THRESHOLDS = [
 function PowerPanel({
   batteryMv,
   reflexConnected,
+  power,
 }: {
   batteryMv: number
   reflexConnected: boolean
+  power: PowerStateInfo | undefined
 }) {
-  if (!reflexConnected && batteryMv === 0) {
+  // Authoritative source is `power` from the Pi-side monitor. Legacy
+  // batteryMv is still plotted on the chart until a fuel gauge lands and
+  // the chart flips to power.voltage_mv.
+  const src = power?.source ?? 'unknown'
+  const voltageMv = power?.voltage_mv ?? 0
+  const socPct = power?.soc_pct ?? -1
+  const charging = power?.charging ?? false
+  const undervoltage = power?.pmic_undervoltage ?? false
+  const throttled = power?.pmic_throttled ?? false
+
+  // Top-line summary
+  let headline: string
+  let badgeLevel: DiagLevel = 'ok'
+  let badgeText = 'OK'
+
+  if (undervoltage) {
+    headline = 'PMIC undervoltage — check power supply'
+    badgeLevel = 'error'
+    badgeText = 'UNDERVOLT'
+  } else if (socPct >= 0) {
+    headline = charging ? `Battery ${socPct}% — charging` : `Battery ${socPct}%`
+    badgeLevel = socPct >= 25 ? 'ok' : socPct >= 10 ? 'warn' : 'error'
+    badgeText = `${socPct}%`
+  } else if (src === 'ac_charging') {
+    headline = 'AC — charging'
+    badgeText = 'AC'
+  } else if (src === 'usb') {
+    headline = voltageMv > 0 ? `USB powered — ${voltageMv} mV` : 'USB powered'
+    badgeText = 'USB'
+  } else if (src === 'battery') {
+    headline = voltageMv > 0 ? `Battery — ${voltageMv} mV` : 'On battery'
+    badgeText = 'BATT'
+  } else if (!reflexConnected && voltageMv === 0) {
     return (
       <div className={styles.card}>
         <h3 className={m.sectionTitle}>Power</h3>
         <span className={styles.mono} style={{ color: 'var(--text-dim)' }}>
-          No battery data (Reflex disconnected)
+          No power data (supervisor offline or null power monitor)
         </span>
       </div>
     )
+  } else {
+    headline = 'Power source unknown'
+    badgeLevel = 'warn'
+    badgeText = 'UNKNOWN'
   }
 
-  // Reflex telemetry reports 0 mV when battery sense is unimplemented or when
-  // the robot is running on USB/AC with no battery in circuit. Render as a
-  // neutral "USB powered" state rather than a scary 0 mV / error reading.
-  if (reflexConnected && batteryMv === 0) {
-    return (
-      <div className={styles.card}>
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: 8,
-          }}
-        >
-          <h3 className={m.sectionTitle} style={{ marginBottom: 0 }}>
-            Power
-          </h3>
-          <StatusBadge level="ok" text="USB" />
-        </div>
-        <span className={styles.mono} style={{ color: 'var(--text-dim)' }}>
-          USB powered — no battery sense
-        </span>
-      </div>
-    )
-  }
-
-  const level: DiagLevel = batteryMv > 7000 ? 'ok' : batteryMv > 6500 ? 'warn' : 'error'
   return (
     <div className={styles.card}>
       <div
@@ -467,9 +479,10 @@ function PowerPanel({
         </h3>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span className={styles.mono} style={{ fontSize: 16, fontWeight: 700 }}>
-            {fmt(batteryMv)} mV
+            {headline}
           </span>
-          <StatusBadge level={level} text={level.toUpperCase()} />
+          <StatusBadge level={badgeLevel} text={badgeText} />
+          {throttled && !undervoltage && <StatusBadge level="warn" text="THROTTLED" />}
         </div>
       </div>
       <TimeSeriesChart
@@ -480,6 +493,12 @@ function PowerPanel({
         series={BATTERY_SERIES}
         thresholds={BATTERY_THRESHOLDS}
       />
+      {batteryMv === 0 && voltageMv === 0 && (
+        <span className={styles.mono} style={{ color: 'var(--text-dim)', fontSize: 11 }}>
+          voltage telemetry offline — chart will populate when a fuel-gauge monitor or Pi PMIC
+          reading is available
+        </span>
+      )}
     </div>
   )
 }
@@ -926,6 +945,10 @@ export default function MonitorTab() {
   )
   const faultFlags = useTelemetry((s) => (s.snapshot as TelemetryPayload).fault_flags ?? 0, 200)
   const batteryMv = useTelemetry((s) => (s.snapshot as TelemetryPayload).battery_mv ?? 0, 200)
+  const power = useTelemetry(
+    (s) => (s.snapshot as TelemetryPayload).power as PowerStateInfo | undefined,
+    200,
+  )
   const rangeMm = useTelemetry((s) => (s.snapshot as TelemetryPayload).range_mm ?? 0, 200)
   const rangeStatus = useTelemetry((s) => (s.snapshot as TelemetryPayload).range_status ?? 0, 200)
   const visionFps = useTelemetry((s) => (s.snapshot as TelemetryPayload).vision_fps ?? 0, 200)
@@ -970,7 +993,7 @@ export default function MonitorTab() {
       <DeviceClockPanel devices={devices} clocks={clocks} />
 
       {/* Power chart */}
-      <PowerPanel batteryMv={batteryMv} reflexConnected={reflexConnected} />
+      <PowerPanel batteryMv={batteryMv} reflexConnected={reflexConnected} power={power} />
 
       {/* Sensor health */}
       <SensorHealthPanel

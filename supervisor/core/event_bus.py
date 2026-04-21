@@ -46,6 +46,7 @@ class PlannerEventBus:
         self._vision_healthy: bool | None = None
         self._last_fault_flags = 0
         self._last_mode: Mode | None = None
+        self._last_power_undervoltage: bool = False
 
         self._last_button_ts = -1.0
         self._last_touch_ts = -1.0
@@ -204,6 +205,27 @@ class PlannerEventBus:
                 now_ms,
             )
         self._last_fault_flags = int(robot.fault_flags)
+
+        # Power: PMIC undervoltage edge. The hardware brownout signal is the
+        # only authoritative trigger we get without a fuel gauge; once one's
+        # added this would extend with soc-threshold events.
+        if robot.power.pmic_undervoltage != self._last_power_undervoltage:
+            if robot.power.pmic_undervoltage:
+                self.emit(
+                    "power.undervoltage_raised",
+                    {
+                        "voltage_mv": int(robot.power.voltage_mv),
+                        "soc_pct": int(robot.power.soc_pct),
+                    },
+                    now_ms,
+                )
+            else:
+                self.emit(
+                    "power.undervoltage_cleared",
+                    {"voltage_mv": int(robot.power.voltage_mv)},
+                    now_ms,
+                )
+            self._last_power_undervoltage = bool(robot.power.pmic_undervoltage)
 
     def latest(self, limit: int = 20) -> list[PlannerEvent]:
         if limit <= 0:

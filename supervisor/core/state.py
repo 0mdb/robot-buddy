@@ -56,6 +56,31 @@ class ClockSync:
     t_last_sync_ns: int = 0
 
 
+@dataclass(slots=True)
+class PowerState:
+    """Pi-side power snapshot. Populated by PowerMonitor at ~1 Hz.
+
+    source semantics:
+      - "unknown": no monitor active or probe hasn't landed yet
+      - "usb": running from USB-C / AC; no battery info
+      - "battery": on battery, discharging
+      - "ac_charging": AC present and pack is charging
+
+    Fields are "0/-1 = unknown" rather than Optional to keep the telemetry
+    wire format consistent with the rest of RobotState.
+    """
+
+    source: str = "unknown"
+    voltage_mv: int = 0  # Pi 5V rail or battery pack voltage (monitor-dependent)
+    current_ma: int = 0  # + discharge, − charge; 0 = unknown
+    soc_pct: int = -1  # 0-100; -1 = unknown (PMIC alone can't report SoC)
+    charging: bool = False
+    ac_present: bool = False
+    pmic_undervoltage: bool = False
+    pmic_throttled: bool = False
+    t_last_update_ms: float = 0.0
+
+
 # ── RobotState (MCU hardware — updated synchronously each tick) ──
 
 
@@ -138,6 +163,9 @@ class RobotState:
     # Clock sync
     reflex_clock: ClockSync = field(default_factory=ClockSync)
     face_clock: ClockSync = field(default_factory=ClockSync)
+
+    # Power (Pi-side — populated by PowerMonitor)
+    power: PowerState = field(default_factory=PowerState)
 
     # Safety
     speed_caps: list[SpeedCap] = field(default_factory=list)
@@ -236,6 +264,16 @@ class RobotState:
                     "drift_us_per_s": self.face_clock.drift_us_per_s,
                     "samples": self.face_clock.samples,
                 },
+            },
+            "power": {
+                "source": self.power.source,
+                "voltage_mv": self.power.voltage_mv,
+                "current_ma": self.power.current_ma,
+                "soc_pct": self.power.soc_pct,
+                "charging": self.power.charging,
+                "ac_present": self.power.ac_present,
+                "pmic_undervoltage": self.power.pmic_undervoltage,
+                "pmic_throttled": self.power.pmic_throttled,
             },
         }
 

@@ -135,6 +135,13 @@ def parse_args() -> argparse.Namespace:
         ),
         help="Wake word ONNX model path, or built-in name (alexa, hey_jarvis, hey_mycroft, hey_rhasspy). Also reads WAKEWORD_MODEL env var. Default: hey_buddy.onnx",
     )
+    p.add_argument(
+        "--power-monitor",
+        choices=("auto", "pmic", "null"),
+        default="auto",
+        help="Power state source. 'auto' probes PiPMICMonitor then falls back "
+        "to null. 'pmic' forces Pi PMIC (fails on non-Pi). 'null' disables.",
+    )
     return p.parse_args()
 
 
@@ -151,6 +158,7 @@ async def async_main(args: argparse.Namespace) -> None:
         ClockSyncEngine,
     )
     from supervisor.devices.face_client import FaceClient
+    from supervisor.devices.power_monitor import pick_power_monitor
     from supervisor.devices.reflex_client import ReflexClient
     from supervisor.io.serial_transport import SerialTransport
 
@@ -233,6 +241,10 @@ async def async_main(args: argparse.Namespace) -> None:
         # Personality worker (Layer 0 is fully deterministic, no server needed)
         workers.register("personality", "supervisor.workers.personality_worker")
 
+        # ── Power monitor ────────────────────────────────────────
+        power_monitor = pick_power_monitor(args.power_monitor)
+        log.info("power monitor: %s", power_monitor.label())
+
         # ── Tick Loop ────────────────────────────────────────────
         tick = TickLoop(
             reflex=reflex,
@@ -244,6 +256,7 @@ async def async_main(args: argparse.Namespace) -> None:
             low_battery_mv=cfg.safety.low_battery_mv,
             conv_capture=conv_capture,
             param_registry=registry,
+            power_monitor=power_monitor,
         )
 
         # ── HTTP server ──────────────────────────────────────────

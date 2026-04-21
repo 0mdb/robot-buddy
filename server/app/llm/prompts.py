@@ -75,8 +75,8 @@ Rules:
 - Mention a ball only if Ball detected is true AND Ball confidence >= 0.80 AND Vision age <= 500 ms.
 - If ball confidence is low/noisy, uncertain, or stale, do not claim a ball is present.
 - If an obstacle is close (range < 500 mm), prefer backing up or turning over moving forward.
-- If battery reading is "unknown", make no assumptions about energy level and do not mention being sleepy, tired, or needing a nap or charge.
-- If battery is a known reading below 6800 mV, act sleepy and mention needing a nap or charge at most once per session — do not repeat on subsequent ticks.
+- If Power shows "PMIC undervoltage", behave cautiously and keep actions minimal — do not initiate new skills. The supervisor handles any spoken low-power notice; do not produce your own.
+- Never mention being sleepy, tired, or needing a nap or charge — the supervisor owns battery announcements.
 - If there are faults or clear-path confidence is low (< 0.30), act cautious and avoid celebratory language.
 - Use scan_for_target when target confidence is uncertain or stale and you need to search.
 - Use approach_until_range when a target is detected and you should move into a safe distance band.
@@ -88,16 +88,34 @@ Rules:
 """
 
 
+def _render_power(state: WorldState) -> str:
+    """Format the Power line. Authoritative signal now lives in state.power;
+    state.battery_mv is legacy (reflex-reported, always 0 on current HW)."""
+    p = state.power
+    parts: list[str]
+    if p.soc_pct >= 0:
+        if p.charging:
+            parts = [f"battery {p.soc_pct}% (charging)"]
+        else:
+            parts = [f"battery {p.soc_pct}%"]
+    elif p.ac_present and not p.charging:
+        parts = ["AC (plugged in)"]
+    elif p.source == "usb":
+        parts = ["USB"]
+    else:
+        parts = ["unknown"]
+    if p.pmic_undervoltage:
+        parts.append("PMIC undervoltage")
+    return " — ".join(parts)
+
+
 def format_user_prompt(state: WorldState) -> str:
     """Build the user message from a world-state snapshot."""
     faults = ", ".join(state.faults) if state.faults else "none"
     conf = f"{state.clear_confidence:.0%}" if state.clear_confidence >= 0 else "n/a"
     ball_conf = f"{state.ball_confidence:.2f}"
     vision_age = f"{state.vision_age_ms:.0f} ms" if state.vision_age_ms >= 0 else "n/a"
-    # 0 mV = firmware never wrote the field (battery sense unimplemented, or
-    # the robot is USB/AC-powered with no battery in circuit). Treat as unknown
-    # so the LLM does not read it as a critically low reading.
-    battery = f"{state.battery_mv} mV" if state.battery_mv > 0 else "unknown"
+    power = _render_power(state)
     # 0 mm = no range reading yet. Valid ranges always > 0 for a real obstacle;
     # sensor floor is ~40 mm even for the closest object.
     range_str = f"{state.range_mm} mm" if state.range_mm > 0 else "unknown"
@@ -108,7 +126,7 @@ def format_user_prompt(state: WorldState) -> str:
     return (
         f"World state:\n"
         f"- Mode: {state.mode}\n"
-        f"- Battery: {battery}\n"
+        f"- Power: {power}\n"
         f"- Range sensor: {range_str}\n"
         f"- Faults: {faults}\n"
         f"- Path clear confidence: {conf}\n"

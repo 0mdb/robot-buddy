@@ -42,6 +42,7 @@ from supervisor.devices.expressions import (
     normalize_face_gesture_name,
 )
 from supervisor.devices.face_client import FaceClient
+from supervisor.devices.power_monitor import NullPowerMonitor, PowerMonitor
 from supervisor.devices.protocol import (
     FaceButtonEventType,
     FaceButtonId,
@@ -93,6 +94,10 @@ _PE_STALE_MS = 3000.0
 # but this guard is belt-and-suspenders at the state-machine input.
 _REFLEX_STALE_MS = 2000.0
 
+# Power monitor poll period. 1 Hz is plenty for battery / PMIC state; faster
+# just heats /proc and burns battery on a Pi-side subprocess for no signal.
+_POWER_POLL_S = 1.0
+
 log = logging.getLogger(__name__)
 
 TICK_HZ = 50
@@ -120,6 +125,7 @@ class TickLoop:
         low_battery_mv: int = 6400,
         conv_capture: ConversationCapture | None = None,
         param_registry: Any | None = None,
+        power_monitor: PowerMonitor | None = None,
     ) -> None:
         self._reflex = reflex
         self._face = face
@@ -128,6 +134,8 @@ class TickLoop:
         self._low_battery_mv = low_battery_mv
         self._conv_capture = conv_capture
         self._param_registry = param_registry
+        self._power_monitor: PowerMonitor = power_monitor or NullPowerMonitor()
+        self._power_task: asyncio.Task[None] | None = None
 
         # State
         self.robot = RobotState()
@@ -220,7 +228,13 @@ class TickLoop:
         """Run the tick loop until stopped."""
         self._running = True
         t_prev = time.monotonic()
-        log.info("tick loop started at %d Hz", TICK_HZ)
+        log.info(
+            "tick loop started at %d Hz (power monitor: %s)",
+            TICK_HZ,
+            self._power_monitor.label(),
+        )
+
+        self._power_task = asyncio.create_task(self._power_poll_loop())
 
         try:
             while self._running:
@@ -241,7 +255,25 @@ class TickLoop:
             pass
         finally:
             self._running = False
+            if self._power_task is not None:
+                self._power_task.cancel()
+                try:
+                    await self._power_task
+                except asyncio.CancelledError:
+                    pass
+                self._power_task = None
             log.info("tick loop stopped")
+
+    async def _power_poll_loop(self) -> None:
+        """Background task: poll the power monitor and mirror into robot.power."""
+        while self._running:
+            try:
+                self.robot.power = await self._power_monitor.poll()
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                log.debug("power monitor poll failed: %s", e)
+            await asyncio.sleep(_POWER_POLL_S)
 
     def stop(self) -> None:
         self._running = False
@@ -449,20 +481,36 @@ class TickLoop:
                 )
             )
 
-        # Battery events (gated to fire once per threshold crossing)
-        if self.robot.battery_mv > 0:
+        # Power events. Three signals can fire `low_battery`:
+        #   1. PMIC undervoltage (authoritative brownout signal — always wins)
+        #   2. Known SoC below critical threshold (needs fuel gauge; Phase 2)
+        #   3. Legacy battery_mv < low_battery_mv (reflex-reported; stays 0
+        #      in current topology, so this branch is dormant until the
+        #      firmware battery ADC is ever wired — it never will be)
+        power = self.robot.power
+        is_low = power.pmic_undervoltage or (power.soc_pct >= 0 and power.soc_pct <= 10)
+        # Legacy fallback: only meaningful if something ever writes a nonzero
+        # battery_mv. Harmless today because reflex always reports 0.
+        if not is_low and self.robot.battery_mv > 0:
             is_low = self.robot.battery_mv < self._low_battery_mv
-            if is_low and not self._pe_low_battery_sent:
-                self._pe_low_battery_sent = True
-                asyncio.ensure_future(
-                    self._workers.send_to(
-                        "personality",
-                        PERSONALITY_EVENT_SYSTEM_STATE,
-                        {"event": "low_battery", "battery_mv": self.robot.battery_mv},
-                    )
+
+        if is_low and not self._pe_low_battery_sent:
+            self._pe_low_battery_sent = True
+            asyncio.ensure_future(
+                self._workers.send_to(
+                    "personality",
+                    PERSONALITY_EVENT_SYSTEM_STATE,
+                    {
+                        "event": "low_battery",
+                        "battery_mv": self.robot.battery_mv,
+                        "voltage_mv": power.voltage_mv,
+                        "soc_pct": power.soc_pct,
+                        "pmic_undervoltage": power.pmic_undervoltage,
+                    },
                 )
-            elif not is_low and self._pe_low_battery_sent:
-                self._pe_low_battery_sent = False
+            )
+        elif not is_low and self._pe_low_battery_sent:
+            self._pe_low_battery_sent = False
 
         # Fault transitions
         if self.robot.fault_flags != self._pe_prev_fault_flags:
@@ -1260,10 +1308,19 @@ class TickLoop:
         """Send plan request to AI worker."""
         from supervisor.messages.types import AI_CMD_REQUEST_PLAN
 
+        power = self.robot.power
         world_dict = {
             "robot_id": self._robot_id,
             "mode": self.robot.mode.value,
-            "battery_mv": self.robot.battery_mv,
+            "battery_mv": self.robot.battery_mv,  # legacy; always 0 today
+            "power": {
+                "source": power.source,
+                "voltage_mv": power.voltage_mv,
+                "soc_pct": power.soc_pct,
+                "charging": power.charging,
+                "ac_present": power.ac_present,
+                "pmic_undervoltage": power.pmic_undervoltage,
+            },
             "range_mm": self.robot.range_mm,
             "faults": [],
             "ball_detected": self.world.ball_confidence > 0.3,

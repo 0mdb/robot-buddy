@@ -35,6 +35,9 @@ class SpeechPolicy:
             "mode.changed:WANDER": 7000.0,
             "fault.raised": 6000.0,
             "face.button.click": 4000.0,
+            # 2 min between low-battery nudges — long enough not to nag,
+            # short enough to remind someone who wandered off.
+            "power.undervoltage_raised": 120000.0,
         }
         self._phrases = {
             "vision.ball_acquired": [
@@ -55,6 +58,11 @@ class SpeechPolicy:
                 "Nice click!",
                 "Button press detected.",
                 "Boop!",
+            ],
+            "power.undervoltage_raised": [
+                "My battery is getting low — could you plug me in?",
+                "I need to charge soon, please.",
+                "Power's running low. Time to recharge.",
             ],
         }
 
@@ -148,6 +156,8 @@ class SpeechPolicy:
             to_mode = str(evt.payload.get("to", "")).upper()
             if to_mode == "WANDER":
                 return "mode.changed:WANDER"
+        if evt.type == "power.undervoltage_raised":
+            return "power.undervoltage_raised"
         return None
 
     def _on_cooldown(self, key: str, now_mono_ms: float) -> bool:
