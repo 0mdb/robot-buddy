@@ -161,7 +161,7 @@ _2 items complete (B6 test extensions: guardrail/schema/privacy/RS limits) — s
 - [ ] Pass: PID tracks ±20%, no oscillation, safety overrides work under load
 
 **Post-Commissioning** `[sonnet]`
-- [ ] Battery voltage sense (ADC) + sag-aware limiting
+- [ ] ~~Battery voltage sense (ADC) + sag-aware limiting~~ — obsolete. Reflex can't see the real battery with the current topology (AC → Pi → USB → ESP32s). Pi-side `PiPMICMonitor` shipped as Phase 1; Waveshare UPS HAT (B) fuel gauge is queued as Phase 2. See **Power & Battery** section.
 - [ ] Odometry integration (x, y, theta) — integrate `w_meas_mrad_s` → heading θ + `v_meas_mm_s` → x/y
 - [ ] Gyro-accel complementary filter — supervisor-side; fuse gyro integral + accel correction for stable heading (prerequisite for heading PID)
 - [ ] Full IMU heading hold PID (currently gyro damping only; requires complementary filter first)
@@ -201,6 +201,21 @@ _3 items complete (LLM session memory, TTS resampler hardening, conversation stu
 - [x] `[sonnet]` Camera calibration/CV settings in dashboard (HSV + min radius + safety thresholds + /video preview + eyedropper)
 - [x] `[sonnet]` Mask editor + camera calibration tooling in dashboard (floor + ball exclusion polygons; persisted to `./data/vision_mask.json`)
 - [x] `[sonnet]` Upgrade camera settings for new hardware (camera/ISP params + dashboard UI; Picamera2 controls + rotate/FOV/JPEG quality)
+
+---
+
+### Power & Battery
+
+**Phase 1 (shipped 2026-04-21):** `PowerState` chassis + `PiPMICMonitor` (reads `vcgencmd get_throttled` for undervoltage/throttled bits). Planner prompt + speech_policy own low-battery UX; LLM no longer authors sleepy/nap content. Dashboard `PowerPanel` renders the new state. See `docs/power.md`.
+
+**Phase 2 — land when Waveshare UPS HAT (B) arrives:**
+- [ ] `[sonnet]` **WaveshareUpsBMonitor**: new `PowerMonitor` subclass in `supervisor/devices/power_monitor.py`. Reads INA219 (typical address `0x43`) over `/dev/i2c-1` for pack voltage + current; derive charging from current sign, SoC from voltage-curve lookup for 2S 18650 (8.4V=100% → 6.0V=0%). Auto-detect via I²C probe in `pick_power_monitor()`; compose with `PiPMICMonitor` so PMIC undervoltage stays authoritative. Add `adafruit-circuitpython-ina219` or `smbus2` to `supervisor/pyproject.toml`.
+- [ ] `[sonnet]` **Pi-side rail voltage via `vcgencmd pmic_read_adc`**: parse the labeled output (`3V3_SYS_V`, `3V7_WL_SW_V`) in `PiPMICMonitor.poll()` and populate `voltage_mv` with a meaningful health reading. The current `in*_input` hwmon channels are internal PMIC rails (core/DDR) — not useful. Parser needs to tolerate vcgencmd format drift.
+- [ ] `[sonnet]` **Dashboard chart**: switch the `battery_mv` time-series source from legacy `battery_mv` to `power.voltage_mv` (requires supervisor to emit `power.voltage_mv` in the chart's expected key or the chart to read the new nested path). Adjust thresholds for 2S 18650 (6.4V / 7.0V / 8.0V).
+- [ ] `[sonnet]` **Firmware cleanup**: delete `PIN_VBAT_SENSE = GPIO_NUM_1` from `esp32-reflex/main/pin_map.h` and the `battery_mv` field from reflex protocol packets (`esp32-reflex/main/protocol.h`, `shared_state.h`, `telemetry.cpp`). Drop `RobotState.battery_mv` + its telemetry key + `_low_battery_mv` config param in the same change. Bump `v_meas`/`w_meas` packet or the reflex protocol version if field sizes shift.
+- [ ] `[sonnet]` **Safety**: once SoC is known, wire the `soc_critical_pct` (~10%) threshold into `state_machine.update()` as a "park and refuse motion mode changes" soft-floor. Keep reflex BROWNOUT as the hard floor.
+- [ ] `[sonnet]` **`power.soc_warn_pct` / `power.soc_critical_pct` params**: add to `supervisor/api/param_registry.py` with defaults 25 / 10, ranges 10-40 / 5-20. Wire into speech_policy + state_machine gates.
+- [ ] `[sonnet]` **Session capture**: physical fit check on Pi 5 — confirm the HAT's pogo-pin stack doesn't foul the CSI ribbon. If it does, order a 15 cm+ ribbon.
 
 ---
 
