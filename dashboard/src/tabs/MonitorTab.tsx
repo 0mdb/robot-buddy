@@ -425,6 +425,32 @@ function PowerPanel({
     )
   }
 
+  // Reflex telemetry reports 0 mV when battery sense is unimplemented or when
+  // the robot is running on USB/AC with no battery in circuit. Render as a
+  // neutral "USB powered" state rather than a scary 0 mV / error reading.
+  if (reflexConnected && batteryMv === 0) {
+    return (
+      <div className={styles.card}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: 8,
+          }}
+        >
+          <h3 className={m.sectionTitle} style={{ marginBottom: 0 }}>
+            Power
+          </h3>
+          <StatusBadge level="ok" text="USB" />
+        </div>
+        <span className={styles.mono} style={{ color: 'var(--text-dim)' }}>
+          USB powered — no battery sense
+        </span>
+      </div>
+    )
+  }
+
   const level: DiagLevel = batteryMv > 7000 ? 'ok' : batteryMv > 6500 ? 'warn' : 'error'
   return (
     <div className={styles.card}>
