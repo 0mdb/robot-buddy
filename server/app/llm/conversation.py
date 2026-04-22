@@ -7,7 +7,10 @@ import json
 from collections import deque
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import TYPE_CHECKING, Any, Literal
+
+if TYPE_CHECKING:
+    from app.llm.preamble import ToolResult
 
 import httpx
 from pydantic import BaseModel, Field
@@ -300,19 +303,27 @@ class ConversationHistory:
         )
 
     def to_ollama_messages(
-        self, *, tool_result_msg: str | None = None
-    ) -> list[dict[str, str]]:
+        self, *, tool_result: "ToolResult | None" = None
+    ) -> list[dict[str, Any]]:
         """Build the messages array with context-budget compression.
 
         Returns system prompt + optional summary of old turns + recent turns
-        + optional [tool_result] block (from the hybrid preamble, task #7)
+        + optional tool_result block (from the hybrid preamble, task #7)
         + CURRENT STATE block (§12.5) + personality anchor every 5 turns
         (§12.7).
 
-        `tool_result_msg` is transient — it lives only for this rendered
+        `tool_result` is transient — it lives only for this rendered
         message list; the conversation history itself never stores tool
         results. On the next turn, if the model needs the same information
         it must call the tool again.
+
+        When `tool_result.images` is non-empty, the injected message uses
+        multimodal list-of-blocks content
+        (``[{"type":"text",...},{"type":"image"}]``) so the chat-template
+        processor can emit image placeholders. The actual PIL.Image objects
+        are not in the returned message list — callers read them from
+        ``tool_result.images`` and pass them to the backend via
+        ``multi_modal_data``.
         """
         all_msgs = list(self._messages)
         recent_boundary = _RECENT_WINDOW_TURNS * 2  # user + assistant pairs
@@ -340,13 +351,29 @@ class ConversationHistory:
         # before the last user message so the model can ground its reply in
         # the tool output. Placed before the CURRENT STATE / anchor blocks
         # so the tool result appears as the most-recent system context.
-        if tool_result_msg:
+        if tool_result is not None and tool_result.text:
             insert_idx = len(msgs)
             for i in range(len(msgs) - 1, -1, -1):
                 if msgs[i]["role"] == "user":
                     insert_idx = i
                     break
-            msgs.insert(insert_idx, {"role": "system", "content": tool_result_msg})
+            if tool_result.images:
+                # Multimodal path (task #2 follow-up): image comes from
+                # look() and must ride in a user message as mixed content
+                # so the chat-template processor emits an image placeholder.
+                # Actual PIL objects stay in tool_result.images; the caller
+                # (vllm_backend.stream_conversation) passes them to
+                # engine.generate via multi_modal_data.
+                content: list[dict[str, Any]] = [
+                    {"type": "text", "text": tool_result.text}
+                ]
+                for _ in tool_result.images:
+                    content.append({"type": "image"})
+                msgs.insert(insert_idx, {"role": "user", "content": content})
+            else:
+                # Text-only tools (get_memory, recent_events, or look() with
+                # consent=off): a plain system message is enough.
+                msgs.insert(insert_idx, {"role": "system", "content": tool_result.text})
 
         # §12.5: Inject CURRENT STATE block before the latest user message.
         if self._profile is not None:

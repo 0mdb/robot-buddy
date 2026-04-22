@@ -25,7 +25,7 @@ import asyncio
 import json
 import logging
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from app.eval.harness import (
@@ -37,6 +37,8 @@ from app.eval.harness import (
 )
 
 if TYPE_CHECKING:
+    from PIL.Image import Image
+
     from app.llm.base import PlannerLLMBackend
     from app.llm.mcp_client import McpClient
 
@@ -50,19 +52,39 @@ _SELECTION_TEMPERATURE = 0.0
 # Allow-list of tool names we'll actually dispatch against the MCP client.
 _ALLOWED_TOOLS = frozenset(t.name for t in TOOL_SCHEMAS)
 
+# Cap image payload per turn. v1 supports one image per turn; even if look()
+# ever returned more than one block, only the first reaches Gemma. Defense
+# in depth against prompt-bloat / OOM if the supervisor schema ever widens.
+_MAX_IMAGES_PER_TURN = 1
+
+
+@dataclass(slots=True)
+class ToolResult:
+    """Rich tool-call result carried from the preamble into the main turn.
+
+    `text` is the formatted system-message text built by _format_tool_result_msg
+    (preamble owns this shape). `images` are already-decoded PIL.Image objects
+    ready to hand to the vLLM backend via ``multi_modal_data``. Text-only
+    tools (get_memory, recent_events) leave `images` empty; look() carries
+    both metadata text AND the fresh camera frame.
+    """
+
+    text: str
+    images: list["Image"] = field(default_factory=list)
+
 
 @dataclass(slots=True)
 class PreambleResult:
     """Outcome of one preamble pass.
 
     tool_name is None when no tool fired (model picked NO_TOOL, error, or
-    budget blown). When a tool fired, `tool_result_msg` holds the system
-    message to inject into the conversation pipeline.
+    budget blown). When a tool fired, `tool_result` holds the combined
+    text + images payload to thread into the conversation pipeline.
     """
 
     tool_name: str | None = None
     tool_args: dict | None = None
-    tool_result_msg: str | None = None
+    tool_result: ToolResult | None = None
     latency_ms: float = 0.0
     ok: bool = True
     reason: str = ""
@@ -157,7 +179,7 @@ async def run_preamble(
     # Step 2: execution — call the MCP tool against the remaining budget.
     remaining = max(0.05, deadline - time.monotonic())
     try:
-        tool_text = await asyncio.wait_for(
+        call_result = await asyncio.wait_for(
             mcp_client.call_tool(tool_name, tool_args, timeout_s=remaining),
             timeout=remaining,
         )
@@ -179,7 +201,7 @@ async def run_preamble(
             latency_ms=_elapsed_ms(t0),
         )
 
-    if tool_text is None:
+    if call_result is None:
         return PreambleResult(
             tool_name=tool_name,
             tool_args=tool_args,
@@ -188,11 +210,14 @@ async def run_preamble(
             latency_ms=_elapsed_ms(t0),
         )
 
+    tool_text, images = call_result
     msg = _format_tool_result_msg(tool_name, tool_args, tool_text)
+    capped_images = list(images[:_MAX_IMAGES_PER_TURN])
+    tool_result = ToolResult(text=msg, images=capped_images)
     return PreambleResult(
         tool_name=tool_name,
         tool_args=tool_args,
-        tool_result_msg=msg,
+        tool_result=tool_result,
         ok=True,
         reason="ok",
         latency_ms=_elapsed_ms(t0),

@@ -9,7 +9,7 @@ import logging
 import time
 import uuid
 from collections.abc import AsyncIterator
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from app.config import settings
 from app.llm.base import (
@@ -28,6 +28,9 @@ from app.llm.conversation import (
 from app.llm.model_config import resolve_template_config
 from app.llm.prompts import SYSTEM_PROMPT, format_user_prompt
 from app.llm.schemas import ModelPlan, WorldState
+
+if TYPE_CHECKING:
+    from app.llm.preamble import ToolResult
 
 log = logging.getLogger(__name__)
 
@@ -79,6 +82,7 @@ class VLLMBackend(PlannerLLMBackend):
         self._SamplingParams: Any = None
         self._StructuredOutputsParams: Any = None
         self._GuidedDecodingParams: Any = None
+        self._processor: Any = None
         self._loaded = False
 
         self._max_inflight = max(1, int(settings.llm_max_inflight))
@@ -137,9 +141,13 @@ class VLLMBackend(PlannerLLMBackend):
             engine_kwargs["quantization"] = settings.vllm_quantization
         if model_cfg.skip_mm_encoder:
             # Text-only rollout of a multimodal model — skip image/audio
-            # encoder allocation to save VRAM. Remove when that input
-            # modality becomes live for this model.
+            # encoder allocation to save VRAM.
             engine_kwargs["limit_mm_per_prompt"] = {"image": 0, "audio": 0}
+        elif model_cfg.family == "gemma":
+            # Gemma 4 multimodal: cap at one image/turn (matches the
+            # hybrid preamble's _MAX_IMAGES_PER_TURN) and disable the
+            # audio encoder until audio support is a separate project.
+            engine_kwargs["limit_mm_per_prompt"] = {"image": 1, "audio": 0}
         engine_args = AsyncEngineArgs(**engine_kwargs)
         self._engine = AsyncLLMEngine.from_engine_args(engine_args)
         self._SamplingParams = SamplingParams
@@ -168,7 +176,7 @@ class VLLMBackend(PlannerLLMBackend):
         )
 
     def _load_tokenizer(self) -> None:
-        """Load the model tokenizer and resolve template config."""
+        """Load the model tokenizer (and optionally processor) + template config."""
         model_cfg = resolve_template_config(self._model_name)
         self._template_kwargs = dict(model_cfg.chat_template_kwargs)
 
@@ -197,6 +205,31 @@ class VLLMBackend(PlannerLLMBackend):
             )
             self._tokenizer = None
 
+        # For multimodal models, also load the processor — its
+        # apply_chat_template understands the `{"type": "image"}` placeholder
+        # shape and emits the right `<|image|>` tokens for the model. Falls
+        # back to None for text-only models (loading may fail for non-mm
+        # repos; that's expected, don't warn).
+        self._processor = None
+        if not model_cfg.skip_mm_encoder:
+            try:
+                from transformers import AutoProcessor
+
+                self._processor = AutoProcessor.from_pretrained(self._model_name)
+                log.info(
+                    "Loaded multimodal processor for %s (%s)",
+                    self._model_name,
+                    type(self._processor).__name__,
+                )
+            except Exception as exc:
+                log.warning(
+                    "Failed to load AutoProcessor for %s (will downgrade "
+                    "multimodal messages to text-only): %s",
+                    self._model_name,
+                    exc,
+                )
+                self._processor = None
+
     async def close(self) -> None:
         if self._engine is None:
             return
@@ -215,6 +248,7 @@ class VLLMBackend(PlannerLLMBackend):
             self._SamplingParams = None
             self._StructuredOutputsParams = None
             self._GuidedDecodingParams = None
+            self._processor = None
             self._loaded = False
 
     async def health_check(self) -> bool:
@@ -354,7 +388,7 @@ class VLLMBackend(PlannerLLMBackend):
         *,
         override_temperature: float | None = None,
         override_max_output_tokens: int | None = None,
-        tool_result_msg: str | None = None,
+        tool_result: "ToolResult | None" = None,
     ) -> AsyncIterator[str]:
         """Stream V2 JSON content deltas from vLLM.
 
@@ -364,10 +398,11 @@ class VLLMBackend(PlannerLLMBackend):
         output to valid V2 JSON — the streaming parser relies on the
         field order defined by ``ConversationResponseV2``.
 
-        `tool_result_msg` is optional context from the hybrid tool-use
-        preamble (task #7); when present it's injected as a transient
-        system message just before the latest user turn so the model can
-        ground its response in the tool's output.
+        `tool_result` is optional context from the hybrid tool-use
+        preamble (task #7). The text portion is injected as a transient
+        message just before the latest user turn; the image list (from
+        look()) is passed to ``engine.generate`` via ``multi_modal_data``
+        so Gemma's vision encoder can actually see the frame.
         """
         history.add_user(user_text)
         await self._acquire_generation_slot()
@@ -375,7 +410,7 @@ class VLLMBackend(PlannerLLMBackend):
             if self._engine is None or self._SamplingParams is None:
                 raise LLMUnavailableError("vllm backend not initialized")
 
-            messages = history.to_ollama_messages(tool_result_msg=tool_result_msg)
+            messages = history.to_ollama_messages(tool_result=tool_result)
             prompt = self._apply_chat_template(messages)
 
             temperature = settings.vllm_temperature
@@ -395,7 +430,22 @@ class VLLMBackend(PlannerLLMBackend):
                 f"conv-stream-{history.turn_count}-"
                 f"{int(time.time() * 1000)}-{uuid.uuid4().hex[:8]}"
             )
-            agen = self._engine.generate(prompt, sampling_params, request_id=request_id)
+
+            # Multimodal input: pass PIL.Image(s) via multi_modal_data.
+            # Matches the vLLM Gemma 4 recipe — the engine picks up the
+            # image from this dict and aligns it with the <|image|>
+            # placeholders rendered into the prompt by apply_chat_template.
+            generate_input: Any
+            if tool_result is not None and tool_result.images:
+                generate_input = {
+                    "prompt": prompt,
+                    "multi_modal_data": {"image": tool_result.images[0]},
+                }
+            else:
+                generate_input = prompt
+            agen = self._engine.generate(
+                generate_input, sampling_params, request_id=request_id
+            )
 
             last_len = 0
             try:
@@ -509,16 +559,24 @@ class VLLMBackend(PlannerLLMBackend):
 
     def _apply_chat_template(
         self,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         *,
         add_generation_prompt: bool = True,
     ) -> str:
         """Format messages using the model's built-in chat template.
 
-        Falls back to a flat ``ROLE: content`` format if no tokenizer was
-        loaded (e.g. in unit tests or if transformers is unavailable).
+        When any message has list-shaped (multimodal) content and a
+        ``Gemma4Processor`` / similar ``AutoProcessor`` is loaded, dispatch
+        to the processor so it emits the right image placeholder tokens.
+        Otherwise use the plain tokenizer path (text-only). Falls back to
+        a flat ``ROLE: content`` format if no tokenizer was loaded.
         """
-        if self._tokenizer is None:
+        has_multimodal = any(isinstance(m.get("content"), list) for m in messages)
+        if has_multimodal and self._processor is not None:
+            template_source: Any = self._processor
+        elif self._tokenizer is not None:
+            template_source = self._tokenizer
+        else:
             return self._flat_format_messages(messages, add_generation_prompt)
 
         # Build kwargs for apply_chat_template, excluding internal keys.
@@ -527,7 +585,7 @@ class VLLMBackend(PlannerLLMBackend):
         }
 
         try:
-            return self._tokenizer.apply_chat_template(
+            return template_source.apply_chat_template(
                 messages,
                 tokenize=False,
                 add_generation_prompt=add_generation_prompt,
@@ -541,7 +599,7 @@ class VLLMBackend(PlannerLLMBackend):
                 template_kwargs,
                 exc,
             )
-            return self._tokenizer.apply_chat_template(
+            return template_source.apply_chat_template(
                 messages,
                 tokenize=False,
                 add_generation_prompt=add_generation_prompt,

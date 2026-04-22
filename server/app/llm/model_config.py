@@ -62,12 +62,11 @@ _MODEL_CONFIGS: list[ModelTemplateConfig] = [
     ModelTemplateConfig(
         family="gemma",
         chat_template_kwargs={},
-        skip_mm_encoder=True,
+        skip_mm_encoder=False,
         notes=(
             "Gemma 4 multimodal family. Chat template embedded in tokenizer; "
-            "no extra kwargs needed. skip_mm_encoder=True keeps the text-only "
-            "rollout lean (Phase 0); flip to False when look() / image input "
-            "lands (task #2)."
+            "AutoProcessor handles image placeholder tokens. Image input is "
+            "live via look() → preamble → engine.generate(multi_modal_data)."
         ),
     ),
 ]

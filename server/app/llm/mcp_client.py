@@ -14,6 +14,8 @@ tool" and lets the conversation stream run unenriched.
 from __future__ import annotations
 
 import asyncio
+import base64
+import io
 import logging
 from contextlib import AsyncExitStack
 from typing import Any
@@ -21,6 +23,7 @@ from typing import Any
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 from mcp.types import ImageContent, TextContent
+from PIL import Image, UnidentifiedImageError
 
 log = logging.getLogger(__name__)
 
@@ -114,12 +117,13 @@ class McpClient:
         arguments: dict[str, Any] | None = None,
         *,
         timeout_s: float = 5.0,
-    ) -> str | None:
-        """Invoke a tool, return the joined text of its response blocks.
+    ) -> tuple[str, list[Image.Image]] | None:
+        """Invoke a tool, return (joined text, list of PIL images) blocks.
 
-        Image blocks (ImageContent) are stripped for this text-only v1 of
-        the preamble — look() still flows through, but the consumer LLM
-        only sees its JSON metadata block, not the JPEG bytes.
+        Image blocks are base64-decoded into PIL.Image objects so the
+        conversation layer can pass them to the vLLM backend via
+        ``multi_modal_data``. Decode errors drop the image and keep the
+        text portion of the result.
 
         Returns None on any failure (disconnected, tool error, timeout).
         The preamble treats None as "no tool fired this turn".
@@ -147,27 +151,47 @@ class McpClient:
                 await self._close_locked()
             return None
 
-        return _join_text_content(result.content)
+        return _process_mcp_content(result.content)
 
 
-def _join_text_content(blocks: Any) -> str:
-    """Concatenate text content blocks, dropping image/audio for v1.
+def _process_mcp_content(blocks: Any) -> tuple[str, list[Image.Image]]:
+    """Split MCP content blocks into (joined text, list of PIL images).
 
-    Accepts the `content` list returned by `ClientSession.call_tool` —
-    blocks may be `TextContent`, `ImageContent`, etc. We preserve text
-    (joined with newlines) and drop images in this text-only preamble.
+    Text blocks are concatenated with newlines. Image blocks are
+    base64-decoded into PIL.Image objects for downstream multimodal
+    consumption. Malformed images are logged and dropped; the text
+    portion of the tool result is always preserved.
     """
     parts: list[str] = []
+    images: list[Image.Image] = []
     for block in blocks or []:
         if isinstance(block, TextContent):
             parts.append(block.text)
         elif isinstance(block, ImageContent):
-            # Text-only v1: acknowledge the image's existence for the LLM
-            # without leaking base64 into the context.
-            parts.append(f"[image/{block.mimeType} omitted in text-only preamble]")
+            img = _decode_image_block(block)
+            if img is not None:
+                images.append(img)
         else:
-            # Unknown block type — use repr as a conservative default.
+            # Unknown block type — preserve any text attr conservatively.
             text = getattr(block, "text", None)
             if isinstance(text, str):
                 parts.append(text)
-    return "\n".join(parts)
+    return "\n".join(parts), images
+
+
+def _decode_image_block(block: ImageContent) -> Image.Image | None:
+    """Decode an MCP ImageContent block into a PIL.Image, or None on failure."""
+    try:
+        raw = base64.b64decode(block.data, validate=True)
+    except (ValueError, TypeError) as exc:
+        log.warning("MCP image base64 decode failed: %s", exc)
+        return None
+    try:
+        img = Image.open(io.BytesIO(raw))
+        # Force a decode by converting so we surface errors here rather
+        # than later in the vLLM pipeline.
+        img.load()
+    except (UnidentifiedImageError, OSError) as exc:
+        log.warning("MCP image PIL decode failed (mime=%s): %s", block.mimeType, exc)
+        return None
+    return img

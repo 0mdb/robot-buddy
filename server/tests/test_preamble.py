@@ -12,8 +12,9 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from PIL import Image
 
-from app.llm.preamble import PreambleResult, run_preamble
+from app.llm.preamble import PreambleResult, ToolResult, run_preamble
 
 
 class FakeBackend:
@@ -40,21 +41,35 @@ class FakeBackend:
 
 
 class FakeMcp:
-    """Stand-in for McpClient.call_tool."""
+    """Stand-in for McpClient.call_tool.
 
-    def __init__(self, responses: dict[str, str | None]):
+    Responses can be:
+      - None (tool returned nothing — propagates as failure)
+      - str (legacy text-only result — wrapped as (text, []))
+      - tuple[str, list[Image]] (full shape matching production client)
+      - Exception (raised)
+    """
+
+    def __init__(
+        self,
+        responses: dict[str, str | tuple[str, list[Image.Image]] | None | Exception],
+    ):
         self._responses = responses
         self.calls: list[tuple[str, dict]] = []
 
     async def call_tool(
         self, name: str, arguments: dict | None = None, *, timeout_s: float = 5.0
-    ) -> str | None:
+    ) -> tuple[str, list[Image.Image]] | None:
         self.calls.append((name, arguments or {}))
         if name not in self._responses:
             return None
         r = self._responses[name]
         if isinstance(r, Exception):
             raise r
+        if r is None:
+            return None
+        if isinstance(r, str):
+            return (r, [])
         return r
 
 
@@ -85,12 +100,38 @@ class TestHappyToolPath:
         assert result.tool_name == "get_memory"
         assert result.tool_args == {"category": "topic"}
         assert mcp.calls == [("get_memory", {"category": "topic"})]
-        assert result.tool_result_msg is not None
-        assert "[tool_result]" in result.tool_result_msg
-        assert "get_memory" in result.tool_result_msg
-        assert "dinos" in result.tool_result_msg
-        assert "Do not call tools again." in result.tool_result_msg
+        assert result.tool_result is not None
+        assert isinstance(result.tool_result, ToolResult)
+        assert "[tool_result]" in result.tool_result.text
+        assert "get_memory" in result.tool_result.text
+        assert "dinos" in result.tool_result.text
+        assert "Do not call tools again." in result.tool_result.text
+        assert result.tool_result.images == []  # text-only tool
         assert result.ok is True
+
+    @pytest.mark.asyncio
+    async def test_look_tool_carries_image_when_present(self):
+        """look() returns text metadata + an image; both should flow through."""
+        img = Image.new("RGB", (16, 16), "red")
+        backend = FakeBackend(['{"tool":"look","args":{"hint":"drawing"}}'])
+        mcp = FakeMcp({"look": ('{"ball_detected":false,"consent":"on"}', [img])})
+        result = await run_preamble(backend, mcp, "Look at what I made!")
+        assert result.tool_name == "look"
+        assert result.tool_result is not None
+        assert "ball_detected" in result.tool_result.text
+        assert len(result.tool_result.images) == 1
+        assert result.tool_result.images[0] is img
+
+    @pytest.mark.asyncio
+    async def test_image_list_is_capped_at_one(self):
+        imgs = [Image.new("RGB", (4, 4), c) for c in ("red", "green", "blue")]
+        backend = FakeBackend(['{"tool":"look","args":{}}'])
+        mcp = FakeMcp({"look": ("meta", imgs)})
+        result = await run_preamble(backend, mcp, "look")
+        assert result.tool_result is not None
+        assert len(result.tool_result.images) == 1
+        # The first image wins
+        assert result.tool_result.images[0] is imgs[0]
 
 
 # ── Failure modes ──────────────────────────────────────────────────

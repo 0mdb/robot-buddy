@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from app.llm.conversation import ConversationHistory, ConversationResponse
+    from app.llm.preamble import ToolResult
     from app.llm.schemas import ModelPlan, WorldState
 
 
@@ -79,7 +80,7 @@ class PlannerLLMBackend(ABC):
         *,
         override_temperature: float | None = None,
         override_max_output_tokens: int | None = None,
-        tool_result_msg: str | None = None,
+        tool_result: "ToolResult | None" = None,
     ) -> AsyncIterator[str]:
         """Stream the raw V2 JSON response as content deltas.
 
@@ -87,15 +88,16 @@ class PlannerLLMBackend(ABC):
         fallback calls ``generate_conversation`` and yields the equivalent
         JSON as a single chunk — correctness-preserving but no latency win.
 
-        `tool_result_msg` is optional context from the hybrid tool-use
-        preamble (task #7); backends that support it inject it as a
-        transient system message. The default fallback ignores it.
+        `tool_result` is optional context from the hybrid tool-use
+        preamble (task #7). Backends that support it inject the text
+        portion as a transient system message and the image list (if any)
+        as multimodal input to the model. The default fallback ignores it.
 
         Implementations MUST add the user message to history before yielding
         anything; callers finalize ``history.add_assistant`` once the full
         text is parsed.
         """
-        del tool_result_msg  # Default fallback ignores it.
+        del tool_result  # Default fallback ignores it.
         response = await self.generate_conversation(
             history,
             user_text,

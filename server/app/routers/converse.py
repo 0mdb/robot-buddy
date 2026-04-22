@@ -36,7 +36,7 @@ from app.llm.conversation import (
     ConversationHistory,
 )
 from app.llm.mcp_client import McpClient
-from app.llm.preamble import run_preamble
+from app.llm.preamble import ToolResult, run_preamble
 from app.llm.stream_parser import (
     ConversationStreamParser,
     MetadataReady,
@@ -283,7 +283,7 @@ async def _generate_and_stream(
     turn continues with no tool result, matching the preamble-disabled
     path exactly.
     """
-    tool_result_msg: str | None = None
+    tool_result: ToolResult | None = None
     if settings.mcp_preamble_enabled and mcp_client is not None:
         try:
             result = await run_preamble(
@@ -295,7 +295,7 @@ async def _generate_and_stream(
         except Exception as exc:
             log.warning("preamble unexpectedly raised: %s", exc)
         else:
-            tool_result_msg = result.tool_result_msg
+            tool_result = result.tool_result
             try:
                 await ws.send_json(
                     {
@@ -304,6 +304,7 @@ async def _generate_and_stream(
                         "ok": result.ok,
                         "reason": result.reason,
                         "latency_ms": result.latency_ms,
+                        "has_image": bool(tool_result and tool_result.images),
                     }
                 )
             except Exception:
@@ -318,7 +319,7 @@ async def _generate_and_stream(
             user_text,
             override_temperature=override_temperature,
             override_max_output_tokens=override_max_output_tokens,
-            tool_result_msg=tool_result_msg,
+            tool_result=tool_result,
         )
     else:
         await _generate_and_stream_batch(
@@ -328,7 +329,7 @@ async def _generate_and_stream(
             user_text,
             override_temperature=override_temperature,
             override_max_output_tokens=override_max_output_tokens,
-            tool_result_msg=tool_result_msg,
+            tool_result=tool_result,
         )
 
 
@@ -340,16 +341,16 @@ async def _generate_and_stream_batch(
     *,
     override_temperature: float | None = None,
     override_max_output_tokens: int | None = None,
-    tool_result_msg: str | None = None,
+    tool_result: ToolResult | None = None,
 ) -> None:
     """Original atomic-LLM path. Kept behind RB_LLM_STREAM=0 as a rollback lever.
 
-    tool_result_msg from the hybrid preamble is accepted for signature
+    tool_result from the hybrid preamble is accepted for signature
     consistency but NOT plumbed through on the batch path — hybrid tool-use
     is a streaming-only feature in v1. If you need tool-enriched batch
     generation, set RB_LLM_STREAM=true.
     """
-    if tool_result_msg:
+    if tool_result is not None:
         log.debug("batch path ignoring preamble tool_result (enable RB_LLM_STREAM)")
     t_llm = time.monotonic()
     try:
@@ -428,7 +429,7 @@ async def _generate_and_stream_live(
     *,
     override_temperature: float | None = None,
     override_max_output_tokens: int | None = None,
-    tool_result_msg: str | None = None,
+    tool_result: ToolResult | None = None,
 ) -> None:
     """Streaming LLM → per-sentence TTS pipeline.
 
@@ -440,8 +441,9 @@ async def _generate_and_stream_live(
     ``assistant_text`` + ``done`` is sent at end of turn — matching the batch
     contract, so supervisor/dashboard code is unchanged.
 
-    `tool_result_msg` (task #7 preamble) is passed straight through to the
-    backend's ``stream_conversation`` as a transient system message.
+    `tool_result` (task #7 preamble) is passed straight through to the
+    backend's ``stream_conversation`` — text becomes a transient system
+    message, images flow to ``engine.generate(multi_modal_data=...)``.
     """
     parser = ConversationStreamParser()
     tts = get_tts()
@@ -518,7 +520,7 @@ async def _generate_and_stream_live(
             user_text,
             override_temperature=override_temperature,
             override_max_output_tokens=override_max_output_tokens,
-            tool_result_msg=tool_result_msg,
+            tool_result=tool_result,
         )
         try:
             async for delta in stream:
