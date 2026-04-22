@@ -5,6 +5,7 @@ import { TabBar } from './components/TabBar'
 import { wsConversationManager } from './lib/wsConversation'
 import { wsLogsManager } from './lib/wsLogs'
 import { wsManager } from './lib/wsManager'
+import { wsMcpManager } from './lib/wsMcp'
 import { wsProtocolManager } from './lib/wsProtocol'
 import { useUiStore } from './stores/uiStore'
 import styles from './styles/global.module.css'
@@ -14,6 +15,7 @@ import DevicesTab from './tabs/DevicesTab'
 import DriveTab from './tabs/DriveTab'
 import FaceTab from './tabs/FaceTab'
 import LogsTab from './tabs/LogsTab'
+import McpActivityTab from './tabs/McpActivityTab'
 import MonitorTab from './tabs/MonitorTab'
 import ParamsTab from './tabs/ParamsTab'
 import ProtocolTab from './tabs/ProtocolTab'
@@ -52,6 +54,8 @@ function TabContent() {
       return <ConversationStudioTab />
     case 'monitor':
       return <MonitorTab />
+    case 'mcp':
+      return <McpActivityTab />
     default:
       return <DriveTab />
   }
@@ -63,9 +67,11 @@ export default function App() {
   useEffect(() => {
     wsManager.connect()
     wsLogsManager.connect()
+    wsMcpManager.connect()
     return () => {
       wsManager.dispose()
       wsLogsManager.dispose()
+      wsMcpManager.dispose()
       wsProtocolManager.dispose()
       wsConversationManager.dispose()
     }

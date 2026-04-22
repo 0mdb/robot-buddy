@@ -105,6 +105,7 @@ export const TABS: { id: TabId; label: string }[] = [
   { id: 'face', label: 'Tuning' },
   { id: 'studio', label: 'Conversation' },
   { id: 'monitor', label: 'Monitor' },
+  { id: 'mcp', label: 'MCP Activity' },
 ]
 
 // ---- Telemetry ring buffer metrics ----

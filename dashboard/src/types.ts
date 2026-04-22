@@ -301,3 +301,29 @@ export type TabId =
   | 'face'
   | 'studio'
   | 'monitor'
+  | 'mcp'
+
+// ---- MCP audit (matches supervisor/mcp/audit.py::McpAuditEntry.to_dict) ----
+
+export interface McpAuditEntry {
+  ts_mono: number
+  tool: string
+  args: Record<string, unknown>
+  ok: boolean
+  latency_ms: number
+  result_summary: string
+  error: string
+  client: string
+}
+
+export interface McpToolStats {
+  success: number
+  fail: number
+  total: number
+  rate: number
+}
+
+export interface McpDebugSnapshot {
+  recent: McpAuditEntry[]
+  success_rate: Record<string, McpToolStats>
+}

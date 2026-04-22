@@ -13,6 +13,7 @@ import asyncio
 import base64
 import json
 import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -24,6 +25,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
 from supervisor.api.param_persistence import load_params, on_param_changed
+from supervisor.mcp import McpAuditBroadcaster, build_mcp_server
 from supervisor.messages.types import TTS_CMD_SET_MUTE, TTS_CMD_SET_VOLUME
 from supervisor.vision.mask_store import (
     default_mask,
@@ -131,7 +133,23 @@ def create_app(
 ) -> FastAPI:
     import psutil
 
-    app = FastAPI(title="Robot Buddy Supervisor", version="2.0.0")
+    # -- MCP server --------------------------------------------------------
+    # Built before FastAPI so the session manager can be driven from its
+    # lifespan. Audit broadcaster is kept on the app so /ws/mcp can fan out
+    # tool-call entries to connected dashboards.
+    mcp_audit = McpAuditBroadcaster()
+    mcp_server = build_mcp_server(tick, mcp_audit)
+
+    @asynccontextmanager
+    async def _lifespan(_app: FastAPI):
+        async with mcp_server.session_manager.run():
+            log.info("MCP session manager started (mounted at /mcp)")
+            try:
+                yield
+            finally:
+                log.info("MCP session manager stopping")
+
+    app = FastAPI(title="Robot Buddy Supervisor", version="2.0.0", lifespan=_lifespan)
     app.add_middleware(NoCacheIndexMiddleware)
     install_log_handler()
 
@@ -465,6 +483,38 @@ def create_app(
             pass
         finally:
             ws_hub.remove(ws)
+
+    # -- MCP server (tool/resource surface for external LLMs) -----------------
+    # Mounted before the static catch-all so /mcp routes are handled by
+    # FastMCP's Streamable HTTP transport rather than falling through.
+
+    @app.websocket("/ws/mcp")
+    async def websocket_mcp(ws: WebSocket):
+        await ws.accept()
+        # Send a snapshot first so the dashboard gets immediate context.
+        await ws.send_text(
+            json.dumps({"type": "snapshot", "entries": mcp_audit.snapshot(50)})
+        )
+        q = mcp_audit.add_client()
+        try:
+            while True:
+                entry = await q.get()
+                await ws.send_text(entry)
+        except WebSocketDisconnect:
+            pass
+        finally:
+            mcp_audit.remove_client(q)
+
+    @app.get("/debug/mcp")
+    async def get_mcp_debug():
+        return JSONResponse(
+            {
+                "recent": mcp_audit.snapshot(50),
+                "success_rate": mcp_audit.success_rate(),
+            }
+        )
+
+    app.mount("/mcp", mcp_server.streamable_http_app())
 
     # -- Static files (must be last) -----------------------------------------
 
