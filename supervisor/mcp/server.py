@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 
 from supervisor.mcp.audit import McpAuditBroadcaster
 from supervisor.mcp.tools import (
@@ -54,11 +55,18 @@ def build_mcp_server(
     # streamable_http_path="/" so the endpoint lives at the root of the
     # sub-app; mounted at /mcp on the parent this gives clients the
     # canonical /mcp endpoint rather than the doubled /mcp/mcp.
+    # Disable DNS-rebinding protection: the supervisor is a LAN-only
+    # service (the Pi's 192.168.55.x IP) with no browser-facing UI that
+    # a drive-by attack could weaponize; the default protection rejects
+    # every non-localhost Host header as 421 Misdirected Request.
     mcp = FastMCP(
         name,
         json_response=True,
         stateless_http=True,
         streamable_http_path="/",
+        transport_security=TransportSecuritySettings(
+            enable_dns_rebinding_protection=False,
+        ),
     )
     mem_path = memory_path if memory_path is not None else DEFAULT_MEMORY_PATH
 
