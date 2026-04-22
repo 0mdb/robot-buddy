@@ -1020,12 +1020,17 @@ def create_default_registry() -> ParamRegistry:
             name="planner.plan_period_s",
             type="float",
             min=1.0,
-            max=120.0,
+            max=600.0,
             step=1.0,
-            default=5.0,
+            default=60.0,
             owner="supervisor",
             safety="safe",
-            doc="Seconds between AI plan requests when planner is connected and enabled.",
+            doc=(
+                "Seconds between AI plan requests when planner is connected "
+                "and enabled. Bigger = quieter. 60s matches the PE spec's "
+                "low-initiative (0.30) temperament; set to 600s for nearly "
+                "silent autonomous behavior."
+            ),
         )
     )
 
