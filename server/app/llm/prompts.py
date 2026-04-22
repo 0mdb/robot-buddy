@@ -84,7 +84,7 @@ Rules:
 - Autonomous quiet default: if this is a heartbeat tick with NO new
   salient event in the world state (no button press, no ball transition,
   no mode change, no fault, no close obstacle, no recent conversation
-  end), return an EMPTY actions list: {{"actions": [], "ttl_ms": 0}}.
+  end), return an EMPTY actions list: {{"actions": [], "ttl_ms": 500}}.
   The child is not interacting — do NOT greet, do NOT chitchat, do NOT
   narrate. Silence is the correct response.
 - When a new event DOES appear, prefer nonverbal acknowledgement

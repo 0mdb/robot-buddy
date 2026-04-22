@@ -50,9 +50,12 @@ class Settings:
     # gptq. For a non-GPTQ swap, override to "bfloat16" via env.
     vllm_dtype: str = os.environ.get("VLLM_DTYPE", "float16")
     # vLLM quantization format. Empty string = let vLLM auto-detect from the
-    # model repo. Explicit values ("gptq", "awq", "bitsandbytes", …) force a
-    # specific backend; some quant families need this to resolve correctly.
-    vllm_quantization: str = os.environ.get("VLLM_QUANTIZATION", "gptq").strip().lower()
+    # model repo. Explicit values ("gptq_marlin", "awq_marlin", "bitsandbytes",
+    # …) force a specific backend. On Ampere (3090 Ti) the marlin kernels are
+    # the fast path; plain "gptq" falls back to a buggy 4-bit gptq_gemm kernel.
+    vllm_quantization: str = (
+        os.environ.get("VLLM_QUANTIZATION", "gptq_marlin").strip().lower()
+    )
     vllm_gpu_memory_utilization: float = float(
         os.environ.get("VLLM_GPU_MEMORY_UTILIZATION", "0.35")
     )
