@@ -81,6 +81,11 @@ run *args:
 run-server:
     bash -lc 'set -a; [ -f "{{project}}/.env" ] && source "{{project}}/.env"; set +a; cd "{{project}}/server" && uv run python -m app.main'
 
+# Run BFCL-style tool-selection eval against the running planner server.
+# Extra args pass through (e.g. `just eval-tools --threshold 0.9 --host http://...`).
+eval-tools *args:
+    cd {{project}}/server && .venv/bin/python -m app.eval {{args}}
+
 # Run dashboard dev server
 run-dashboard:
     cd {{project}}/dashboard && npx vite

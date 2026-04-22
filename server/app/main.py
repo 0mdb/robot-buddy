@@ -16,6 +16,7 @@ from app.config import settings
 from app.llm.base import PlannerLLMBackend
 from app.llm.factory import create_llm_backend
 from app.routers.converse import router as converse_router
+from app.routers.eval import router as eval_router
 from app.routers.plan import router as plan_router
 from app.routers.tts import router as tts_router
 
@@ -147,6 +148,7 @@ app = FastAPI(
 app.include_router(plan_router)
 app.include_router(converse_router)
 app.include_router(tts_router)
+app.include_router(eval_router)
 
 
 @app.get("/health")
