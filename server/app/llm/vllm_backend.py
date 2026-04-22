@@ -77,6 +77,7 @@ class VLLMBackend(PlannerLLMBackend):
         self._tokenizer: Any = None
         self._template_kwargs: dict[str, Any] = {}
         self._SamplingParams: Any = None
+        self._StructuredOutputsParams: Any = None
         self._GuidedDecodingParams: Any = None
         self._loaded = False
 
@@ -100,14 +101,27 @@ class VLLMBackend(PlannerLLMBackend):
                 "vllm backend requested but vllm is not installed"
             ) from exc
 
-        # GuidedDecodingParams may not exist in older vLLM versions.
+        # vLLM 0.19 renamed GuidedDecodingParams → StructuredOutputsParams
+        # and moved the attach point from SamplingParams.guided_decoding to
+        # SamplingParams.structured_outputs. Try the new name first (wider
+        # feature set, better maintained); fall back to the old name for
+        # older pins; drop to unguided only if neither exists.
+        StructuredOutputsParams: Any = None
+        GuidedDecodingParams: Any = None
         try:
-            from vllm.sampling_params import GuidedDecodingParams
-        except ImportError:
-            GuidedDecodingParams = None
-            log.warning(
-                "vLLM GuidedDecodingParams not available — falling back to unguided"
+            from vllm.sampling_params import (  # type: ignore[attr-defined]
+                StructuredOutputsParams,
             )
+        except ImportError:
+            try:
+                from vllm.sampling_params import (  # type: ignore[attr-defined]
+                    GuidedDecodingParams,
+                )
+            except ImportError:
+                log.warning(
+                    "vLLM StructuredOutputsParams / GuidedDecodingParams both "
+                    "unavailable — falling back to unguided JSON"
+                )
 
         dtype = cast(_VLLM_DTYPE, settings.vllm_dtype)
         model_cfg = resolve_template_config(self._model_name)
@@ -129,19 +143,26 @@ class VLLMBackend(PlannerLLMBackend):
         engine_args = AsyncEngineArgs(**engine_kwargs)
         self._engine = AsyncLLMEngine.from_engine_args(engine_args)
         self._SamplingParams = SamplingParams
+        self._StructuredOutputsParams = StructuredOutputsParams
         self._GuidedDecodingParams = GuidedDecodingParams
 
         # Load tokenizer for chat template application.
         self._load_tokenizer()
 
         self._loaded = True
+        if StructuredOutputsParams is not None:
+            guided_mode = "structured_outputs"
+        elif GuidedDecodingParams is not None:
+            guided_mode = "guided_decoding"
+        else:
+            guided_mode = "unguided"
         log.info(
-            "vLLM backend loaded (%s, gpu_mem=%.2f, max_len=%d, guided=%s, "
+            "vLLM backend loaded (%s, gpu_mem=%.2f, max_len=%d, json_mode=%s, "
             "chat_template=%s, model_family=%s)",
             self._model_name,
             settings.vllm_gpu_memory_utilization,
             settings.vllm_max_model_len,
-            GuidedDecodingParams is not None,
+            guided_mode,
             self._tokenizer is not None,
             self._template_kwargs.get("_family", "unknown"),
         )
@@ -192,11 +213,39 @@ class VLLMBackend(PlannerLLMBackend):
             self._tokenizer = None
             self._template_kwargs = {}
             self._SamplingParams = None
+            self._StructuredOutputsParams = None
             self._GuidedDecodingParams = None
             self._loaded = False
 
     async def health_check(self) -> bool:
         return bool(self._loaded and self._engine is not None)
+
+    # ── Structured outputs helpers ──────────────────────────────────────
+
+    def _has_guided_json(self) -> bool:
+        """True if the engine can enforce a JSON schema on the output."""
+        return (
+            self._StructuredOutputsParams is not None
+            or self._GuidedDecodingParams is not None
+        )
+
+    def _attach_json_schema(
+        self, sp_kwargs: dict[str, Any], schema: dict[str, Any]
+    ) -> None:
+        """Attach a JSON-schema constraint to a SamplingParams kwargs dict.
+
+        Prefers vLLM 0.19's StructuredOutputsParams (via
+        SamplingParams.structured_outputs), falls back to the deprecated
+        GuidedDecodingParams (via SamplingParams.guided_decoding). No-op
+        if neither backend is available — caller handles the unguided
+        case via the JSON-repair fallback path.
+        """
+        if self._StructuredOutputsParams is not None:
+            sp_kwargs["structured_outputs"] = self._StructuredOutputsParams(json=schema)
+        elif self._GuidedDecodingParams is not None:
+            sp_kwargs["guided_decoding"] = self._GuidedDecodingParams(
+                json_object=schema,
+            )
 
     async def warm(self, timeout_s: float = 120.0) -> None:
         if not self._loaded:
@@ -255,9 +304,9 @@ class VLLMBackend(PlannerLLMBackend):
             messages = history.to_ollama_messages()
             prompt = self._apply_chat_template(messages)
 
-            # With guided decoding, the output is guaranteed valid JSON matching
-            # the V2 schema — no repair loop needed.
-            if self._GuidedDecodingParams is not None:
+            # With guided/structured output, the JSON is schema-valid so no
+            # repair loop is needed.
+            if self._has_guided_json():
                 text = await self._generate_text(
                     prompt,
                     request_tag=f"conv-{history.turn_count}-1",
@@ -305,6 +354,7 @@ class VLLMBackend(PlannerLLMBackend):
         *,
         override_temperature: float | None = None,
         override_max_output_tokens: int | None = None,
+        tool_result_msg: str | None = None,
     ) -> AsyncIterator[str]:
         """Stream V2 JSON content deltas from vLLM.
 
@@ -313,6 +363,11 @@ class VLLMBackend(PlannerLLMBackend):
         only the new tail. Guided decoding (if available) constrains the
         output to valid V2 JSON — the streaming parser relies on the
         field order defined by ``ConversationResponseV2``.
+
+        `tool_result_msg` is optional context from the hybrid tool-use
+        preamble (task #7); when present it's injected as a transient
+        system message just before the latest user turn so the model can
+        ground its response in the tool's output.
         """
         history.add_user(user_text)
         await self._acquire_generation_slot()
@@ -320,7 +375,7 @@ class VLLMBackend(PlannerLLMBackend):
             if self._engine is None or self._SamplingParams is None:
                 raise LLMUnavailableError("vllm backend not initialized")
 
-            messages = history.to_ollama_messages()
+            messages = history.to_ollama_messages(tool_result_msg=tool_result_msg)
             prompt = self._apply_chat_template(messages)
 
             temperature = settings.vllm_temperature
@@ -334,10 +389,7 @@ class VLLMBackend(PlannerLLMBackend):
                 "temperature": temperature,
                 "max_tokens": max_tokens,
             }
-            if self._GuidedDecodingParams is not None:
-                sp_kwargs["guided_decoding"] = self._GuidedDecodingParams(
-                    json_object=_CONVERSATION_V2_JSON_SCHEMA,
-                )
+            self._attach_json_schema(sp_kwargs, _CONVERSATION_V2_JSON_SCHEMA)
             sampling_params = self._SamplingParams(**sp_kwargs)
             request_id = (
                 f"conv-stream-{history.turn_count}-"
@@ -430,7 +482,13 @@ class VLLMBackend(PlannerLLMBackend):
             "max_model_len": settings.vllm_max_model_len,
             "max_num_seqs": settings.vllm_max_num_seqs,
             "max_num_batched_tokens": settings.vllm_max_num_batched_tokens,
-            "guided_decoding": self._GuidedDecodingParams is not None,
+            "json_mode": (
+                "structured_outputs"
+                if self._StructuredOutputsParams is not None
+                else "guided_decoding"
+                if self._GuidedDecodingParams is not None
+                else "unguided"
+            ),
             "chat_template": self._tokenizer is not None,
             "model_family": family,
             "template_config": {
@@ -506,6 +564,42 @@ class VLLMBackend(PlannerLLMBackend):
             lines.append("ASSISTANT:")
         return "\n\n".join(lines)
 
+    # -- Generic one-shot JSON generation (used by hybrid preamble) --------
+
+    async def generate_json_once(
+        self,
+        system_prompt: str,
+        user_text: str,
+        *,
+        schema: dict[str, Any] | None = None,
+        max_tokens: int = 128,
+        temperature: float = 0.0,
+        request_tag: str = "json-once",
+    ) -> str:
+        """Run a single non-streaming generation over a {system, user} pair.
+
+        Returns the raw model text. Used by the hybrid tool-use preamble to
+        pick a tool (or decide none is needed) before the main conversation
+        stream runs. Low default temperature + low max_tokens keeps the
+        latency budget tight; caller applies any further parsing.
+        """
+        await self._acquire_generation_slot()
+        try:
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_text},
+            ]
+            prompt = self._apply_chat_template(messages)
+            return await self._generate_text(
+                prompt,
+                request_tag=request_tag,
+                guided_json_schema=schema,
+                override_max_output_tokens=max_tokens,
+                override_temperature=temperature,
+            )
+        finally:
+            await self._release_generation_slot()
+
     # -- Message builders ---------------------------------------------------
 
     @staticmethod
@@ -549,11 +643,9 @@ class VLLMBackend(PlannerLLMBackend):
             "max_tokens": max_tokens,
         }
 
-        # Attach guided decoding if schema provided and vLLM supports it.
-        if guided_json_schema is not None and self._GuidedDecodingParams is not None:
-            sp_kwargs["guided_decoding"] = self._GuidedDecodingParams(
-                json_object=guided_json_schema,
-            )
+        # Attach structured outputs / guided decoding if schema provided.
+        if guided_json_schema is not None:
+            self._attach_json_schema(sp_kwargs, guided_json_schema)
 
         sampling_params = self._SamplingParams(**sp_kwargs)
         request_id = f"{request_tag}-{int(time.time() * 1000)}-{uuid.uuid4().hex[:8]}"

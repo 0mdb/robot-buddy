@@ -221,13 +221,19 @@ class OllamaBackend(PlannerLLMBackend):
         *,
         override_temperature: float | None = None,
         override_max_output_tokens: int | None = None,
+        tool_result_msg: str | None = None,
     ) -> AsyncIterator[str]:
         """Stream V2 JSON content deltas from Ollama.
 
         The generation slot is held for the full iterator lifetime —
         callers MUST iterate to completion or call ``.aclose()`` to
         avoid leaking the slot.
+
+        `tool_result_msg` (task #7 preamble) is not plumbed into the
+        Ollama path for now — vLLM is the production backend and Ollama
+        is legacy. Hybrid tool-use requires the vllm backend.
         """
+        del tool_result_msg  # Not supported on the legacy Ollama path.
         assert self._client is not None
         await self._acquire_generation_slot()
         try:

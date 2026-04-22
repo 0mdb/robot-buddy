@@ -15,6 +15,7 @@ from app.ai_runtime import debug_snapshot as ai_debug_snapshot, get_tts
 from app.config import settings
 from app.llm.base import PlannerLLMBackend
 from app.llm.factory import create_llm_backend
+from app.llm.mcp_client import McpClient
 from app.routers.converse import router as converse_router
 from app.routers.eval import router as eval_router
 from app.routers.plan import router as plan_router
@@ -133,8 +134,26 @@ async def lifespan(app: FastAPI):
         tts.set_orpheus_allowed(False, "performance_mode_disabled")
     app.state.orpheus_enabled = bool(tts.orpheus_allowed)
 
+    # Hybrid tool-use preamble (task #7): persistent MCP client to the
+    # supervisor. Connect attempt is non-blocking — a failed initial connect
+    # just means the preamble skips tools until reconnect succeeds.
+    mcp_client: McpClient | None = None
+    if settings.mcp_preamble_enabled:
+        mcp_client = McpClient(settings.mcp_server_url)
+        if await mcp_client.connect():
+            log.info("MCP client connected to %s", settings.mcp_server_url)
+        else:
+            log.warning(
+                "MCP client initial connect to %s failed — preamble will "
+                "attempt lazy reconnect per turn",
+                settings.mcp_server_url,
+            )
+    app.state.mcp_client = mcp_client
+
     yield
 
+    if mcp_client is not None:
+        await mcp_client.close()
     tts.close()
     await llm.close()
 

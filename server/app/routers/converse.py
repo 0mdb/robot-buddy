@@ -35,6 +35,8 @@ from app.llm.base import PlannerLLMBackend
 from app.llm.conversation import (
     ConversationHistory,
 )
+from app.llm.mcp_client import McpClient
+from app.llm.preamble import run_preamble
 from app.llm.stream_parser import (
     ConversationStreamParser,
     MetadataReady,
@@ -110,6 +112,7 @@ async def converse(ws: WebSocket):
 
     audio_buffer = bytearray()
     llm = ws.app.state.llm
+    mcp_client: McpClient | None = getattr(ws.app.state, "mcp_client", None)
 
     await ws.send_json({"type": "listening"})
 
@@ -170,6 +173,7 @@ async def converse(ws: WebSocket):
                     llm,
                     history,
                     user_text,
+                    mcp_client=mcp_client,
                     override_temperature=override_temperature,
                     override_max_output_tokens=override_max_output_tokens,
                 )
@@ -186,6 +190,7 @@ async def converse(ws: WebSocket):
                     llm,
                     history,
                     user_text,
+                    mcp_client=mcp_client,
                     override_temperature=override_temperature,
                     override_max_output_tokens=override_max_output_tokens,
                 )
@@ -266,10 +271,45 @@ async def _generate_and_stream(
     history: ConversationHistory,
     user_text: str,
     *,
+    mcp_client: McpClient | None = None,
     override_temperature: float | None = None,
     override_max_output_tokens: int | None = None,
 ) -> None:
-    """Dispatch to the streaming or batch generator based on config."""
+    """Dispatch to the streaming or batch generator based on config.
+
+    Runs the hybrid tool-use preamble (task #7) first when enabled: the
+    result gets injected as a transient system message in the next
+    streaming call. Preamble failures never surface to the client — the
+    turn continues with no tool result, matching the preamble-disabled
+    path exactly.
+    """
+    tool_result_msg: str | None = None
+    if settings.mcp_preamble_enabled and mcp_client is not None:
+        try:
+            result = await run_preamble(
+                llm,
+                mcp_client,
+                user_text,
+                budget_ms=settings.mcp_tool_budget_ms,
+            )
+        except Exception as exc:
+            log.warning("preamble unexpectedly raised: %s", exc)
+        else:
+            tool_result_msg = result.tool_result_msg
+            try:
+                await ws.send_json(
+                    {
+                        "type": "tool_call",
+                        "name": result.tool_name,
+                        "ok": result.ok,
+                        "reason": result.reason,
+                        "latency_ms": result.latency_ms,
+                    }
+                )
+            except Exception:
+                # Client may have disconnected; don't fail the turn for it.
+                log.debug("tool_call event send failed", exc_info=True)
+
     if settings.llm_stream_enabled:
         await _generate_and_stream_live(
             ws,
@@ -278,6 +318,7 @@ async def _generate_and_stream(
             user_text,
             override_temperature=override_temperature,
             override_max_output_tokens=override_max_output_tokens,
+            tool_result_msg=tool_result_msg,
         )
     else:
         await _generate_and_stream_batch(
@@ -287,6 +328,7 @@ async def _generate_and_stream(
             user_text,
             override_temperature=override_temperature,
             override_max_output_tokens=override_max_output_tokens,
+            tool_result_msg=tool_result_msg,
         )
 
 
@@ -298,8 +340,17 @@ async def _generate_and_stream_batch(
     *,
     override_temperature: float | None = None,
     override_max_output_tokens: int | None = None,
+    tool_result_msg: str | None = None,
 ) -> None:
-    """Original atomic-LLM path. Kept behind RB_LLM_STREAM=0 as a rollback lever."""
+    """Original atomic-LLM path. Kept behind RB_LLM_STREAM=0 as a rollback lever.
+
+    tool_result_msg from the hybrid preamble is accepted for signature
+    consistency but NOT plumbed through on the batch path — hybrid tool-use
+    is a streaming-only feature in v1. If you need tool-enriched batch
+    generation, set RB_LLM_STREAM=true.
+    """
+    if tool_result_msg:
+        log.debug("batch path ignoring preamble tool_result (enable RB_LLM_STREAM)")
     t_llm = time.monotonic()
     try:
         response = await llm.generate_conversation(
@@ -377,6 +428,7 @@ async def _generate_and_stream_live(
     *,
     override_temperature: float | None = None,
     override_max_output_tokens: int | None = None,
+    tool_result_msg: str | None = None,
 ) -> None:
     """Streaming LLM → per-sentence TTS pipeline.
 
@@ -387,6 +439,9 @@ async def _generate_and_stream_live(
     drains them strictly in order and forwards PCM to the WS. One
     ``assistant_text`` + ``done`` is sent at end of turn — matching the batch
     contract, so supervisor/dashboard code is unchanged.
+
+    `tool_result_msg` (task #7 preamble) is passed straight through to the
+    backend's ``stream_conversation`` as a transient system message.
     """
     parser = ConversationStreamParser()
     tts = get_tts()
@@ -463,6 +518,7 @@ async def _generate_and_stream_live(
             user_text,
             override_temperature=override_temperature,
             override_max_output_tokens=override_max_output_tokens,
+            tool_result_msg=tool_result_msg,
         )
         try:
             async for delta in stream:

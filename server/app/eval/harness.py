@@ -69,6 +69,23 @@ TOOL_SCHEMAS: tuple[ToolSchema, ...] = (
 NO_TOOL = "none"
 
 
+# JSON schema passed to vLLM's structured-outputs / guided-decoding to force
+# the preamble output into shape. Shared by the /eval/select_tool endpoint
+# and by the production hybrid preamble (task #7).
+TOOL_SELECTION_JSON_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "tool": {
+            "type": "string",
+            "enum": [t.name for t in TOOL_SCHEMAS] + [NO_TOOL],
+        },
+        "args": {"type": "object"},
+    },
+    "required": ["tool", "args"],
+    "additionalProperties": False,
+}
+
+
 # ── Scenario definition ─────────────────────────────────────────────
 
 

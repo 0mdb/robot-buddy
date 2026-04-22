@@ -119,6 +119,15 @@ class Settings:
     # Stream LLM → TTS per sentence (vs batching the full response). Cuts
     # first-audio latency by ~1–3s on multi-sentence replies.
     llm_stream_enabled: bool = _env_bool("RB_LLM_STREAM", True)
+    # Hybrid tool-use preamble (task #7). When enabled, every /converse turn
+    # runs a short tool-selection pass before the main conversation stream;
+    # Gemma may call one MCP tool (look / get_memory / recent_events) whose
+    # result is injected as a transient system message.
+    mcp_preamble_enabled: bool = _env_bool("MCP_PREAMBLE_ENABLED", True)
+    mcp_server_url: str = os.environ.get(
+        "MCP_SERVER_URL", "http://192.168.55.201:8080/mcp/"
+    )
+    mcp_tool_budget_ms: int = int(os.environ.get("MCP_TOOL_BUDGET_MS", "500"))
     tts_max_utterance_s: float = float(os.environ.get("TTS_MAX_UTTERANCE_S", "15.0"))
     log_transcripts: bool = _env_bool("LOG_TRANSCRIPTS", False)
     host: str = os.environ.get("SERVER_HOST", "0.0.0.0")
@@ -151,6 +160,8 @@ class Settings:
             raise ValueError("ORPHEUS_GPU_MEMORY_UTILIZATION must be in [0.05, 0.95]")
         if not (0.5 <= self.gpu_utilization_cap <= 0.95):
             raise ValueError("GPU_UTILIZATION_CAP must be in [0.5, 0.95]")
+        if not (100 <= self.mcp_tool_budget_ms <= 5000):
+            raise ValueError("MCP_TOOL_BUDGET_MS must be in [100, 5000]")
         if self.llm_backend == "vllm":
             combined = (
                 self.vllm_gpu_memory_utilization + self.orpheus_gpu_memory_utilization

@@ -14,7 +14,11 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from app.eval.harness import build_tool_selection_prompt, parse_tool_selection
+from app.eval.harness import (
+    TOOL_SELECTION_JSON_SCHEMA,
+    build_tool_selection_prompt,
+    parse_tool_selection,
+)
 from app.llm.base import LLMBusyError, LLMError, LLMTimeoutError, LLMUnavailableError
 
 log = logging.getLogger(__name__)
@@ -31,13 +35,12 @@ async def select_tool(body: SelectToolRequest, request: Request) -> JSONResponse
     llm = request.app.state.llm
     system_prompt = build_tool_selection_prompt()
 
-    # We go straight through the low-level _generate_text helper so the eval
-    # uses the same generation primitive as /plan and /converse — but with
-    # the tool-selection system prompt and no extra schema plumbing. The
-    # backend is private; this is intentionally a developer-only endpoint.
-    generate_text = getattr(llm, "_generate_text", None)
-    apply_template = getattr(llm, "_apply_chat_template", None)
-    if generate_text is None or apply_template is None:
+    # Prefer the backend's generate_json_once (vLLM path) — it applies the
+    # tool-selection schema via structured outputs so the model cannot emit
+    # non-JSON prose (which was one of the eval gate's failure modes before
+    # the vLLM 0.19 structured-outputs upgrade).
+    generate_json_once = getattr(llm, "generate_json_once", None)
+    if generate_json_once is None:
         return JSONResponse(
             {
                 "error": "backend_mismatch",
@@ -46,19 +49,14 @@ async def select_tool(body: SelectToolRequest, request: Request) -> JSONResponse
             status_code=501,
         )
 
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": body.user_text},
-    ]
-    prompt = apply_template(messages)
-
     try:
-        raw = await generate_text(
-            prompt,
+        raw = await generate_json_once(
+            system_prompt,
+            body.user_text,
+            schema=TOOL_SELECTION_JSON_SCHEMA,
+            max_tokens=128,
+            temperature=0.0,
             request_tag="eval-select-tool",
-            # Small, focused output — tool selection + args, not a whole reply.
-            override_max_output_tokens=128,
-            override_temperature=0.0,
         )
     except LLMBusyError:
         return JSONResponse({"error": "llm_busy"}, status_code=429)

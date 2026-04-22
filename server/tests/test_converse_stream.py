@@ -41,8 +41,10 @@ class _FakeLLM:
         *,
         override_temperature: float | None = None,
         override_max_output_tokens: int | None = None,
+        tool_result_msg: str | None = None,
     ) -> AsyncIterator[str]:
         # Mirror the real backends: add_user first so history finalization works.
+        del tool_result_msg  # Fake ignores preamble output.
         history.add_user(user_text)
         if self.raise_on_start is not None:
             raise self.raise_on_start

@@ -299,11 +299,20 @@ class ConversationHistory:
             ConversationMessage(role="assistant", content=text, emotion=emotion)
         )
 
-    def to_ollama_messages(self) -> list[dict[str, str]]:
+    def to_ollama_messages(
+        self, *, tool_result_msg: str | None = None
+    ) -> list[dict[str, str]]:
         """Build the messages array with context-budget compression.
 
         Returns system prompt + optional summary of old turns + recent turns
-        + CURRENT STATE block (§12.5) + personality anchor every 5 turns (§12.7).
+        + optional [tool_result] block (from the hybrid preamble, task #7)
+        + CURRENT STATE block (§12.5) + personality anchor every 5 turns
+        (§12.7).
+
+        `tool_result_msg` is transient — it lives only for this rendered
+        message list; the conversation history itself never stores tool
+        results. On the next turn, if the model needs the same information
+        it must call the tool again.
         """
         all_msgs = list(self._messages)
         recent_boundary = _RECENT_WINDOW_TURNS * 2  # user + assistant pairs
@@ -326,6 +335,18 @@ class ConversationHistory:
                 msgs.append({"role": "system", "content": summary})
             for m in recent_msgs:
                 msgs.append({"role": m.role, "content": m.content})
+
+        # Task #7 hybrid preamble: inject tool result (if any) immediately
+        # before the last user message so the model can ground its reply in
+        # the tool output. Placed before the CURRENT STATE / anchor blocks
+        # so the tool result appears as the most-recent system context.
+        if tool_result_msg:
+            insert_idx = len(msgs)
+            for i in range(len(msgs) - 1, -1, -1):
+                if msgs[i]["role"] == "user":
+                    insert_idx = i
+                    break
+            msgs.insert(insert_idx, {"role": "system", "content": tool_result_msg})
 
         # §12.5: Inject CURRENT STATE block before the latest user message.
         if self._profile is not None:
