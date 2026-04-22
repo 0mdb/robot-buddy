@@ -33,11 +33,20 @@ TOOL_SCHEMAS: tuple[ToolSchema, ...] = (
     ToolSchema(
         name="look",
         description=(
-            "Call whenever the child references something visual you need "
-            "to actually see to respond usefully: 'look at my drawing', "
-            "'show you', 'do you see X?', 'what color is it?', 'how many "
-            "X', 'does this look right?'. Questions about counting, "
-            "colors, or the appearance of real objects always need look()."
+            "Call whenever the child references ANYTHING visual in the "
+            "real world — even broadly. ANY of these patterns must fire "
+            "look():\n"
+            "  - 'look' / 'look at this' / 'look at X' / 'look what I made'\n"
+            "  - 'what is this?' / 'what is that?' / 'what's this thing?'\n"
+            "  - 'what do you see?' / 'do you see X?' / 'can you see it?'\n"
+            "  - 'show you' / 'I want to show you' / 'check this out'\n"
+            "  - 'what color is X?' / 'how many X are there?'\n"
+            "  - Any demonstrative ('this', 'that', 'it', 'here') that "
+            "refers to a physical object the child is holding or pointing "
+            "to.\n"
+            "When in doubt about a visual reference, CALL look() — the "
+            "cost of a missed look() is a useless reply; the cost of a "
+            "false look() is just a redundant frame."
         ),
         args_hint='{"hint"?: string /* what to notice */}',
     ),
@@ -143,6 +152,30 @@ SCENARIOS: tuple[ToolCallScenario, ...] = (
         user_text="I'm drawing a dinosaur, can you tell me if it looks right?",
         expected_tool="look",
         rationale="Visual assessment of an artifact being created.",
+    ),
+    ToolCallScenario(
+        name="look.at_this",
+        user_text="Look at this!",
+        expected_tool="look",
+        rationale="Broad demonstrative — child is showing the robot something visual.",
+    ),
+    ToolCallScenario(
+        name="look.what_is_this",
+        user_text="What is this?",
+        expected_tool="look",
+        rationale="Child is pointing at / holding something they want identified.",
+    ),
+    ToolCallScenario(
+        name="look.check_this_out",
+        user_text="Check this out!",
+        expected_tool="look",
+        rationale="'Check out' = 'look' in kid vocabulary.",
+    ),
+    ToolCallScenario(
+        name="look.what_see",
+        user_text="What do you see?",
+        expected_tool="look",
+        rationale="Direct perception query with no specific object named.",
     ),
     # ── get_memory() should fire ──────────────────────────────────
     ToolCallScenario(
@@ -266,6 +299,18 @@ Respond ONLY with a single JSON object, nothing else:
 Examples:
 User: "Look at my drawing!"
 {{"tool": "look", "args": {{"hint": "child's drawing"}}}}
+
+User: "Look at this!"
+{{"tool": "look", "args": {{"hint": "child is showing something"}}}}
+
+User: "What is this?"
+{{"tool": "look", "args": {{"hint": "identify object"}}}}
+
+User: "What do you see?"
+{{"tool": "look", "args": {{"hint": "general view"}}}}
+
+User: "Check this out!"
+{{"tool": "look", "args": {{"hint": "child is showing something"}}}}
 
 User: "Hi!"
 {{"tool": "{no_tool}", "args": {{}}}}
