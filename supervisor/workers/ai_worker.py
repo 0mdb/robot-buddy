@@ -317,7 +317,12 @@ class AIWorker(BaseWorker):
             url += f"&override_max_output_tokens={self._generation_overrides['max_output_tokens']}"
 
         try:
-            self._ws = await websockets.connect(url)
+            # ping_timeout=60 (default 20) gives cold multimodal image turns
+            # enough headroom — Gemma's first-token latency on an image
+            # prompt with a freshly-loaded xgrammar schema can run long on
+            # the first attempt after server restart. ping_interval stays at
+            # the default 20s so we still notice real disconnects quickly.
+            self._ws = await websockets.connect(url, ping_interval=20, ping_timeout=60)
             self._ws_connected = True
             self._set_state("listening", "ws_connected")
 

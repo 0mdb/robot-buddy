@@ -299,6 +299,60 @@ class VLLMBackend(PlannerLLMBackend):
         except Exception as exc:
             log.warning("vLLM model warm-up failed: %s", exc)
 
+        # Multimodal warmup: fires only when the processor loaded (i.e. the
+        # model supports image input). Compiles the xgrammar V2 schema with
+        # image-tokens in context, captures the vision-encoder cudagraphs,
+        # and exercises the Gemma4Processor chat-template path — all the
+        # things that cause the first real image turn to spike past 20 s
+        # and time out the supervisor's keepalive ping.
+        if self._processor is not None and self._engine is not None:
+            await self._warm_multimodal(timeout_s=timeout_s)
+
+    async def _warm_multimodal(self, *, timeout_s: float) -> None:
+        """Run one throwaway image+text turn to prime all multimodal caches.
+
+        Best-effort: any failure is logged and ignored — warmup should
+        never block startup.
+        """
+        try:
+            from PIL import Image
+
+            dummy_img = Image.new("RGB", (64, 64), "gray")
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "warmup"},
+                        {"type": "image"},
+                    ],
+                }
+            ]
+            prompt = self._apply_chat_template(messages)
+
+            await self._acquire_generation_slot()
+            try:
+                sp_kwargs: dict[str, Any] = {"temperature": 0.0, "max_tokens": 16}
+                self._attach_json_schema(sp_kwargs, _CONVERSATION_V2_JSON_SCHEMA)
+                sampling = self._SamplingParams(**sp_kwargs)
+                request_id = f"mm-warmup-{int(time.time() * 1000)}"
+                agen = self._engine.generate(
+                    {"prompt": prompt, "multi_modal_data": {"image": dummy_img}},
+                    sampling,
+                    request_id=request_id,
+                )
+                t0 = time.monotonic()
+                async with asyncio.timeout(timeout_s):
+                    async for _ in agen:
+                        pass
+                log.info(
+                    "vLLM multimodal warm-up complete (%.1f s)",
+                    time.monotonic() - t0,
+                )
+            finally:
+                await self._release_generation_slot()
+        except Exception as exc:
+            log.warning("vLLM multimodal warm-up failed: %s", exc)
+
     async def generate_plan(self, state: WorldState) -> ModelPlan:
         await self._acquire_generation_slot()
         try:
