@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from mcp.server.fastmcp import FastMCP
 
@@ -22,6 +22,7 @@ from supervisor.mcp.audit import McpAuditBroadcaster
 from supervisor.mcp.tools import (
     get_memory_impl,
     get_state_impl,
+    look_impl,
     recent_events_impl,
 )
 
@@ -31,6 +32,7 @@ if TYPE_CHECKING:
     from fastapi import FastAPI
 
     from supervisor.core.tick_loop import TickLoop
+    from supervisor.core.worker_manager import WorkerManager
 
 log = logging.getLogger(__name__)
 
@@ -43,6 +45,7 @@ DEFAULT_MEMORY_PATH = Path("./data/personality_memory.json")
 def build_mcp_server(
     tick: TickLoop,
     audit: McpAuditBroadcaster,
+    workers: WorkerManager,
     *,
     name: str = "robot-buddy",
     memory_path: Path | None = None,
@@ -82,6 +85,21 @@ def build_mcp_server(
         case-insensitive substring filter on event type. n is clamped to
         [1, 50]. Read-only."""
         return await recent_events_impl(tick, pattern, n, audit)
+
+    @mcp.tool()
+    async def look(hint: str | None = None) -> list[Any]:
+        """Return the robot's current camera view — a fresh JPEG (320x240)
+        plus ball-detection metadata (ball visible, bearing, frame age).
+        Use this when the child references something visual ("look at
+        this!", "see my drawing?", "what color is it?"). `hint` is optional
+        free text describing what you want to notice; it's logged but not
+        interpreted.
+
+        Returns an MCP content list: an image block (when parental memory
+        consent is on and the frame is fresh) plus a JSON metadata text
+        block explaining what's in the frame. When consent is off, only
+        the metadata is returned — no image bytes leave the robot."""
+        return await look_impl(tick, workers, hint, audit)
 
     return mcp
 

@@ -1,12 +1,11 @@
 """Tool implementations for the MCP server.
 
-Plain async functions, bound to supervisor runtime (tick, audit, config)
+Plain async functions, bound to supervisor runtime (tick, audit, workers)
 via closure in build_mcp_server. Each call is recorded to the audit
 broadcaster so the dashboard MCP Activity panel can show what tools the
 consumer LLM has used.
 
-Phase 0 scope: get_state, get_memory, recent_events. look() lands with the
-Gemma 4 E4B swap (task #2 / #5).
+Phase 0 scope: get_state, get_memory, recent_events, look.
 """
 
 from __future__ import annotations
@@ -16,16 +15,29 @@ import logging
 import math
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
+
+from mcp.types import ImageContent, TextContent
 
 from supervisor.mcp.audit import McpAuditBroadcaster, McpAuditEntry
 
 if TYPE_CHECKING:
     from supervisor.core.tick_loop import TickLoop
+    from supervisor.core.worker_manager import WorkerManager
 
 log = logging.getLogger(__name__)
 
 VALID_MEMORY_CATEGORIES = frozenset({"name", "topic", "ritual", "tone", "preference"})
+
+# Frames older than this are treated as stale — don't return them even when
+# consent is on. Covers the case where vision_worker crashed, the camera
+# disconnected, or MJPEG got disabled after boot. 2 s is generous relative to
+# the 5 Hz MJPEG rate while still catching real staleness.
+LOOK_FRAME_STALE_MS = 2000.0
+
+# Ball-detection confidence threshold at which we report ball_detected=True.
+# Matches the event-bus acquire threshold in PlannerEventBus.
+LOOK_BALL_ACQUIRE_CONF = 0.60
 
 
 def _summarize(result: object, *, max_len: int = 120) -> str:
@@ -229,6 +241,118 @@ async def recent_events_impl(
             McpAuditEntry(
                 ts_mono=t0,
                 tool="recent_events",
+                args=args,
+                ok=False,
+                latency_ms=(time.monotonic() - t0) * 1000.0,
+                error=f"{type(exc).__name__}: {exc}",
+            )
+        )
+        raise
+
+
+def _memory_consent_from_workers(workers: WorkerManager) -> bool:
+    """Read the parental memory-consent flag from the personality worker.
+
+    Mirrors the /api/personality/memory HTTP endpoint's consent lookup so the
+    MCP tool gate matches the dashboard's view.
+    """
+    try:
+        snap = workers.worker_snapshot() or {}
+        health = (snap.get("personality") or {}).get("health") or {}
+        return bool(health.get("memory_consent", False))
+    except Exception:
+        # Fail closed — if we can't read the consent flag, don't return images.
+        return False
+
+
+async def look_impl(
+    tick: TickLoop,
+    workers: WorkerManager,
+    hint: str | None,
+    audit: McpAuditBroadcaster,
+) -> list[Any]:
+    """Return the most recent camera frame + ball-detection metadata.
+
+    Returns a list of MCP content blocks:
+      - ImageContent (JPEG) if consent is on and a fresh frame is available.
+      - TextContent (JSON metadata) always, explaining what the consumer is
+        seeing (or why no image came back: consent-off, stale, no-frame).
+
+    The JPEG is the same 320x240 downsized frame the /video MJPEG endpoint
+    serves; no new frame capture or encoding happens here. `hint` is
+    free-form text the caller can echo for its own reasoning ("what colors
+    do you see?") — we log it but don't interpret it.
+
+    Privacy: when memory_consent is off, no image bytes ever leave this
+    tool. The audit log never contains the JPEG regardless.
+    """
+    t0 = time.monotonic()
+    args = {"hint": hint}
+    try:
+        consent = _memory_consent_from_workers(workers)
+        world = tick.world
+        age_ms = world.vision_age_ms
+        frame_seq = int(world.vision_frame_seq)
+        ball_conf = float(world.ball_confidence)
+        ball_bearing = float(world.ball_bearing_deg)
+        jpeg_b64 = world.latest_jpeg_b64 or ""
+
+        metadata: dict[str, Any] = {
+            "ball_detected": ball_conf >= LOOK_BALL_ACQUIRE_CONF,
+            "ball_confidence": round(ball_conf, 2),
+            "ball_bearing_deg": round(ball_bearing, 1),
+            "vision_age_ms": round(age_ms, 1),
+            "vision_frame_seq": frame_seq,
+            "consent": "on" if consent else "off",
+            "hint": hint,
+        }
+
+        include_image = True
+        if not consent:
+            include_image = False
+            metadata["reason"] = "consent_off"
+        elif not jpeg_b64:
+            include_image = False
+            metadata["reason"] = "no_frame"
+        elif age_ms < 0 or age_ms > LOOK_FRAME_STALE_MS:
+            include_image = False
+            metadata["reason"] = "stale"
+
+        content: list[Any] = []
+        if include_image:
+            content.append(
+                ImageContent(type="image", data=jpeg_b64, mimeType="image/jpeg")
+            )
+        content.append(
+            TextContent(type="text", text=json.dumps(metadata, separators=(",", ":")))
+        )
+
+        # Audit summary: compact human-readable line, NEVER the JPEG bytes.
+        summary_parts = [
+            f"consent={metadata['consent']}",
+            f"image={'y' if include_image else 'n'}",
+            f"ball={'y' if metadata['ball_detected'] else 'n'}",
+            f"age_ms={metadata['vision_age_ms']}",
+            f"seq={frame_seq}",
+        ]
+        if not include_image and "reason" in metadata:
+            summary_parts.append(f"reason={metadata['reason']}")
+        audit.record(
+            McpAuditEntry(
+                ts_mono=t0,
+                tool="look",
+                args=args,
+                ok=True,
+                latency_ms=(time.monotonic() - t0) * 1000.0,
+                result_summary=" ".join(summary_parts),
+            )
+        )
+        return content
+    except Exception as exc:
+        audit.record(
+            McpAuditEntry(
+                ts_mono=t0,
+                tool="look",
                 args=args,
                 ok=False,
                 latency_ms=(time.monotonic() - t0) * 1000.0,

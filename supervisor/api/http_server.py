@@ -26,7 +26,11 @@ from starlette.responses import Response
 
 from supervisor.api.param_persistence import load_params, on_param_changed
 from supervisor.mcp import McpAuditBroadcaster, build_mcp_server
-from supervisor.messages.types import TTS_CMD_SET_MUTE, TTS_CMD_SET_VOLUME
+from supervisor.messages.types import (
+    TTS_CMD_SET_MUTE,
+    TTS_CMD_SET_VOLUME,
+    VISION_CONFIG_UPDATE,
+)
 from supervisor.vision.mask_store import (
     default_mask,
     load_mask,
@@ -138,12 +142,21 @@ def create_app(
     # lifespan. Audit broadcaster is kept on the app so /ws/mcp can fan out
     # tool-call entries to connected dashboards.
     mcp_audit = McpAuditBroadcaster()
-    mcp_server = build_mcp_server(tick, mcp_audit)
+    mcp_server = build_mcp_server(tick, mcp_audit, workers)
 
     @asynccontextmanager
     async def _lifespan(_app: FastAPI):
         async with mcp_server.session_manager.run():
             log.info("MCP session manager started (mounted at /mcp)")
+            # Pin MJPEG encoding on while the MCP server runs so look() has
+            # a fresh frame the moment a consumer LLM asks. The /video
+            # endpoint still toggles mjpeg_enabled on dashboard connect /
+            # disconnect; look() re-asserts it on every call as a safety
+            # net, so worst case is one stale-frame call after a dashboard
+            # tab closes.
+            asyncio.ensure_future(
+                workers.send_to("vision", VISION_CONFIG_UPDATE, {"mjpeg_enabled": True})
+            )
             try:
                 yield
             finally:

@@ -25,11 +25,27 @@ from supervisor.core.state import Mode
 from supervisor.mcp import McpAuditBroadcaster
 from supervisor.mcp.audit import McpAuditEntry
 from supervisor.mcp.tools import (
+    LOOK_BALL_ACQUIRE_CONF,
+    LOOK_FRAME_STALE_MS,
     get_memory_impl,
     get_state_impl,
+    look_impl,
     recent_events_impl,
 )
 from supervisor.tests.test_api import FakeTick, FakeWorkers
+
+
+class FakeWorkersWithConsent(FakeWorkers):
+    """FakeWorkers + memory_consent surfaced via worker_snapshot()."""
+
+    def __init__(self, memory_consent: bool = False):
+        super().__init__()
+        self._memory_consent = memory_consent
+
+    def worker_snapshot(self) -> dict:
+        snap = super().worker_snapshot()
+        snap["personality"] = {"health": {"memory_consent": self._memory_consent}}
+        return snap
 
 
 # ── Fixtures ─────────────────────────────────────────────────────
@@ -285,6 +301,146 @@ class TestRecentEventsTool:
         # event_bus max_events default is 100; latest(50) inside impl caps;
         # n is clamped to 50.
         assert result["count"] == 50
+
+
+# ── look tool ─────────────────────────────────────────────────────
+
+
+def _prime_tick_frame(
+    tick: FakeTick,
+    *,
+    jpeg_b64: str = "ZmFrZS1qcGVnLWJ5dGVz",  # "fake-jpeg-bytes" base64
+    age_ms: float = 100.0,
+    ball_conf: float = 0.0,
+    ball_bearing_deg: float = 0.0,
+    frame_seq: int = 42,
+) -> None:
+    """Seed a FakeTick's world state with plausible vision values.
+
+    age_ms is interpreted via vision_rx_mono_ms: we subtract age from the
+    current monotonic clock so WorldState.vision_age_ms returns age_ms.
+    Set age_ms<0 to mark no-frame (vision_rx_mono_ms=0).
+    """
+    import time as _time
+
+    tick.world.latest_jpeg_b64 = jpeg_b64
+    tick.world.ball_confidence = ball_conf
+    tick.world.ball_bearing_deg = ball_bearing_deg
+    tick.world.vision_frame_seq = frame_seq
+    tick.world.vision_rx_mono_ms = (
+        0.0 if age_ms < 0 else max(0.001, _time.monotonic() * 1000.0 - age_ms)
+    )
+
+
+class TestLookTool:
+    @pytest.mark.asyncio
+    async def test_consent_on_fresh_frame_returns_image(self, audit):
+        tick = FakeTick()
+        _prime_tick_frame(tick, ball_conf=0.8, ball_bearing_deg=12.3)
+        workers = FakeWorkersWithConsent(memory_consent=True)
+
+        content = await look_impl(tick, workers, hint="look at this", audit=audit)
+
+        assert len(content) == 2
+        img, meta = content[0], content[1]
+        assert img.type == "image"
+        assert img.mimeType == "image/jpeg"
+        assert img.data == "ZmFrZS1qcGVnLWJ5dGVz"
+        meta_json = json.loads(meta.text)
+        assert meta_json["consent"] == "on"
+        assert meta_json["ball_detected"] is True  # 0.8 >= threshold
+        assert meta_json["ball_bearing_deg"] == 12.3
+        assert meta_json["hint"] == "look at this"
+        assert "reason" not in meta_json
+
+    @pytest.mark.asyncio
+    async def test_consent_off_omits_image(self, audit):
+        tick = FakeTick()
+        _prime_tick_frame(tick, ball_conf=0.9)
+        workers = FakeWorkersWithConsent(memory_consent=False)
+
+        content = await look_impl(tick, workers, hint=None, audit=audit)
+
+        assert len(content) == 1
+        assert content[0].type == "text"
+        meta = json.loads(content[0].text)
+        assert meta["consent"] == "off"
+        assert meta["reason"] == "consent_off"
+        # Ball detection metadata still flows through — only image is gated.
+        assert meta["ball_detected"] is True
+
+    @pytest.mark.asyncio
+    async def test_stale_frame_omits_image(self, audit):
+        tick = FakeTick()
+        _prime_tick_frame(tick, age_ms=LOOK_FRAME_STALE_MS + 500)
+        workers = FakeWorkersWithConsent(memory_consent=True)
+
+        content = await look_impl(tick, workers, hint=None, audit=audit)
+
+        assert len(content) == 1
+        meta = json.loads(content[0].text)
+        assert meta["reason"] == "stale"
+
+    @pytest.mark.asyncio
+    async def test_no_frame_omits_image(self, audit):
+        tick = FakeTick()
+        _prime_tick_frame(tick, jpeg_b64="", age_ms=-1)
+        workers = FakeWorkersWithConsent(memory_consent=True)
+
+        content = await look_impl(tick, workers, hint=None, audit=audit)
+
+        assert len(content) == 1
+        meta = json.loads(content[0].text)
+        assert meta["reason"] == "no_frame"
+
+    @pytest.mark.asyncio
+    async def test_ball_threshold_is_acquire_conf(self, audit):
+        tick = FakeTick()
+        # Just above threshold
+        _prime_tick_frame(tick, ball_conf=LOOK_BALL_ACQUIRE_CONF + 0.001)
+        workers = FakeWorkersWithConsent(memory_consent=True)
+        content = await look_impl(tick, workers, hint=None, audit=audit)
+        assert json.loads(content[1].text)["ball_detected"] is True
+
+        # Just below threshold
+        _prime_tick_frame(tick, ball_conf=LOOK_BALL_ACQUIRE_CONF - 0.001)
+        content = await look_impl(tick, workers, hint=None, audit=audit)
+        # When consent on + fresh, content[1] is the text block
+        assert json.loads(content[1].text)["ball_detected"] is False
+
+    @pytest.mark.asyncio
+    async def test_audit_never_contains_jpeg_bytes(self, audit):
+        tick = FakeTick()
+        _prime_tick_frame(tick)
+        workers = FakeWorkersWithConsent(memory_consent=True)
+
+        await look_impl(tick, workers, hint=None, audit=audit)
+
+        entries = audit.snapshot()
+        assert len(entries) == 1
+        entry = entries[0]
+        assert entry["tool"] == "look"
+        assert entry["ok"] is True
+        # The base64 we seeded must not appear anywhere in the audit entry.
+        for v in entry.values():
+            assert "ZmFrZS1qcGVnLWJ5dGVz" not in repr(v)
+        assert "image=y" in entry["result_summary"]
+        assert "consent=on" in entry["result_summary"]
+
+    @pytest.mark.asyncio
+    async def test_worker_snapshot_failure_fails_closed(self, audit):
+        class BrokenWorkers(FakeWorkers):
+            def worker_snapshot(self) -> dict:
+                raise RuntimeError("boom")
+
+        tick = FakeTick()
+        _prime_tick_frame(tick)
+        content = await look_impl(tick, BrokenWorkers(), hint=None, audit=audit)
+
+        # No image returned because the consent check failed closed.
+        assert len(content) == 1
+        meta = json.loads(content[0].text)
+        assert meta["consent"] == "off"
 
 
 # ── HTTP + WS endpoints ──────────────────────────────────────────
