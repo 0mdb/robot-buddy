@@ -31,7 +31,12 @@ class SpeechPolicy:
         # Maps event key → (phrase, expire_mono_ms).  One slot per key.
         self._held: dict[str, tuple[str, float]] = {}
         self._cooldown_ms = {
-            "vision.ball_acquired": 5000.0,
+            # 60s between ball announcements — event_bus edge-detects on
+            # ball_visible transitions, but vision freshness/clear-path
+            # gating can flicker effective_ball_conf between acquire and
+            # lost thresholds, re-emitting ball_acquired every few seconds.
+            # One minute matches "per play session" cadence a kid expects.
+            "vision.ball_acquired": 60000.0,
             "mode.changed:WANDER": 7000.0,
             "fault.raised": 6000.0,
             "face.button.click": 4000.0,
