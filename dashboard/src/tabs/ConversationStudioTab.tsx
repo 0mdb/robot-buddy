@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ConvBenchmark from '../components/ConvBenchmark'
 import PipelineTimeline from '../components/PipelineTimeline'
+import TurnCards from '../components/TurnCards'
 import WakeWordWorkbench from '../components/WakeWordWorkbench'
 import { useParamsList, useUpdateParams } from '../hooks/useParams'
 import { useSend } from '../hooks/useSend'
@@ -384,6 +385,14 @@ export default function ConversationStudioTab() {
             Pipeline Timeline
           </span>
           <PipelineTimeline />
+        </div>
+
+        {/* Phase C turn cards */}
+        <div style={{ marginTop: 12 }}>
+          <span className={styles.mono} style={{ color: 'var(--text-dim)', fontSize: 11 }}>
+            Turns
+          </span>
+          <TurnCards />
         </div>
 
         {/* Event log */}

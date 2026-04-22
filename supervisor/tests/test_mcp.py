@@ -409,7 +409,9 @@ class TestLookTool:
         assert json.loads(content[1].text)["ball_detected"] is False
 
     @pytest.mark.asyncio
-    async def test_audit_never_contains_jpeg_bytes(self, audit):
+    async def test_audit_thumbnail_in_image_b64_only(self, audit):
+        """Phase C: audit entry carries a thumbnail in `image_b64` but the
+        base64 must not leak into summary / args / any other field."""
         tick = FakeTick()
         _prime_tick_frame(tick)
         workers = FakeWorkersWithConsent(memory_consent=True)
@@ -421,11 +423,38 @@ class TestLookTool:
         entry = entries[0]
         assert entry["tool"] == "look"
         assert entry["ok"] is True
-        # The base64 we seeded must not appear anywhere in the audit entry.
-        for v in entry.values():
+        # Thumbnail SHOULD be carried in image_b64.
+        assert entry.get("image_b64") == "ZmFrZS1qcGVnLWJ5dGVz"
+        # But NOT leak into any other field.
+        for k, v in entry.items():
+            if k == "image_b64":
+                continue
             assert "ZmFrZS1qcGVnLWJ5dGVz" not in repr(v)
         assert "image=y" in entry["result_summary"]
         assert "consent=on" in entry["result_summary"]
+
+    @pytest.mark.asyncio
+    async def test_audit_no_thumbnail_when_consent_off(self, audit):
+        tick = FakeTick()
+        _prime_tick_frame(tick)
+        workers = FakeWorkersWithConsent(memory_consent=False)
+
+        await look_impl(tick, workers, hint=None, audit=audit)
+
+        entry = audit.snapshot()[0]
+        # Consent off: no thumbnail in the audit.
+        assert entry.get("image_b64", "") == ""
+
+    @pytest.mark.asyncio
+    async def test_turn_id_propagates_into_audit(self, audit):
+        tick = FakeTick()
+        _prime_tick_frame(tick)
+        workers = FakeWorkersWithConsent(memory_consent=True)
+
+        await look_impl(tick, workers, hint=None, audit=audit, turn_id="abc123def456")
+
+        entry = audit.snapshot()[0]
+        assert entry.get("turn_id") == "abc123def456"
 
     @pytest.mark.asyncio
     async def test_worker_snapshot_failure_fails_closed(self, audit):

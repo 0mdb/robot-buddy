@@ -314,6 +314,13 @@ export interface McpAuditEntry {
   result_summary: string
   error: string
   client: string
+  // Phase C: /converse turn UUID this MCP call fired under. Empty/undefined
+  // when the caller didn't supply one (e.g. direct MCP clients).
+  turn_id?: string
+  // Phase C: base64 JPEG thumbnail when the tool captured a frame
+  // (look() only, when consent is on + frame is fresh). Dashboard
+  // renders this as a 64×48 thumb in the McpActivity row.
+  image_b64?: string
 }
 
 export interface McpToolStats {
@@ -326,4 +333,104 @@ export interface McpToolStats {
 export interface McpDebugSnapshot {
   recent: McpAuditEntry[]
   success_rate: Record<string, McpToolStats>
+}
+
+// ---- /converse WebSocket events (Phase C: turn_id-keyed timeline) ----
+
+export interface ConverseTranscriptionEvent {
+  type: 'transcription'
+  turn_id: string
+  text: string
+  stt_latency_ms?: number
+}
+
+export interface ConverseToolCallEvent {
+  type: 'tool_call'
+  turn_id: string
+  name: string | null
+  ok: boolean
+  reason: string
+  latency_ms: number
+  has_image: boolean
+}
+
+export interface ConverseEmotionEvent {
+  type: 'emotion'
+  turn_id: string
+  emotion: string
+  intensity: number
+  mood_reason?: string
+  llm_latency_ms?: number
+}
+
+export interface ConverseGesturesEvent {
+  type: 'gestures'
+  turn_id: string
+  names: string[]
+}
+
+export interface ConverseMemoryTagsEvent {
+  type: 'memory_tags'
+  turn_id: string
+  tags: { tag: string; category: string }[]
+}
+
+export interface ConverseFirstAudioEvent {
+  type: 'first_audio'
+  turn_id: string
+  first_audio_ms: number
+}
+
+export interface ConverseAssistantTextEvent {
+  type: 'assistant_text'
+  turn_id: string
+  text: string
+}
+
+export interface ConverseTurnErrorEvent {
+  type: 'turn_error'
+  turn_id: string
+  reason: string
+  stage: string
+  latency_ms: number
+}
+
+export interface ConverseDoneEvent {
+  type: 'done'
+  turn_id?: string
+  total_ms?: number
+  llm_latency_ms?: number | null
+  first_audio_ms?: number | null
+  tool_call_name?: string | null
+  tool_call_ok?: boolean
+  tool_call_latency_ms?: number
+}
+
+export type ConverseTurnEvent =
+  | ConverseTranscriptionEvent
+  | ConverseToolCallEvent
+  | ConverseEmotionEvent
+  | ConverseGesturesEvent
+  | ConverseMemoryTagsEvent
+  | ConverseFirstAudioEvent
+  | ConverseAssistantTextEvent
+  | ConverseTurnErrorEvent
+  | ConverseDoneEvent
+
+/** Aggregated view of a single /converse turn, built by the turn store. */
+export interface TurnCard {
+  turn_id: string
+  started_ms: number // wall-clock (Date.now) when first event arrived
+  transcription?: string
+  stt_latency_ms?: number
+  tool_call?: ConverseToolCallEvent
+  emotion?: ConverseEmotionEvent
+  gestures?: string[]
+  memory_tags?: { tag: string; category: string }[]
+  first_audio_ms?: number
+  assistant_text?: string
+  error?: ConverseTurnErrorEvent
+  done?: ConverseDoneEvent
+  /** Derived convenience: true when an error or done event closed the turn. */
+  completed: boolean
 }

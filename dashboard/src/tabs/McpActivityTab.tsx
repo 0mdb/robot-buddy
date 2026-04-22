@@ -184,6 +184,35 @@ function McpRow({
       >
         {entry.ok ? entry.result_summary || '—' : entry.error || '(unknown error)'}
       </span>
+      {entry.image_b64 ? (
+        <span
+          title="Has image (click row for thumbnail)"
+          style={{
+            flexShrink: 0,
+            color: '#4caf50',
+            fontSize: 11,
+            width: 32,
+            textAlign: 'right',
+          }}
+        >
+          📷
+        </span>
+      ) : null}
+      {entry.turn_id ? (
+        <span
+          title={`turn ${entry.turn_id}`}
+          style={{
+            flexShrink: 0,
+            color: '#6a6a8a',
+            fontSize: 10,
+            width: 72,
+            textAlign: 'right',
+            fontFamily: 'var(--font-mono)',
+          }}
+        >
+          {entry.turn_id.slice(0, 8)}
+        </span>
+      ) : null}
     </div>
   )
 }
@@ -312,7 +341,7 @@ export default function McpActivityTab() {
   )
 
   const selectedEntry = selectedIndex !== null ? (displayed[selectedIndex] ?? null) : null
-  const DETAIL_HEIGHT = selectedEntry ? 140 : 0
+  const DETAIL_HEIGHT = selectedEntry ? (selectedEntry.image_b64 ? 360 : 140) : 0
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: 12, gap: 8 }}>
@@ -627,6 +656,27 @@ export default function McpActivityTab() {
               </span>
             </div>
           )}
+          {selectedEntry.turn_id ? (
+            <div style={{ color: '#aaa', marginTop: 4 }}>
+              turn: <span style={{ color: '#ce93d8' }}>{selectedEntry.turn_id}</span>
+            </div>
+          ) : null}
+          {selectedEntry.image_b64 ? (
+            <div style={{ marginTop: 8 }}>
+              <div style={{ color: '#aaa', marginBottom: 4 }}>image:</div>
+              <img
+                src={`data:image/jpeg;base64,${selectedEntry.image_b64}`}
+                alt="camera frame captured by look()"
+                style={{
+                  maxWidth: 320,
+                  maxHeight: 240,
+                  border: '1px solid #333',
+                  borderRadius: 4,
+                  display: 'block',
+                }}
+              />
+            </div>
+          ) : null}
         </div>
       )}
     </div>

@@ -29,9 +29,16 @@ class McpAuditEntry:
     result_summary: str = ""
     error: str = ""
     client: str = ""
+    # Phase C observability: correlate this MCP call with the /converse turn
+    # that triggered it (set when the caller passes `_turn_id` in args).
+    turn_id: str = ""
+    # Optional base64-encoded JPEG of what the tool saw. Populated only by
+    # look() when consent is on. Dashboard renders this as a thumbnail in
+    # the MCP Activity panel so parents can see what Buddy saw.
+    image_b64: str = ""
 
     def to_dict(self) -> dict:
-        return {
+        d: dict = {
             "ts_mono": self.ts_mono,
             "tool": self.tool,
             "args": self.args,
@@ -41,6 +48,11 @@ class McpAuditEntry:
             "error": self.error,
             "client": self.client,
         }
+        if self.turn_id:
+            d["turn_id"] = self.turn_id
+        if self.image_b64:
+            d["image_b64"] = self.image_b64
+        return d
 
 
 class McpAuditBroadcaster:

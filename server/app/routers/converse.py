@@ -25,6 +25,7 @@ import asyncio
 import base64
 import logging
 import time
+import uuid
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
@@ -161,9 +162,11 @@ async def converse(ws: WebSocket):
                     await ws.send_json({"type": "listening"})
                     continue
 
+                turn_id = uuid.uuid4().hex[:12]
                 await ws.send_json(
                     {
                         "type": "transcription",
+                        "turn_id": turn_id,
                         "text": user_text,
                         "stt_latency_ms": stt_latency_ms,
                     }
@@ -176,6 +179,7 @@ async def converse(ws: WebSocket):
                     mcp_client=mcp_client,
                     override_temperature=override_temperature,
                     override_max_output_tokens=override_max_output_tokens,
+                    turn_id=turn_id,
                 )
                 await ws.send_json({"type": "listening"})
 
@@ -185,6 +189,15 @@ async def converse(ws: WebSocket):
                 if not user_text:
                     continue
 
+                turn_id = uuid.uuid4().hex[:12]
+                await ws.send_json(
+                    {
+                        "type": "transcription",
+                        "turn_id": turn_id,
+                        "text": user_text,
+                        "stt_latency_ms": 0,
+                    }
+                )
                 await _generate_and_stream(
                     ws,
                     llm,
@@ -193,6 +206,7 @@ async def converse(ws: WebSocket):
                     mcp_client=mcp_client,
                     override_temperature=override_temperature,
                     override_max_output_tokens=override_max_output_tokens,
+                    turn_id=turn_id,
                 )
                 await ws.send_json({"type": "listening"})
 
@@ -274,6 +288,7 @@ async def _generate_and_stream(
     mcp_client: McpClient | None = None,
     override_temperature: float | None = None,
     override_max_output_tokens: int | None = None,
+    turn_id: str | None = None,
 ) -> None:
     """Dispatch to the streaming or batch generator based on config.
 
@@ -282,7 +297,18 @@ async def _generate_and_stream(
     streaming call. Preamble failures never surface to the client — the
     turn continues with no tool result, matching the preamble-disabled
     path exactly.
+
+    `turn_id` is a UUID shared across every outbound WS event of this
+    turn (transcription → tool_call → emotion → ... → done) so the
+    dashboard can group them into a cohesive turn card. Callers
+    (websocket handler) generate it; if absent we synthesize one.
     """
+    if turn_id is None:
+        turn_id = uuid.uuid4().hex[:12]
+
+    tool_call_name: str | None = None
+    tool_call_ok: bool = True
+    tool_call_latency_ms: float = 0.0
     tool_result: ToolResult | None = None
     if settings.mcp_preamble_enabled and mcp_client is not None:
         try:
@@ -291,15 +317,20 @@ async def _generate_and_stream(
                 mcp_client,
                 user_text,
                 budget_ms=settings.mcp_tool_budget_ms,
+                turn_id=turn_id,
             )
         except Exception as exc:
             log.warning("preamble unexpectedly raised: %s", exc)
         else:
             tool_result = result.tool_result
+            tool_call_name = result.tool_name
+            tool_call_ok = result.ok
+            tool_call_latency_ms = result.latency_ms
             try:
                 await ws.send_json(
                     {
                         "type": "tool_call",
+                        "turn_id": turn_id,
                         "name": result.tool_name,
                         "ok": result.ok,
                         "reason": result.reason,
@@ -320,6 +351,10 @@ async def _generate_and_stream(
             override_temperature=override_temperature,
             override_max_output_tokens=override_max_output_tokens,
             tool_result=tool_result,
+            turn_id=turn_id,
+            tool_call_name=tool_call_name,
+            tool_call_ok=tool_call_ok,
+            tool_call_latency_ms=tool_call_latency_ms,
         )
     else:
         await _generate_and_stream_batch(
@@ -330,6 +365,7 @@ async def _generate_and_stream(
             override_temperature=override_temperature,
             override_max_output_tokens=override_max_output_tokens,
             tool_result=tool_result,
+            turn_id=turn_id,
         )
 
 
@@ -342,6 +378,7 @@ async def _generate_and_stream_batch(
     override_temperature: float | None = None,
     override_max_output_tokens: int | None = None,
     tool_result: ToolResult | None = None,
+    turn_id: str | None = None,
 ) -> None:
     """Original atomic-LLM path. Kept behind RB_LLM_STREAM=0 as a rollback lever.
 
@@ -350,6 +387,7 @@ async def _generate_and_stream_batch(
     is a streaming-only feature in v1. If you need tool-enriched batch
     generation, set RB_LLM_STREAM=true.
     """
+    del turn_id  # Not plumbed on the batch rollback path.
     if tool_result is not None:
         log.debug("batch path ignoring preamble tool_result (enable RB_LLM_STREAM)")
     t_llm = time.monotonic()
@@ -430,6 +468,10 @@ async def _generate_and_stream_live(
     override_temperature: float | None = None,
     override_max_output_tokens: int | None = None,
     tool_result: ToolResult | None = None,
+    turn_id: str | None = None,
+    tool_call_name: str | None = None,
+    tool_call_ok: bool = True,
+    tool_call_latency_ms: float = 0.0,
 ) -> None:
     """Streaming LLM → per-sentence TTS pipeline.
 
@@ -444,6 +486,12 @@ async def _generate_and_stream_live(
     `tool_result` (task #7 preamble) is passed straight through to the
     backend's ``stream_conversation`` — text becomes a transient system
     message, images flow to ``engine.generate(multi_modal_data=...)``.
+
+    Phase C: every outbound WS event carries `turn_id` for dashboard
+    grouping; `first_audio` fires as a separate typed event on the first
+    PCM chunk; `llm_latency_ms` lives on the emotion event; the `done`
+    event carries a full timing + tool-call summary; errors emit a typed
+    `turn_error` alongside the legacy `error` string for back-compat.
     """
     parser = ConversationStreamParser()
     tts = get_tts()
@@ -533,6 +581,7 @@ async def _generate_and_stream_live(
                         llm_latency_ms = round((time.monotonic() - t_start) * 1000)
                         emotion_msg: dict[str, object] = {
                             "type": "emotion",
+                            "turn_id": turn_id,
                             "emotion": resp.emotion,
                             "intensity": resp.intensity,
                             "llm_latency_ms": llm_latency_ms,
@@ -542,11 +591,19 @@ async def _generate_and_stream_live(
                         await ws.send_json(emotion_msg)
                         if resp.gestures:
                             await ws.send_json(
-                                {"type": "gestures", "names": resp.gestures}
+                                {
+                                    "type": "gestures",
+                                    "turn_id": turn_id,
+                                    "names": resp.gestures,
+                                }
                             )
                         if resp.memory_tags:
                             await ws.send_json(
-                                {"type": "memory_tags", "tags": resp.memory_tags}
+                                {
+                                    "type": "memory_tags",
+                                    "turn_id": turn_id,
+                                    "tags": resp.memory_tags,
+                                }
                             )
                     elif isinstance(event, Sentence):
                         if not sent_first:
@@ -604,9 +661,20 @@ async def _generate_and_stream_live(
                     break
                 if first_audio_latency_ms is None:
                     first_audio_latency_ms = round((time.monotonic() - t_start) * 1000)
+                    # Typed event so the dashboard's PipelineTimeline can
+                    # read the first-audio landmark directly instead of
+                    # inferring it from the first audio chunk's timestamp.
+                    await ws.send_json(
+                        {
+                            "type": "first_audio",
+                            "turn_id": turn_id,
+                            "first_audio_ms": first_audio_latency_ms,
+                        }
+                    )
                 await ws.send_json(
                     {
                         "type": "audio",
+                        "turn_id": turn_id,
                         "data": base64.b64encode(chunk).decode("ascii"),
                         "sample_rate": 16000,
                         "chunk_index": chunk_index,
@@ -615,23 +683,40 @@ async def _generate_and_stream_live(
                 chunk_index += 1
 
     error_message: str | None = None
+    error_stage: str = "unknown"
     try:
         async with asyncio.TaskGroup() as tg:
             tg.create_task(_produce(tg))
             tg.create_task(_consume())
     except* LLMBusyError:
         error_message = "llm_busy"
+        error_stage = "llm"
     except* LLMTimeoutError:
         error_message = "LLM timeout"
+        error_stage = "llm"
     except* (LLMUnavailableError, LLMError) as eg:
         error_message = str(next(iter(eg.exceptions))) if eg.exceptions else "llm_error"
+        error_stage = "llm"
     except* TTSBusyError:
         error_message = "tts_busy_no_fallback"
+        error_stage = "tts"
     except* Exception:
         log.exception("Streaming conversation failed")
         error_message = "internal_error"
+        error_stage = "unknown"
 
+    total_ms = round((time.monotonic() - t_start) * 1000)
     if error_message is not None:
+        # New typed event (Phase C) + legacy string event for back-compat.
+        await ws.send_json(
+            {
+                "type": "turn_error",
+                "turn_id": turn_id,
+                "reason": error_message,
+                "stage": error_stage,
+                "latency_ms": total_ms,
+            }
+        )
         await ws.send_json({"type": "error", "message": error_message})
         return
 
@@ -641,7 +726,9 @@ async def _generate_and_stream_live(
         history.add_assistant(full_text, emotion=emotion_for_tts)
 
     if full_text:
-        await ws.send_json({"type": "assistant_text", "text": full_text})
+        await ws.send_json(
+            {"type": "assistant_text", "turn_id": turn_id, "text": full_text}
+        )
 
     if first_audio_latency_ms is not None and llm_latency_ms is not None:
         log.info(
@@ -651,7 +738,18 @@ async def _generate_and_stream_live(
             len(full_text),
         )
 
-    await ws.send_json({"type": "done"})
+    await ws.send_json(
+        {
+            "type": "done",
+            "turn_id": turn_id,
+            "total_ms": total_ms,
+            "llm_latency_ms": llm_latency_ms,
+            "first_audio_ms": first_audio_latency_ms,
+            "tool_call_name": tool_call_name,
+            "tool_call_ok": tool_call_ok,
+            "tool_call_latency_ms": tool_call_latency_ms,
+        }
+    )
 
 
 # Depth-2 cap on concurrent TTS syntheses per turn. Must not exceed

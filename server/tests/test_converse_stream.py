@@ -227,10 +227,15 @@ async def test_llm_busy_error_emits_error_message(patched_runtime) -> None:
     llm = _FakeLLM([], raise_on_start=LLMBusyError("llm_busy"))
     history = ConversationHistory(max_turns=20)
     ws = _FakeWebSocket()
-    await _generate_and_stream_live(ws, llm, history, "hi")
+    await _generate_and_stream_live(ws, llm, history, "hi", turn_id="t-abc")
 
-    assert len(ws.sent) == 1
-    assert ws.sent[0] == {"type": "error", "message": "llm_busy"}
+    # Phase C: typed `turn_error` + legacy string `error` for back-compat.
+    assert len(ws.sent) == 2
+    assert ws.sent[0]["type"] == "turn_error"
+    assert ws.sent[0]["turn_id"] == "t-abc"
+    assert ws.sent[0]["reason"] == "llm_busy"
+    assert ws.sent[0]["stage"] == "llm"
+    assert ws.sent[1] == {"type": "error", "message": "llm_busy"}
 
 
 @pytest.mark.asyncio

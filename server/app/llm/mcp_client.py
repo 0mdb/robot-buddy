@@ -117,6 +117,7 @@ class McpClient:
         arguments: dict[str, Any] | None = None,
         *,
         timeout_s: float = 5.0,
+        turn_id: str | None = None,
     ) -> tuple[str, list[Image.Image]] | None:
         """Invoke a tool, return (joined text, list of PIL images) blocks.
 
@@ -124,6 +125,11 @@ class McpClient:
         conversation layer can pass them to the vLLM backend via
         ``multi_modal_data``. Decode errors drop the image and keep the
         text portion of the result.
+
+        `turn_id` is an optional /converse turn handle that flows into
+        the tool's MCP arguments as `turn_id`; supervisor tool handlers
+        stash it on their audit entries so the dashboard MCP Activity
+        panel can cross-reference with ConversationStudio turn cards.
 
         Returns None on any failure (disconnected, tool error, timeout).
         The preamble treats None as "no tool fired this turn".
@@ -135,9 +141,15 @@ class McpClient:
             if not await self.connect():
                 return None
 
+        # Merge turn_id into the tool args when present. Supervisor tools
+        # declare a `turn_id` kwarg so FastMCP's schema accepts it.
+        merged_args: dict[str, Any] = dict(arguments or {})
+        if turn_id is not None:
+            merged_args["turn_id"] = turn_id
+
         try:
             result = await asyncio.wait_for(
-                self._session.call_tool(name, arguments or {}),
+                self._session.call_tool(name, merged_args),
                 timeout=timeout_s,
             )
         except asyncio.TimeoutError:

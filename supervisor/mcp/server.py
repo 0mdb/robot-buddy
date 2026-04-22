@@ -70,32 +70,43 @@ def build_mcp_server(
     )
     mem_path = memory_path if memory_path is not None else DEFAULT_MEMORY_PATH
 
+    # All tools accept `turn_id` as an optional correlation handle. The
+    # preamble passes the /converse turn UUID here so the dashboard MCP
+    # Activity panel can cross-reference rows with ConversationStudio
+    # turn cards. The consumer LLM never sees this parameter — Gemma
+    # reads our own TOOL_SCHEMAS in app/eval/harness.py, not the raw
+    # FastMCP inputSchema.
+
     @mcp.tool()
-    async def get_state() -> dict:
+    async def get_state(turn_id: str | None = None) -> dict:
         """Compact snapshot of the robot's current state — mode, mood, battery,
         faults, conversation state, recent vision + speaking status. Safe to
         call freely; read-only."""
-        return await get_state_impl(tick, audit)
+        return await get_state_impl(tick, audit, turn_id=turn_id)
 
     @mcp.tool()
-    async def get_memory(category: str | None = None) -> dict:
+    async def get_memory(
+        category: str | None = None, turn_id: str | None = None
+    ) -> dict:
         """List known memory tags about this child/user, optionally filtered
         by category. Categories: name, topic, ritual, tone, preference.
         Entries come back sorted by current decayed strength (strongest
         first) so recent or frequently-reinforced memories are easy to spot.
         Read-only."""
-        return await get_memory_impl(mem_path, category, audit)
+        return await get_memory_impl(mem_path, category, audit, turn_id=turn_id)
 
     @mcp.tool()
-    async def recent_events(pattern: str | None = None, n: int = 10) -> dict:
+    async def recent_events(
+        pattern: str | None = None, n: int = 10, turn_id: str | None = None
+    ) -> dict:
         """Return recent high-level planner events (button presses, touches,
         ball detections, obstacle state, faults, mode changes). Optional
         case-insensitive substring filter on event type. n is clamped to
         [1, 50]. Read-only."""
-        return await recent_events_impl(tick, pattern, n, audit)
+        return await recent_events_impl(tick, pattern, n, audit, turn_id=turn_id)
 
     @mcp.tool()
-    async def look(hint: str | None = None) -> list[Any]:
+    async def look(hint: str | None = None, turn_id: str | None = None) -> list[Any]:
         """Return the robot's current camera view — a fresh JPEG (320x240)
         plus ball-detection metadata (ball visible, bearing, frame age).
         Use this when the child references something visual ("look at
@@ -107,7 +118,7 @@ def build_mcp_server(
         consent is on and the frame is fresh) plus a JSON metadata text
         block explaining what's in the frame. When consent is off, only
         the metadata is returned — no image bytes leave the robot."""
-        return await look_impl(tick, workers, hint, audit)
+        return await look_impl(tick, workers, hint, audit, turn_id=turn_id)
 
     return mcp
 

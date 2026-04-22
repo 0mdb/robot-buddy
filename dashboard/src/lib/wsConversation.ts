@@ -1,5 +1,7 @@
 import { create } from 'zustand'
 
+import { useConversationTurnsStore } from './conversationTurns'
+
 const MAX_EVENTS = 2000
 const BACKOFF_BASE = 500
 const BACKOFF_MAX = 8000
@@ -35,11 +37,20 @@ export const useConversationStore = create<ConversationStore>()((set, get) => ({
         ? [...state.events.slice(state.events.length - MAX_EVENTS + 1), event]
         : [...state.events, event]
     set({ events, version: state.version + 1 })
+    // Phase C: mirror event into the turn-card store for ConversationStudio.
+    try {
+      useConversationTurnsStore.getState().ingest(event)
+    } catch {
+      // Never break the main store if the turns store mutation throws.
+    }
   },
 
   setConnected: (connected: boolean) => set({ connected }),
   setPaused: (paused: boolean) => set({ paused }),
-  clear: () => set({ events: [], version: 0 }),
+  clear: () => {
+    set({ events: [], version: 0 })
+    useConversationTurnsStore.getState().clear()
+  },
 }))
 
 class WsConversationManager {

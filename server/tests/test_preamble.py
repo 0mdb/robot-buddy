@@ -55,12 +55,17 @@ class FakeMcp:
         responses: dict[str, str | tuple[str, list[Image.Image]] | None | Exception],
     ):
         self._responses = responses
-        self.calls: list[tuple[str, dict]] = []
+        self.calls: list[tuple[str, dict, str | None]] = []
 
     async def call_tool(
-        self, name: str, arguments: dict | None = None, *, timeout_s: float = 5.0
+        self,
+        name: str,
+        arguments: dict | None = None,
+        *,
+        timeout_s: float = 5.0,
+        turn_id: str | None = None,
     ) -> tuple[str, list[Image.Image]] | None:
-        self.calls.append((name, arguments or {}))
+        self.calls.append((name, arguments or {}, turn_id))
         if name not in self._responses:
             return None
         r = self._responses[name]
@@ -99,7 +104,7 @@ class TestHappyToolPath:
         )
         assert result.tool_name == "get_memory"
         assert result.tool_args == {"category": "topic"}
-        assert mcp.calls == [("get_memory", {"category": "topic"})]
+        assert mcp.calls == [("get_memory", {"category": "topic"}, None)]
         assert result.tool_result is not None
         assert isinstance(result.tool_result, ToolResult)
         assert "[tool_result]" in result.tool_result.text
@@ -132,6 +137,17 @@ class TestHappyToolPath:
         assert len(result.tool_result.images) == 1
         # The first image wins
         assert result.tool_result.images[0] is imgs[0]
+
+    @pytest.mark.asyncio
+    async def test_turn_id_flows_to_mcp_and_tool_result(self):
+        backend = FakeBackend(['{"tool":"look","args":{"hint":"drawing"}}'])
+        mcp = FakeMcp({"look": ("meta", [Image.new("RGB", (2, 2))])})
+        result = await run_preamble(backend, mcp, "look", turn_id="t-abc")
+        # turn_id reached the MCP client
+        assert mcp.calls == [("look", {"hint": "drawing"}, "t-abc")]
+        # turn_id echoed back on ToolResult for converse.py's WS events
+        assert result.tool_result is not None
+        assert result.tool_result.turn_id == "t-abc"
 
 
 # ── Failure modes ──────────────────────────────────────────────────

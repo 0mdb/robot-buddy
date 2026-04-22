@@ -54,7 +54,11 @@ def _summarize(result: object, *, max_len: int = 120) -> str:
     return preview
 
 
-async def get_state_impl(tick: TickLoop, audit: McpAuditBroadcaster) -> dict:
+async def get_state_impl(
+    tick: TickLoop,
+    audit: McpAuditBroadcaster,
+    turn_id: str | None = None,
+) -> dict:
     """Return a compact snapshot of the robot's current state for an LLM.
 
     A curated subset of /status — trims verbose telemetry a consumer model
@@ -91,6 +95,7 @@ async def get_state_impl(tick: TickLoop, audit: McpAuditBroadcaster) -> dict:
                 ok=True,
                 latency_ms=(time.monotonic() - t0) * 1000.0,
                 result_summary=_summarize(result),
+                turn_id=turn_id or "",
             )
         )
         return result
@@ -102,6 +107,7 @@ async def get_state_impl(tick: TickLoop, audit: McpAuditBroadcaster) -> dict:
                 args={},
                 ok=False,
                 latency_ms=(time.monotonic() - t0) * 1000.0,
+                turn_id=turn_id or "",
                 error=f"{type(exc).__name__}: {exc}",
             )
         )
@@ -112,6 +118,7 @@ async def get_memory_impl(
     memory_path: Path,
     category: str | None,
     audit: McpAuditBroadcaster,
+    turn_id: str | None = None,
 ) -> dict:
     """Return the consumer-LLM-facing view of personality memory.
 
@@ -174,6 +181,7 @@ async def get_memory_impl(
                 ok=True,
                 latency_ms=(time.monotonic() - t0) * 1000.0,
                 result_summary=_summarize(result),
+                turn_id=turn_id or "",
             )
         )
         return result
@@ -186,6 +194,7 @@ async def get_memory_impl(
                 ok=False,
                 latency_ms=(time.monotonic() - t0) * 1000.0,
                 error=f"{type(exc).__name__}: {exc}",
+                turn_id=turn_id or "",
             )
         )
         raise
@@ -196,6 +205,7 @@ async def recent_events_impl(
     pattern: str | None,
     n: int,
     audit: McpAuditBroadcaster,
+    turn_id: str | None = None,
 ) -> dict:
     """Return recent PlannerEventBus entries, optionally filtered.
 
@@ -233,6 +243,7 @@ async def recent_events_impl(
                 ok=True,
                 latency_ms=(time.monotonic() - t0) * 1000.0,
                 result_summary=_summarize(payload),
+                turn_id=turn_id or "",
             )
         )
         return payload
@@ -245,6 +256,7 @@ async def recent_events_impl(
                 ok=False,
                 latency_ms=(time.monotonic() - t0) * 1000.0,
                 error=f"{type(exc).__name__}: {exc}",
+                turn_id=turn_id or "",
             )
         )
         raise
@@ -270,6 +282,7 @@ async def look_impl(
     workers: WorkerManager,
     hint: str | None,
     audit: McpAuditBroadcaster,
+    turn_id: str | None = None,
 ) -> list[Any]:
     """Return the most recent camera frame + ball-detection metadata.
 
@@ -284,7 +297,13 @@ async def look_impl(
     do you see?") — we log it but don't interpret it.
 
     Privacy: when memory_consent is off, no image bytes ever leave this
-    tool. The audit log never contains the JPEG regardless.
+    tool. The audit log still records a thumbnail (same JPEG) for the
+    dashboard — it's already visible via /video; the boundary is whether
+    it reaches the consumer LLM, not whether it's visible to a parent.
+
+    `turn_id` correlates this call with a /converse turn on the planner so
+    the dashboard can cross-reference ConversationStudio cards with MCP
+    Activity rows.
     """
     t0 = time.monotonic()
     args = {"hint": hint}
@@ -337,6 +356,9 @@ async def look_impl(
         ]
         if not include_image and "reason" in metadata:
             summary_parts.append(f"reason={metadata['reason']}")
+        # Include a thumbnail in the audit entry when a fresh frame exists
+        # AND consent is on. Already-captured JPEG; no re-encode needed.
+        audit_image = jpeg_b64 if (include_image and consent) else ""
         audit.record(
             McpAuditEntry(
                 ts_mono=t0,
@@ -345,6 +367,8 @@ async def look_impl(
                 ok=True,
                 latency_ms=(time.monotonic() - t0) * 1000.0,
                 result_summary=" ".join(summary_parts),
+                turn_id=turn_id or "",
+                image_b64=audit_image,
             )
         )
         return content
@@ -357,6 +381,7 @@ async def look_impl(
                 ok=False,
                 latency_ms=(time.monotonic() - t0) * 1000.0,
                 error=f"{type(exc).__name__}: {exc}",
+                turn_id=turn_id or "",
             )
         )
         raise

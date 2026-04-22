@@ -67,10 +67,14 @@ class ToolResult:
     ready to hand to the vLLM backend via ``multi_modal_data``. Text-only
     tools (get_memory, recent_events) leave `images` empty; look() carries
     both metadata text AND the fresh camera frame.
+
+    `turn_id` is the /converse turn UUID this tool fired under, echoed back
+    so downstream event emission can confirm linkage without re-threading.
     """
 
     text: str
     images: list["Image"] = field(default_factory=list)
+    turn_id: str | None = None
 
 
 @dataclass(slots=True)
@@ -96,11 +100,15 @@ async def run_preamble(
     user_text: str,
     *,
     budget_ms: int = 500,
+    turn_id: str | None = None,
 ) -> PreambleResult:
     """Run one tool-selection pass and optionally invoke the chosen tool.
 
     Never raises. On any failure, returns a PreambleResult with tool_name
     None — the caller proceeds as if the preamble was disabled.
+
+    `turn_id` flows into the MCP tool call so the supervisor audit entries
+    can be cross-linked with the originating /converse turn in the dashboard.
     """
     t0 = time.monotonic()
     deadline = t0 + max(0.1, budget_ms / 1000.0)
@@ -180,7 +188,9 @@ async def run_preamble(
     remaining = max(0.05, deadline - time.monotonic())
     try:
         call_result = await asyncio.wait_for(
-            mcp_client.call_tool(tool_name, tool_args, timeout_s=remaining),
+            mcp_client.call_tool(
+                tool_name, tool_args, timeout_s=remaining, turn_id=turn_id
+            ),
             timeout=remaining,
         )
     except asyncio.TimeoutError:
@@ -213,7 +223,7 @@ async def run_preamble(
     tool_text, images = call_result
     msg = _format_tool_result_msg(tool_name, tool_args, tool_text)
     capped_images = list(images[:_MAX_IMAGES_PER_TURN])
-    tool_result = ToolResult(text=msg, images=capped_images)
+    tool_result = ToolResult(text=msg, images=capped_images, turn_id=turn_id)
     return PreambleResult(
         tool_name=tool_name,
         tool_args=tool_args,

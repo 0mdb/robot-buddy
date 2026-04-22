@@ -139,6 +139,40 @@ class TestClientLifecycle:
         fake_session.call_tool.assert_awaited_once_with("look", {"hint": "sky"})
 
     @pytest.mark.asyncio
+    async def test_turn_id_merged_into_tool_args(self):
+        """turn_id kwarg flows into the MCP tool arguments dict."""
+        client = McpClient("http://test/mcp/")
+
+        class FakeResult:
+            def __init__(self):
+                self.content = [TextContent(type="text", text="ok")]
+
+        fake_session = AsyncMock()
+        fake_session.call_tool = AsyncMock(return_value=FakeResult())
+        client._session = fake_session  # noqa: SLF001
+
+        await client.call_tool("look", {"hint": "sky"}, turn_id="abc123")
+        fake_session.call_tool.assert_awaited_once_with(
+            "look", {"hint": "sky", "turn_id": "abc123"}
+        )
+
+    @pytest.mark.asyncio
+    async def test_turn_id_none_is_not_injected(self):
+        client = McpClient("http://test/mcp/")
+
+        class FakeResult:
+            def __init__(self):
+                self.content = [TextContent(type="text", text="ok")]
+
+        fake_session = AsyncMock()
+        fake_session.call_tool = AsyncMock(return_value=FakeResult())
+        client._session = fake_session  # noqa: SLF001
+
+        await client.call_tool("look", {"hint": "sky"})
+        # No turn_id in the dict.
+        fake_session.call_tool.assert_awaited_once_with("look", {"hint": "sky"})
+
+    @pytest.mark.asyncio
     async def test_tool_exception_resets_session(self):
         client = McpClient("http://test/mcp/")
         fake_session = AsyncMock()

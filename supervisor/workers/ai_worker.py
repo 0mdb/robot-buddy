@@ -39,7 +39,9 @@ from supervisor.messages.types import (
     AI_CONVERSATION_ERROR,
     AI_CONVERSATION_FIRST_AUDIO,
     AI_CONVERSATION_GESTURE,
+    AI_CONVERSATION_TOOL_CALL,
     AI_CONVERSATION_TRANSCRIPTION,
+    AI_CONVERSATION_TURN_ERROR,
     AI_CONVERSATION_USER_TEXT,
     AI_PLAN_RECEIVED,
     AI_STATE_CHANGED,
@@ -405,10 +407,15 @@ class AIWorker(BaseWorker):
 
                 msg_type = msg.get("type", "")
 
+                # Phase C: planner-side UUID for cross-linking with the
+                # supervisor's MCP Activity stream (McpAuditEntry.turn_id).
+                planner_turn_id = msg.get("turn_id", "") or ""
+
                 if msg_type == "transcription":
                     transcription_payload: dict[str, object] = {
                         "session_id": self._session_id,
                         "turn_id": self._turn_id,
+                        "planner_turn_id": planner_turn_id,
                         "text": msg.get("text", ""),
                     }
                     if "stt_latency_ms" in msg:
@@ -421,6 +428,7 @@ class AIWorker(BaseWorker):
                     emotion_payload: dict[str, object] = {
                         "session_id": self._session_id,
                         "turn_id": self._turn_id,
+                        "planner_turn_id": planner_turn_id,
                         "emotion": msg.get("emotion", ""),
                         "intensity": float(msg.get("intensity", 0.7)),
                     }
@@ -437,7 +445,56 @@ class AIWorker(BaseWorker):
                         {
                             "session_id": self._session_id,
                             "turn_id": self._turn_id,
+                            "planner_turn_id": planner_turn_id,
                             "names": msg.get("names", []),
+                        },
+                    )
+
+                elif msg_type == "tool_call":
+                    # Phase C: hybrid preamble reported which MCP tool fired
+                    # (or none), with timing and whether an image rode along.
+                    self.send(
+                        AI_CONVERSATION_TOOL_CALL,
+                        {
+                            "session_id": self._session_id,
+                            "turn_id": self._turn_id,
+                            "planner_turn_id": planner_turn_id,
+                            "name": msg.get("name"),
+                            "ok": bool(msg.get("ok", True)),
+                            "reason": str(msg.get("reason", "")),
+                            "latency_ms": float(msg.get("latency_ms", 0.0)),
+                            "has_image": bool(msg.get("has_image", False)),
+                        },
+                    )
+
+                elif msg_type == "first_audio":
+                    # Authoritative planner-side first-audio timing. Overrides
+                    # the audio-chunk inferred emit below so we don't double-fire.
+                    if not self._first_audio_emitted:
+                        self._first_audio_emitted = True
+                        first_audio_payload: dict[str, object] = {
+                            "session_id": self._session_id,
+                            "turn_id": self._turn_id,
+                            "planner_turn_id": planner_turn_id,
+                            "first_audio_ms": int(msg.get("first_audio_ms", 0)),
+                        }
+                        if self._utterance_end_t is not None:
+                            first_audio_payload["roundtrip_ms"] = round(
+                                (time.monotonic() - self._utterance_end_t) * 1000
+                            )
+                            self._utterance_end_t = None
+                        self.send(AI_CONVERSATION_FIRST_AUDIO, first_audio_payload)
+
+                elif msg_type == "turn_error":
+                    self.send(
+                        AI_CONVERSATION_TURN_ERROR,
+                        {
+                            "session_id": self._session_id,
+                            "turn_id": self._turn_id,
+                            "planner_turn_id": planner_turn_id,
+                            "reason": str(msg.get("reason", "")),
+                            "stage": str(msg.get("stage", "unknown")),
+                            "latency_ms": float(msg.get("latency_ms", 0.0)),
                         },
                     )
 
@@ -449,6 +506,7 @@ class AIWorker(BaseWorker):
                             {
                                 "session_id": self._session_id,
                                 "turn_id": self._turn_id,
+                                "planner_turn_id": planner_turn_id,
                                 "tags": tags,
                             },
                         )
@@ -459,6 +517,7 @@ class AIWorker(BaseWorker):
                         {
                             "session_id": self._session_id,
                             "turn_id": self._turn_id,
+                            "planner_turn_id": planner_turn_id,
                             "text": msg.get("text", ""),
                         },
                     )
@@ -504,13 +563,25 @@ class AIWorker(BaseWorker):
                             )
                         except (BrokenPipeError, OSError):
                             pass
-                    self.send(
-                        AI_CONVERSATION_DONE,
-                        {
-                            "session_id": self._session_id,
-                            "turn_id": self._turn_id,
-                        },
-                    )
+                    done_payload: dict[str, object] = {
+                        "session_id": self._session_id,
+                        "turn_id": self._turn_id,
+                        "planner_turn_id": planner_turn_id,
+                    }
+                    # Phase C: enriched done event carries full turn timing
+                    # summary from the planner so the dashboard can print
+                    # authoritative numbers without inferring.
+                    for field in (
+                        "total_ms",
+                        "llm_latency_ms",
+                        "first_audio_ms",
+                        "tool_call_name",
+                        "tool_call_ok",
+                        "tool_call_latency_ms",
+                    ):
+                        if field in msg:
+                            done_payload[field] = msg[field]
+                    self.send(AI_CONVERSATION_DONE, done_payload)
                     self._set_state("listening", "turn_done")
 
                 elif msg_type == "listening":
