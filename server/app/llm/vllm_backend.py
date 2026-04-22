@@ -110,14 +110,23 @@ class VLLMBackend(PlannerLLMBackend):
             )
 
         dtype = cast(_VLLM_DTYPE, settings.vllm_dtype)
-        engine_args = AsyncEngineArgs(
-            model=self._model_name,
-            dtype=dtype,
-            gpu_memory_utilization=settings.vllm_gpu_memory_utilization,
-            max_model_len=settings.vllm_max_model_len,
-            max_num_seqs=settings.vllm_max_num_seqs,
-            max_num_batched_tokens=settings.vllm_max_num_batched_tokens,
-        )
+        model_cfg = resolve_template_config(self._model_name)
+        engine_kwargs: dict[str, object] = {
+            "model": self._model_name,
+            "dtype": dtype,
+            "gpu_memory_utilization": settings.vllm_gpu_memory_utilization,
+            "max_model_len": settings.vllm_max_model_len,
+            "max_num_seqs": settings.vllm_max_num_seqs,
+            "max_num_batched_tokens": settings.vllm_max_num_batched_tokens,
+        }
+        if settings.vllm_quantization:
+            engine_kwargs["quantization"] = settings.vllm_quantization
+        if model_cfg.skip_mm_encoder:
+            # Text-only rollout of a multimodal model — skip image/audio
+            # encoder allocation to save VRAM. Remove when that input
+            # modality becomes live for this model.
+            engine_kwargs["limit_mm_per_prompt"] = {"image": 0, "audio": 0}
+        engine_args = AsyncEngineArgs(**engine_kwargs)
         self._engine = AsyncLLMEngine.from_engine_args(engine_args)
         self._SamplingParams = SamplingParams
         self._GuidedDecodingParams = GuidedDecodingParams

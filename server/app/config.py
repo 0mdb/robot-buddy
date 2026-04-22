@@ -44,9 +44,15 @@ class Settings:
     ollama_url: str = os.environ.get("OLLAMA_URL", "http://localhost:11434")
     model_name: str = os.environ.get("MODEL_NAME", "qwen3:14b")
     vllm_model_name: str = os.environ.get(
-        "VLLM_MODEL_NAME", "Qwen/Qwen3-8B-Instruct-AWQ"
+        "VLLM_MODEL_NAME", "Vishva007/gemma-4-E4B-it-W4A16-AutoRound-GPTQ"
     )
-    vllm_dtype: str = os.environ.get("VLLM_DTYPE", "auto")
+    # GPTQ W4A16 requires float16 activations; vLLM 0.19 rejects bfloat16 for
+    # gptq. For a non-GPTQ swap, override to "bfloat16" via env.
+    vllm_dtype: str = os.environ.get("VLLM_DTYPE", "float16")
+    # vLLM quantization format. Empty string = let vLLM auto-detect from the
+    # model repo. Explicit values ("gptq", "awq", "bitsandbytes", …) force a
+    # specific backend; some quant families need this to resolve correctly.
+    vllm_quantization: str = os.environ.get("VLLM_QUANTIZATION", "gptq").strip().lower()
     vllm_gpu_memory_utilization: float = float(
         os.environ.get("VLLM_GPU_MEMORY_UTILIZATION", "0.35")
     )

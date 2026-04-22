@@ -14,7 +14,9 @@ dependencies = [
 
 [project.optional-dependencies]
 llm = [
-    "vllm>=0.6",
+    "vllm>=0.19",
+    "transformers>=5.5",
+    "bitsandbytes>=0.48.1",
 ]
 stt = [
     "faster-whisper>=1.0",
@@ -23,7 +25,9 @@ tts = [
     "orpheus-speech>=0.1",
 ]
 all = [
-    "vllm>=0.6",
+    "vllm>=0.19",
+    "transformers>=5.5",
+    "bitsandbytes>=0.48.1",
     "faster-whisper>=1.0",
     "orpheus-speech>=0.1",
 ]

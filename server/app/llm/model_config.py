@@ -25,6 +25,11 @@ class ModelTemplateConfig:
 
     family: str
     chat_template_kwargs: dict[str, Any] = field(default_factory=dict)
+    # Multimodal models allocate vision/audio encoders even when no image
+    # is ever passed in the prompt. Set True to pass limit_mm_per_prompt
+    # and skip that allocation — useful for a text-only rollout of a
+    # multimodal model (Phase 0 Gemma 4 E4B, before look() lands).
+    skip_mm_encoder: bool = False
     notes: str = ""
 
 
@@ -53,6 +58,17 @@ _MODEL_CONFIGS: list[ModelTemplateConfig] = [
         family="llama",
         chat_template_kwargs={},
         notes="Llama chat format.",
+    ),
+    ModelTemplateConfig(
+        family="gemma",
+        chat_template_kwargs={},
+        skip_mm_encoder=True,
+        notes=(
+            "Gemma 4 multimodal family. Chat template embedded in tokenizer; "
+            "no extra kwargs needed. skip_mm_encoder=True keeps the text-only "
+            "rollout lean (Phase 0); flip to False when look() / image input "
+            "lands (task #2)."
+        ),
     ),
 ]
 
