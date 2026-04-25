@@ -145,8 +145,8 @@ _2 items complete (B6 test extensions: guardrail/schema/privacy/RS limits) — s
 - [ ] Disable open-loop test, flash full firmware
 
 **Phase 3: Ultrasonic Range Sensor** `[sonnet]`
-- [ ] Static distance test (100mm, 300mm, 1000mm, 3000mm ± tolerances)
-- [ ] OBSTACLE fault triggers at <250mm, clears at >350mm with hysteresis
+- [x] Static distance test (100mm, 300mm, 1000mm, 3000mm ± tolerances) — commissioned 2026-04-22 on HC-SR04 with 1k/2k divider on ECHO→GPIO2; accuracy within datasheet (±3mm perpendicular, ±8mm against angled surfaces); no firmware smoothing needed given 100mm hysteresis band
+- [x] OBSTACLE fault triggers at <250mm, clears at >350mm with hysteresis — verified via fault_flags transition (bit 6) while sweeping target past thresholds; 250/350 defaults left as-is until motor/arm geometry is final (runtime-tunable via SET_CONFIG 0x40/0x41)
 
 **Phase 4: E-Stop & Safety Systems** `[sonnet]`
 - [ ] E-stop test (GPIO13 switch: open→ESTOP fault, close+CLEAR_FAULTS→recovery)
@@ -167,6 +167,15 @@ _2 items complete (B6 test extensions: guardrail/schema/privacy/RS limits) — s
 - [ ] Full IMU heading hold PID (currently gyro damping only; requires complementary filter first)
 - [ ] Accel magnitude shock detection — if `accel_magnitude_mg` spikes >2500 mg, emit `SHOCK` event on event bus (collision awareness) `[sonnet]`
 - [ ] Motor-IMU correlation diagnostic — dashboard view comparing `gyro_z` vs `w_cmd` to surface motor/encoder faults `[sonnet]`
+
+**Final Solder Prep — Robot Build** `[sonnet]`
+Context: single-rail 5V topology per `docs/power.md` (UPS HAT (B) → Pi + ESP32s + TB6612 VM + sensors). Bench testing is done on the dev board; these items are blockers/gotchas before the final robot is soldered up and running untethered.
+- [ ] TB6612 VM bulk cap: 1000 µF electrolytic (≥10V, low-ESR) physically adjacent to the VM pin (short leads, ≤20mm trace) to absorb direction-flip sag — per `docs/power.md` §Topology
+- [ ] Motor-current wiring gauge: 22AWG minimum / 20AWG preferred on UPS HAT → TB6612 VM and TB6612 → motor leads; breadboard jumpers will sag under ~1.5A peaks
+- [ ] HC-SR04 cable routing: twist 5V/GND pair; separate from motor PWM/direction wires to prevent ultrasonic trigger corruption from switching noise
+- [ ] Free obsolete `PIN_VBAT_SENSE = GPIO_NUM_1` in `esp32-reflex/main/pin_map.h` — battery telemetry comes from the HAT's INA219 now, not ESP32 ADC (per `docs/power.md` §Firmware note)
+- [ ] Waveshare UPS HAT (B) INA219 monitor (`WaveshareUpsBMonitor`) — Phase 2 of the power monitor plan; prerequisite for untethered operation (SoC readout, undervoltage warnings, low-battery announcements in `speech_policy`)
+- [ ] Dev-board motor bring-up: power the breadboard's 5V rail from the UPS HAT (tap Pi header 5V/GND) — validates the power plan and motor driver simultaneously; bench supply @ 5V/≥3A is the backup if Pi isn't nearby
 
 ---
 
@@ -209,13 +218,13 @@ _3 items complete (LLM session memory, TTS resampler hardening, conversation stu
 **Phase 1 (shipped 2026-04-21):** `PowerState` chassis + `PiPMICMonitor` (reads `vcgencmd get_throttled` for undervoltage/throttled bits). Planner prompt + speech_policy own low-battery UX; LLM no longer authors sleepy/nap content. Dashboard `PowerPanel` renders the new state. See `docs/power.md`.
 
 **Phase 2 — land when Waveshare UPS HAT (B) arrives:**
-- [ ] `[sonnet]` **WaveshareUpsBMonitor**: new `PowerMonitor` subclass in `supervisor/devices/power_monitor.py`. Reads INA219 (typical address `0x43`) over `/dev/i2c-1` for pack voltage + current; derive charging from current sign, SoC from voltage-curve lookup for 2S 18650 (8.4V=100% → 6.0V=0%). Auto-detect via I²C probe in `pick_power_monitor()`; compose with `PiPMICMonitor` so PMIC undervoltage stays authoritative. Add `adafruit-circuitpython-ina219` or `smbus2` to `supervisor/pyproject.toml`.
+- [x] `[sonnet]` **WaveshareUpsBMonitor** _(shipped 2026-04-25)_: new `PowerMonitor` subclass in `supervisor/devices/power_monitor.py`. Reads INA219 @ `0x43` over `/dev/i2c-1` for pack voltage + current; derives charging from current sign, SoC from a piecewise-linear 2S 18650 curve (8.4V=100% → 6.0V=0%). Auto-detected via I²C probe in `pick_power_monitor()`, composes with `PiPMICMonitor` so PMIC undervoltage stays authoritative. `smbus2 >= 0.4` added to `supervisor/pyproject.toml`. New `--power-monitor=ups-b` mode for forced selection.
 - [ ] `[sonnet]` **Pi-side rail voltage via `vcgencmd pmic_read_adc`**: parse the labeled output (`3V3_SYS_V`, `3V7_WL_SW_V`) in `PiPMICMonitor.poll()` and populate `voltage_mv` with a meaningful health reading. The current `in*_input` hwmon channels are internal PMIC rails (core/DDR) — not useful. Parser needs to tolerate vcgencmd format drift.
 - [ ] `[sonnet]` **Dashboard chart**: switch the `battery_mv` time-series source from legacy `battery_mv` to `power.voltage_mv` (requires supervisor to emit `power.voltage_mv` in the chart's expected key or the chart to read the new nested path). Adjust thresholds for 2S 18650 (6.4V / 7.0V / 8.0V).
 - [ ] `[sonnet]` **Firmware cleanup**: delete `PIN_VBAT_SENSE = GPIO_NUM_1` from `esp32-reflex/main/pin_map.h` and the `battery_mv` field from reflex protocol packets (`esp32-reflex/main/protocol.h`, `shared_state.h`, `telemetry.cpp`). Drop `RobotState.battery_mv` + its telemetry key + `_low_battery_mv` config param in the same change. Bump `v_meas`/`w_meas` packet or the reflex protocol version if field sizes shift.
 - [ ] `[sonnet]` **Safety**: once SoC is known, wire the `soc_critical_pct` (~10%) threshold into `state_machine.update()` as a "park and refuse motion mode changes" soft-floor. Keep reflex BROWNOUT as the hard floor.
 - [ ] `[sonnet]` **`power.soc_warn_pct` / `power.soc_critical_pct` params**: add to `supervisor/api/param_registry.py` with defaults 25 / 10, ranges 10-40 / 5-20. Wire into speech_policy + state_machine gates.
-- [ ] `[sonnet]` **Session capture**: physical fit check on Pi 5 — confirm the HAT's pogo-pin stack doesn't foul the CSI ribbon. If it does, order a 15 cm+ ribbon.
+- [x] `[sonnet]` **Session capture** _(confirmed 2026-04-25)_: physical fit check on Pi 5 — went with the GPIO-header variant of UPS HAT (B) instead of the pogo-pin version, which sidesteps the CSI-ribbon clearance risk entirely. Fits cleanly.
 
 ---
 

@@ -10,6 +10,8 @@ from supervisor.devices import power_monitor
 from supervisor.devices.power_monitor import (
     NullPowerMonitor,
     PiPMICMonitor,
+    WaveshareUpsBMonitor,
+    _voltage_to_soc,
     pick_power_monitor,
 )
 
@@ -110,6 +112,167 @@ class TestPiPMICMonitor:
         assert state.pmic_undervoltage is False
 
 
+class TestVoltageToSoc:
+    def test_at_or_above_top_returns_100(self):
+        assert _voltage_to_soc(8400) == 100
+        assert _voltage_to_soc(8500) == 100
+
+    def test_at_or_below_bottom_returns_0(self):
+        assert _voltage_to_soc(6000) == 0
+        assert _voltage_to_soc(5800) == 0
+
+    def test_interpolates_between_waypoints(self):
+        # Halfway between (7800, 75) and (7500, 55) → 7650 mV → 65 %
+        assert _voltage_to_soc(7650) == 65
+
+    def test_monotonic_decreasing(self):
+        prev = 101
+        for mv in range(8400, 5999, -100):
+            soc = _voltage_to_soc(mv)
+            assert soc <= prev
+            prev = soc
+
+
+class _FakeSMBus:
+    """Stand-in for smbus2.SMBus. Use as the module-level _SMBus factory."""
+
+    def __init__(
+        self,
+        registers: dict[tuple[int, int], int] | None = None,
+        fail_open: bool = False,
+        fail_read: bool = False,
+    ) -> None:
+        self._registers = registers or {}
+        self._fail_open = fail_open
+        self._fail_read = fail_read
+
+    def __call__(self, bus_num: int) -> _FakeSMBus:
+        return self
+
+    def __enter__(self) -> _FakeSMBus:
+        if self._fail_open:
+            raise OSError("simulated bus open failure")
+        return self
+
+    def __exit__(self, *exc: object) -> bool:
+        return False
+
+    def read_byte_data(self, addr: int, reg: int) -> int:
+        if self._fail_read:
+            raise OSError("simulated read failure")
+        return self._registers.get((addr, reg), 0) & 0xFF
+
+    def read_i2c_block_data(self, addr: int, reg: int, length: int) -> list[int]:
+        if self._fail_read:
+            raise OSError("simulated read failure")
+        word = self._registers.get((addr, reg), 0) & 0xFFFF
+        return list(word.to_bytes(length, "big"))
+
+
+def _ina219_registers(voltage_mv: int, current_ma: int) -> dict[tuple[int, int], int]:
+    """Encode bus-voltage + shunt-voltage register values for a fake INA219."""
+    # Bus voltage register: top 13 bits = LSB 4 mV, bottom 3 bits are status.
+    bus_raw = (voltage_mv // 4) << 3
+    # Shunt voltage register (signed): LSB 10 µV, 0.1 Ω shunt → s_raw = ma × 10.
+    shunt_raw = current_ma * 10
+    if shunt_raw < 0:
+        shunt_raw += 0x10000
+    return {
+        (0x43, 0x00): 0x00,  # config (just needs to ACK)
+        (0x43, 0x02): bus_raw,
+        (0x43, 0x01): shunt_raw,
+    }
+
+
+class TestWaveshareUpsBMonitor:
+    @pytest.mark.asyncio
+    async def test_label_includes_inner(self):
+        mon = WaveshareUpsBMonitor(inner=NullPowerMonitor())
+        assert "waveshare-ups-b" in mon.label()
+        assert "null" in mon.label()
+
+    @pytest.mark.asyncio
+    async def test_poll_battery_discharge(self, monkeypatch):
+        # 7.4 V, 800 mA discharging → battery, no charge, mid-curve SoC.
+        fake = _FakeSMBus(_ina219_registers(7400, 800))
+        monkeypatch.setattr(power_monitor, "_SMBus", fake)
+        mon = WaveshareUpsBMonitor(inner=NullPowerMonitor())
+        state = await mon.poll()
+        assert state.voltage_mv == 7400
+        assert state.current_ma == 800
+        assert state.source == "battery"
+        assert state.charging is False
+        assert state.ac_present is False
+        assert 35 <= state.soc_pct <= 55
+
+    @pytest.mark.asyncio
+    async def test_poll_charging(self, monkeypatch):
+        # 8.2 V, -300 mA (charging current) → ac_charging.
+        fake = _FakeSMBus(_ina219_registers(8200, -300))
+        monkeypatch.setattr(power_monitor, "_SMBus", fake)
+        mon = WaveshareUpsBMonitor(inner=NullPowerMonitor())
+        state = await mon.poll()
+        assert state.voltage_mv == 8200
+        assert state.current_ma == -300
+        assert state.source == "ac_charging"
+        assert state.charging is True
+        assert state.ac_present is True
+
+    @pytest.mark.asyncio
+    async def test_poll_quiescent_float(self, monkeypatch):
+        # 8.4 V, ~0 mA → AC plugged, charge complete (float plateau).
+        fake = _FakeSMBus(_ina219_registers(8400, 10))
+        monkeypatch.setattr(power_monitor, "_SMBus", fake)
+        mon = WaveshareUpsBMonitor(inner=NullPowerMonitor())
+        state = await mon.poll()
+        assert state.source == "ac_charging"
+        assert state.charging is False
+        assert state.ac_present is True
+        assert state.soc_pct == 100
+
+    @pytest.mark.asyncio
+    async def test_poll_quiescent_idle_battery(self, monkeypatch):
+        # 7.6 V, ~0 mA → idle on battery (no current, below float threshold).
+        fake = _FakeSMBus(_ina219_registers(7600, -5))
+        monkeypatch.setattr(power_monitor, "_SMBus", fake)
+        mon = WaveshareUpsBMonitor(inner=NullPowerMonitor())
+        state = await mon.poll()
+        assert state.source == "battery"
+        assert state.charging is False
+        assert state.ac_present is False
+
+    @pytest.mark.asyncio
+    async def test_poll_passes_through_pmic_undervoltage(self, monkeypatch, tmp_path):
+        # PMIC inner reports undervoltage; INA219 layer must preserve it.
+        root = _make_hwmon(tmp_path, name="rp1_adc", voltage_mv=4700)
+        inner = PiPMICMonitor(sysfs_root=root)
+
+        async def fake_exec(*args, **kwargs):
+            return _FakeProc(b"throttled=0x5\n")
+
+        monkeypatch.setattr(power_monitor.asyncio, "create_subprocess_exec", fake_exec)
+        fake = _FakeSMBus(_ina219_registers(7400, 800))
+        monkeypatch.setattr(power_monitor, "_SMBus", fake)
+
+        mon = WaveshareUpsBMonitor(inner=inner)
+        state = await mon.poll()
+        assert state.pmic_undervoltage is True
+        assert state.pmic_throttled is True
+        assert state.voltage_mv == 7400  # INA219 still applied on top
+
+    @pytest.mark.asyncio
+    async def test_poll_survives_i2c_failure(self, monkeypatch):
+        # Bus fails to open → keep inner state, leave fuel-gauge fields at default.
+        fake = _FakeSMBus(fail_open=True)
+        monkeypatch.setattr(power_monitor, "_SMBus", fake)
+        mon = WaveshareUpsBMonitor(inner=NullPowerMonitor())
+        state = await mon.poll()
+        assert state.voltage_mv == 0
+        assert state.current_ma == 0
+        assert state.soc_pct == -1
+        assert state.t_last_update_ms > 0
+
+
 class TestPickPowerMonitor:
     def test_null_override(self):
         mon = pick_power_monitor("null")
@@ -120,6 +283,9 @@ class TestPickPowerMonitor:
             raise FileNotFoundError("no pmic")
 
         monkeypatch.setattr(PiPMICMonitor, "__init__", explode)
+        monkeypatch.setattr(
+            power_monitor, "_probe_ina219_present", lambda *a, **k: False
+        )
         mon = pick_power_monitor(None)
         assert isinstance(mon, NullPowerMonitor)
 
@@ -130,6 +296,44 @@ class TestPickPowerMonitor:
         monkeypatch.setattr(PiPMICMonitor, "__init__", explode)
         with pytest.raises(FileNotFoundError):
             pick_power_monitor("pmic")
+
+    def test_auto_picks_ups_b_when_probe_succeeds(self, monkeypatch):
+        # Stub PiPMICMonitor.__init__ so we don't need a real hwmon tree.
+        # Set the attrs that label() reads so the factory's diagnostic log works.
+        def fake_init(self, sysfs_root="/sys/class/hwmon"):
+            self._hwmon_label = "test"
+            self._voltage_path = None
+            self._sysfs_root = None
+
+        monkeypatch.setattr(PiPMICMonitor, "__init__", fake_init)
+        monkeypatch.setattr(
+            power_monitor, "_probe_ina219_present", lambda *a, **k: True
+        )
+        mon = pick_power_monitor(None)
+        assert isinstance(mon, WaveshareUpsBMonitor)
+        assert isinstance(mon._inner, PiPMICMonitor)
+
+    def test_auto_ups_b_falls_back_to_null_inner_when_pmic_missing(self, monkeypatch):
+        def explode(self, sysfs_root="/sys/class/hwmon"):
+            raise FileNotFoundError("no pmic")
+
+        monkeypatch.setattr(PiPMICMonitor, "__init__", explode)
+        monkeypatch.setattr(
+            power_monitor, "_probe_ina219_present", lambda *a, **k: True
+        )
+        mon = pick_power_monitor(None)
+        assert isinstance(mon, WaveshareUpsBMonitor)
+        assert isinstance(mon._inner, NullPowerMonitor)
+
+    def test_ups_b_override_raises_when_probe_fails(self, monkeypatch):
+        monkeypatch.setattr(
+            PiPMICMonitor, "__init__", lambda self, sysfs_root="/sys/class/hwmon": None
+        )
+        monkeypatch.setattr(
+            power_monitor, "_probe_ina219_present", lambda *a, **k: False
+        )
+        with pytest.raises(OSError):
+            pick_power_monitor("ups-b")
 
 
 class _FakeProc:
