@@ -1,16 +1,16 @@
 """Pi-side power state monitor.
 
-Populates `RobotState.power` at ~1 Hz. Phase 1 shipping two implementations:
+Populates `RobotState.power` at ~1 Hz. Available implementations:
 
 - `NullPowerMonitor` — always returns source="unknown". Default on non-Pi
   dev machines and when `--power-monitor=null` is passed.
 - `PiPMICMonitor` — reads the Pi 5 PMIC's hwmon voltage channel and the
   `vcgencmd get_throttled` bitmask. Produces rail voltage + undervoltage /
   throttled bits. Cannot derive SoC on its own.
-
-Later phases will add fuel-gauge monitor classes (e.g., Waveshare UPS HAT
-B via INA219 on I²C) that compose with `PiPMICMonitor` — PMIC keeps being
-the authoritative brownout signal, the fuel gauge fills in SoC/current.
+- `WaveshareUpsBMonitor` — reads the Waveshare UPS HAT (B) INA219 on I²C
+  bus 1 @ 0x43 for pack voltage + current, derives SoC from a 2S 18650
+  voltage curve, and composes with `PiPMICMonitor` so PMIC undervoltage
+  stays the authoritative brownout signal.
 """
 
 from __future__ import annotations
@@ -24,6 +24,11 @@ from typing import Protocol
 from supervisor.core.state import PowerState
 
 log = logging.getLogger(__name__)
+
+try:
+    from smbus2 import SMBus as _SMBus  # type: ignore[import-not-found]
+except ImportError:  # pragma: no cover — smbus2 is a runtime dep on the Pi
+    _SMBus = None  # type: ignore[assignment]
 
 
 class PowerMonitor(Protocol):
@@ -162,11 +167,167 @@ class PiPMICMonitor:
         return state
 
 
+# ── Waveshare UPS HAT (B) — INA219 over I²C ─────────────────────────────────
+
+# I²C bus + address for the HAT (B) variant.
+_INA219_BUS_DEFAULT = 1
+_INA219_ADDR_DEFAULT = 0x43
+
+# INA219 register map (subset we use).
+_REG_CONFIG = 0x00
+_REG_SHUNT_VOLTAGE = 0x01
+_REG_BUS_VOLTAGE = 0x02
+
+# HAT (B) shunt resistance: 0.1 Ω. Shunt LSB: 10 µV.
+# current_mA = (shunt_raw × 10 µV) / 0.1 Ω = shunt_raw × 0.1 mA.
+
+# Approximate 2S 18650 discharge curve, monotonically decreasing voltage.
+# Linear interpolation between waypoints; refine empirically with a real pack.
+_SOC_CURVE: tuple[tuple[int, int], ...] = (
+    (8400, 100),
+    (8100, 90),
+    (7800, 75),
+    (7500, 55),
+    (7200, 35),
+    (6800, 15),
+    (6400, 5),
+    (6000, 0),
+)
+
+# Current threshold (mA) below which we consider the pack "quiescent" — used
+# to distinguish float-charge vs active discharge when current is near zero.
+_CURRENT_QUIESCENT_MA = 50
+
+# Voltage above which a quiescent pack is assumed to be on float charge
+# (USB-C plugged in, charge complete) rather than discharging on battery.
+_FLOAT_CHARGE_THRESHOLD_MV = 8300
+
+
+def _voltage_to_soc(voltage_mv: int) -> int:
+    """Piecewise-linear 2S 18650 voltage → SoC %. Returns 0..100."""
+    if voltage_mv >= _SOC_CURVE[0][0]:
+        return 100
+    if voltage_mv <= _SOC_CURVE[-1][0]:
+        return 0
+    for (v_hi, s_hi), (v_lo, s_lo) in zip(_SOC_CURVE, _SOC_CURVE[1:]):
+        if v_lo <= voltage_mv <= v_hi:
+            ratio = (voltage_mv - v_lo) / (v_hi - v_lo)
+            return int(round(s_lo + ratio * (s_hi - s_lo)))
+    return -1  # unreachable
+
+
+def _read_ina219_blocking(bus_num: int, addr: int) -> tuple[int, int]:
+    """Open the I²C bus, read INA219 voltage + current, return (mv, ma).
+
+    Synchronous; wrap in asyncio.to_thread() from the poll loop. Raises
+    OSError on bus/device failure.
+    """
+    if _SMBus is None:
+        raise OSError("smbus2 not installed")
+    with _SMBus(bus_num) as bus:
+        v_hi, v_lo = bus.read_i2c_block_data(addr, _REG_BUS_VOLTAGE, 2)
+        # Bus voltage register: 16-bit big-endian, top 13 bits = LSB 4 mV.
+        voltage_mv = (((v_hi << 8) | v_lo) >> 3) * 4
+        s_hi, s_lo = bus.read_i2c_block_data(addr, _REG_SHUNT_VOLTAGE, 2)
+        s_raw = (s_hi << 8) | s_lo
+        if s_raw >= 0x8000:
+            s_raw -= 0x10000
+    # 0.1 Ω shunt → current_mA = s_raw × 0.1.
+    current_ma = round(s_raw / 10)
+    return voltage_mv, current_ma
+
+
+def _probe_ina219_present(
+    bus_num: int = _INA219_BUS_DEFAULT, addr: int = _INA219_ADDR_DEFAULT
+) -> bool:
+    """Single-byte read on the config register; True if the device ACKs."""
+    if _SMBus is None:
+        return False
+    try:
+        with _SMBus(bus_num) as bus:
+            bus.read_byte_data(addr, _REG_CONFIG)
+        return True
+    except (OSError, FileNotFoundError):
+        return False
+
+
+class WaveshareUpsBMonitor:
+    """Waveshare UPS HAT (B) fuel-gauge monitor.
+
+    Composes with an inner PowerMonitor (typically PiPMICMonitor): the
+    inner's pmic_undervoltage / pmic_throttled bits stay authoritative,
+    while INA219 fills in voltage_mv / current_ma / soc_pct / source /
+    charging / ac_present.
+
+    Construction is side-effect-free; the I²C bus is opened lazily inside
+    poll(). A transient I²C glitch keeps the inner state and zeros the
+    fuel-gauge fields — it does not crash the poll loop.
+    """
+
+    def __init__(
+        self,
+        bus_num: int = _INA219_BUS_DEFAULT,
+        addr: int = _INA219_ADDR_DEFAULT,
+        inner: PowerMonitor | None = None,
+    ) -> None:
+        self._bus_num = bus_num
+        self._addr = addr
+        self._inner = inner
+
+    def label(self) -> str:
+        inner = f"+{self._inner.label()}" if self._inner else ""
+        return f"waveshare-ups-b (i2c-{self._bus_num} @ 0x{self._addr:02x}){inner}"
+
+    async def poll(self) -> PowerState:
+        if self._inner is not None:
+            state = await self._inner.poll()
+        else:
+            state = PowerState()
+        state.t_last_update_ms = time.monotonic() * 1000.0
+
+        try:
+            voltage_mv, current_ma = await asyncio.to_thread(
+                _read_ina219_blocking, self._bus_num, self._addr
+            )
+        except OSError as e:
+            log.debug("WaveshareUpsBMonitor: I²C read failed: %s", e)
+            return state
+
+        state.voltage_mv = voltage_mv
+        state.current_ma = current_ma
+        state.soc_pct = _voltage_to_soc(voltage_mv)
+
+        # Source / charging from current sign. HAT (B) wires + = discharge.
+        if current_ma < -_CURRENT_QUIESCENT_MA:
+            state.source = "ac_charging"
+            state.charging = True
+            state.ac_present = True
+        elif current_ma > _CURRENT_QUIESCENT_MA:
+            state.source = "battery"
+            state.charging = False
+            state.ac_present = False
+        else:
+            # Quiescent: float-charge plateau vs idle-on-battery.
+            if voltage_mv >= _FLOAT_CHARGE_THRESHOLD_MV:
+                state.source = "ac_charging"
+                state.ac_present = True
+            else:
+                state.source = "battery"
+                state.ac_present = False
+            state.charging = False
+
+        return state
+
+
 def pick_power_monitor(override: str | None = None) -> PowerMonitor:
     """Factory used by supervisor main.
 
     override:
-      - None or "auto": try PiPMICMonitor, fall back to NullPowerMonitor
+      - None or "auto": try Waveshare UPS HAT (B), then PiPMICMonitor, then
+        NullPowerMonitor
+      - "ups-b": force WaveshareUpsBMonitor wrapping PiPMICMonitor (or
+        NullPowerMonitor if PMIC is unavailable). Raises OSError if the
+        INA219 bus/device is missing.
       - "pmic": force PiPMICMonitor (raises on non-Pi hosts)
       - "null": force NullPowerMonitor (useful for tests / dev)
     """
@@ -175,9 +336,39 @@ def pick_power_monitor(override: str | None = None) -> PowerMonitor:
         return NullPowerMonitor()
     if mode == "pmic":
         return PiPMICMonitor()
+    if mode == "ups-b":
+        inner = _try_pmic_else_null()
+        # Probe to give a clean OSError up front rather than silent zeros.
+        if not _probe_ina219_present():
+            raise OSError(
+                f"Waveshare UPS HAT (B) INA219 not detected on i2c-"
+                f"{_INA219_BUS_DEFAULT} @ 0x{_INA219_ADDR_DEFAULT:02x}"
+            )
+        return WaveshareUpsBMonitor(inner=inner)
 
+    # auto: try ups-b → pmic → null.
+    if _probe_ina219_present():
+        inner = _try_pmic_else_null()
+        log.info(
+            "PowerMonitor: WaveshareUpsBMonitor on i2c-%d @ 0x%02x (inner=%s)",
+            _INA219_BUS_DEFAULT,
+            _INA219_ADDR_DEFAULT,
+            inner.label(),
+        )
+        return WaveshareUpsBMonitor(inner=inner)
     try:
         return PiPMICMonitor()
     except (FileNotFoundError, OSError) as e:
         log.info("PiPMICMonitor not available (%s) — using NullPowerMonitor", e)
+        return NullPowerMonitor()
+
+
+def _try_pmic_else_null() -> PowerMonitor:
+    try:
+        return PiPMICMonitor()
+    except (FileNotFoundError, OSError) as e:
+        log.info(
+            "PiPMICMonitor not available (%s) — UPS-B will compose with NullPowerMonitor",
+            e,
+        )
         return NullPowerMonitor()

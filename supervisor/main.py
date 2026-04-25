@@ -137,10 +137,12 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument(
         "--power-monitor",
-        choices=("auto", "pmic", "null"),
+        choices=("auto", "ups-b", "pmic", "null"),
         default="auto",
-        help="Power state source. 'auto' probes PiPMICMonitor then falls back "
-        "to null. 'pmic' forces Pi PMIC (fails on non-Pi). 'null' disables.",
+        help="Power state source. 'auto' probes Waveshare UPS HAT (B) → "
+        "PiPMICMonitor → null. 'ups-b' forces UPS HAT (B) (fails if the "
+        "INA219 isn't on i2c-1 @ 0x43). 'pmic' forces Pi PMIC (fails on "
+        "non-Pi). 'null' disables.",
     )
     return p.parse_args()
 
