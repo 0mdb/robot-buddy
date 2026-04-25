@@ -16,11 +16,12 @@ __pycache__/
 .env
 
 # IDE / editor
-.vscode/cmake-kits.json
+.vscode/
 .idea/
 
 # Claude Code
 .claude/
+CLAUDE.md
 SKILL.md
 
 # Build artifacts
