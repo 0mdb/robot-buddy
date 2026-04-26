@@ -43,6 +43,11 @@ class SpeechPolicy:
             # 2 min between low-battery nudges — long enough not to nag,
             # short enough to remind someone who wandered off.
             "power.undervoltage_raised": 120000.0,
+            # SoC warn (~25%): gentle nudge. SoC critical (~10%): urgent —
+            # at this point apply_safety() also zeros motion, so the kid
+            # needs to know why the robot stopped. Independent cooldowns.
+            "power.low_soc_raised:warn": 180000.0,
+            "power.low_soc_raised:critical": 60000.0,
         }
         self._phrases = {
             "vision.ball_acquired": [
@@ -68,6 +73,16 @@ class SpeechPolicy:
                 "My battery is getting low — could you plug me in?",
                 "I need to charge soon, please.",
                 "Power's running low. Time to recharge.",
+            ],
+            "power.low_soc_raised:warn": [
+                "Heads up — I'm getting low on battery.",
+                "Battery's dropping. Time to think about a charge.",
+                "I'm at low battery — please plug me in soon.",
+            ],
+            "power.low_soc_raised:critical": [
+                "I'm too low to keep moving — please plug me in.",
+                "Battery critical. I need to park until I'm charged.",
+                "Out of juice for driving. Please charge me.",
             ],
         }
 
@@ -163,6 +178,11 @@ class SpeechPolicy:
                 return "mode.changed:WANDER"
         if evt.type == "power.undervoltage_raised":
             return "power.undervoltage_raised"
+        if evt.type == "power.low_soc_raised":
+            severity = str(evt.payload.get("severity", "warn"))
+            if severity not in ("warn", "critical"):
+                severity = "warn"
+            return f"power.low_soc_raised:{severity}"
         return None
 
     def _on_cooldown(self, key: str, now_mono_ms: float) -> bool:

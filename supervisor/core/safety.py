@@ -22,6 +22,11 @@ _vision_stale_ms: float = 500.0
 _vision_clear_low: float = 0.3
 _vision_clear_high: float = 0.6
 
+# Power-side safety: zero motion when SoC is at/below this. Updated from the
+# `power.soc_critical_pct` param via configure_power_policy(). PMIC undervoltage
+# stays the authoritative brownout signal (handled separately via fault flags).
+_soc_critical_pct: int = 10
+
 
 def configure_vision_policy(
     stale_ms: float, clear_low: float, clear_high: float
@@ -31,6 +36,12 @@ def configure_vision_policy(
     _vision_stale_ms = stale_ms
     _vision_clear_low = clear_low
     _vision_clear_high = clear_high
+
+
+def configure_power_policy(soc_critical_pct: int) -> None:
+    """Update SoC critical threshold (called when params change)."""
+    global _soc_critical_pct
+    _soc_critical_pct = soc_critical_pct
 
 
 def apply_safety(
@@ -59,7 +70,14 @@ def apply_safety(
         robot.speed_caps.append(SpeedCap(0.0, "reflex_disconnected"))
         return DesiredTwist(0, 0)
 
-    # 4. Ultrasonic speed governor (defense-in-depth above reflex's 250mm stop)
+    # 4. SoC critical — park. Speech_policy + planner announce; this gate just
+    # zeroes motion so the kid sees the robot stop. soc_pct < 0 means "unknown"
+    # (no fuel gauge yet) and is exempt.
+    if 0 <= robot.power.soc_pct <= _soc_critical_pct:
+        robot.speed_caps.append(SpeedCap(0.0, f"soc_critical={robot.power.soc_pct}%"))
+        return DesiredTwist(0, 0)
+
+    # 5. Ultrasonic speed governor (defense-in-depth above reflex's 250mm stop)
     if robot.range_status == RangeStatus.OK and robot.range_mm > 0:
         if robot.range_mm < 300:
             scale = 0.25
@@ -72,14 +90,14 @@ def apply_safety(
             v = int(v * scale)
             w = int(w * scale)
 
-    # 5. Stale range — if NOT_READY or TIMEOUT, be conservative
+    # 6. Stale range — if NOT_READY or TIMEOUT, be conservative
     if robot.range_status in (RangeStatus.TIMEOUT, RangeStatus.NOT_READY):
         scale = 0.50
         robot.speed_caps.append(SpeedCap(scale, f"range_stale={robot.range_status}"))
         v = int(v * scale)
         w = int(w * scale)
 
-    # 6. Vision clear-path confidence scaling (vision fields from WorldState)
+    # 7. Vision clear-path confidence scaling (vision fields from WorldState)
     if world.clear_confidence >= 0:
         vision_age = world.vision_age_ms
         if vision_age > _vision_stale_ms or vision_age < 0:

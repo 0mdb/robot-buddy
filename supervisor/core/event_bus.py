@@ -38,6 +38,8 @@ class PlannerEventBus:
         obstacle_close_mm: int = 450,
         obstacle_clear_mm: int = 650,
         vision_stale_ms: float = 500.0,
+        soc_warn_pct: int = 25,
+        soc_critical_pct: int = 10,
     ) -> None:
         self._events: deque[PlannerEvent] = deque(maxlen=max_events)
 
@@ -47,6 +49,10 @@ class PlannerEventBus:
         self._last_fault_flags = 0
         self._last_mode: Mode | None = None
         self._last_power_undervoltage: bool = False
+        # SoC edge state: True once below the threshold; cleared with hysteresis
+        # of +5% to avoid flapping near the boundary.
+        self._soc_warn_active: bool = False
+        self._soc_critical_active: bool = False
 
         self._last_button_ts = -1.0
         self._last_touch_ts = -1.0
@@ -57,7 +63,14 @@ class PlannerEventBus:
         self._obstacle_close_mm = obstacle_close_mm
         self._obstacle_clear_mm = obstacle_clear_mm
         self._vision_stale_ms = vision_stale_ms
+        self._soc_warn_pct = soc_warn_pct
+        self._soc_critical_pct = soc_critical_pct
         self._next_seq = 1
+
+    def set_soc_thresholds(self, warn_pct: int, critical_pct: int) -> None:
+        """Update SoC warn/critical thresholds at runtime (param change)."""
+        self._soc_warn_pct = warn_pct
+        self._soc_critical_pct = critical_pct
 
     def emit(self, event_type: str, payload: dict, t_mono_ms: float) -> None:
         self._events.append(
@@ -206,9 +219,7 @@ class PlannerEventBus:
             )
         self._last_fault_flags = int(robot.fault_flags)
 
-        # Power: PMIC undervoltage edge. The hardware brownout signal is the
-        # only authoritative trigger we get without a fuel gauge; once one's
-        # added this would extend with soc-threshold events.
+        # Power: PMIC undervoltage edge — authoritative brownout signal.
         if robot.power.pmic_undervoltage != self._last_power_undervoltage:
             if robot.power.pmic_undervoltage:
                 self.emit(
@@ -226,6 +237,45 @@ class PlannerEventBus:
                     now_ms,
                 )
             self._last_power_undervoltage = bool(robot.power.pmic_undervoltage)
+
+        # Power: SoC edges (require a fuel gauge — soc_pct < 0 means unknown).
+        # Critical-edge fires its own event so speech_policy can announce with
+        # urgent phrasing and a separate cooldown bucket from the warn-edge.
+        # Hysteresis of +5% on the clear path avoids flapping near boundary.
+        soc = int(robot.power.soc_pct)
+        if soc >= 0:
+            crit_pct = self._soc_critical_pct
+            warn_pct = self._soc_warn_pct
+            if not self._soc_critical_active and soc <= crit_pct:
+                self._soc_critical_active = True
+                self.emit(
+                    "power.low_soc_raised",
+                    {
+                        "severity": "critical",
+                        "soc_pct": soc,
+                        "voltage_mv": int(robot.power.voltage_mv),
+                    },
+                    now_ms,
+                )
+            elif self._soc_critical_active and soc > crit_pct + 5:
+                self._soc_critical_active = False
+            if (
+                not self._soc_warn_active
+                and not self._soc_critical_active
+                and soc <= warn_pct
+            ):
+                self._soc_warn_active = True
+                self.emit(
+                    "power.low_soc_raised",
+                    {
+                        "severity": "warn",
+                        "soc_pct": soc,
+                        "voltage_mv": int(robot.power.voltage_mv),
+                    },
+                    now_ms,
+                )
+            elif self._soc_warn_active and soc > warn_pct + 5:
+                self._soc_warn_active = False
 
     def latest(self, limit: int = 20) -> list[PlannerEvent]:
         if limit <= 0:

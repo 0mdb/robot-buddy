@@ -283,11 +283,25 @@ class TickLoop:
 
     def request_mode(self, target: str) -> tuple[bool, str]:
         target_mode = Mode(target)
+        critical_pct = self._soc_critical_pct()
+        soc = int(self.robot.power.soc_pct)
+        motion_blocked_by_power = 0 <= soc <= critical_pct
         return self._sm.request_mode(
             target_mode,
             self.robot.reflex_connected,
             self.robot.fault_flags,
+            motion_blocked_by_power=motion_blocked_by_power,
         )
+
+    def _soc_warn_pct(self) -> int:
+        if self._param_registry is None:
+            return 25
+        return int(self._param_registry.get_value("power.soc_warn_pct", 25))
+
+    def _soc_critical_pct(self) -> int:
+        if self._param_registry is None:
+            return 10
+        return int(self._param_registry.get_value("power.soc_critical_pct", 10))
 
     def clear_error(self) -> tuple[bool, str]:
         # Send CLEAR_FAULTS to MCU to actually clear hardware fault flags
@@ -483,12 +497,15 @@ class TickLoop:
 
         # Power events. Three signals can fire `low_battery`:
         #   1. PMIC undervoltage (authoritative brownout signal — always wins)
-        #   2. Known SoC below critical threshold (needs fuel gauge; Phase 2)
+        #   2. Known SoC at/below soc_warn_pct (param-tunable; needs fuel gauge)
         #   3. Legacy battery_mv < low_battery_mv (reflex-reported; stays 0
         #      in current topology, so this branch is dormant until the
         #      firmware battery ADC is ever wired — it never will be)
         power = self.robot.power
-        is_low = power.pmic_undervoltage or (power.soc_pct >= 0 and power.soc_pct <= 10)
+        warn_pct = self._soc_warn_pct()
+        is_low = power.pmic_undervoltage or (
+            power.soc_pct >= 0 and power.soc_pct <= warn_pct
+        )
         # Legacy fallback: only meaningful if something ever writes a nonzero
         # battery_mv. Harmless today because reflex always reports 0.
         if not is_low and self.robot.battery_mv > 0:

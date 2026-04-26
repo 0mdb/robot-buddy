@@ -67,6 +67,7 @@ class SupervisorSM:
         target: Mode,
         reflex_connected: bool,
         fault_flags: int,
+        motion_blocked_by_power: bool = False,
     ) -> tuple[bool, str]:
         """Handle explicit mode change request. Returns (success, reason)."""
 
@@ -85,6 +86,8 @@ class SupervisorSM:
                 return False, "reflex not connected"
             if fault_flags != 0:
                 return False, f"faults active: 0x{fault_flags:04X}"
+            if motion_blocked_by_power:
+                return False, "battery too low — please charge"
             self._transition(target, "user request")
             return True, "ok"
 

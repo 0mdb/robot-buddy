@@ -178,6 +178,34 @@ def create_default_registry() -> ParamRegistry:
         )
     )
 
+    # -- Power / SoC thresholds (drive low-battery speech + motion gate) --
+    reg.register(
+        ParamDef(
+            name="power.soc_warn_pct",
+            type="int",
+            min=10,
+            max=40,
+            step=5,
+            default=25,
+            owner="supervisor",
+            safety="safe",
+            doc="SoC % at which to fire the low-battery warn speech",
+        )
+    )
+    reg.register(
+        ParamDef(
+            name="power.soc_critical_pct",
+            type="int",
+            min=5,
+            max=20,
+            step=1,
+            default=10,
+            owner="supervisor",
+            safety="risky",
+            doc="SoC % at/below which apply_safety zeroes motion and request_mode rejects motion-mode entry",
+        )
+    )
+
     # -- Reflex parameters --
     # boot_only: require reboot to change (kinematics, HW config)
     # runtime:   can be changed live via SET_CONFIG protocol

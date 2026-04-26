@@ -98,3 +98,46 @@ def test_configure_vision_policy_from_registry_calls_configure() -> None:
         supervisor_main._configure_vision_policy_from_registry(reg)
 
     mock_cfg.assert_called_once_with(stale_ms=650.0, clear_low=0.12, clear_high=0.78)
+
+
+def test_power_params_registered_with_expected_defaults() -> None:
+    reg = create_default_registry()
+
+    warn = reg.get("power.soc_warn_pct")
+    crit = reg.get("power.soc_critical_pct")
+    assert warn is not None
+    assert crit is not None
+    assert warn.default == 25
+    assert warn.min == 10 and warn.max == 40
+    assert crit.default == 10
+    assert crit.min == 5 and crit.max == 20
+
+
+def test_configure_power_policy_from_registry_propagates_to_safety_and_event_bus() -> (
+    None
+):
+    reg = create_default_registry()
+    ok, _ = reg.set("power.soc_warn_pct", 30)
+    assert ok
+    ok, _ = reg.set("power.soc_critical_pct", 12)
+    assert ok
+
+    class _FakeBus:
+        def __init__(self):
+            self.warn = None
+            self.crit = None
+
+        def set_soc_thresholds(self, warn_pct, critical_pct):
+            self.warn, self.crit = warn_pct, critical_pct
+
+    class _FakeTick:
+        def __init__(self):
+            self._event_bus = _FakeBus()
+
+    fake_tick = _FakeTick()
+    with patch("supervisor.core.safety.configure_power_policy") as mock_cfg:
+        supervisor_main._configure_power_policy_from_registry(reg, fake_tick)
+
+    mock_cfg.assert_called_once_with(soc_critical_pct=12)
+    assert fake_tick._event_bus.warn == 30
+    assert fake_tick._event_bus.crit == 12

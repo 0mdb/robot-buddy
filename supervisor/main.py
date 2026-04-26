@@ -94,6 +94,20 @@ def _configure_vision_policy_from_registry(registry: object) -> None:
     )
 
 
+def _configure_power_policy_from_registry(
+    registry: object, tick: object | None
+) -> None:
+    from supervisor.core.safety import configure_power_policy
+
+    warn_pct = _get_int(registry, "power.soc_warn_pct", 25)
+    critical_pct = _get_int(registry, "power.soc_critical_pct", 10)
+    configure_power_policy(soc_critical_pct=critical_pct)
+    # Push thresholds into the event bus too, so SoC edge events use the
+    # current values without a poll-loop dependency on the registry.
+    if tick is not None and hasattr(tick, "_event_bus"):
+        tick._event_bus.set_soc_thresholds(warn_pct, critical_pct)
+
+
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Robot Buddy Supervisor")
     p.add_argument(
@@ -283,6 +297,9 @@ async def async_main(args: argparse.Namespace) -> None:
         # ── Start everything ─────────────────────────────────────
         await workers.start()
 
+        # Apply initial safety policy thresholds (power.* params).
+        _configure_power_policy_from_registry(registry, tick)
+
         # Send init configs to workers
         if not args.no_vision:
             # Apply initial safety policy thresholds (vision.* params)
@@ -400,6 +417,10 @@ async def async_main(args: argparse.Namespace) -> None:
             "vision.clear_low",
             "vision.clear_high",
         }
+        _POWER_POLICY_PARAMS = {
+            "power.soc_warn_pct",
+            "power.soc_critical_pct",
+        }
         _PERSONALITY_AXIS_PARAMS = {
             "personality.energy",
             "personality.reactivity",
@@ -419,6 +440,7 @@ async def async_main(args: argparse.Namespace) -> None:
         vision_policy_scheduled = False
         pe_axes_scheduled = False
         pe_guardrail_scheduled = False
+        power_policy_scheduled = False
 
         async def _flush_vision_worker_config() -> None:
             nonlocal vision_cfg_scheduled
@@ -437,6 +459,12 @@ async def async_main(args: argparse.Namespace) -> None:
             await asyncio.sleep(0)  # coalesce multiple updates in one event loop tick
             vision_policy_scheduled = False
             _configure_vision_policy_from_registry(registry)
+
+        async def _flush_power_policy() -> None:
+            nonlocal power_policy_scheduled
+            await asyncio.sleep(0)
+            power_policy_scheduled = False
+            _configure_power_policy_from_registry(registry, tick)
 
         async def _flush_pe_axes() -> None:
             nonlocal pe_axes_scheduled
@@ -506,12 +534,16 @@ async def async_main(args: argparse.Namespace) -> None:
         def _on_param_change(name: str, _value: object) -> None:
             nonlocal vision_cfg_scheduled, vision_policy_scheduled
             nonlocal pe_axes_scheduled, pe_guardrail_scheduled
+            nonlocal power_policy_scheduled
             if name in _VISION_WORKER_PARAMS and not vision_cfg_scheduled:
                 vision_cfg_scheduled = True
                 asyncio.create_task(_flush_vision_worker_config())
             if name in _VISION_POLICY_PARAMS and not vision_policy_scheduled:
                 vision_policy_scheduled = True
                 asyncio.create_task(_flush_vision_policy())
+            if name in _POWER_POLICY_PARAMS and not power_policy_scheduled:
+                power_policy_scheduled = True
+                asyncio.create_task(_flush_power_policy())
             if name in _PERSONALITY_AXIS_PARAMS and not pe_axes_scheduled:
                 pe_axes_scheduled = True
                 asyncio.create_task(_flush_pe_axes())

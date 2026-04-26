@@ -61,6 +61,47 @@ class TestBasicGenerate:
         assert intents == []
         assert "policy_cooldown" in drops
 
+    def test_low_soc_warn_uses_warn_phrase_set(self):
+        p = SpeechPolicy()
+        evt = PlannerEvent(
+            "power.low_soc_raised", {"severity": "warn", "soc_pct": 22}, 0.0
+        )
+        intents, _ = p.generate(state=_free_state(), events=[evt], now_mono_ms=0.0)
+        assert len(intents) == 1
+        text = intents[0].text.lower()
+        # Warn phrasing is gentler — never says "park" or "critical".
+        assert "park" not in text
+        assert "critical" not in text
+
+    def test_low_soc_critical_uses_critical_phrase_set(self):
+        p = SpeechPolicy()
+        evt = PlannerEvent(
+            "power.low_soc_raised", {"severity": "critical", "soc_pct": 8}, 0.0
+        )
+        intents, _ = p.generate(state=_free_state(), events=[evt], now_mono_ms=0.0)
+        assert len(intents) == 1
+        text = intents[0].text.lower()
+        # Critical phrasing communicates "stop moving" or unambiguous urgency.
+        assert any(kw in text for kw in ("park", "critical", "out of juice", "too low"))
+
+    def test_low_soc_warn_and_critical_have_independent_cooldowns(self):
+        # A warn-edge announcement must not silence a subsequent critical-edge.
+        p = SpeechPolicy()
+        warn_evt = PlannerEvent(
+            "power.low_soc_raised", {"severity": "warn", "soc_pct": 22}, 0.0
+        )
+        crit_evt = PlannerEvent(
+            "power.low_soc_raised", {"severity": "critical", "soc_pct": 8}, 1000.0
+        )
+        intents1, _ = p.generate(
+            state=_free_state(), events=[warn_evt], now_mono_ms=0.0
+        )
+        intents2, _ = p.generate(
+            state=_free_state(), events=[crit_evt], now_mono_ms=1000.0
+        )
+        assert len(intents1) == 1
+        assert len(intents2) == 1
+
 
 # ── face-busy hold queue ──────────────────────────────────────────────────────
 

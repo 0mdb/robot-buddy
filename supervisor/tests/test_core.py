@@ -80,6 +80,32 @@ class TestStateMachine:
         mode = sm.update(reflex_connected=True, fault_flags=Fault.ESTOP)
         assert mode == Mode.ERROR
 
+    def test_request_motion_rejected_when_power_critical(self):
+        sm = SupervisorSM()
+        sm.update(reflex_connected=True, fault_flags=0)
+        ok, reason = sm.request_mode(
+            Mode.WANDER,
+            reflex_connected=True,
+            fault_flags=0,
+            motion_blocked_by_power=True,
+        )
+        assert not ok
+        assert "battery" in reason.lower()
+        assert sm._mode == Mode.IDLE
+
+    def test_request_idle_allowed_even_when_power_critical(self):
+        # IDLE is the safe default; never refuse it.
+        sm = SupervisorSM()
+        sm.update(reflex_connected=True, fault_flags=0)
+        sm.request_mode(Mode.WANDER, True, 0)
+        ok, _ = sm.request_mode(
+            Mode.IDLE,
+            reflex_connected=True,
+            fault_flags=0,
+            motion_blocked_by_power=True,
+        )
+        assert ok
+
 
 # ── Safety Policies ──────────────────────────────────────────────
 
@@ -132,6 +158,40 @@ class TestSafety:
         # vision_age_ms will be huge since rx_mono_ms is near zero
         result = apply_safety(DesiredTwist(100, 200), r, w)
         assert result.v_mm_s == 50  # 50% vision stale cap
+
+    def test_soc_critical_gate_zeros_motion(self):
+        from supervisor.core.safety import configure_power_policy
+
+        configure_power_policy(soc_critical_pct=10)
+        r = RobotState(
+            mode=Mode.TELEOP,
+            reflex_connected=True,
+            range_status=RangeStatus.OK,
+            range_mm=2000,
+        )
+        r.power.soc_pct = 8
+        w = WorldState()
+        result = apply_safety(DesiredTwist(100, 200), r, w)
+        assert result.v_mm_s == 0
+        assert result.w_mrad_s == 0
+        assert any("soc_critical" in cap.reason for cap in r.speed_caps)
+
+    def test_soc_unknown_does_not_gate(self):
+        # soc_pct = -1 means no fuel gauge; must not gate.
+        from supervisor.core.safety import configure_power_policy
+
+        configure_power_policy(soc_critical_pct=10)
+        r = RobotState(
+            mode=Mode.TELEOP,
+            reflex_connected=True,
+            range_status=RangeStatus.OK,
+            range_mm=2000,
+        )
+        r.power.soc_pct = -1
+        w = WorldState()
+        result = apply_safety(DesiredTwist(100, 200), r, w)
+        assert result.v_mm_s == 100
+        assert result.w_mrad_s == 200
 
 
 # ── Event Bus ────────────────────────────────────────────────────
@@ -186,6 +246,60 @@ class TestEventBus:
         )
         events = bus.latest()
         assert any(e.type == "safety.obstacle_cleared" for e in events)
+
+    def test_soc_warn_edge_fires_once(self):
+        bus = PlannerEventBus(soc_warn_pct=25, soc_critical_pct=10)
+        w = WorldState()
+
+        r = RobotState(tick_mono_ms=100.0)
+        r.power.soc_pct = 30
+        bus.ingest(r, w)
+        assert not any(e.type == "power.low_soc_raised" for e in bus.latest())
+
+        r2 = RobotState(tick_mono_ms=200.0)
+        r2.power.soc_pct = 22  # crosses warn threshold
+        bus.ingest(r2, w)
+        warn_events = [
+            e
+            for e in bus.latest()
+            if e.type == "power.low_soc_raised" and e.payload["severity"] == "warn"
+        ]
+        assert len(warn_events) == 1
+
+        # Hovering near threshold doesn't refire (hysteresis)
+        r3 = RobotState(tick_mono_ms=300.0)
+        r3.power.soc_pct = 20
+        bus.ingest(r3, w)
+        warn_events = [
+            e
+            for e in bus.latest()
+            if e.type == "power.low_soc_raised" and e.payload["severity"] == "warn"
+        ]
+        assert len(warn_events) == 1
+
+    def test_soc_critical_edge_fires_separately(self):
+        bus = PlannerEventBus(soc_warn_pct=25, soc_critical_pct=10)
+        w = WorldState()
+
+        r = RobotState(tick_mono_ms=100.0)
+        r.power.soc_pct = 22  # warn
+        bus.ingest(r, w)
+        r2 = RobotState(tick_mono_ms=200.0)
+        r2.power.soc_pct = 8  # critical
+        bus.ingest(r2, w)
+
+        events = [e for e in bus.latest() if e.type == "power.low_soc_raised"]
+        severities = [e.payload["severity"] for e in events]
+        assert "warn" in severities
+        assert "critical" in severities
+
+    def test_soc_unknown_does_not_emit(self):
+        bus = PlannerEventBus(soc_warn_pct=25, soc_critical_pct=10)
+        w = WorldState()
+        r = RobotState(tick_mono_ms=100.0)
+        r.power.soc_pct = -1
+        bus.ingest(r, w)
+        assert not any(e.type == "power.low_soc_raised" for e in bus.latest())
 
 
 # ── Action Scheduler ─────────────────────────────────────────────
