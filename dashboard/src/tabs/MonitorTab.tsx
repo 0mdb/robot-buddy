@@ -402,13 +402,15 @@ function CommunicationPanel({
   )
 }
 
-const BATTERY_SERIES = [{ metric: 'power.voltage_mv', label: 'Battery', color: '#eab308' }]
-// 2S 18650 thresholds: 8.0 V good, 7.0 V warn, 6.4 V critical (matches the
+const BATTERY_SERIES = [
+  { metric: 'power.voltage_mv', label: 'Battery', color: '#eab308', scale: 0.001 },
+]
+// 2S 18650 thresholds in V: 8.0 good, 7.0 warn, 6.4 critical (matches the
 // soc curve in supervisor/devices/power_monitor.py).
 const BATTERY_THRESHOLDS = [
-  { value: 8000, color: '#4caf50', label: 'OK' },
-  { value: 7000, color: '#eab308', label: 'Warn' },
-  { value: 6400, color: '#f44336', label: 'Low' },
+  { value: 8.0, color: '#4caf50', label: 'OK' },
+  { value: 7.0, color: '#eab308', label: 'Warn' },
+  { value: 6.4, color: '#f44336', label: 'Low' },
 ]
 
 function PowerPanel({
@@ -442,10 +444,10 @@ function PowerPanel({
     headline = 'AC — charging'
     badgeText = 'AC'
   } else if (src === 'usb') {
-    headline = voltageMv > 0 ? `USB powered — ${voltageMv} mV` : 'USB powered'
+    headline = voltageMv > 0 ? `USB powered — ${(voltageMv / 1000).toFixed(2)} V` : 'USB powered'
     badgeText = 'USB'
   } else if (src === 'battery') {
-    headline = voltageMv > 0 ? `Battery — ${voltageMv} mV` : 'On battery'
+    headline = voltageMv > 0 ? `Battery — ${(voltageMv / 1000).toFixed(2)} V` : 'On battery'
     badgeText = 'BATT'
   } else if (!reflexConnected && voltageMv === 0) {
     return (
@@ -485,7 +487,7 @@ function PowerPanel({
       </div>
       <TimeSeriesChart
         title=""
-        yLabel="mV"
+        yLabel="V"
         window={60}
         height={140}
         series={BATTERY_SERIES}

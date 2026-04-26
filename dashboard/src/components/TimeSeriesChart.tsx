@@ -9,6 +9,8 @@ interface SeriesDef {
   color: string
   width?: number
   dash?: number[]
+  /** Multiplied into raw ring values before plotting (e.g. 0.001 to plot mV as V). */
+  scale?: number
 }
 
 interface Props {
@@ -143,7 +145,13 @@ export function TimeSeriesChart({
       for (const s of series) {
         const r = useTelemetryStore.getState().ring(s.metric)
         const { values } = r.toArrays()
-        data.push(values)
+        if (s.scale !== undefined && s.scale !== 1) {
+          const scaled = new Float64Array(values.length)
+          for (let i = 0; i < values.length; i++) scaled[i] = values[i] * s.scale
+          data.push(scaled)
+        } else {
+          data.push(values)
+        }
       }
 
       plotRef.current.setData(data as uPlot.AlignedData)

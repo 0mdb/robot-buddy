@@ -10,6 +10,8 @@ interface Props {
   color?: string
   /** Number of seconds to display */
   window?: number
+  /** Multiplied into raw ring values before plotting (e.g. 0.001 to plot mV as V). */
+  scale?: number
 }
 
 /**
@@ -22,6 +24,7 @@ export function Sparkline({
   height = 32,
   color = '#e94560',
   window: windowSec = 5,
+  scale = 1,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const plotRef = useRef<uPlot | null>(null)
@@ -66,8 +69,9 @@ export function Sparkline({
       const tLast = timestamps[timestamps.length - 1]
       const tStart = tLast - windowSec * 1000
       const relTs = timestamps.map((t) => (t - tStart) / 1000)
+      const scaled = scale === 1 ? values : Float64Array.from(values, (v) => v * scale)
 
-      plot.setData([relTs, values])
+      plot.setData([relTs, scaled])
     })
 
     // Visibility handler
@@ -79,7 +83,8 @@ export function Sparkline({
           const tLast = timestamps[timestamps.length - 1]
           const tStart = tLast - windowSec * 1000
           const relTs = timestamps.map((t) => (t - tStart) / 1000)
-          plotRef.current.setData([relTs, values])
+          const scaled = scale === 1 ? values : Float64Array.from(values, (v) => v * scale)
+          plotRef.current.setData([relTs, scaled])
         }
       }
     }
@@ -91,7 +96,7 @@ export function Sparkline({
       plot.destroy()
       plotRef.current = null
     }
-  }, [metric, width, height, color, windowSec])
+  }, [metric, width, height, color, windowSec, scale])
 
   return <div ref={containerRef} />
 }

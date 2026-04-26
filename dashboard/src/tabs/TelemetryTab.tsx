@@ -92,10 +92,10 @@ export default function TelemetryTab() {
       {/* Battery */}
       <TimeSeriesChart
         title="Battery"
-        yLabel="mV"
+        yLabel="V"
         window={window}
         height={200}
-        series={[{ metric: 'power.voltage_mv', label: 'Battery', color: '#eab308' }]}
+        series={[{ metric: 'power.voltage_mv', label: 'Battery', color: '#eab308', scale: 0.001 }]}
       />
     </div>
   )

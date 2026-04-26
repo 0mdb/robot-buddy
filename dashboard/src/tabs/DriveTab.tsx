@@ -13,14 +13,16 @@ interface GaugeCardProps {
   metric: string
   valueField: string
   decimals?: number
+  /** Multiplied into the display value AND the sparkline (e.g. 0.001 to render mV as V). */
+  scale?: number
 }
 
-function GaugeCard({ label, unit, metric, valueField, decimals = 0 }: GaugeCardProps) {
+function GaugeCard({ label, unit, metric, valueField, decimals = 0, scale = 1 }: GaugeCardProps) {
   // valueField may be a dot-path (e.g. "power.voltage_mv").
   const value = useTelemetry((s) =>
     valueField.includes('.') ? getPath(s.snapshot, valueField) : s.snapshot[valueField],
   )
-  const display = typeof value === 'number' ? value.toFixed(decimals) : '--'
+  const display = typeof value === 'number' ? (value * scale).toFixed(decimals) : '--'
 
   return (
     <div className={styles.card} style={{ padding: 10, minWidth: 0 }}>
@@ -30,7 +32,7 @@ function GaugeCard({ label, unit, metric, valueField, decimals = 0 }: GaugeCardP
         <span style={{ fontSize: 11, fontWeight: 400, color: '#888', marginLeft: 4 }}>{unit}</span>
       </div>
       <div style={{ marginTop: 6, height: 32 }}>
-        <Sparkline metric={metric} />
+        <Sparkline metric={metric} scale={scale} />
       </div>
     </div>
   )
@@ -170,9 +172,11 @@ export default function DriveTab() {
           <GaugeCard label="Range" unit="mm" metric="range_mm" valueField="range_mm" />
           <GaugeCard
             label="Battery"
-            unit="mV"
+            unit="V"
             metric="power.voltage_mv"
             valueField="power.voltage_mv"
+            scale={0.001}
+            decimals={2}
           />
           <GaugeCard
             label="Tick dt"
