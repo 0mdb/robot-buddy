@@ -28,7 +28,9 @@ from supervisor.devices.protocol import (
 
 log = logging.getLogger(__name__)
 
-_STATE_FMT = struct.Struct("<hhhhhhHHHB")  # matches StatePayload
+_STATE_FMT = struct.Struct(
+    "<hhhhhhHHB"
+)  # matches StatePayload (battery_mv removed 2026-04)
 
 
 class MockReflex:
@@ -43,7 +45,6 @@ class MockReflex:
         self.v_actual_mm_s: float = 0.0
         self.w_actual_mrad_s: float = 0.0
         self.fault_flags: int = 0
-        self.battery_mv: int = 7400
         self.range_mm: int = 2000
         self.range_status: int = 0  # OK
 
@@ -196,7 +197,6 @@ class MockReflex:
             0,  # accel_x_mg (mock: flat)
             0,  # accel_y_mg
             1000,  # accel_z_mg (mock: 1g upright)
-            self.battery_mv,
             self.fault_flags,
             self.range_mm,
             self.range_status,

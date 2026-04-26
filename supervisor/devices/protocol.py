@@ -220,12 +220,11 @@ class StatePayload:
     accel_x_mg: int
     accel_y_mg: int
     accel_z_mg: int
-    battery_mv: int
     fault_flags: int
     range_mm: int
     range_status: int
 
-    _FMT = struct.Struct("<hhhhhhHHHB")  # 21 bytes
+    _FMT = struct.Struct("<hhhhhhHHB")  # 17 bytes — battery_mv removed 2026-04
 
     @classmethod
     def unpack(cls, data: bytes) -> StatePayload:

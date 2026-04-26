@@ -63,6 +63,8 @@ struct __attribute__((packed)) SetConfigPayload {
     uint8_t value[4]; // little-endian float, u32, or i32 depending on param
 };
 
+// battery_mv was removed in 2026-04 alongside the Pi-side fuel-gauge work.
+// Pack size: v1 = 17 bytes (was 19+pad? actually 21 with pad), v2 = 25 bytes.
 struct __attribute__((packed)) StatePayload {
     int16_t  speed_l_mm_s;
     int16_t  speed_r_mm_s;
@@ -70,7 +72,6 @@ struct __attribute__((packed)) StatePayload {
     int16_t  accel_x_mg; // milli-g
     int16_t  accel_y_mg;
     int16_t  accel_z_mg;
-    uint16_t battery_mv;
     uint16_t fault_flags;
     uint16_t range_mm;
     uint8_t  range_status;
@@ -79,14 +80,13 @@ struct __attribute__((packed)) StatePayload {
 // ---- v2 extended payloads ----
 
 struct __attribute__((packed)) StatePayloadV2 {
-    // Core fields (19 bytes)
+    // Core fields (17 bytes)
     int16_t  speed_l_mm_s;
     int16_t  speed_r_mm_s;
     int16_t  gyro_z_mrad_s;
     int16_t  accel_x_mg; // milli-g
     int16_t  accel_y_mg;
     int16_t  accel_z_mg;
-    uint16_t battery_mv;
     uint16_t fault_flags;
     uint16_t range_mm;
     uint8_t  range_status;

@@ -269,7 +269,6 @@ async def async_main(args: argparse.Namespace) -> None:
             on_telemetry=ws_hub.broadcast_telemetry,
             planner_enabled=planner_enabled,
             robot_id=args.robot_id,
-            low_battery_mv=cfg.safety.low_battery_mv,
             conv_capture=conv_capture,
             param_registry=registry,
             power_monitor=power_monitor,

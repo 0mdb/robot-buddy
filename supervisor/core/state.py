@@ -101,7 +101,6 @@ class RobotState:
     accel_x_mg: int = 0
     accel_y_mg: int = 0
     accel_z_mg: int = 0
-    battery_mv: int = 0
     fault_flags: int = 0
     range_mm: int = 0
     range_status: int = RangeStatus.NOT_READY
@@ -199,7 +198,6 @@ class RobotState:
             "accel_z": self.accel_z_mg,
             "tilt_angle_deg": round(self.tilt_angle_deg, 1),
             "accel_magnitude_mg": round(self.accel_magnitude_mg, 1),
-            "battery_mv": self.battery_mv,
             "fault_flags": self.fault_flags,
             "range_mm": self.range_mm,
             "range_status": self.range_status,

@@ -66,7 +66,6 @@ class TestImuFieldsPropagateViaTickLoop:
             accel_x_mg = 0
             accel_y_mg = 0
             accel_z_mg = 1000
-            battery_mv = 7400
             fault_flags = 0
             range_mm = 500
             range_status = 0

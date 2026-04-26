@@ -31,7 +31,6 @@ static bool read_telemetry(TelemetryState& out)
         out.accel_x_mg = g_telemetry.accel_x_mg;
         out.accel_y_mg = g_telemetry.accel_y_mg;
         out.accel_z_mg = g_telemetry.accel_z_mg;
-        out.battery_mv = g_telemetry.battery_mv;
         out.fault_flags = g_telemetry.fault_flags;
         out.timestamp_us = g_telemetry.timestamp_us;
         out.cmd_seq_last_applied = g_telemetry.cmd_seq_last_applied;
@@ -74,7 +73,6 @@ void telemetry_task(void* arg)
             sp2.accel_x_mg = snap.accel_x_mg;
             sp2.accel_y_mg = snap.accel_y_mg;
             sp2.accel_z_mg = snap.accel_z_mg;
-            sp2.battery_mv = snap.battery_mv;
             sp2.fault_flags = snap.fault_flags;
             sp2.range_mm = range->range_mm;
             sp2.range_status = static_cast<uint8_t>(range->status);
@@ -92,7 +90,6 @@ void telemetry_task(void* arg)
             sp.accel_x_mg = snap.accel_x_mg;
             sp.accel_y_mg = snap.accel_y_mg;
             sp.accel_z_mg = snap.accel_z_mg;
-            sp.battery_mv = snap.battery_mv;
             sp.fault_flags = snap.fault_flags;
             sp.range_mm = range->range_mm;
             sp.range_status = static_cast<uint8_t>(range->status);

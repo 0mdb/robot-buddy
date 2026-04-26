@@ -110,7 +110,6 @@ struct TelemetryState {
     int16_t  accel_x_mg = 0; // milli-g
     int16_t  accel_y_mg = 0;
     int16_t  accel_z_mg = 0;
-    uint16_t battery_mv = 0;
     uint16_t fault_flags = 0;
     uint32_t timestamp_us = 0;
     // v2 command causality

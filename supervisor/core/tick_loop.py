@@ -122,7 +122,6 @@ class TickLoop:
         on_telemetry: Callable[[dict], Any] | None = None,
         planner_enabled: bool = False,
         robot_id: str = "",
-        low_battery_mv: int = 6400,
         conv_capture: ConversationCapture | None = None,
         param_registry: Any | None = None,
         power_monitor: PowerMonitor | None = None,
@@ -131,7 +130,6 @@ class TickLoop:
         self._face = face
         self._workers = workers
         self._on_telemetry = on_telemetry
-        self._low_battery_mv = low_battery_mv
         self._conv_capture = conv_capture
         self._param_registry = param_registry
         self._power_monitor: PowerMonitor = power_monitor or NullPowerMonitor()
@@ -399,7 +397,6 @@ class TickLoop:
         self.robot.accel_x_mg = tel.accel_x_mg
         self.robot.accel_y_mg = tel.accel_y_mg
         self.robot.accel_z_mg = tel.accel_z_mg
-        self.robot.battery_mv = tel.battery_mv
         self.robot.fault_flags = tel.fault_flags
         self.robot.range_mm = tel.range_mm
         self.robot.range_status = tel.range_status
@@ -495,21 +492,14 @@ class TickLoop:
                 )
             )
 
-        # Power events. Three signals can fire `low_battery`:
+        # Power events. Two signals can fire `low_battery`:
         #   1. PMIC undervoltage (authoritative brownout signal — always wins)
         #   2. Known SoC at/below soc_warn_pct (param-tunable; needs fuel gauge)
-        #   3. Legacy battery_mv < low_battery_mv (reflex-reported; stays 0
-        #      in current topology, so this branch is dormant until the
-        #      firmware battery ADC is ever wired — it never will be)
         power = self.robot.power
         warn_pct = self._soc_warn_pct()
         is_low = power.pmic_undervoltage or (
             power.soc_pct >= 0 and power.soc_pct <= warn_pct
         )
-        # Legacy fallback: only meaningful if something ever writes a nonzero
-        # battery_mv. Harmless today because reflex always reports 0.
-        if not is_low and self.robot.battery_mv > 0:
-            is_low = self.robot.battery_mv < self._low_battery_mv
 
         if is_low and not self._pe_low_battery_sent:
             self._pe_low_battery_sent = True
@@ -519,7 +509,6 @@ class TickLoop:
                     PERSONALITY_EVENT_SYSTEM_STATE,
                     {
                         "event": "low_battery",
-                        "battery_mv": self.robot.battery_mv,
                         "voltage_mv": power.voltage_mv,
                         "soc_pct": power.soc_pct,
                         "pmic_undervoltage": power.pmic_undervoltage,
@@ -827,13 +816,15 @@ class TickLoop:
             elif self.robot.mode == Mode.ERROR:
                 desired_sys = int(FaceSystemMode.ERROR_DISPLAY)
             elif (
-                self.robot.battery_mv > 0
-                and self.robot.battery_mv < self._low_battery_mv
+                self.robot.power.soc_pct >= 0
+                and self.robot.power.soc_pct <= self._soc_warn_pct()
             ):
+                # Visual cue alongside the speech_policy low-battery line so
+                # the kid knows why the robot is parking when SoC is critical.
                 desired_sys = int(FaceSystemMode.LOW_BATTERY)
-                # Derive 0-255 battery fill level (2S LiPo: 6000mV empty, 8400mV full)
-                fill = (self.robot.battery_mv - 6000) / (8400 - 6000)
-                desired_param = max(0, min(255, int(fill * 255)))
+                desired_param = max(
+                    0, min(255, int(self.robot.power.soc_pct * 255 / 100))
+                )
             else:
                 desired_sys = int(FaceSystemMode.NONE)
             if (
@@ -1329,7 +1320,6 @@ class TickLoop:
         world_dict = {
             "robot_id": self._robot_id,
             "mode": self.robot.mode.value,
-            "battery_mv": self.robot.battery_mv,  # legacy; always 0 today
             "power": {
                 "source": power.source,
                 "voltage_mv": power.voltage_mv,

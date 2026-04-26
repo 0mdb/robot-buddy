@@ -31,5 +31,7 @@ constexpr gpio_num_t PIN_RANGE_TRIG = GPIO_NUM_21; // output: 10 µs trigger pul
 constexpr gpio_num_t PIN_RANGE_ECHO = GPIO_NUM_2;  // input: echo pulse (level-shift if 5 V)
 
 // ---- Optional ----
-constexpr gpio_num_t PIN_ESTOP_N = GPIO_NUM_13;   // active-low, external pull-up
-constexpr gpio_num_t PIN_VBAT_SENSE = GPIO_NUM_1; // ADC1_CH0, voltage divider
+constexpr gpio_num_t PIN_ESTOP_N = GPIO_NUM_13; // active-low, external pull-up
+// Battery voltage sense is now Pi-side (Waveshare UPS HAT (B) INA219 over
+// I²C) — see docs/power.md. The ESP32 ADC pin formerly assigned here
+// (GPIO_NUM_1, ADC1_CH0) is free; reuse it freely if needed.

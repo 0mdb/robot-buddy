@@ -95,12 +95,12 @@ def client(api_deps):
 class TestStatus:
     def test_returns_combined_state(self, client):
         tc, tick, *_ = client
-        tick.robot.battery_mv = 7400
+        tick.robot.fault_flags = 0
         tick.world.planner_connected = True
         resp = tc.get("/status")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["battery_mv"] == 7400
+        assert data["fault_flags"] == 0
         assert data["planner_connected"] is True
 
     def test_includes_mode(self, client):

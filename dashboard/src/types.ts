@@ -31,7 +31,6 @@ export interface TelemetryPayload {
   accel_magnitude_mg: number
 
   // Sensors
-  battery_mv: number
   range_mm: number
   range_status: number
   fault_flags: number

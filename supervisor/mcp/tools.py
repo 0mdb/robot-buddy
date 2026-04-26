@@ -71,7 +71,6 @@ async def get_state_impl(
         result = {
             "mode": robot.get("mode"),
             "fault_flags": robot.get("fault_flags"),
-            "battery_mv": robot.get("battery_mv"),
             "face_mood": robot.get("face_mood"),
             "face_gesture": robot.get("face_gesture"),
             "reflex_connected": robot.get("reflex_connected"),

@@ -81,10 +81,10 @@ class TestGetStateTool:
     @pytest.mark.asyncio
     async def test_returns_curated_subset(self, tick, audit):
         tick.robot.mode = Mode.IDLE
-        tick.robot.battery_mv = 7400
+        tick.robot.fault_flags = 0
         result = await get_state_impl(tick, audit)
         assert result["mode"] == "IDLE"
-        assert result["battery_mv"] == 7400
+        assert result["fault_flags"] == 0
         # Verify trimming: raw speeds and clock state are not included.
         assert "speed_l" not in result
         assert "reflex_clock" not in result

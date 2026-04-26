@@ -65,7 +65,6 @@ class ReflexTelemetry:
     accel_x_mg: int = 0
     accel_y_mg: int = 0
     accel_z_mg: int = 0
-    battery_mv: int = 0
     fault_flags: int = 0
     range_mm: int = 0
     range_status: int = RangeStatus.NOT_READY
@@ -251,7 +250,6 @@ class ReflexClient:
             t.accel_x_mg = state.accel_x_mg
             t.accel_y_mg = state.accel_y_mg
             t.accel_z_mg = state.accel_z_mg
-            t.battery_mv = state.battery_mv
             t.fault_flags = state.fault_flags
             t.range_mm = state.range_mm
             t.range_status = state.range_status
