@@ -4,9 +4,9 @@ Populates `RobotState.power` at ~1 Hz. Available implementations:
 
 - `NullPowerMonitor` — always returns source="unknown". Default on non-Pi
   dev machines and when `--power-monitor=null` is passed.
-- `PiPMICMonitor` — reads the Pi 5 PMIC's hwmon voltage channel and the
-  `vcgencmd get_throttled` bitmask. Produces rail voltage + undervoltage /
-  throttled bits. Cannot derive SoC on its own.
+- `PiPMICMonitor` — reads the Pi 5 PMIC: `vcgencmd get_throttled` for
+  undervoltage / throttled bits, and `vcgencmd pmic_read_adc` for the
+  3V3_SYS_V rail (proxy for overall rail health). Cannot derive SoC.
 - `WaveshareUpsBMonitor` — reads the Waveshare UPS HAT (B) INA219 on I²C
   bus 1 @ 0x43 for pack voltage + current, derives SoC from a 2S 18650
   voltage curve, and composes with `PiPMICMonitor` so PMIC undervoltage
@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import time
 from pathlib import Path
 from typing import Protocol
@@ -71,6 +72,58 @@ _PMIC_HWMON_NAMES = frozenset({"rp1_adc", "raspberrypi_hwmon"})
 # practice) but we don't want a misbehaving vcgencmd to stall the tick loop.
 _VCGENCMD_TIMEOUT_S = 0.2
 
+# Rail label we use as the "overall rail health" voltage. Pi 5 exposes many
+# rails via `vcgencmd pmic_read_adc`; 3V3_SYS_V is the system 3.3 V rail and
+# tracks the input supply with the cleanest signal of the labeled rails.
+_PMIC_RAIL_VOLTAGE_HEALTH = "3V3_SYS_V"
+
+# `vcgencmd pmic_read_adc` line shape, e.g.:
+#   3V3_SYS_V volt(13)=3.32910450V
+#   EXT5V_V   volt(24)=4.95214390V
+# Tolerant: we only require the rail label, "=", a numeric value, and a
+# trailing "V" (or "A" for current rails — we ignore those).
+_PMIC_ADC_LINE = re.compile(r"^\s*(?P<label>\w+)\s+\w+\(\d+\)=(?P<value>[-\d.]+)V\s*$")
+
+
+async def _run_vcgencmd(*args: str) -> str | None:
+    """Run vcgencmd with a bounded timeout. Returns stdout or None on failure."""
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "vcgencmd",
+            *args,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+    except OSError as e:
+        log.debug("PiPMICMonitor: vcgencmd %s spawn failed: %s", args, e)
+        return None
+    try:
+        stdout, _ = await asyncio.wait_for(
+            proc.communicate(), timeout=_VCGENCMD_TIMEOUT_S
+        )
+    except asyncio.TimeoutError:
+        proc.kill()
+        await proc.wait()
+        log.debug("PiPMICMonitor: vcgencmd %s timed out", args)
+        return None
+    return stdout.decode("ascii", errors="replace")
+
+
+def _parse_pmic_rail_mv(adc_output: str, rail_label: str) -> int | None:
+    """Pull the named rail's voltage (mV) from `vcgencmd pmic_read_adc` output.
+
+    Returns None if the rail isn't present or its value isn't parseable.
+    """
+    for raw_line in adc_output.splitlines():
+        m = _PMIC_ADC_LINE.match(raw_line)
+        if m is None or m.group("label") != rail_label:
+            continue
+        try:
+            return int(round(float(m.group("value")) * 1000))
+        except ValueError:
+            return None
+    return None
+
 
 class PiPMICMonitor:
     """Reads Pi PMIC state via /sys/class/hwmon + `vcgencmd get_throttled`.
@@ -124,45 +177,26 @@ class PiPMICMonitor:
             source="usb",
             t_last_update_ms=time.monotonic() * 1000.0,
         )
+        _ = self._voltage_path  # hwmon channels are internal PMIC rails on Pi 5; voltage_mv comes from pmic_read_adc below.
 
-        # NOTE: hwmon2/in*_input channels on Pi 5 expose internal PMIC rails
-        # (VDD_CORE, DDR_VDDQ, etc.) — NOT the 5V USB-C input. The raw input
-        # isn't monitored via hwmon at all on Pi 5. Leave voltage_mv = 0 for
-        # now; Phase 2 will parse `vcgencmd pmic_read_adc` for labeled rail
-        # readings (3V3_SYS_V is a reasonable proxy for overall rail health).
-        # The pmic_undervoltage bit below is the authoritative brownout
-        # signal regardless.
-        _ = self._voltage_path  # kept for future use; see above
-
-        # Throttled bitmask — asynchronous subprocess with bounded timeout.
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                "vcgencmd",
-                "get_throttled",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.DEVNULL,
-            )
-            try:
-                stdout, _ = await asyncio.wait_for(
-                    proc.communicate(), timeout=_VCGENCMD_TIMEOUT_S
+        throttled_out = await _run_vcgencmd("get_throttled")
+        if throttled_out is not None:
+            line = throttled_out.strip()
+            if line.startswith("throttled="):
+                try:
+                    bits = int(line.split("=", 1)[1], 16)
+                except ValueError:
+                    bits = 0
+                state.pmic_undervoltage = bool(bits & _THROTTLED_UNDERVOLTAGE_NOW)
+                state.pmic_throttled = bool(
+                    bits & (_THROTTLED_FREQ_CAPPED_NOW | _THROTTLED_THROTTLED_NOW)
                 )
-            except asyncio.TimeoutError:
-                proc.kill()
-                await proc.wait()
-                log.debug("PiPMICMonitor: vcgencmd timed out")
-            else:
-                line = stdout.decode("ascii", errors="replace").strip()
-                if line.startswith("throttled="):
-                    try:
-                        bits = int(line.split("=", 1)[1], 16)
-                    except ValueError:
-                        bits = 0
-                    state.pmic_undervoltage = bool(bits & _THROTTLED_UNDERVOLTAGE_NOW)
-                    state.pmic_throttled = bool(
-                        bits & (_THROTTLED_FREQ_CAPPED_NOW | _THROTTLED_THROTTLED_NOW)
-                    )
-        except (OSError, ValueError) as e:
-            log.debug("PiPMICMonitor: vcgencmd failed: %s", e)
+
+        adc_out = await _run_vcgencmd("pmic_read_adc")
+        if adc_out is not None:
+            voltage_mv = _parse_pmic_rail_mv(adc_out, _PMIC_RAIL_VOLTAGE_HEALTH)
+            if voltage_mv is not None:
+                state.voltage_mv = voltage_mv
 
         return state
 

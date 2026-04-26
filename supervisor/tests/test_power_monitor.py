@@ -11,6 +11,7 @@ from supervisor.devices.power_monitor import (
     NullPowerMonitor,
     PiPMICMonitor,
     WaveshareUpsBMonitor,
+    _parse_pmic_rail_mv,
     _voltage_to_soc,
     pick_power_monitor,
 )
@@ -96,6 +97,49 @@ class TestPiPMICMonitor:
         assert state.pmic_throttled is True
 
     @pytest.mark.asyncio
+    async def test_poll_parses_pmic_adc_voltage(self, tmp_path, monkeypatch):
+        root = _make_hwmon(tmp_path, name="rp1_adc", voltage_mv=5012)
+        mon = PiPMICMonitor(sysfs_root=root)
+
+        adc_output = (
+            "EXT5V_V volt(24)=4.95214390V\n"
+            "3V3_SYS_V volt(13)=3.32910450V\n"
+            "0V8_SW_V volt(0)=0.79234360V\n"
+            "EXT5V_A current(20)=2.31250000A\n"  # current rails ignored
+        )
+
+        async def fake_exec(*args, **kwargs):
+            cmd = args[1] if len(args) > 1 else ""
+            if cmd == "get_throttled":
+                return _FakeProc(b"throttled=0x0\n")
+            if cmd == "pmic_read_adc":
+                return _FakeProc(adc_output.encode("ascii"))
+            return _FakeProc(b"")
+
+        monkeypatch.setattr(power_monitor.asyncio, "create_subprocess_exec", fake_exec)
+
+        state = await mon.poll()
+        assert state.voltage_mv == 3329  # 3.32910450 V → 3329 mV (rounded)
+        assert state.pmic_undervoltage is False
+
+    @pytest.mark.asyncio
+    async def test_poll_tolerates_missing_health_rail(self, tmp_path, monkeypatch):
+        root = _make_hwmon(tmp_path, name="rp1_adc", voltage_mv=5012)
+        mon = PiPMICMonitor(sysfs_root=root)
+
+        # vcgencmd output without 3V3_SYS_V — voltage_mv stays at 0.
+        async def fake_exec(*args, **kwargs):
+            cmd = args[1] if len(args) > 1 else ""
+            if cmd == "get_throttled":
+                return _FakeProc(b"throttled=0x0\n")
+            return _FakeProc(b"EXT5V_V volt(24)=4.95214390V\n")
+
+        monkeypatch.setattr(power_monitor.asyncio, "create_subprocess_exec", fake_exec)
+
+        state = await mon.poll()
+        assert state.voltage_mv == 0
+
+    @pytest.mark.asyncio
     async def test_poll_survives_vcgencmd_missing(self, tmp_path, monkeypatch):
         root = _make_hwmon(tmp_path, name="rp1_adc", voltage_mv=5010)
         mon = PiPMICMonitor(sysfs_root=root)
@@ -110,6 +154,30 @@ class TestPiPMICMonitor:
         # (see PiPMICMonitor.poll() note — hwmon can't see the 5V input).
         assert state.voltage_mv == 0
         assert state.pmic_undervoltage is False
+
+
+class TestParsePmicRailMv:
+    def test_extracts_named_rail(self):
+        out = (
+            "EXT5V_V volt(24)=4.95214390V\n"
+            "3V3_SYS_V volt(13)=3.32910450V\n"
+            "0V8_SW_V volt(0)=0.79234360V\n"
+        )
+        assert _parse_pmic_rail_mv(out, "3V3_SYS_V") == 3329
+        assert _parse_pmic_rail_mv(out, "EXT5V_V") == 4952
+
+    def test_returns_none_when_rail_absent(self):
+        out = "EXT5V_V volt(24)=4.95214390V\n"
+        assert _parse_pmic_rail_mv(out, "3V3_SYS_V") is None
+
+    def test_ignores_current_rails(self):
+        # Current rails (suffix _A) must not match a voltage label query.
+        out = "EXT5V_A current(20)=2.31250000A\n"
+        assert _parse_pmic_rail_mv(out, "EXT5V_A") is None
+
+    def test_tolerates_blank_and_garbled_lines(self):
+        out = "\n  garbage line  \n3V3_SYS_V volt(13)=3.30000000V\n\n"
+        assert _parse_pmic_rail_mv(out, "3V3_SYS_V") == 3300
 
 
 class TestVoltageToSoc:
