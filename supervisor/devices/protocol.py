@@ -45,6 +45,16 @@ class CmdType(IntEnum):
 
 class TelType(IntEnum):
     STATE = 0x80
+    BRINGUP_DIAG = 0x82
+
+
+# Bring-up phase labels — see esp32-reflex/main/protocol.h::BringupPhase.
+class BringupPhase(IntEnum):
+    IDLE = 0
+    LEFT_FWD = 1
+    LEFT_REV = 2
+    RIGHT_FWD = 3
+    RIGHT_REV = 4
 
 
 # -- Fault flags (bitfield, matches Fault enum in shared_state.h) -----------
@@ -232,6 +242,28 @@ class StatePayload:
             raise ValueError(f"STATE payload too short: {len(data)} < {cls._FMT.size}")
         fields = cls._FMT.unpack_from(data)
         return cls(*fields)
+
+
+@dataclass(slots=True)
+class BringupDiagPayload:
+    """Open-loop motor/encoder bring-up sample — see app_main.cpp::open_loop_test_task."""
+
+    phase: int  # BringupPhase
+    side: int  # 0=LEFT, 1=RIGHT
+    forward: int  # 0=reverse, 1=forward
+    pwm_duty: int
+    raw_l: int  # encoder_get_count(LEFT) at sample time
+    raw_r: int  # encoder_get_count(RIGHT) at sample time
+
+    _FMT = struct.Struct("<BBBHii")  # 13 bytes
+
+    @classmethod
+    def unpack(cls, data: bytes) -> BringupDiagPayload:
+        if len(data) < cls._FMT.size:
+            raise ValueError(
+                f"BRINGUP_DIAG payload too short: {len(data)} < {cls._FMT.size}"
+            )
+        return cls(*cls._FMT.unpack_from(data))
 
 
 @dataclass(slots=True)

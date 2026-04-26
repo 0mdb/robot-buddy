@@ -29,6 +29,7 @@ _REFLEX_CMD_NAMES: dict[int, str] = {
 
 _REFLEX_TEL_NAMES: dict[int, str] = {
     0x80: "STATE",
+    0x82: "BRINGUP_DIAG",
 }
 
 _FACE_CMD_NAMES: dict[int, str] = {
@@ -202,6 +203,18 @@ def _decode_fields(pkt_type: int, payload: bytes) -> dict[str, Any]:
                 "faults": f"0x{faults:04X}",
                 "range_mm": rng,
                 "range_status": rs,
+            }
+        if pkt_type == 0x82 and len(payload) >= 13:  # BRINGUP_DIAG
+            phase, side, forward, pwm, raw_l, raw_r = struct.unpack_from(
+                "<BBBHii", payload
+            )
+            return {
+                "phase": phase,
+                "side": side,
+                "forward": forward,
+                "pwm_duty": pwm,
+                "raw_l": raw_l,
+                "raw_r": raw_r,
             }
 
         # -- Face commands -------------------------------------------------

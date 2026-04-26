@@ -404,6 +404,17 @@ class TickLoop:
         self.robot.reflex_rx_mono_ms = tel.rx_mono_ms
         self.robot.v_meas_mm_s = tel.v_meas_mm_s
         self.robot.w_meas_mrad_s = tel.w_meas_mrad_s
+        # Bring-up diagnostic — present only when firmware is in BRINGUP_OPEN_LOOP_TEST mode.
+        latest_bringup = getattr(tel, "latest_bringup", None)
+        if latest_bringup is not None:
+            self.robot.bringup_diag = {
+                "phase": latest_bringup.phase,
+                "side": latest_bringup.side,
+                "forward": latest_bringup.forward,
+                "pwm_duty": latest_bringup.pwm_duty,
+                "raw_l": latest_bringup.raw_l,
+                "raw_r": latest_bringup.raw_r,
+            }
         # Derived IMU values
         self.robot.tilt_angle_deg = math.degrees(
             math.atan2(tel.accel_x_mg, tel.accel_z_mg)

@@ -41,6 +41,21 @@ enum class CmdId : uint8_t {
 
 enum class TelId : uint8_t {
     STATE = 0x80,
+    // BRINGUP_DIAG: emitted by open_loop_test_task at ~10 Hz during the
+    // motor/encoder bring-up test. Inert in production builds (the task
+    // only runs when BRINGUP_OPEN_LOOP_TEST=1 in app_main.cpp).
+    BRINGUP_DIAG = 0x82,
+};
+
+// BringupPhase labels the active phase of open_loop_test_task. Mirrored on
+// the supervisor side as a small integer for compact wire encoding; human
+// labels live in the supervisor log formatter.
+enum class BringupPhase : uint8_t {
+    IDLE = 0,
+    LEFT_FWD = 1,
+    LEFT_REV = 2,
+    RIGHT_FWD = 3,
+    RIGHT_REV = 4,
 };
 
 // ---- Payload structs (packed, little-endian) ----
@@ -98,6 +113,17 @@ struct __attribute__((packed)) StatePayloadV2 {
 struct __attribute__((packed)) TimeSyncRespPayload {
     uint32_t ping_seq;
     uint64_t t_src_us;
+};
+
+// 13 bytes — sent only during BRINGUP_OPEN_LOOP_TEST. Raw counts (not deltas)
+// so the supervisor can window arbitrarily.
+struct __attribute__((packed)) BringupDiagPayload {
+    uint8_t  phase;    // BringupPhase
+    uint8_t  side;     // 0=LEFT, 1=RIGHT
+    uint8_t  forward;  // 0=reverse, 1=forward
+    uint16_t pwm_duty; // raw value passed to motor_set_output
+    int32_t  raw_l;    // encoder_get_count(LEFT) at sample time
+    int32_t  raw_r;    // encoder_get_count(RIGHT) at sample time
 };
 
 struct __attribute__((packed)) ProtocolVersionPayload {

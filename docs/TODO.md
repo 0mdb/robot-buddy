@@ -173,8 +173,8 @@ Context: single-rail 5V topology per `docs/power.md` (UPS HAT (B) → Pi + ESP32
 - [ ] TB6612 VM bulk cap: 1000 µF electrolytic (≥10V, low-ESR) physically adjacent to the VM pin (short leads, ≤20mm trace) to absorb direction-flip sag — per `docs/power.md` §Topology
 - [ ] Motor-current wiring gauge: 22AWG minimum / 20AWG preferred on UPS HAT → TB6612 VM and TB6612 → motor leads; breadboard jumpers will sag under ~1.5A peaks
 - [ ] HC-SR04 cable routing: twist 5V/GND pair; separate from motor PWM/direction wires to prevent ultrasonic trigger corruption from switching noise
-- [ ] Free obsolete `PIN_VBAT_SENSE = GPIO_NUM_1` in `esp32-reflex/main/pin_map.h` — battery telemetry comes from the HAT's INA219 now, not ESP32 ADC (per `docs/power.md` §Firmware note)
-- [ ] Waveshare UPS HAT (B) INA219 monitor (`WaveshareUpsBMonitor`) — Phase 2 of the power monitor plan; prerequisite for untethered operation (SoC readout, undervoltage warnings, low-battery announcements in `speech_policy`)
+- [x] Free obsolete `PIN_VBAT_SENSE = GPIO_NUM_1` in `esp32-reflex/main/pin_map.h` _(shipped 2026-04-26, `83e204c`)_ — battery telemetry comes from the HAT's INA219 now, not ESP32 ADC.
+- [x] Waveshare UPS HAT (B) INA219 monitor (`WaveshareUpsBMonitor`) _(shipped 2026-04-25/26, `9a89368`/`8a0d5d4`)_ — Phase 2 power monitor plan complete; SoC readout, undervoltage warnings, low-battery speech all live.
 - [ ] Dev-board motor bring-up: power the breadboard's 5V rail from the UPS HAT (tap Pi header 5V/GND) — validates the power plan and motor driver simultaneously; bench supply @ 5V/≥3A is the backup if Pi isn't nearby
 
 ---

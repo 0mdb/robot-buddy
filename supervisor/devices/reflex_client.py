@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable
 
 from supervisor.devices.protocol import (
+    BringupDiagPayload,
+    BringupPhase,
     CmdType,
     Fault,
     ParsedPacket,
@@ -70,6 +72,9 @@ class ReflexTelemetry:
     range_status: int = RangeStatus.NOT_READY
     rx_mono_ms: float = 0.0
     seq: int = 0
+    # Latest BRINGUP_DIAG sample. Populated only when the reflex firmware was
+    # built with BRINGUP_OPEN_LOOP_TEST=1; stays None otherwise.
+    latest_bringup: BringupDiagPayload | None = None
 
     @property
     def v_meas_mm_s(self) -> float:
@@ -262,6 +267,30 @@ class ReflexClient:
 
             if self._on_telemetry:
                 self._on_telemetry(t)
+        elif pkt.pkt_type == TelType.BRINGUP_DIAG:
+            try:
+                diag = BringupDiagPayload.unpack(pkt.payload)
+            except ValueError as e:
+                self._rx_bad_payload_packets += 1
+                log.warning("reflex: bad BRINGUP_DIAG payload: %s", e)
+                return
+            self.telemetry.latest_bringup = diag
+            try:
+                phase_label = BringupPhase(diag.phase).name
+            except ValueError:
+                phase_label = f"UNKNOWN({diag.phase})"
+            side_label = "L" if diag.side == 0 else "R"
+            log.info(
+                "bringup_diag phase=%s side=%s forward=%d pwm=%d enc_l=%d enc_r=%d",
+                phase_label,
+                side_label,
+                diag.forward,
+                diag.pwm_duty,
+                diag.raw_l,
+                diag.raw_r,
+            )
+            if self._on_telemetry:
+                self._on_telemetry(self.telemetry)
         else:
             self._rx_unknown_packets += 1
             log.debug("reflex: unknown packet type 0x%02X", pkt.pkt_type)

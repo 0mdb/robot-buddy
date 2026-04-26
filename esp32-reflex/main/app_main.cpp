@@ -17,8 +17,10 @@
 #include "usb_rx.h"
 #include "telemetry.h"
 #include "shared_state.h"
+#include "protocol.h"
 
 #include "driver/usb_serial_jtag.h"
+#include <cstring>
 
 static const char* TAG = "reflex";
 
@@ -35,9 +37,34 @@ std::atomic<uint32_t> g_cmd_seq_last{0};
 // Set to 0 once closed-loop control is validated.
 // When enabled, control_task and safety_task are NOT started.
 // ============================================================
-#define BRINGUP_OPEN_LOOP_TEST 0
+#define BRINGUP_OPEN_LOOP_TEST 1
 
 #if BRINGUP_OPEN_LOOP_TEST
+
+// Emit a BRINGUP_DIAG telemetry packet with the current encoder snapshot.
+// Best-effort, non-blocking — drop on TX backpressure (matches telemetry_task).
+// ESP_LOGI calls in this task are silenced (binary protocol owns USB-Serial-JTAG);
+// this packet is the actual data path the supervisor consumes.
+static void emit_bringup_diag(BringupPhase phase, MotorSide side, bool forward, uint16_t pwm_duty)
+{
+    int32_t cur_l, cur_r;
+    encoder_snapshot(&cur_l, &cur_r);
+
+    BringupDiagPayload p{};
+    p.phase = static_cast<uint8_t>(phase);
+    p.side = (side == MotorSide::LEFT) ? 0u : 1u;
+    p.forward = forward ? 1u : 0u;
+    p.pwm_duty = pwm_duty;
+    p.raw_l = cur_l;
+    p.raw_r = cur_r;
+
+    uint8_t      wire_buf[64];
+    const size_t wire_len = packet_build_v2(
+        static_cast<uint8_t>(TelId::BRINGUP_DIAG), next_seq(), static_cast<uint64_t>(esp_timer_get_time()),
+        reinterpret_cast<const uint8_t*>(&p), sizeof(p), wire_buf, sizeof(wire_buf));
+    if (wire_len == 0) return;
+    usb_serial_jtag_write_bytes(reinterpret_cast<const char*>(wire_buf), wire_len, 0);
+}
 
 static void open_loop_test_task(void* arg)
 {
@@ -53,7 +80,7 @@ static void open_loop_test_task(void* arg)
     const uint32_t hold_ms = 1500;
     const uint32_t sample_interval_ms = 100;
 
-    auto run_phase = [&](const char* label, MotorSide side, bool forward) {
+    auto run_phase = [&](const char* label, BringupPhase phase, MotorSide side, bool forward) {
         ESP_LOGI(TAG, "--- %s ---", label);
 
         int32_t start_l, start_r;
@@ -69,17 +96,19 @@ static void open_loop_test_task(void* arg)
             encoder_snapshot(&cur_l, &cur_r);
             ESP_LOGI(TAG, "  enc L=%ld  R=%ld  (dL=%ld dR=%ld)", (long)cur_l, (long)cur_r, (long)(cur_l - start_l),
                      (long)(cur_r - start_r));
+            emit_bringup_diag(phase, side, forward, test_duty);
         }
 
         motor_set_output(side, 0, true);
         motor_brake();
         vTaskDelay(pdMS_TO_TICKS(500));
+        emit_bringup_diag(BringupPhase::IDLE, side, forward, 0);
     };
 
-    run_phase("LEFT FORWARD", MotorSide::LEFT, true);
-    run_phase("LEFT REVERSE", MotorSide::LEFT, false);
-    run_phase("RIGHT FORWARD", MotorSide::RIGHT, true);
-    run_phase("RIGHT REVERSE", MotorSide::RIGHT, false);
+    run_phase("LEFT FORWARD", BringupPhase::LEFT_FWD, MotorSide::LEFT, true);
+    run_phase("LEFT REVERSE", BringupPhase::LEFT_REV, MotorSide::LEFT, false);
+    run_phase("RIGHT FORWARD", BringupPhase::RIGHT_FWD, MotorSide::RIGHT, true);
+    run_phase("RIGHT REVERSE", BringupPhase::RIGHT_REV, MotorSide::RIGHT, false);
 
     motor_hard_kill();
     ESP_LOGI(TAG, "=== OPEN-LOOP TEST COMPLETE ===");

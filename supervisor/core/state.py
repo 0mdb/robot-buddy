@@ -166,6 +166,12 @@ class RobotState:
     # Power (Pi-side — populated by PowerMonitor)
     power: PowerState = field(default_factory=PowerState)
 
+    # Bring-up diagnostic (open-loop motor/encoder test). Populated only when
+    # the reflex firmware is built with BRINGUP_OPEN_LOOP_TEST=1; stays None
+    # otherwise. Holds the latest sample — ages forever once the test finishes,
+    # so consumers should cross-check against firmware mode if treating as live.
+    bringup_diag: dict | None = None
+
     # Safety
     speed_caps: list[SpeedCap] = field(default_factory=list)
 
@@ -273,6 +279,7 @@ class RobotState:
                 "pmic_undervoltage": self.power.pmic_undervoltage,
                 "pmic_throttled": self.power.pmic_throttled,
             },
+            "bringup_diag": self.bringup_diag,
         }
 
 
