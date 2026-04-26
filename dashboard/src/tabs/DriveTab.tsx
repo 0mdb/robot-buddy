@@ -4,6 +4,7 @@ import { Joystick } from '../components/Joystick'
 import { Sparkline } from '../components/Sparkline'
 import { useSend } from '../hooks/useSend'
 import { useTelemetry } from '../hooks/useTelemetry'
+import { getPath } from '../lib/getPath'
 import styles from '../styles/global.module.css'
 
 interface GaugeCardProps {
@@ -15,7 +16,10 @@ interface GaugeCardProps {
 }
 
 function GaugeCard({ label, unit, metric, valueField, decimals = 0 }: GaugeCardProps) {
-  const value = useTelemetry((s) => s.snapshot[valueField])
+  // valueField may be a dot-path (e.g. "power.voltage_mv").
+  const value = useTelemetry((s) =>
+    valueField.includes('.') ? getPath(s.snapshot, valueField) : s.snapshot[valueField],
+  )
   const display = typeof value === 'number' ? value.toFixed(decimals) : '--'
 
   return (
@@ -164,7 +168,12 @@ export default function DriveTab() {
             decimals={1}
           />
           <GaugeCard label="Range" unit="mm" metric="range_mm" valueField="range_mm" />
-          <GaugeCard label="Battery" unit="mV" metric="battery_mv" valueField="battery_mv" />
+          <GaugeCard
+            label="Battery"
+            unit="mV"
+            metric="power.voltage_mv"
+            valueField="power.voltage_mv"
+          />
           <GaugeCard
             label="Tick dt"
             unit="ms"

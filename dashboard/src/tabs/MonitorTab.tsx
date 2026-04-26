@@ -402,24 +402,22 @@ function CommunicationPanel({
   )
 }
 
-const BATTERY_SERIES = [{ metric: 'battery_mv', label: 'Battery', color: '#eab308' }]
+const BATTERY_SERIES = [{ metric: 'power.voltage_mv', label: 'Battery', color: '#eab308' }]
+// 2S 18650 thresholds: 8.0 V good, 7.0 V warn, 6.4 V critical (matches the
+// soc curve in supervisor/devices/power_monitor.py).
 const BATTERY_THRESHOLDS = [
-  { value: 7000, color: '#4caf50', label: 'OK' },
-  { value: 6500, color: '#f44336', label: 'Low' },
+  { value: 8000, color: '#4caf50', label: 'OK' },
+  { value: 7000, color: '#eab308', label: 'Warn' },
+  { value: 6400, color: '#f44336', label: 'Low' },
 ]
 
 function PowerPanel({
-  batteryMv,
   reflexConnected,
   power,
 }: {
-  batteryMv: number
   reflexConnected: boolean
   power: PowerStateInfo | undefined
 }) {
-  // Authoritative source is `power` from the Pi-side monitor. Legacy
-  // batteryMv is still plotted on the chart until a fuel gauge lands and
-  // the chart flips to power.voltage_mv.
   const src = power?.source ?? 'unknown'
   const voltageMv = power?.voltage_mv ?? 0
   const socPct = power?.soc_pct ?? -1
@@ -493,7 +491,7 @@ function PowerPanel({
         series={BATTERY_SERIES}
         thresholds={BATTERY_THRESHOLDS}
       />
-      {batteryMv === 0 && voltageMv === 0 && (
+      {voltageMv === 0 && (
         <span className={styles.mono} style={{ color: 'var(--text-dim)', fontSize: 11 }}>
           voltage telemetry offline — chart will populate when a fuel-gauge monitor or Pi PMIC
           reading is available
@@ -944,7 +942,6 @@ export default function MonitorTab() {
     200,
   )
   const faultFlags = useTelemetry((s) => (s.snapshot as TelemetryPayload).fault_flags ?? 0, 200)
-  const batteryMv = useTelemetry((s) => (s.snapshot as TelemetryPayload).battery_mv ?? 0, 200)
   const power = useTelemetry(
     (s) => (s.snapshot as TelemetryPayload).power as PowerStateInfo | undefined,
     200,
@@ -993,7 +990,7 @@ export default function MonitorTab() {
       <DeviceClockPanel devices={devices} clocks={clocks} />
 
       {/* Power chart */}
-      <PowerPanel batteryMv={batteryMv} reflexConnected={reflexConnected} power={power} />
+      <PowerPanel reflexConnected={reflexConnected} power={power} />
 
       {/* Sensor health */}
       <SensorHealthPanel

@@ -95,7 +95,7 @@ export default function TelemetryTab() {
         yLabel="mV"
         window={window}
         height={200}
-        series={[{ metric: 'battery_mv', label: 'Battery', color: '#eab308' }]}
+        series={[{ metric: 'power.voltage_mv', label: 'Battery', color: '#eab308' }]}
       />
     </div>
   )

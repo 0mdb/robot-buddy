@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { RING_METRICS } from '../constants'
+import { getPath } from '../lib/getPath'
 import { RingBuffer } from '../lib/ringBuffer'
 
 const RING_CAPACITY = 1200 // 60s @ 20Hz
@@ -50,9 +51,11 @@ export const useTelemetryStore = create<TelemetryState>()((set, get) => {
       const now = performance.now()
       const ts = (payload.tick_mono_ms as number) ?? now
 
-      // Push numeric fields into ring buffers
+      // Push numeric fields into ring buffers. RING_METRICS may use
+      // dot-paths (e.g. "power.voltage_mv") for fields nested under the
+      // power telemetry group.
       for (const metric of RING_METRICS) {
-        const v = payload[metric]
+        const v = metric.includes('.') ? getPath(payload, metric) : payload[metric]
         if (typeof v === 'number') {
           state.ring(metric).push(v, ts)
         }
