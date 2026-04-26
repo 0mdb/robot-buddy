@@ -237,7 +237,9 @@ class _FakeSMBus:
         return list(word.to_bytes(length, "big"))
 
 
-def _ina219_registers(voltage_mv: int, current_ma: int) -> dict[tuple[int, int], int]:
+def _ina219_registers(
+    voltage_mv: int, current_ma: int, addr: int = 0x42
+) -> dict[tuple[int, int], int]:
     """Encode bus-voltage + shunt-voltage register values for a fake INA219."""
     # Bus voltage register: top 13 bits = LSB 4 mV, bottom 3 bits are status.
     bus_raw = (voltage_mv // 4) << 3
@@ -246,9 +248,9 @@ def _ina219_registers(voltage_mv: int, current_ma: int) -> dict[tuple[int, int],
     if shunt_raw < 0:
         shunt_raw += 0x10000
     return {
-        (0x43, 0x00): 0x00,  # config (just needs to ACK)
-        (0x43, 0x02): bus_raw,
-        (0x43, 0x01): shunt_raw,
+        (addr, 0x00): 0x00,  # config (just needs to ACK)
+        (addr, 0x02): bus_raw,
+        (addr, 0x01): shunt_raw,
     }
 
 
@@ -352,7 +354,7 @@ class TestPickPowerMonitor:
 
         monkeypatch.setattr(PiPMICMonitor, "__init__", explode)
         monkeypatch.setattr(
-            power_monitor, "_probe_ina219_present", lambda *a, **k: False
+            power_monitor, "_probe_ina219_address", lambda *a, **k: None
         )
         mon = pick_power_monitor(None)
         assert isinstance(mon, NullPowerMonitor)
@@ -375,11 +377,12 @@ class TestPickPowerMonitor:
 
         monkeypatch.setattr(PiPMICMonitor, "__init__", fake_init)
         monkeypatch.setattr(
-            power_monitor, "_probe_ina219_present", lambda *a, **k: True
+            power_monitor, "_probe_ina219_address", lambda *a, **k: 0x42
         )
         mon = pick_power_monitor(None)
         assert isinstance(mon, WaveshareUpsBMonitor)
         assert isinstance(mon._inner, PiPMICMonitor)
+        assert mon._addr == 0x42
 
     def test_auto_ups_b_falls_back_to_null_inner_when_pmic_missing(self, monkeypatch):
         def explode(self, sysfs_root="/sys/class/hwmon"):
@@ -387,7 +390,7 @@ class TestPickPowerMonitor:
 
         monkeypatch.setattr(PiPMICMonitor, "__init__", explode)
         monkeypatch.setattr(
-            power_monitor, "_probe_ina219_present", lambda *a, **k: True
+            power_monitor, "_probe_ina219_address", lambda *a, **k: 0x43
         )
         mon = pick_power_monitor(None)
         assert isinstance(mon, WaveshareUpsBMonitor)
@@ -398,7 +401,7 @@ class TestPickPowerMonitor:
             PiPMICMonitor, "__init__", lambda self, sysfs_root="/sys/class/hwmon": None
         )
         monkeypatch.setattr(
-            power_monitor, "_probe_ina219_present", lambda *a, **k: False
+            power_monitor, "_probe_ina219_address", lambda *a, **k: None
         )
         with pytest.raises(OSError):
             pick_power_monitor("ups-b")

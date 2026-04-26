@@ -203,9 +203,13 @@ class PiPMICMonitor:
 
 # ── Waveshare UPS HAT (B) — INA219 over I²C ─────────────────────────────────
 
-# I²C bus + address for the HAT (B) variant.
+# I²C bus for the HAT (B) variant.
 _INA219_BUS_DEFAULT = 1
-_INA219_ADDR_DEFAULT = 0x43
+# Default INA219 address. The HAT (B) straps A0/A1 differently across
+# revisions — observed values include 0x40 (datasheet default), 0x42, 0x43.
+# pick_power_monitor() auto-detect probes the full range below.
+_INA219_ADDR_DEFAULT = 0x42
+_INA219_PROBE_ADDRS: tuple[int, ...] = (0x40, 0x41, 0x42, 0x43, 0x44, 0x45)
 
 # INA219 register map (subset we use).
 _REG_CONFIG = 0x00
@@ -269,6 +273,26 @@ def _read_ina219_blocking(bus_num: int, addr: int) -> tuple[int, int]:
     # 0.1 Ω shunt → current_mA = s_raw × 0.1.
     current_ma = round(s_raw / 10)
     return voltage_mv, current_ma
+
+
+def _probe_ina219_address(
+    bus_num: int = _INA219_BUS_DEFAULT,
+    candidates: tuple[int, ...] = _INA219_PROBE_ADDRS,
+) -> int | None:
+    """Scan typical INA219 strap addresses on the bus; return first ACK or None."""
+    if _SMBus is None:
+        return None
+    try:
+        with _SMBus(bus_num) as bus:
+            for addr in candidates:
+                try:
+                    bus.read_byte_data(addr, _REG_CONFIG)
+                    return addr
+                except OSError:
+                    continue
+    except (OSError, FileNotFoundError):
+        pass
+    return None
 
 
 def _probe_ina219_present(
@@ -372,24 +396,30 @@ def pick_power_monitor(override: str | None = None) -> PowerMonitor:
         return PiPMICMonitor()
     if mode == "ups-b":
         inner = _try_pmic_else_null()
-        # Probe to give a clean OSError up front rather than silent zeros.
-        if not _probe_ina219_present():
+        addr = _probe_ina219_address()
+        if addr is None:
             raise OSError(
                 f"Waveshare UPS HAT (B) INA219 not detected on i2c-"
-                f"{_INA219_BUS_DEFAULT} @ 0x{_INA219_ADDR_DEFAULT:02x}"
+                f"{_INA219_BUS_DEFAULT} (probed {[hex(a) for a in _INA219_PROBE_ADDRS]})"
             )
-        return WaveshareUpsBMonitor(inner=inner)
+        return WaveshareUpsBMonitor(addr=addr, inner=inner)
 
     # auto: try ups-b → pmic → null.
-    if _probe_ina219_present():
+    addr = _probe_ina219_address()
+    if addr is not None:
         inner = _try_pmic_else_null()
         log.info(
             "PowerMonitor: WaveshareUpsBMonitor on i2c-%d @ 0x%02x (inner=%s)",
             _INA219_BUS_DEFAULT,
-            _INA219_ADDR_DEFAULT,
+            addr,
             inner.label(),
         )
-        return WaveshareUpsBMonitor(inner=inner)
+        return WaveshareUpsBMonitor(addr=addr, inner=inner)
+    log.info(
+        "PowerMonitor: no INA219 ACK on i2c-%d (probed %s) — falling back to PiPMICMonitor",
+        _INA219_BUS_DEFAULT,
+        [f"0x{a:02x}" for a in _INA219_PROBE_ADDRS],
+    )
     try:
         return PiPMICMonitor()
     except (FileNotFoundError, OSError) as e:
