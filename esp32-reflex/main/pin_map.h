@@ -11,8 +11,8 @@ constexpr gpio_num_t PIN_PWMB = GPIO_NUM_5; // right motor PWM
 // Direction outputs
 constexpr gpio_num_t PIN_AIN1 = GPIO_NUM_6;  // left fwd
 constexpr gpio_num_t PIN_AIN2 = GPIO_NUM_7;  // left rev
-constexpr gpio_num_t PIN_BIN1 = GPIO_NUM_15; // right fwd
-constexpr gpio_num_t PIN_BIN2 = GPIO_NUM_16; // right rev
+constexpr gpio_num_t PIN_BIN1 = GPIO_NUM_38; // right fwd  (cluster pad 15 on flat-mount PCB)
+constexpr gpio_num_t PIN_BIN2 = GPIO_NUM_39; // right rev  (cluster pad 14 on flat-mount PCB)
 // Standby (active-high enable; external pulldown required)
 constexpr gpio_num_t PIN_STBY = GPIO_NUM_8;
 
@@ -27,8 +27,8 @@ constexpr gpio_num_t PIN_IMU_SDA = GPIO_NUM_17;
 constexpr gpio_num_t PIN_IMU_SCL = GPIO_NUM_18;
 
 // ---- Ultrasonic range sensor (HC-SR04 or similar) ----
-constexpr gpio_num_t PIN_RANGE_TRIG = GPIO_NUM_21; // output: 10 µs trigger pulse
-constexpr gpio_num_t PIN_RANGE_ECHO = GPIO_NUM_2;  // input: echo pulse (level-shift if 5 V)
+constexpr gpio_num_t PIN_RANGE_TRIG = GPIO_NUM_3; // output: 10 µs trigger pulse (GPIO21 is WS2812 LED)
+constexpr gpio_num_t PIN_RANGE_ECHO = GPIO_NUM_2; // input: echo pulse (level-shift if 5 V)
 
 // ---- Optional ----
 constexpr gpio_num_t PIN_ESTOP_N = GPIO_NUM_13; // active-low, external pull-up
