@@ -106,6 +106,7 @@ FP = {
     "Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical": f"{KICAD}/Connector_JST.pretty/JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical.kicad_mod",
     "Connector_JST:JST_XH_B3B-XH-A_1x03_P2.50mm_Vertical": f"{KICAD}/Connector_JST.pretty/JST_XH_B3B-XH-A_1x03_P2.50mm_Vertical.kicad_mod",
     "Connector_JST:JST_XH_B4B-XH-A_1x04_P2.50mm_Vertical": f"{KICAD}/Connector_JST.pretty/JST_XH_B4B-XH-A_1x04_P2.50mm_Vertical.kicad_mod",
+    "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical": f"{KICAD}/Connector_PinHeader_2.54mm.pretty/PinHeader_1x04_P2.54mm_Vertical.kicad_mod",
     "Connector_JST:JST_XH_B6B-XH-A_1x06_P2.50mm_Vertical": f"{KICAD}/Connector_JST.pretty/JST_XH_B6B-XH-A_1x06_P2.50mm_Vertical.kicad_mod",
     "Connector_JST:JST_SH_BM04B-SRSS-TB_1x04-1MP_P1.00mm_Vertical": f"{KICAD}/Connector_JST.pretty/JST_SH_BM04B-SRSS-TB_1x04-1MP_P1.00mm_Vertical.kicad_mod",
     "Resistor_SMD:R_0402_1005Metric": f"{KICAD}/Resistor_SMD.pretty/R_0402_1005Metric.kicad_mod",
@@ -187,7 +188,14 @@ place(
 
 # ── Top-edge connectors (angle=0 → pads along +X, housing front at y≈0) ─────
 #   Footprint origin = pad1 at (x,y); housing extends from y-2.85 (≈top edge) to y+3.9
-place("J6", "HC-SR04", "Connector_JST:JST_XH_B4B-XH-A_1x04_P2.50mm_Vertical", 5, 3)
+place(
+    "J6",
+    "HC-SR04",
+    "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical",
+    5,
+    3,
+    90,
+)
 place("J7", "E-Stop", "Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical", 22, 3)
 
 # ── Left-edge connectors (angle=270 → pads along -Y, housing exits ←) ────────
