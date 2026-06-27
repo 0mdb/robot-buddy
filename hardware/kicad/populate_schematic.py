@@ -795,7 +795,7 @@ s.schematicSymbols.append(
         C6Y,
         "C6",
         "100µF",
-        "Capacitor_THT:CP_Radial_D5.0mm_P2.50mm",
+        "Capacitor_THT:CP_Radial_D5.0mm_P2.00mm",
         "NeoPixel +5V bulk decoupling (64-LED inrush at power-on)",
     )
 )
