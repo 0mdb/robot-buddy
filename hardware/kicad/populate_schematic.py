@@ -176,6 +176,7 @@ motor_lib = SymbolLib.from_file(f"{SYMLIBS}Driver_Motor.kicad_sym")
 device_lib = SymbolLib.from_file(f"{SYMLIBS}Device.kicad_sym")
 power_lib = SymbolLib.from_file(f"{SYMLIBS}power.kicad_sym")
 conn_lib = SymbolLib.from_file(f"{SYMLIBS}Connector_Generic.kicad_sym")
+logic_lib = SymbolLib.from_file(f"{SYMLIBS}74xGxx.kicad_sym")
 
 
 def add_lib_sym(lib, entry_name, nick):
@@ -193,6 +194,7 @@ for pname in ["+5V", "+3V3", "GND", "+BATT", "PWR_FLAG"]:
     add_lib_sym(power_lib, pname, "power")
 for cname in ["Conn_01x02", "Conn_01x03", "Conn_01x04", "Conn_01x06"]:
     add_lib_sym(conn_lib, cname, "Connector_Generic")
+add_lib_sym(logic_lib, "74LVC1G125", "74xGxx")
 
 # ========================================================================
 # ESP32-S3-Zero U1 pin coordinates
@@ -321,6 +323,26 @@ def conn6_pins(cx, cy):
         (cx - 5.08, cy + 5.08),
         (cx - 5.08, cy + 7.62),
     ]
+
+
+FP_XH2 = "Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical"
+FP_XH3 = "Connector_JST:JST_XH_B3B-XH-A_1x03_P2.50mm_Vertical"
+FP_SOT235 = "Package_TO_SOT_SMD:SOT-23-5"
+
+
+def u3_pins(cx, cy):
+    """74LVC1G125 SOT-23-5 pin endpoints in schematic space (KiCad Y-flip applied).
+    Pin 1 ~OE  angle=270 (wire up),  pin 2 A   angle=0   (wire left),
+    pin 3 GND  angle=90  (wire down), pin 4 Y   angle=180 (wire right),
+    pin 5 VCC  angle=270 (wire up).
+    """
+    return {
+        "OE_bar": (cx, cy - 10.16),  # pin 1 — tie GND (always enabled)
+        "A": (cx - 15.24, cy),  # pin 2 — data input
+        "GND": (cx - 5.08, cy + 10.16),  # pin 3
+        "Y": (cx + 12.70, cy),  # pin 4 — buffered output
+        "VCC": (cx - 5.08, cy - 10.16),  # pin 5
+    }
 
 
 # ========================================================================
@@ -457,6 +479,41 @@ s.schematicSymbols.append(
         "UART/Pi",
         "Connector_JST:JST_XH_B4B-XH-A_1x04_P2.50mm_Vertical",
         "Pi UART: pin1=+5V pin2=GND pin3=TX pin4=RX",
+    )
+)
+
+
+# ── Power LED (hardware, hardwired to +5V) ───────────────────────────────
+# J10: XH 2-pin  pin1=LED_A  pin2=GND — always on when 5V present, no GPIO
+J10X, J10Y = 248.0, 58.0
+j10_p = conn2_pins(J10X, J10Y)
+s.schematicSymbols.append(
+    make_sym(
+        "Connector_Generic",
+        "Conn_01x02",
+        J10X,
+        J10Y,
+        "J10",
+        "Power LED",
+        FP_XH2,
+        "Power LED (panel mount). Hardwired to +5V rail — always on when powered.",
+    )
+)
+
+# ── NeoPixel WS2812B 8×8 matrix connector ────────────────────────────────
+# J11: XH 3-pin  pin1=NEO_DIN  pin2=+5V  pin3=GND
+J11X, J11Y = 248.0, 45.0
+j11_p = conn3_pins(J11X, J11Y)
+s.schematicSymbols.append(
+    make_sym(
+        "Connector_Generic",
+        "Conn_01x03",
+        J11X,
+        J11Y,
+        "J11",
+        "NeoPixel",
+        FP_XH3,
+        "WS2812B 8x8 NeoPixel: pin1=DATA_IN pin2=+5V pin3=GND. GPIO42 via U3 level shift.",
     )
 )
 
@@ -680,6 +737,84 @@ s.schematicSymbols.append(
     )
 )
 
+# ── R10: Power LED series resistor (hardwired +5V → 330Ω → LED_A) ────────
+R10X, R10Y = 231.0, 58.0
+r10_t, r10_b = r_pins(R10X, R10Y)
+s.schematicSymbols.append(
+    make_sym(
+        "Device",
+        "R",
+        R10X,
+        R10Y,
+        "R10",
+        "330",
+        "Resistor_SMD:R_0402_1005Metric",
+        "Power LED series resistor (5V→330Ω→LED_A, ~9mA, no GPIO)",
+    )
+)
+
+# ── R11: NeoPixel data line series resistor (ringing suppression) ─────────
+R11X, R11Y = 232.0, 45.0
+r11_t, r11_b = r_pins(R11X, R11Y)
+s.schematicSymbols.append(
+    make_sym(
+        "Device",
+        "R",
+        R11X,
+        R11Y,
+        "R11",
+        "330",
+        "Resistor_SMD:R_0402_1005Metric",
+        "NeoPixel data line series resistor (suppress ringing at 800kHz)",
+    )
+)
+
+# ── U3: 74LVC1G125 level shifter (3.3V GPIO42 → 5V NeoPixel data) ─────────
+U3X, U3Y = 215.0, 45.0
+u3_p = u3_pins(U3X, U3Y)
+s.schematicSymbols.append(
+    make_sym(
+        "74xGxx",
+        "74LVC1G125",
+        U3X,
+        U3Y,
+        "U3",
+        "74LVC1G125",
+        FP_SOT235,
+        "Single buffer/driver, 3-state. 3.3V→5V level shift for NeoPixel data.",
+    )
+)
+
+# ── C6: 100µF NeoPixel 5V bulk decoupling ────────────────────────────────
+C6X, C6Y = 262.0, 45.0
+s.schematicSymbols.append(
+    make_sym(
+        "Device",
+        "C_Polarized",
+        C6X,
+        C6Y,
+        "C6",
+        "100µF",
+        "Capacitor_THT:CP_Radial_D5.0mm_P2.50mm",
+        "NeoPixel +5V bulk decoupling (64-LED inrush at power-on)",
+    )
+)
+
+# ── C7: 100nF NeoPixel 5V HF decoupling ─────────────────────────────────
+C7X, C7Y = 272.0, 45.0
+s.schematicSymbols.append(
+    make_sym(
+        "Device",
+        "C",
+        C7X,
+        C7Y,
+        "C7",
+        "100n",
+        "Capacitor_SMD:C_0402_1005Metric",
+        "NeoPixel +5V HF decoupling",
+    )
+)
+
 # ========================================================================
 # POWER SYMBOLS
 # Place at exact pin-endpoint coordinates so they connect without wires
@@ -742,6 +877,29 @@ s.schematicSymbols.append(make_pwr("GND", *j7_p[1]))
 # J9 UART: pin1=+5V  pin2=GND
 s.schematicSymbols.append(make_pwr("+5V", *j9_p[0]))
 s.schematicSymbols.append(make_pwr("GND", *j9_p[1]))
+
+# J10 Power LED: pin2=GND
+s.schematicSymbols.append(make_pwr("GND", *j10_p[1]))
+
+# J11 NeoPixel: pin2=+5V, pin3=GND
+s.schematicSymbols.append(make_pwr("+5V", *j11_p[1]))
+s.schematicSymbols.append(make_pwr("GND", *j11_p[2]))
+
+# R10 power LED: top=+5V (bottom=LED_A via label)
+s.schematicSymbols.append(make_pwr("+5V", *r10_t))
+
+# U3 74LVC1G125: VCC=+5V, GND, OE_bar tied to GND (always enabled)
+s.schematicSymbols.append(make_pwr("+5V", *u3_p["VCC"]))
+s.schematicSymbols.append(make_pwr("GND", *u3_p["GND"]))
+s.schematicSymbols.append(make_pwr("GND", *u3_p["OE_bar"]))
+
+# C6 100µF NeoPixel bulk: pin1(+)=+5V, pin2(-)=GND
+s.schematicSymbols.append(make_pwr("+5V", C6X, C6Y - 3.81))
+s.schematicSymbols.append(make_pwr("GND", C6X, C6Y + 3.81))
+
+# C7 100nF NeoPixel HF: pin1=+5V, pin2=GND
+s.schematicSymbols.append(make_pwr("+5V", C7X, C7Y - 3.81))
+s.schematicSymbols.append(make_pwr("GND", C7X, C7Y + 3.81))
 
 # PWR_FLAG: place at SAME position as the power symbols they annotate
 # so the pins overlap and KiCad sees them on the same net
@@ -865,15 +1023,34 @@ lbl.append(make_label("ESTOP", C1X, C1Y - 3.81, 90))
 # C2: top=BAT_SENSE, bottom=GND (powered)
 lbl.append(make_label("BAT_SENSE", C2X, C2Y - 3.81, 90))
 
+# ── Power LED J10 + R10 ───────────────────────────────────────────────────
+# R10: top=+5V (power symbol), bottom=LED_A
+lbl.append(make_label("LED_A", *r10_b, 270))
+# J10: pin1=LED_A, pin2=GND (power symbol)
+lbl.append(make_label("LED_A", *j10_p[0], 180))
+
+# ── NeoPixel circuit: GPIO42 → U3(74LVC1G125) → R11 → J11 ───────────────
+# GPIO42 inner cluster pad 11: NEO_DATA source
+lbl.append(make_label("NEO_DATA", *U1L["11"], 180))
+# U3 input (A, pin 2): NEO_DATA
+lbl.append(make_label("NEO_DATA", *u3_p["A"], 180))
+# U3 output (Y, pin 4): NEO_BUF
+lbl.append(make_label("NEO_BUF", *u3_p["Y"], 0))
+# R11: top=NEO_BUF, bottom=NEO_DIN
+lbl.append(make_label("NEO_BUF", *r11_t, 90))
+lbl.append(make_label("NEO_DIN", *r11_b, 270))
+# J11: pin1=NEO_DIN
+lbl.append(make_label("NEO_DIN", *j11_p[0], 180))
+
 # ── VBAT label on J8 (already added) already connects J8 pin1 to +BATT rail ──
 # Add VBAT label also on R8 (top) is already powered by +BATT symbol
 
 # ========================================================================
 # NO-CONNECTS on unused ESP32 pins
 # ========================================================================
-# Left side unused cluster pins: GPIO45(10), GPIO42(11), GPIO41(12), GPIO40(13)
-# GPIO39(14)=BIN2, GPIO38(15)=BIN1 → labelled above
-for p in ["10", "11", "12", "13"]:
+# Left inner cluster: GPIO45(10), GPIO41(12), GPIO40(13) unused
+# GPIO42(11)=NEO_DATA → labelled below; GPIO39(14)=BIN2, GPIO38(15)=BIN1 → labelled above
+for p in ["10", "12", "13"]:
     s.noConnects.append(make_nc(*U1L[p]))
 
 # Right side: GPIO16(27), GPIO15(28), GPIO14(29) are NOT accessible on flat-mount module
