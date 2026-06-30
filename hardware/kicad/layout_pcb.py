@@ -115,6 +115,8 @@ FP = {
     "robot-projects:SparkFun_TB6612FNG_v2": f"{LOCAL}/SparkFun_TB6612FNG_v2.kicad_mod",
     "MountingHole:MountingHole_3.2mm_M3_DIN965": f"{KICAD}/MountingHole.pretty/MountingHole_3.2mm_M3_DIN965.kicad_mod",
     "Capacitor_THT:CP_Radial_D10.0mm_P5.00mm": f"{KICAD}/Capacitor_THT.pretty/CP_Radial_D10.0mm_P5.00mm.kicad_mod",
+    "Package_TO_SOT_SMD:SOT-23-5": f"{KICAD}/Package_TO_SOT_SMD.pretty/SOT-23-5.kicad_mod",
+    "Capacitor_THT:CP_Radial_D5.0mm_P2.00mm": f"{KICAD}/Capacitor_THT.pretty/CP_Radial_D5.0mm_P2.00mm.kicad_mod",
 }
 
 
@@ -249,6 +251,19 @@ place("C3", "1000µF", "Capacitor_THT:CP_Radial_D10.0mm_P5.00mm", 46, 50)
 #   C4/C5 100nF: VBAT and 3V3 rail decoupling, in center-passive cluster
 place("C4", "100n", "Capacitor_SMD:C_0402_1005Metric", 30, 38.5, 90)
 place("C5", "100n", "Capacitor_SMD:C_0402_1005Metric", 30, 41.5, 90)
+
+# ── NeoPixel + power-LED circuit — bottom-centre cluster (x 20-38, y 46-58) ─────
+#   U3 level-shifter, R10 power-LED series, R11 NeoPixel data series,
+#   C7 HF decap, C6 bulk decap, J10 power-LED connector, J11 NeoPixel connector.
+#   Fine-tune positions in KiCad after opening; initial placement chosen to stay
+#   clear of J5 Qwiic (left) and C3 1000µF (right at x=46,y=50).
+place("U3", "74LVC1G125", "Package_TO_SOT_SMD:SOT-23-5", 24, 46)
+place("R10", "330", "Resistor_SMD:R_0402_1005Metric", 20, 52, 90)
+place("R11", "330", "Resistor_SMD:R_0402_1005Metric", 24, 52, 90)
+place("C7", "100n", "Capacitor_SMD:C_0402_1005Metric", 28, 52, 90)
+place("C6", "100µF", "Capacitor_THT:CP_Radial_D5.0mm_P2.00mm", 36, 50)
+place("J10", "LED", "Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical", 20, 57)
+place("J11", "NeoPixel", "Connector_JST:JST_XH_B3B-XH-A_1x03_P2.50mm_Vertical", 30, 57)
 
 # ── M3 mounting holes (3.2mm drill, mechanical — no net connections) ──────────
 #   Positioned to avoid connector drills; minor courtyard touches are OK
