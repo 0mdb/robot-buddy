@@ -252,18 +252,17 @@ place("C3", "1000µF", "Capacitor_THT:CP_Radial_D10.0mm_P5.00mm", 46, 50)
 place("C4", "100n", "Capacitor_SMD:C_0402_1005Metric", 30, 38.5, 90)
 place("C5", "100n", "Capacitor_SMD:C_0402_1005Metric", 30, 41.5, 90)
 
-# ── NeoPixel + power-LED circuit — bottom-centre cluster (x 20-38, y 46-58) ─────
-#   U3 level-shifter, R10 power-LED series, R11 NeoPixel data series,
-#   C7 HF decap, C6 bulk decap, J10 power-LED connector, J11 NeoPixel connector.
-#   Fine-tune positions in KiCad after opening; initial placement chosen to stay
-#   clear of J5 Qwiic (left) and C3 1000µF (right at x=46,y=50).
-place("U3", "74LVC1G125", "Package_TO_SOT_SMD:SOT-23-5", 24, 46)
-place("R10", "330", "Resistor_SMD:R_0402_1005Metric", 20, 52, 90)
-place("R11", "330", "Resistor_SMD:R_0402_1005Metric", 24, 52, 90)
-place("C7", "100n", "Capacitor_SMD:C_0402_1005Metric", 28, 52, 90)
-place("C6", "100µF", "Capacitor_THT:CP_Radial_D5.0mm_P2.00mm", 36, 50)
-place("J10", "LED", "Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical", 20, 57)
-place("J11", "NeoPixel", "Connector_JST:JST_XH_B3B-XH-A_1x03_P2.50mm_Vertical", 30, 57)
+# ── NeoPixel + power-LED circuit — bottom-centre cluster (x 25-41, y 46-58) ─────
+#   Shifted +5mm right vs initial placement to clear SDA Qwiic via at (19.16, 55.80)
+#   that conflicted with J10 pin 1 at old (20, 57). New J10 at (25, 57) gives ~4mm
+#   clearance from the SDA routing zone.
+place("U3", "74LVC1G125", "Package_TO_SOT_SMD:SOT-23-5", 29, 46)
+place("R10", "330", "Resistor_SMD:R_0402_1005Metric", 25, 52, 90)
+place("R11", "330", "Resistor_SMD:R_0402_1005Metric", 29, 52, 90)
+place("C7", "100n", "Capacitor_SMD:C_0402_1005Metric", 33, 52, 90)
+place("C6", "100µF", "Capacitor_THT:CP_Radial_D5.0mm_P2.00mm", 38, 50)
+place("J10", "LED", "Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical", 25, 57)
+place("J11", "NeoPixel", "Connector_JST:JST_XH_B3B-XH-A_1x03_P2.50mm_Vertical", 35, 57)
 
 # ── M3 mounting holes (3.2mm drill, mechanical — no net connections) ──────────
 #   Positioned to avoid connector drills; minor courtyard touches are OK

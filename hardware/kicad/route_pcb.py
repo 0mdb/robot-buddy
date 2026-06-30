@@ -28,9 +28,9 @@ W, H = 65.0, 60.0  # board dimensions mm (must match layout_pcb.py)
 POWER_NETS = {"+BATT", "+5V", "+3V3", "GND"}
 MOTOR_NETS = {"AO1", "AO2", "BO1", "BO2"}
 
-POWER_W = 0.50  # mm
+POWER_W = 0.40  # mm  (0.50→0.40 to clear NeoPixel cluster; adequate for <500mA 5V rail)
 MOTOR_W = (
-    0.50  # mm  (matches Power class; motor traces are short, widen manually if needed)
+    0.40  # mm  (matches Power class; motor traces are short, widen manually if needed)
 )
 SIGNAL_W = 0.25  # mm
 PASSES = 10
@@ -221,13 +221,19 @@ b4 = pcbnew.LoadBoard(PCB)
 _3v3_net = b4.FindNet("+3V3")
 if _3v3_net:
     _patch_segs = [
-        ((13.30, 24.27), (13.30, 21.40)),
-        ((13.30, 21.40), (27.20, 21.40)),
-        ((27.20, 21.40), (28.50, 19.70)),
+        (
+            (13.30, 24.27),
+            (13.30, 21.15),
+        ),  # y=21.15: clears ESTOP via at (22.10,22.04) + U1 pad19 mask bridge
+        (
+            (13.30, 21.15),
+            (27.20, 21.15),
+        ),  # window: >21.06 (U1 mask) and <21.24 (ESTOP via 0.25mm)
+        ((27.20, 21.15), (28.50, 19.70)),
         ((28.50, 19.70), (30.70, 19.70)),
         ((30.70, 19.70), (30.70, 20.38)),
-        ((30.70, 20.38), (55.50, 20.38)),
-        ((55.50, 20.38), (56.16, 21.65)),
+        ((30.70, 20.38), (53.62, 20.38)),
+        ((53.62, 20.38), (53.62, 21.65)),
         ((30.70, 20.38), (30.70, 21.51)),
         ((30.70, 21.51), (30.00, 21.51)),
     ]

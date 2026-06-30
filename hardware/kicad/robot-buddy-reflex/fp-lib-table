@@ -1,0 +1,4 @@
+(fp_lib_table
+	(version 7)
+	(lib (name "robot-projects") (type "KiCad") (uri "/home/ben/kicad-libs/footprints/robot-projects.pretty") (options "") (descr "Shared robot project footprints"))
+)

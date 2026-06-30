@@ -1,0 +1,4 @@
+(sym_lib_table
+	(version 7)
+	(lib (name "robot-projects") (type "KiCad") (uri "/home/ben/kicad-libs/symbols/robot-projects.kicad_sym") (options "") (descr "Shared robot project symbols"))
+)
