@@ -230,6 +230,17 @@ _3 items complete (LLM session memory, TTS resampler hardening, conversation stu
 
 ---
 
+### Frame & Mechanical (CAD)
+
+> SolidWorks authored on Windows against `smb://freenas2.local/dev/Robots/robot-buddy/CAD/`, rsynced into `CAD/`. Design rules: **`docs/print-dfm.md`** (0.6 mm nozzle, PET-CF structural). Print on P2S. Material palette shared with robot-scout.
+
+- [ ] **Chassis frame** — structural, PET-CF. Shell + ribs, fillet internal corners, model so load runs along layers.
+- [ ] **Raspberry Pi 5 holder** — PET-CF; heat-set M2.5 inserts (boss per insert spec, not printed threads).
+- [ ] **Tank-tread tensioners** — idler tensioner mechanism; PET-CF structure, slip/adjust fits 0.3–0.4 mm/side, precision on bearings/bushings not on printed features.
+- [ ] Populate `CAD/{parts,assemblies,drawings,exports}`; keep vendor/downloaded models in `CAD/library/`.
+
+---
+
 ### Dashboard
 
 - [ ] `[opus]` **Tuning Studio (expand Face tab; consolidate dashboard; built to complete B6)** — one place to tune face parameters (mouth sync), personality, models, server settings, and the full voice pipeline

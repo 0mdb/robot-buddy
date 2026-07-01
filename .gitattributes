@@ -1,0 +1,26 @@
+# SolidWorks / CAD — binary, no text diff or merge attempts
+*.SLDPRT  binary
+*.SLDASM  binary
+*.SLDDRW  binary
+*.SLDLFP  binary
+*.PRTDOT  binary
+*.ASMDOT  binary
+*.DRWDOT  binary
+
+# Neutral CAD exports — binary (both cases; SolidWorks/KiCad export lowercase)
+*.STEP    binary
+*.step    binary
+*.STP     binary
+*.stp     binary
+*.STL     binary
+*.stl     binary
+*.3MF     binary
+*.3mf     binary
+*.IGS     binary
+*.igs     binary
+*.IGES    binary
+*.iges    binary
+
+# If native CAD churns and the repo bloats, switch these to Git LFS:
+#   git lfs install && git lfs track "*.SLDPRT" "*.SLDASM" "*.SLDDRW" "*.STEP" "*.3MF"
+# (that rewrites the lines above with filter=lfs — do it before committing large parts)

@@ -39,3 +39,11 @@ training/openWakeWord/
 training/piper-sample-generator/
 training/data/
 training/output/
+
+# SolidWorks — lock / temp / backup cruft (authored on Windows, rsynced in)
+~$*
+*.~*
+*.SLDBAK
+SOLIDWORKS Backup/
+SOLIDWORKS Backups/
+CAD/**/Backup/
