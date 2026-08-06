@@ -301,7 +301,39 @@ shows TSSOP-16). MCP23008-E/SO C92253 is the alternate but is a 300-mil SOIC-18.
   `+5V` rail's bulk and HF bypass, which the rail still needs (X8, and the cable-fed-rail rule).
 - J10 + R10 (the separate always-on power LED) are unaffected.
 
-### A0d-v2. 🔴 The no-fuse safety case must be re-derived — the trace it cited is gone
+### A0d-v2. ✅ No-fuse safety case re-derived — **the plane is the conductor, not the trace**
+
+**Resolved 2026-08-06.** The original wording was invalidated by the rail narrowing, but
+the conclusion survives on better grounds. Full numbers in `electrical-design-calcs.md §1a`.
+
+⚠ **Corrected.** A first pass claimed the motor current "never touches outer copper".
+`trace_path.py` disproved it: J9.1 → U2.9 has a complete outer route, **~92 mm of
+0.40 mm track**. `route_pcb.py` strips the inner layers from the DSN, so freerouting
+cannot see the plane and routes `+5V` on the outer layers regardless.
+
+The two paths are in **parallel** — surface 113 mΩ against plane 2.7 mΩ — so the plane
+carries **97.7 %** and the outer copper sees ~35 mA at a 1.5 A flip. The conclusion
+holds; the reasoning did not, and the tool built for exactly this trap is what caught it.
+
+It also holds with the plane discounted entirely: 1.50 A against the 0.40 mm trace's
+1.99 A rating is 1.3× at 15.8 °C — thin steady-state, but a direction flip is
+milliseconds against a thermal time constant of seconds, and continuous 0.30 A is 6.6×.
+
+So the coordination X2 asked for holds, restated against what actually conducts:
+
+```
+motor peak 1.5 A  <  source ~5 A  <  J9 connector 10 A
+    carried 97.7% by the In2.Cu plane, 2.3% by the parallel outer run
+```
+
+The outer `+5V` copper is not in this path at all — it feeds decoupling, U1 (0.25 A) and
+R10. **This is why no fuse is needed:** the weakest element is the HAT's own 5 A limit,
+which is upstream of every conductor on this board. That was true before and is still
+true; only the reasoning had gone stale.
+
+Original text follows for the record.
+
+### A0d-v2-old. (superseded) The trace the safety case cited is gone
 
 A0d closed X2 (inverted overcurrent coordination) by widening `+5V` to 1.5 mm and
 moving J9 to JST-VH, giving `HAT ~5 A < trace 5.26 A < connector 10 A`. **`RAIL_W` is
@@ -329,13 +361,25 @@ To close this, the safety case has to be rewritten in terms of the plane and the
 barrels rather than the surface trace, **and** the copper weight has to be declared —
 see A0e.
 
-### A0e. 🔴 No copper weight is declared anywhere
-The board has **no stackup** in either `.kicad_pcb` or `.kicad_pro`. `check_pcb_ampacity.py`
-defaults to **2 oz outer**, which is an assumption the board does not state, and JLC's
-default for 4-layer is **1 oz outer / 0.5 oz inner**. Every ampacity number in this
-register therefore rests on a parameter nobody has chosen. Decide it, declare it in the
-board stackup, and order to it — a 2 oz assumption silently built at 1 oz halves the
-outer-copper margin.
+### A0e. ✅ Copper weight — **DECIDED and DECLARED 2026-08-06: 1 oz outer / 0.5 oz inner**
+Was: no stackup in either file, so every ampacity number rested on a parameter nobody had
+chosen, while the gate silently assumed 2 oz. Now written into the board by
+`layout_pcb.py`, sized from buddy's own loads in `docs/electrical-design-calcs.md §1a`.
+
+Not inherited from scout. Scout is 2 oz because 15 A on 1 oz reached 138 °C there; buddy's
+currents are an order of magnitude lower and the constraint is different:
+
+- **Electrically it is not close.** Worst outer conductor is a motor output at 0.75 A peak
+  against a 1.99 A rating — 2.6× margin, **3.3 °C rise**.
+- **2 oz would have cost margin where the board is tight.** JLC's minimum trace/space at
+  2 oz outer is 0.20 mm, and this board routes at exactly 0.20 mm clearance — every gap
+  would sit on the fab's stated limit. At 1 oz the limit is 0.0889 mm, giving 2.25×.
+
+**The gate was part of the problem and is fixed.** `check_pcb_ampacity.py` had a hardcoded
+`--outer-oz 2.0` and never read the board, so it over-reported ampacity by ~40 % on a 1 oz
+board and could not distinguish a declared 2 oz board from one that declared nothing. It
+now reads the stackup and prints its source — `[board stackup]` or
+`[ASSUMED — board declares no stackup]`, the latter also warning on stderr.
 
 ### A0d. (original) Fuse part verification — the PTC conflicts with the VM margin
 
@@ -1003,8 +1047,8 @@ No gerbers are generated until every line is checked and initialled.
 - [ ] Direction-change sequencing in firmware: PWM=0 → write → restore PWM
 - [x] X6 — NeoPixels cut entirely, so the 5 A budget question is closed
 - [ ] `docs/power.md` updated so board and doc agree (firmware note + Battery section)
-- [~] A0b — `+5V` is its own DSN class, but `RAIL_W` is now **0.4 mm**, not 1.5 mm.
-      See the A0d re-derivation below before ticking this.
+- [x] A0b — `+5V` is its own DSN class. `RAIL_W` is **0.4 mm**, not the 1.5 mm this line
+      once specified; the plane carries the current, not the surface trace (A0d-v2)
 - [x] In2.Cu plane re-homed `+BATT` → `+5V`; `POWER_NETS` updated
 - [x] STBY net tied to `/ESTOP`; R3 deleted (its pull-down role is gone)
 - [x] J11 / U3 / R11 and the `/NEO_*` nets deleted; C6 + C7 retained as `+5V` bulk/bypass
@@ -1018,9 +1062,9 @@ No gerbers are generated until every line is checked and initialled.
 - [x] Pin map A0c implemented — SDA/SCL on pads 26/25, 2 spares (GPIO1, GPIO6)
 - [x] `+BATT` eliminated, VM on `+5V`, `/BAT_SENSE` + R8/R9/C2 deleted, J8 deleted
 - [x] U4 TCA9554APWR drives AIN1/AIN2/BIN1/BIN2; netlist verified, no orphan nets
-- [ ] 🔴 Protection **without a fuse** (A0d) — the argument as written is stale.
-      It reads "HAT ~5 A < trace 5.26 A < connector 10 A", but 5.26 A was 1.5 mm at
-      1 oz and `RAIL_W` is now 0.4 mm. Re-derive against the plane. See A0d-v2.
+- [x] Protection **without a fuse** re-derived against the plane (A0d-v2):
+      peak 1.8 A < source ~5 A < plane 6.2 A < J9 connector 10 A
+- [x] A0e — copper weight decided and declared: **1 oz outer / 0.5 oz inner, ENIG**
 - [x] `_NoCluster` **schematic symbol** derived in the shared library; U1 now has
       exactly pins 1–9 and 18–26, matching the footprint pad-for-pad
 

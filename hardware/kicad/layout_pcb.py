@@ -488,6 +488,52 @@ if _orphans:
 
 _b.Save(PCB)
 
+# ── Declare the stackup, so copper weight is a decision and not an assumption ──
+# A0e: the board carried NO stackup at all, so every ampacity number in the register
+# rested on a parameter nobody had chosen — and check_pcb_ampacity.py was defaulting
+# to 2oz while JLC's 4-layer default is 1oz. Sized properly in
+# docs/electrical-design-calcs.md §1a; 1oz outer / 0.5oz inner wins on both counts:
+#
+#   - Electrically it is not close. The worst outer conductor is a motor output at
+#     0.75A peak against a 1.99A rating — 2.6x margin, 3.3C rise. The 1.5A motor-flip
+#     current never touches outer copper at all: J9.1 -> In2.Cu plane -> U2.9, all
+#     through-hole with ZONE_CONNECTION_FULL. Even a pessimistic 10mm strip of that
+#     plane carries 6.2A at 0.5oz, and each 1.0mm barrel 7.0A.
+#   - 2oz would COST margin where the board is actually tight. JLC's minimum
+#     trace/space at 2oz outer is 0.2mm; this board routes at 0.2mm clearance, so 2oz
+#     puts it exactly on the limit. At 1oz the limit is 0.0889mm — 2.25x margin.
+#
+# Scout used 2oz because 15A on 1oz reached 138C there. Buddy's currents are an order
+# of magnitude lower; copying that choice would buy nothing and spend clearance margin.
+_STACKUP = """	(stackup
+			(layer "F.SilkS" (type "Top Silk Screen"))
+			(layer "F.Paste" (type "Top Solder Paste"))
+			(layer "F.Mask" (type "Top Solder Mask") (thickness 0.01))
+			(layer "F.Cu" (type "copper") (thickness 0.035))
+			(layer "dielectric 1" (type "prepreg") (thickness 0.2104) (material "FR4") (epsilon_r 4.5) (loss_tangent 0.02))
+			(layer "In1.Cu" (type "copper") (thickness 0.0175))
+			(layer "dielectric 2" (type "core") (thickness 1.065) (material "FR4") (epsilon_r 4.5) (loss_tangent 0.02))
+			(layer "In2.Cu" (type "copper") (thickness 0.0175))
+			(layer "dielectric 3" (type "prepreg") (thickness 0.2104) (material "FR4") (epsilon_r 4.5) (loss_tangent 0.02))
+			(layer "B.Cu" (type "copper") (thickness 0.035))
+			(layer "B.Mask" (type "Bottom Solder Mask") (thickness 0.01))
+			(layer "B.Paste" (type "Bottom Solder Paste"))
+			(layer "B.SilkS" (type "Bottom Silk Screen"))
+			(copper_finish "ENIG")
+			(dielectric_constraints no)
+		)
+"""
+with open(PCB) as _sf2:
+    _s2 = _sf2.read()
+if "(stackup" not in _s2:
+    _s2 = _s2.replace("\t(setup\n", "\t(setup\n\t" + _STACKUP.lstrip("\t"), 1)
+    with open(PCB, "w") as _sf2:
+        _sf2.write(_s2)
+    print("  Stackup    : declared 1oz outer / 0.5oz inner, ENIG (A0e)")
+else:
+    print("  Stackup    : already present")
+
+
 # ── DFM pass: mask-opening-without-copper ─────────────────────────────────────
 # JLCPCB holds any order where a solder-mask opening has no copper under it.
 # Both causes below were found on all four boards 2026-07-20, fixed by hand, and

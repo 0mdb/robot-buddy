@@ -130,6 +130,113 @@ documentation hygiene, not a risk.
 
 ---
 
+## 1a. Copper weight — **DECIDED 2026-08-06: 1 oz outer / 0.5 oz inner, ENIG**
+
+Now declared in the board stackup by `layout_pcb.py`, so it is a decision rather than an
+assumption. §1 above is the **v1** analysis and is stale: it sizes `+BATT` and NeoPixels,
+which no longer exist, and quotes a 0.8 mm Motor class that is now 0.4 mm.
+
+Scout used 2 oz because there the copper weight *swung the verdict* — 15 A on 1 oz
+reached 138 °C. Buddy is a different board and inheriting that number would be cargo
+cult, so it was re-derived from buddy's own loads.
+
+### What each conductor actually carries (v2)
+
+IPC-2221, `I = k·ΔT^0.44·A^0.725`, k = 0.048 external / 0.024 internal, ΔT = 30 °C.
+All outer routing is 0.25 mm (Default) or 0.40 mm (Rail / Power / Motor).
+
+| Conductor | Width | Peak | Rating @1 oz | ΔT at peak | Margin |
+|---|---|---|---|---|---|
+| Motor output `/AO1` etc | 0.40 mm | 0.75 A | 1.99 A | **3.3 °C** | 2.6× |
+| `+5V` surface → U1 | 0.40 mm | 0.25 A | 1.99 A | 0.3 °C | 7.9× |
+| `+5V` surface → decoupling | 0.40 mm | 0.05 A | 1.99 A | 0.0 °C | 39× |
+| `+3V3` (expander + IMU) | 0.40 mm | 0.01 A | 1.99 A | 0.0 °C | 199× |
+
+The worst outer conductor on the board runs **3.3 °C hot**. It is not close.
+
+### The 1.5 A motor-flip current is shared, and the plane takes ~98 % of it
+
+⚠ **An earlier draft of this section claimed the motor current "never touches outer
+copper". That was wrong**, and `trace_path.py` is what caught it — the tool that exists
+precisely because "confirmed on 2 oz" claims in this project kept turning out to be about
+copper *near* a pad rather than copper *on the path*. Walking J9.1 → U2.9 finds a
+complete outer-copper route: **~92 mm of 0.40 mm track across B.Cu and F.Cu**.
+
+Both paths exist and they are in **parallel**, because `route_pcb.py` strips the inner
+layers from the DSN — freerouting cannot see the plane, so it routes `+5V` on the outer
+layers as though there were none, while KiCad's zone connects the same pads underneath.
+
+| Path | Resistance |
+|---|---|
+| Surface: 92 mm of 0.40 mm at 1 oz | **113 mΩ** |
+| In2.Cu plane: ~2.7 squares at 0.5 oz (0.99 mΩ/sq) | **2.7 mΩ** |
+
+So the plane carries **97.7 %** and the surface run **2.3 %** — at a 1.5 A flip the outer
+copper sees about **35 mA**. The conclusion survives; the reasoning had to be corrected.
+
+**And it holds even if the plane is discounted entirely**, which is the honest way to
+size a fallback:
+
+| Case | vs 1.99 A rating | ΔT |
+|---|---|---|
+| Continuous 0.30 A | 6.6× | 0.4 °C |
+| Direction flip 1.50 A | **1.3×** | 15.8 °C |
+
+1.3× is thin as a steady-state number, but a direction flip lasts milliseconds against a
+trace thermal time constant of seconds, and the continuous case is 6.6×. Verified paths:
+
+| Path | Weakest link (1 oz) | Peak | Margin |
+|---|---|---|---|
+| J9.1 → U2.9 (VM feed) | 0.40 mm, 1.99 A | 1.50 A | 1.3× |
+| U2.12 → J1.1 (motor output) | 0.40 mm, 1.99 A | 0.75 A | 2.6× |
+| U2.9 → C3.1 (bulk) | 0.40 mm, 1.99 A | 0.15 A RMS | 13× |
+
+### Every +5V node reaches the plane directly
+
+This is what makes the parallel path above work at all:
+
+| `+5V` node | Pad | Path |
+|---|---|---|
+| J9.1 (power in) | PTH | barrel straight onto the In2.Cu plane |
+| U2.9 (VM) | PTH | barrel straight off the plane |
+| C3.1 (1000 µF bulk) | PTH | barrel onto the plane |
+| J1.3 / J2.3 / J6.1 | PTH | barrel onto the plane |
+
+All three zones use `ZONE_CONNECTION_FULL`, so those are solid connections, not thermal
+spokes. Capacity of that path, deliberately pessimistic:
+
+| Element | Capacity @30 °C |
+|---|---|
+| In2.Cu plane, assuming only a **10 mm strip** participates, at 0.5 oz | **6.2 A** |
+| One 1.0 mm PTH barrel, 25 µm plating | **7.0 A** |
+| One 1.7 mm PTH barrel (J9), 25 µm plating | **10.2 A** |
+
+Against a 1.8 A peak (0.25 A logic + 1.5 A direction flip) and a ~5 A source.
+
+### 2 oz would have cost margin, not bought it
+
+The binding constraint on this board is **spacing, not current**. It routes at 0.20 mm
+clearance and 0.25 mm minimum track:
+
+| | JLC min trace/space, 4-layer | Our margin |
+|---|---|---|
+| **1 oz outer** | 0.0889 mm | **2.25× on clearance**, 2.8× on track |
+| 2 oz outer | 0.20 mm | **1.0× — exactly on the limit** |
+
+So 2 oz would put every clearance in the design on the fab's stated minimum, in exchange
+for headroom on conductors already running 3 °C warm. 1 oz is both the cheaper and the
+*safer* choice here.
+
+### Consequence for the gate
+
+`check_pcb_ampacity.py` had a hardcoded 2.0 oz default and never looked at the board —
+so it reported ~40 % more ampacity than a 1 oz board has, and could not tell a declared
+2 oz board from one that declared nothing. It now reads the stackup, prints the source
+(`[board stackup]` vs `[ASSUMED — board declares no stackup]`), and warns on stderr when
+it has to guess.
+
+---
+
 ## 2. 🔴 Protection coordination — buddy has no overcurrent device at all
 
 The rule: **fuse rating < conductor rating < connector rating.** Buddy has no fuse, so the

@@ -5,7 +5,7 @@
       "Application": "Pcbnew",
       "Version": "10.0.5-10.0.5~ubuntu24.04.1"
     },
-    "CreationDate": "2026-08-06T16:47:38-06:00"
+    "CreationDate": "2026-08-06T17:37:07-06:00"
   },
   "GeneralSpecs": {
     "ProjectId": {
@@ -19,7 +19,7 @@
     },
     "LayerNumber": 4,
     "BoardThickness": 1.6,
-    "Finish": "None"
+    "Finish": "ENIG"
   },
   "DesignRules": [
     {
@@ -118,31 +118,31 @@
     },
     {
       "Type": "Dielectric",
-      "Thickness": 0.48,
+      "Thickness": 0.2104,
       "Material": "FR4",
       "Name": "F.Cu/In1.Cu",
       "Notes": "Type: dielectric layer 1 (from F.Cu to In1.Cu)"
     },
     {
       "Type": "Copper",
-      "Thickness": 0.035,
+      "Thickness": 0.0175,
       "Name": "In1.Cu"
     },
     {
       "Type": "Dielectric",
-      "Thickness": 0.48,
+      "Thickness": 1.065,
       "Material": "FR4",
       "Name": "In1.Cu/In2.Cu",
       "Notes": "Type: dielectric layer 2 (from In1.Cu to In2.Cu)"
     },
     {
       "Type": "Copper",
-      "Thickness": 0.035,
+      "Thickness": 0.0175,
       "Name": "In2.Cu"
     },
     {
       "Type": "Dielectric",
-      "Thickness": 0.48,
+      "Thickness": 0.2104,
       "Material": "FR4",
       "Name": "In2.Cu/B.Cu",
       "Notes": "Type: dielectric layer 3 (from In2.Cu to B.Cu)"
