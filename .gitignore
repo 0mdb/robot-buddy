@@ -47,3 +47,12 @@ training/output/
 SOLIDWORKS Backup/
 SOLIDWORKS Backups/
 CAD/**/Backup/
+
+# KiCad transient / local state
+*.kicad_prl
+*-backups/
+_autosave-*
+*.lck
+~*.lck
+fp-info-cache
+hardware/kicad/logs/

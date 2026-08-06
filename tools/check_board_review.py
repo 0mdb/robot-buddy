@@ -1,0 +1,1 @@
+../../kicad-libs/tools/check_board_review.py

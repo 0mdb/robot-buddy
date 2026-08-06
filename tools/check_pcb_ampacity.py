@@ -1,0 +1,1 @@
+../../kicad-libs/tools/check_pcb_ampacity.py

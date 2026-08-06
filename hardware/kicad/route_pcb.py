@@ -3,10 +3,10 @@
 Auto-routing pipeline for robot-buddy-reflex (4-layer).
   1. Export DSN from PCB
   2. Inject Power / Motor / Signal net classes
-  3. Run freerouting (needs: java -jar /tmp/freerouting-2.0.jar)
+  3. Run freerouting (needs: java -jar ~/tools/freerouting-2.1.0.jar)
   4. Import SES back into PCB
   5. Fix trace widths (SES format carries no explicit widths)
-  6. Fill copper zones (GND on In1.Cu, +BATT on In2.Cu)
+  6. Fill copper zones (GND on In1.Cu, +5V on In2.Cu)
 
 Run layout_pcb.py first to regenerate a clean unrouted PCB, then run this.
 """
@@ -20,20 +20,57 @@ PCB = "/home/ben/robot-buddy/hardware/kicad/robot-buddy-reflex/robot-buddy-refle
 DSN = "/tmp/reflex.dsn"
 DSN_CLS = "/tmp/reflex-classed.dsn"
 SES = "/tmp/reflex-routed.ses"
-JAR = "/tmp/freerouting-2.0.jar"
+# Freerouting 2.1.0 is the newest release that runs on the installed JDK 21
+# (its classes are Java 21 / class v65).  2.2.x is built for Java 25 and dies with
+# UnsupportedClassVersionError — bump the JDK before moving past 2.1.0.
+# Kept in ~/tools rather than /tmp so it survives a reboot.
+JAR = os.path.expanduser("~/tools/freerouting-2.1.0.jar")
 
 OX, OY = 0.0, 0.0  # board drawing origin (must match layout_pcb.py)
 W, H = 65.0, 60.0  # board dimensions mm (must match layout_pcb.py)
 
-POWER_NETS = {"+BATT", "+5V", "+3V3", "GND"}
-MOTOR_NETS = {"AO1", "AO2", "BO1", "BO2"}
+# ── Net classes come from the .kicad_pro, NOT from constants here ─────────────
+# layout_pcb.py writes them; this reads them back. They used to be hardcoded in
+# both places and drifted — freerouting was told 200um clearance for motor nets
+# while KiCad DRC demanded 300um, producing 72 clearance violations that looked
+# like autorouter noise but were a spec mismatch.
+import json as _json  # noqa: E402
 
-POWER_W = 0.40  # mm  (0.50→0.40 to clear NeoPixel cluster; adequate for <500mA 5V rail)
-MOTOR_W = (
-    0.40  # mm  (matches Power class; motor traces are short, widen manually if needed)
-)
-SIGNAL_W = 0.25  # mm
+_PRO = PCB.replace(".kicad_pcb", ".kicad_pro")
+with open(_PRO) as _pf:
+    _ns = _json.load(_pf)["net_settings"]
+NETCLASS = {c["name"]: c for c in _ns["classes"]}
+CLASS_NETS = {}
+for _pat in _ns["netclass_patterns"]:
+    CLASS_NETS.setdefault(_pat["netclass"], set()).add(_pat["pattern"])
+
+SIGNAL_W = NETCLASS["Default"]["track_width"]
+# net name -> (width, class) for the post-SES width fixup
+NET_W = {}
+for _cls, _nets in CLASS_NETS.items():
+    for _n in _nets:
+        NET_W[_n] = NETCLASS[_cls]["track_width"]
+
 PASSES = 10
+
+# ── Step 0: Drop shorting seed tracks ─────────────────────────────────────────
+# Must run BEFORE the DSN export so freerouting sees those nets as unrouted and lays
+# them again against the current pad geometry. See finish_pcb.drop_shorting_seeds.
+_unshort = subprocess.run(
+    [
+        sys.executable,
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "finish_pcb.py"),
+        "unshort",
+    ],
+    capture_output=True,
+    text=True,
+)
+for _line in _unshort.stdout.splitlines():
+    if _line.strip().startswith("Unshort"):
+        print(_line)
+if _unshort.returncode != 0:
+    print(_unshort.stderr.rstrip(), file=sys.stderr)
+    sys.exit(1)
 
 # ── Step 1: Export DSN ────────────────────────────────────────────────────────
 print("Exporting DSN...")
@@ -49,15 +86,11 @@ with open(DSN) as f:
     dsn = f.read()
 
 # Net names that will move out of kicad_default
-dsn_power = {f"+{n}" if not n.startswith("+") else n for n in POWER_NETS} | {"GND"}
-dsn_motor = {f"/{n}" for n in MOTOR_NETS}
-MOVE = dsn_power | dsn_motor
+MOVE = {n for nets in CLASS_NETS.values() for n in nets}
 
 
 def rebuild_kicad_default(m):
-    header = m.group(1)
-    netlist = m.group(2)
-    trailer = m.group(3)
+    header, netlist, trailer = m.group(1), m.group(2), m.group(3)
     tokens = re.findall(r'"[^"]*"|\S+', netlist)
     kept = [t for t in tokens if t not in MOVE]
     return header + "\n      ".join([""] + kept) + "\n      " + trailer
@@ -70,18 +103,55 @@ dsn2 = re.sub(
     flags=re.DOTALL,
 )
 
-# Merge motor nets into the Power class — same width/clearance, fewer constraint
-# interactions for freerouting. Motor traces are short (U2 → J1/J2) so 0.5mm
-# tracks with 250µm clearance are adequate.
-dsn_power_and_motor = dsn_power | dsn_motor
-NEW_CLASSES = (
-    f"(class Power\n"
-    f"  {' '.join(sorted(dsn_power_and_motor))}\n"
-    f'  (circuit (use_via "Via[0-1]_800:400_um"))\n'
-    f"  (rule (width {int(POWER_W * 1000)}) (clearance 200))\n"
-    f")\n"
-)
+# One DSN class per KiCad netclass, with ITS width and clearance — so freerouting
+# plans against the same numbers DRC will later enforce.
+NEW_CLASSES = ""
+for _cls in sorted(CLASS_NETS):
+    _c = NETCLASS[_cls]
+    NEW_CLASSES += (
+        f"(class {_cls}\n"
+        f"  {' '.join(sorted(CLASS_NETS[_cls]))}\n"
+        f'  (circuit (use_via "Via[0-1]_800:400_um"))\n'
+        f"  (rule (width {int(_c['track_width'] * 1000)}) "
+        f"(clearance {int(_c['clearance'] * 1000)}))\n"
+        f")\n"
+    )
 dsn2 = dsn2.replace("(class kicad_default", NEW_CLASSES + "(class kicad_default", 1)
+
+# Raise the STRUCTURE-level clearance to the strictest netclass value.
+# Per-class (rule (clearance N)) alone did NOT prevent violations: freerouting
+# plans most pairs against the structure-level rule, which KiCad exports at the
+# Default netclass value (200um) plus a very permissive smd_smd rule (50um).
+# That is why aligning the per-class numbers changed nothing — actuals as low as
+# 0.135mm were being produced against a 0.25mm requirement.
+_max_clr = int(max(c["clearance"] for c in NETCLASS.values()) * 1000)
+dsn2, _n1 = re.subn(
+    r"(\(structure.*?\(rule\s*\n?\s*\(width \d+\)\s*\n?\s*\(clearance )\d+",
+    rf"\g<1>{_max_clr}",
+    dsn2,
+    count=1,
+    flags=re.DOTALL,
+)
+dsn2, _n2 = re.subn(
+    r"\(clearance \d+\s*\(type smd_smd\)\)",
+    f"(clearance {_max_clr} (type smd_smd))",
+    dsn2,
+)
+print(f"  global clearance -> {_max_clr}um (rule:{_n1} smd_smd:{_n2})")
+
+# Give the keepout circles an explicit centre.
+#
+# KiCad exports mounting-hole keepouts as `(circle F.Cu 3700)` — diameter only. The
+# Specctra grammar allows the centre to be omitted (it defaults to 0 0), but
+# freerouting does not, and fails the whole package with
+#     ERROR Package.read_scope: could not read keepout area of package
+#           'MountingHole:MountingHole_3.2mm_M3_DIN965'
+# It then routes as if the mounting holes were not there. That error has been
+# printed on every run of this script and was treated as noise; it is not. It put
+# two /AO1 segments through MH5's 3.2mm hole, which DRC catches as hole_clearance
+# but which no amount of router tuning would have fixed.
+dsn2, _n3 = re.subn(r"\(circle (\S+) (\d+)\)", r"(circle \1 \2 0 0)", dsn2)
+print(f"  keepout circles given explicit centres: {_n3}")
 
 # Strip component body outlines: the circular 1000µF THT cap courtyard alone has
 # 197 polygon outlines with 609 coord-pairs, causing freerouting to spend O(n²)
@@ -91,7 +161,7 @@ dsn2 = re.sub(r"\n\s*\(outline \(polygon[^)]+\)\)", "", dsn2, flags=re.DOTALL)
 print(f"  Outlines remaining: {dsn2.count('(outline ')}")
 
 # Drop inner copper layers from DSN: only route on F.Cu / B.Cu.
-# Inner layers (In1.Cu=GND plane, In2.Cu=+BATT plane) are handled as KiCad
+# Inner layers (In1.Cu=GND plane, In2.Cu=+5V plane) are handled as KiCad
 # copper-fill zones after SES import; freerouting routing 4 layers is very slow.
 dsn2 = re.sub(
     r"\n\s*\(plane\s+\S+\s+\(polygon\s+\S+\s+[\d\s\-]+\)\)", "", dsn2, flags=re.DOTALL
@@ -102,6 +172,17 @@ dsn2 = re.sub(
     dsn2,
     flags=re.DOTALL,
 )
+
+# ...and drop the keepouts that referenced those now-nonexistent layers.
+# This is the other half of the mounting-hole bug: giving the circles an explicit
+# centre was necessary but not sufficient. Four keepouts are emitted per hole, one
+# per copper layer; the In1.Cu/In2.Cu ones point at layers stripped just above, and
+# freerouting rejects the ENTIRE package when it cannot resolve a keepout's layer —
+# so the F.Cu and B.Cu keepouts were being discarded along with them and the holes
+# were invisible to the router. Exactly 2 errors per run for 4 keepouts, which is
+# what identified it.
+dsn2, _n4 = re.subn(r"\n\s*\(keepout \"\" \(circle In\d\.Cu [^)]*\)\)", "", dsn2)
+print(f"  keepouts on stripped inner layers removed: {_n4}")
 
 # Add GND plane on B.Cu — same pattern as scout-mcu.  freerouting routes GND pads
 # via short vias rather than long tracks (fast); non-GND signals still route on B.Cu
@@ -118,16 +199,25 @@ dsn2 = dsn2.replace("    (via ", "    " + _GND_PLANE + "(via ", 1)
 
 with open(DSN_CLS, "w") as f:
     f.write(dsn2)
-print(f"  3 classes → {DSN_CLS}")
+print(f"  4 classes (Rail/Power/Motor/default) → {DSN_CLS}")
 
 # ── Step 3: Run freerouting ───────────────────────────────────────────────────
 print(f"Running freerouting ({PASSES} passes)...")
 if not os.path.exists(JAR):
     print(
-        f"ERROR: {JAR} not found. Download freerouting v2.0.1 jar first.",
+        f"ERROR: {JAR} not found. Download the freerouting 2.1.0 jar first "
+        f"(2.2.x needs JDK 25; installed JDK is 21).",
         file=sys.stderr,
     )
     sys.exit(1)
+
+# Delete any SES from a previous run BEFORE invoking the router.  Without this,
+# a freerouting failure leaves the stale file in /tmp, the existence check below
+# passes, and the script imports last run's routing while reporting success.
+# Same failure class that fabricated robot-scout-mcu with zero traces: the
+# toolchain reported success for work that did not happen.
+if os.path.exists(SES):
+    os.remove(SES)
 
 result = subprocess.run(
     ["java", "-jar", JAR, "-de", DSN_CLS, "-do", SES, "-mp", str(PASSES), "-mt", "1"],
@@ -138,6 +228,13 @@ for line in (result.stdout + result.stderr).splitlines():
     if any(k in line for k in ("pass #", "complet", "Saving", "unrouted", "ERROR")):
         print(" ", line.strip())
 
+if result.returncode != 0:
+    print(
+        f"ERROR: freerouting exited {result.returncode} — board NOT routed.",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
 if not os.path.exists(SES):
     print("ERROR: freerouting did not produce a SES file.", file=sys.stderr)
     sys.exit(1)
@@ -147,22 +244,18 @@ print("Importing SES and fixing trace widths...")
 b2 = pcbnew.LoadBoard(PCB)
 pcbnew.ImportSpecctraSES(b2, SES)
 
-counts = {SIGNAL_W: 0, POWER_W: 0}
+counts = {}
 for track in b2.GetTracks():
     if track.GetClass() == "PCB_VIA":
         continue
-    net = track.GetNetname().lstrip("/")
-    if net in POWER_NETS or net in MOTOR_NETS:
-        w = POWER_W
-    else:
-        w = SIGNAL_W
+    w = NET_W.get(track.GetNetname(), SIGNAL_W)
     track.SetWidth(pcbnew.FromMM(w))
-    counts[w] += 1
+    counts[w] = counts.get(w, 0) + 1
 
 b2.Save(PCB)
 
-print(f"  Signal {SIGNAL_W:.2f}mm: {counts[SIGNAL_W]} segments")
-print(f"  Power+Motor {POWER_W:.2f}mm: {counts[POWER_W]} segments")
+for _w in sorted(counts):
+    print(f"  {_w:.2f}mm: {counts[_w]} segments")
 
 # ── Step 6: Fill copper zones and report ──────────────────────────────────────
 print("Filling copper zones...")
@@ -171,29 +264,53 @@ b3 = pcbnew.LoadBoard(PCB)
 # Add a GND fill zone on B.Cu to match the B.Cu GND plane declared in the DSN.
 # freerouting routes GND pads to the B.Cu plane; without a KiCad zone here those
 # B.Cu-only GND pads remain floating after SES import.
-_gnd_zone = pcbnew.ZONE(b3)
-_gnd_zone.SetLayer(pcbnew.B_Cu)
-_gnd_net = b3.FindNet("GND")
-if _gnd_net:
-    _gnd_zone.SetNet(_gnd_net)
-_go = _gnd_zone.Outline()
-_go.NewOutline()
-_inset_nm = pcbnew.FromMM(0.3)
-_ox_nm = pcbnew.FromMM(OX)
-_oy_nm = pcbnew.FromMM(OY)
-_ow_nm = pcbnew.FromMM(OX + W)
-_oh_nm = pcbnew.FromMM(OY + H)
-for _cx, _cy in [
-    (_ox_nm + _inset_nm, _oy_nm + _inset_nm),
-    (_ow_nm - _inset_nm, _oy_nm + _inset_nm),
-    (_ow_nm - _inset_nm, _oh_nm - _inset_nm),
-    (_ox_nm + _inset_nm, _oh_nm - _inset_nm),
-]:
-    _go.Append(int(_cx), int(_cy))
+# REUSE an existing B.Cu GND zone rather than removing and re-adding one.
+#
+# Running route_pcb.py twice in a row used to stack a second identical zone on the
+# first (DRC: zones_intersect) — the same accumulation family as the duplicate
+# tracks, where a step that ADDS must either be idempotent or clear its own output.
+# But clearing it with b3.Remove() traded one bug for a worse one: the removal
+# poisons the SWIG layer, and the very next pcbnew.ZONE(...).Outline() came back as
+# a bare SwigPyObject, so route_pcb.py died before filling any zone. Reusing the
+# existing object touches nothing and is idempotent by construction.
+_gnd_zone = next(
+    (z for z in b3.Zones() if z.GetLayer() == pcbnew.B_Cu and z.GetNetname() == "GND"),
+    None,
+)
+_fresh = _gnd_zone is None
+if _fresh:
+    _gnd_zone = pcbnew.ZONE(b3)
+    _gnd_zone.SetLayer(pcbnew.B_Cu)
+    _gnd_net = b3.FindNet("GND")
+    if _gnd_net:
+        _gnd_zone.SetNet(_gnd_net)
+    _go = _gnd_zone.Outline()
+    _go.NewOutline()
+    _inset_nm = pcbnew.FromMM(0.3)
+    _ox_nm = pcbnew.FromMM(OX)
+    _oy_nm = pcbnew.FromMM(OY)
+    _ow_nm = pcbnew.FromMM(OX + W)
+    _oh_nm = pcbnew.FromMM(OY + H)
+    for _cx, _cy in [
+        (_ox_nm + _inset_nm, _oy_nm + _inset_nm),
+        (_ow_nm - _inset_nm, _oy_nm + _inset_nm),
+        (_ow_nm - _inset_nm, _oh_nm - _inset_nm),
+        (_ox_nm + _inset_nm, _oh_nm - _inset_nm),
+    ]:
+        _go.Append(int(_cx), int(_cy))
 _gnd_zone.SetMinThickness(pcbnew.FromMM(0.25))
-_gnd_zone.SetLocalClearance(pcbnew.FromMM(0.1))
+# Carve at the DESIGN clearance, not a hardcoded 0.1mm.
+#
+# This zone covers all of B.Cu, so every non-GND track routed there needs the fill to
+# pull back around it. At 0.1mm the copper pour stopped 0.1mm short while DRC demanded
+# the netclass 0.2mm — so each such track was a clearance error against the zone.
+# It stayed hidden while B.Cu carried almost no signal routing, then appeared the
+# moment /SDA and /ENC_LB were re-routed there (and produced 121 errors in a
+# from-scratch route, which is what exposed it as systemic rather than local).
+_gnd_zone.SetLocalClearance(pcbnew.FromMM(NETCLASS["Default"]["clearance"]))
 _gnd_zone.SetPadConnection(pcbnew.ZONE_CONNECTION_FULL)
-b3.Add(_gnd_zone)
+if _fresh:
+    b3.Add(_gnd_zone)
 
 try:
     filler = pcbnew.ZONE_FILLER(b3)
@@ -204,48 +321,49 @@ except Exception as e:
 
 b3.Save(PCB)
 
-# ── Step 7: Manual +3V3 patch (R4-1 and U2-10) ───────────────────────────────
-# freerouting consistently misses these two pads because the narrow window
-# between U1.19/U1.20 (y=21.205..21.595) and the /ESTOP diagonal (x+y=49.47)
-# make the F.Cu route hard to discover automatically.
-#
-# Route on F.Cu only, tapping from the existing +3V3 via at (13.30, 24.27).
-# Key clearance constraints:
-#   R4.2 (/ESTOP) pad 0.540x0.640mm at (30.00,20.49): right edge 30.270, top 20.170
-#   /ESTOP diagonal (26.80,22.67)→(28.98,20.49): line x+y=49.47
-#   Use x=30.70 verticals (0.305mm from R4.2 right edge)
-#   Use y=19.70 horizontal (0.345mm from R4.2 top edge)
-#   Corner at (27.20,21.40): 0.615mm center-to-center from /ESTOP diagonal
-print("Applying manual +3V3 patch (R4-1 and U2-10)...")
-b4 = pcbnew.LoadBoard(PCB)
-_3v3_net = b4.FindNet("+3V3")
-if _3v3_net:
-    _patch_segs = [
-        (
-            (13.30, 24.27),
-            (13.30, 21.15),
-        ),  # y=21.15: clears ESTOP via at (22.10,22.04) + U1 pad19 mask bridge
-        (
-            (13.30, 21.15),
-            (27.20, 21.15),
-        ),  # window: >21.06 (U1 mask) and <21.24 (ESTOP via 0.25mm)
-        ((27.20, 21.15), (28.50, 19.70)),
-        ((28.50, 19.70), (30.70, 19.70)),
-        ((30.70, 19.70), (30.70, 20.38)),
-        ((30.70, 20.38), (53.62, 20.38)),
-        ((53.62, 20.38), (53.62, 21.65)),
-        ((30.70, 20.38), (30.70, 21.51)),
-        ((30.70, 21.51), (30.00, 21.51)),
-    ]
-    for (x1, y1), (x2, y2) in _patch_segs:
-        _t = pcbnew.PCB_TRACK(b4)
-        _t.SetLayer(pcbnew.F_Cu)
-        _t.SetNet(_3v3_net)
-        _t.SetWidth(pcbnew.FromMM(0.25))
-        _t.SetStart(pcbnew.VECTOR2I(pcbnew.FromMM(x1), pcbnew.FromMM(y1)))
-        _t.SetEnd(pcbnew.VECTOR2I(pcbnew.FromMM(x2), pcbnew.FromMM(y2)))
-        b4.Add(_t)
-    b4.Save(PCB)
-    print(f"  Added {len(_patch_segs)} patch tracks on F.Cu")
-else:
-    print("  WARNING: +3V3 net not found, patch skipped")
+# ── (removed) Manual +3V3 patch ──────────────────────────────────────────────
+# A hand-tuned 9-segment F.Cu patch used to force R4-1 and U2-10 onto +3V3,
+# because freerouting missed them on the v1 layout. Its coordinates were pinned
+# to v1 geometry ("clears ESTOP via at (22.10,22.04)", a run to x=53.62 where C3
+# now sits) and it was applied unconditionally — so on the v2 board it was laying
+# nine stale tracks across a layout it no longer described. Verified obsolete
+# 2026-08-06: routing completes with 0 unconnected items without it.
+
+# ── Step 6.5: Post-route finishing ────────────────────────────────────────────
+# Dangling stubs and silk placement can only be settled once the copper is final,
+# so they run here rather than in layout_pcb.py. Encoded in the pipeline, never
+# done by hand in a KiCad session — see register P1.
+print("\nFinishing (dangling tracks, silkscreen)...")
+_fin = subprocess.run(
+    [
+        sys.executable,
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "finish_pcb.py"),
+    ],
+    capture_output=True,
+    text=True,
+)
+print(_fin.stdout.rstrip())
+if _fin.returncode != 0:
+    print(_fin.stderr.rstrip(), file=sys.stderr)
+    print("ERROR: finishing pass failed.", file=sys.stderr)
+    sys.exit(1)
+
+# ── Step 7: Verify the board is actually routed ───────────────────────────────
+# The router must not exit 0 on a board it failed to route.  Delegates to the
+# shared gate (~/kicad-libs/tools/check_pcb_routing.py, symlinked into both
+# repos) so there is exactly one definition of "routed".
+print("\nVerifying routing...")
+_gate = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "tools",
+    "check_pcb_routing.py",
+)
+_res = subprocess.run([sys.executable, _gate, PCB], capture_output=True, text=True)
+print(_res.stdout.rstrip())
+if _res.returncode != 0:
+    print(
+        "ERROR: routing gate failed — board is NOT fully routed. "
+        "Do not export gerbers.",
+        file=sys.stderr,
+    )
+    sys.exit(1)
