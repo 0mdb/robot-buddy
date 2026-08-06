@@ -79,3 +79,28 @@ short — if the HAT's height makes the ribbon tight, swap to a longer
 `PIN_VBAT_SENSE` for an on-MCU ADC battery read. That path is obsolete in
 this topology (the ESP32 only sees USB 5 V, not pack voltage) and the pin
 will be freed in a follow-up cleanup after the HAT is commissioned.
+
+**Confirmed 2026-08-06.** The reflex v1 board contradicted this page: it had a
+separate `+BATT` input (J8), a pack-scaled divider into the ESP32 ADC, and a
+`+BATT` inner plane. This page was right and the board was wrong. The v2 reflex
+board drops all of it — no pack input, no `/BAT_SENSE`, TB6612 `VM` fed from
+`+5V`. Battery telemetry comes solely from the HAT's INA219 over the Pi's
+`i2c-1`, as described under *Telemetry chain* above.
+
+Two consequences worth carrying:
+
+- **TB6612 `VM` now has only 0.5 V of margin** (5 V supply against its 4.5 V
+  floor). The 1000 µF bulk called for above is not optional, and on v2 it must
+  be placed *at the VM pin* — on v1 it sat 31.8 mm away, which is not a VM input
+  capacitor in any electrical sense.
+- **The 5 V rail is the single critical resource.** Peak is ~4.75 A (Pi 2.5 A +
+  face 0.5 A + reflex logic 0.25 A + a 1.5 A motor direction flip) against the
+  HAT's 5 A. Motor transients now sag the same rail the Pi runs on.
+
+⚠ **The Battery section above still describes a 2S 18650 pack in the UPS HAT (B).**
+Buddy has moved to powering from the Pi HAT alone; confirm whether the HAT itself
+is unchanged and update that section if not. This does not affect the reflex
+board design either way.
+
+Full v2 reasoning: `docs/v2-defect-register.md` §A0/§A3 and
+`docs/electrical-design-calcs.md`.
