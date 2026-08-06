@@ -225,9 +225,16 @@ place("J7", "E-STOP", "Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical", 22,
 #   Was x=1.5, but the JST-VH pads are 2.7mm square → pad left edge at 0.15mm, against
 #   a 0.5mm board-edge rule (4x copper_edge_clearance). 2.0 puts it at 0.65mm.
 #   Courtyard right edge = 2.0+3.9=5.9 → left passives moved 6.5 → 7.7 to keep clear.
+# Value reads pin 1->4 in order, with direction marks resolving L3: ">" means the pin
+# is DRIVEN BY THIS BOARD, "<" means it is driven by the far end. Verified from the
+# netlist rather than the net name: J9.3 /UART_TX lands on U1.18 (TX, GPIO43,
+# pintype=output) and J9.4 /UART_RX on U1.19 (RX, GPIO44, pintype=input). So the board
+# transmits on pin 3 — wire pin 3 to the Pi's RX.
+# "5V+UART Pi" said nothing about direction, which is the whole of defect L3: both ends
+# of a UART call their own pin TX, so the label has to say whose view it is.
 place(
     "J9",
-    "5V+UART Pi",
+    "5V GND TX> RX<",
     "Connector_JST:JST_VH_B4P-VH_1x04_P3.96mm_Vertical",
     2.0,
     34,

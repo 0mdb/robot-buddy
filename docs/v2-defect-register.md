@@ -161,6 +161,24 @@ Eagle/KiCad download — the Dimension layer is authoritative and takes a minute
 Scout's error class still stands for parts with no vendor CAD: pins are the constrained
 feature, never assume the body is symmetric about them.
 
+### F5-sweep. Every footprint checked against its part variant — 2026-08-06
+One open item, and it is a suffix question rather than a geometry one.
+
+| Part | Footprint | Pitch | Drill | Verdict |
+|---|---|---|---|---|
+| J1, J2 | `JST_XH_B6B-XH-A_1x06_P2.50mm` | 2.50 | 0.95 | ✅ XH pins are 0.6 mm square |
+| J7, J10 | `JST_XH_B2B-XH-A_1x02_P2.50mm` | 2.50 | 1.00 | ✅ same family; KiCad's own library differs 0.95 vs 1.00 between the 2- and 6-pin parts, which is cosmetic |
+| J5 | `JST_SH_BM04B-SRSS-TB_1x04-1MP` | 1.00 | — | ✅ **BM04B = top entry**, matches C160390. `SM04B`/C160404 is side entry — already the subject of a caught mistake |
+| J6 | `PinHeader_1x04_P2.54mm` | 2.54 | 1.00 | ✅ 0.64 mm square pin |
+| J9 | `JST_VH_B4P-VH_1x04_P3.96mm` | 3.96 | 1.70 | 🟡 **which suffix?** `B4P-VH` and `B4P-VH-B` share this land pattern (diffed previously); `-FB-B` and `-R` were never checked |
+| C3 | `CP_Radial_D10.0mm_P5.00mm` | 5.00 | 1.00 | ✅ geometry standard for a 10 mm radial; the *part* is still unselected (O1/O2) |
+| C6 | `CP_Radial_D5.0mm_P2.00mm` | 2.00 | 0.80 | 🟡 geometry fine, but 5 mm dia is ~100 µF at 6.3 V — see O2 |
+| MH1–MH5 | `MountingHole_3.2mm_M3` | — | 3.20 | ✅ M3 clearance |
+| U2 | `SparkFun_TB6612FNG_v2` | 2.54 | 1.00 | ✅ settled against vendor Eagle CAD (F4) |
+| U1 | `Waveshare_ESP32-S3-Zero_FlatMount_NoCluster` | 2.54 | — | ✅ perimeter geometry verified (F2); cluster deleted (F1) |
+| U4 | `TSSOP-16_4.4x5mm_P0.65mm` | 0.65 | — | ✅ TCA9554A**PWR** is the PW/TSSOP-16 package |
+| R/C 0402 | `R_/C_0402_1005Metric` | 1.02/0.96 | — | ✅ |
+
 ### F5. Stock-footprint variant check (carried from scout)
 Scout's AMASS lesson — XT30U-F (cable) vs XT30UPB-F (board-mount), 2.7 vs 1.8 mm
 drill — generalises. **Check every stock KiCad footprint against the actual part
@@ -1073,8 +1091,11 @@ No gerbers are generated until every line is checked and initialled.
 - [x] F3 — n/a: v2 flat-mounts U1, so `M_Socket` is not used
 - [x] F4 — body is **20.32×20.32mm**, from the vendor Eagle `.brd` layer 20; footprint
       corrected from its claimed 23mm and the derivation written into its `descr`
-- [ ] F5 — every stock footprint checked against the actual part variant in stock
-- [ ] All new/changed footprints have vendor mounting holes and pin-name silk
+- [x] F5 — swept every footprint against its part variant; see F5-sweep below. One
+      open item: J9's exact JST-VH suffix
+- [x] Pin-name silk: U1 18 items, U2 2 (`1`/`9` outside the body — silk inside a
+      socket footprint is invisible once the module is seated). Neither module has
+      fastening holes in its vendor CAD, so "vendor mounting holes" is n/a here.
 
 ### Connectors
 - [x] C1 — **designed out**: J8 deleted entirely, J9 moved to JST-VH. The review gate
@@ -1092,8 +1113,10 @@ No gerbers are generated until every line is checked and initialled.
 - [x] L1 — all 7 connector Value fields moved to F.SilkS by `layout_pcb.py`
 - [x] L2 — moot, J8 deleted; J9 reads `5V+UART Pi` so the inlet states its voltage
 - [x] L4 — J1 `MOTOR L`, J2 `MOTOR R`
-- [ ] L3 — 🔴 **J9 still does not state TX/RX direction.** `5V+UART Pi` does not say
-      whether pin 3 is the Pi's TX or the board's. One silk edit.
+- [x] L3 — J9 now reads **`5V GND TX> RX<`**, pin 1→4 in order, `>` = driven by this
+      board, `<` = driven by the far end. Direction taken from the netlist, not the net
+      name: J9.3 lands on U1.18 (TX GPIO43, pintype **output**) and J9.4 on U1.19
+      (RX GPIO44, **input**), so pin 3 goes to the Pi's RX.
 
 ### DFM (carried from v1 — these were fixed, reverted once, and must stay fixed)
 - [x] P1 — DFM pass encoded in `layout_pcb.py`, not applied by hand
@@ -1101,7 +1124,9 @@ No gerbers are generated until every line is checked and initialled.
       predates the cluster deletion and the NeoPixel circuit removal)
 - [x] No `np_thru_hole` pad carries `*.Mask` — **0**
 - [x] Both re-checked **after** the final regeneration, not before
-- [ ] Mask ⊆ copper verified by parsing D03 flash coords on both outer layers
+- [x] Mask ⊆ copper verified **on the plotted gerbers** — F 122 openings, B 44, all
+      over copper. New shared gate `check_gerber_mask.py`, wired into `make_fab.py`;
+      negative-tested by injecting an orphan flash (detected, exit 1).
 - [ ] JLC BOM match review: every line shows the intended **Package**, not just a
       valid C-number (the wrong-package auto-match is silent)
 

@@ -352,6 +352,25 @@ def main():
     n_files = export_gerbers()
     print(f"          {n_files} files -> {GERBER_DIR}")
 
+    # Verify the PLOTTED output, not the board file. layout_pcb.py's DFM pass keeps
+    # the design free of mask-without-copper, but a plot setting or a missing export
+    # flag could reintroduce it downstream, and the gerbers are what the fab builds.
+    print("Checking mask openings against copper ...")
+    r = subprocess.run(
+        [
+            sys.executable,
+            os.path.join(REPO, "tools", "check_gerber_mask.py"),
+            GERBER_DIR,
+        ],
+        capture_output=True,
+        text=True,
+    )
+    for line in r.stdout.splitlines():
+        if line.strip():
+            print(f"  {line.strip()}")
+    if r.returncode != 0 and gated:
+        sys.exit("REFUSING: the plotted gerbers offer bare laminate as solderable.")
+
     print("Exporting BOM + CPL ...")
     n_placed, n_lines, missing, excluded = export_bom_and_cpl()
     print(f"          {n_placed} placed parts, {n_lines} BOM lines")
