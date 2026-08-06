@@ -301,7 +301,43 @@ shows TSSOP-16). MCP23008-E/SO C92253 is the alternate but is a 300-mil SOIC-18.
   `+5V` rail's bulk and HF bypass, which the rail still needs (X8, and the cable-fed-rail rule).
 - J10 + R10 (the separate always-on power LED) are unaffected.
 
-### A0d. Fuse part verification — 🔴 the PTC conflicts with the VM margin
+### A0d-v2. 🔴 The no-fuse safety case must be re-derived — the trace it cited is gone
+
+A0d closed X2 (inverted overcurrent coordination) by widening `+5V` to 1.5 mm and
+moving J9 to JST-VH, giving `HAT ~5 A < trace 5.26 A < connector 10 A`. **`RAIL_W` is
+now 0.4 mm** (it was narrowed to clear 14 clearance violations, §R2), so that chain no
+longer holds as written: at 1 oz a 0.4 mm trace carries ~2.0 A, at 2 oz ~3.3 A — in both
+cases **below** the ~5 A source. On paper the coordination is inverted again.
+
+**The board itself is very likely fine, and for a different reason than the one
+documented.** The 5 A path never touches a surface trace:
+
+| `+5V` node | Pad | Path |
+|---|---|---|
+| J9.1 (power in) | PTH | barrel straight onto the In2.Cu plane |
+| U2.9 (VM, the motor current) | PTH | barrel straight off the plane |
+| C3.1 (1000 µF bulk) | PTH | barrel straight onto the plane |
+| J1.3 / J2.3 (motor connectors) | PTH | barrel onto the plane |
+| J6.1 (HC-SR04, ~15 mA) | PTH | barrel onto the plane |
+| C4.1, C7.1, R10.1, U1.1 | SMD | surface stub + via — decoupling and ~250 mA of logic |
+
+Zone pad connection is **`ZONE_CONNECTION_FULL`** on all three planes (verified — note
+that in pcbnew 10.0.5 `FULL == 2` and `THERMAL == 1`, which reads backwards if you
+assume the usual ordering), so those barrels get solid copper, not thermal spokes.
+
+To close this, the safety case has to be rewritten in terms of the plane and the
+barrels rather than the surface trace, **and** the copper weight has to be declared —
+see A0e.
+
+### A0e. 🔴 No copper weight is declared anywhere
+The board has **no stackup** in either `.kicad_pcb` or `.kicad_pro`. `check_pcb_ampacity.py`
+defaults to **2 oz outer**, which is an assumption the board does not state, and JLC's
+default for 4-layer is **1 oz outer / 0.5 oz inner**. Every ampacity number in this
+register therefore rests on a parameter nobody has chosen. Decide it, declare it in the
+board stackup, and order to it — a 2 oz assumption silently built at 1 oz halves the
+outer-copper margin.
+
+### A0d. (original) Fuse part verification — the PTC conflicts with the VM margin
 
 Verified against the [Bourns MF-MSMF datasheet](https://www.bourns.com/docs/product-datasheets/mf-msmf.pdf)
 before layout, 2026-08-06. Three findings:
@@ -967,8 +1003,8 @@ No gerbers are generated until every line is checked and initialled.
 - [ ] Direction-change sequencing in firmware: PWM=0 → write → restore PWM
 - [x] X6 — NeoPixels cut entirely, so the 5 A budget question is closed
 - [ ] `docs/power.md` updated so board and doc agree (firmware note + Battery section)
-- [x] A0b — `+5V` on its own 1.5 mm `RAIL_W`, declared to freerouting as a separate
-      DSN class so clearances are planned against 1.5 mm copper, not patched after
+- [~] A0b — `+5V` is its own DSN class, but `RAIL_W` is now **0.4 mm**, not 1.5 mm.
+      See the A0d re-derivation below before ticking this.
 - [x] In2.Cu plane re-homed `+BATT` → `+5V`; `POWER_NETS` updated
 - [x] STBY net tied to `/ESTOP`; R3 deleted (its pull-down role is gone)
 - [x] J11 / U3 / R11 and the `/NEO_*` nets deleted; C6 + C7 retained as `+5V` bulk/bypass
@@ -982,15 +1018,17 @@ No gerbers are generated until every line is checked and initialled.
 - [x] Pin map A0c implemented — SDA/SCL on pads 26/25, 2 spares (GPIO1, GPIO6)
 - [x] `+BATT` eliminated, VM on `+5V`, `/BAT_SENSE` + R8/R9/C2 deleted, J8 deleted
 - [x] U4 TCA9554APWR drives AIN1/AIN2/BIN1/BIN2; netlist verified, no orphan nets
-- [x] Protection resolved **without a fuse** (A0d): JST-VH J9 + 1.5 mm `+5V`.
-      HAT ~5 A < trace 5.26 A < connector 10 A; keeps the full 0.5 V VM margin
+- [ ] 🔴 Protection **without a fuse** (A0d) — the argument as written is stale.
+      It reads "HAT ~5 A < trace 5.26 A < connector 10 A", but 5.26 A was 1.5 mm at
+      1 oz and `RAIL_W` is now 0.4 mm. Re-derive against the plane. See A0d-v2.
 - [x] `_NoCluster` **schematic symbol** derived in the shared library; U1 now has
       exactly pins 1–9 and 18–26, matching the footprint pad-for-pad
 
 ### Footprints
-- [ ] F1 — cluster deleted; `_NoCluster` perimeter-only variant in use
-- [ ] F3 — M_Socket at ±7.62 (only if v2 sockets the module)
-- [ ] F4 — TB6612 body extents checked against the pin line, not assumed symmetric
+- [x] F1 — cluster deleted; `_NoCluster` perimeter-only variant in use
+- [x] F3 — n/a: v2 flat-mounts U1, so `M_Socket` is not used
+- [x] F4 — body is **20.32×20.32mm**, from the vendor Eagle `.brd` layer 20; footprint
+      corrected from its claimed 23mm and the derivation written into its `descr`
 - [ ] F5 — every stock footprint checked against the actual part variant in stock
 - [ ] All new/changed footprints have vendor mounting holes and pin-name silk
 
@@ -998,24 +1036,32 @@ No gerbers are generated until every line is checked and initialled.
 - [x] C1 — **designed out**: J8 deleted entirely, J9 moved to JST-VH. The review gate
       no longer reports a mateability failure. Only J7/J10 share a footprint and both
       are signal-only.
-- [ ] C2 — J1/J2 keyed or clearly distinguished
-- [ ] Full mateability re-run: every connector pair, "can these swap, and what happens?"
-- [ ] Full net-vs-label re-run: every Value string vs the nets actually on it
+- [~] C2 — J1/J2 carry silk `MOTOR L` / `MOTOR R`. **Not keyed**: identical 6-pin XH
+      with the same net *types* (+5V, GND, 2 motor, 2 encoder), so a swap reverses both
+      tracks rather than damaging anything. Decide whether silk alone is enough.
+- [x] Full mateability re-run — `check_board_review.py` passes. Only J1/J2 (see C2) and
+      J7/J10 share footprints; J7 `/ESTOP`+GND vs J10 `/LED_A`+GND are both signal-level,
+      so a swap misbehaves but cannot damage anything. No power-into-signal pair exists.
+- [x] Full net-vs-label re-run — every connector Value matches the nets on it
 
 ### Silkscreen
-- [ ] L1 — function/voltage text on F.SilkS, not only F.Fab
-- [ ] L2/L3/L4 — J8 states voltage; J9 TX/RX direction unambiguous; J1/J2 say L/R
+- [x] L1 — all 7 connector Value fields moved to F.SilkS by `layout_pcb.py`
+- [x] L2 — moot, J8 deleted; J9 reads `5V+UART Pi` so the inlet states its voltage
+- [x] L4 — J1 `MOTOR L`, J2 `MOTOR R`
+- [ ] L3 — 🔴 **J9 still does not state TX/RX direction.** `5V+UART Pi` does not say
+      whether pin 3 is the Pi's TX or the board's. One silk edit.
 
 ### DFM (carried from v1 — these were fixed, reverted once, and must stay fixed)
 - [x] P1 — DFM pass encoded in `layout_pcb.py`, not applied by hand
-- [ ] All THT pads `(keep_end_layers yes)` — expect 33 yes / 0 no
-- [ ] No `np_thru_hole` pad carries `*.Mask` — expect 0
-- [ ] **Re-check both of the above after the *final* regeneration**, not before
+- [x] All THT pads `(keep_end_layers yes)` — **28 yes / 0 no** (28 not 33: the v1 count
+      predates the cluster deletion and the NeoPixel circuit removal)
+- [x] No `np_thru_hole` pad carries `*.Mask` — **0**
+- [x] Both re-checked **after** the final regeneration, not before
 - [ ] Mask ⊆ copper verified by parsing D03 flash coords on both outer layers
 - [ ] JLC BOM match review: every line shows the intended **Package**, not just a
       valid C-number (the wrong-package auto-match is silent)
 
 ### Final
-- [ ] DRC clean
+- [x] DRC clean — 0 violations, 0 unconnected, 0 schematic-parity; all three gates pass
 - [ ] 3D placement preview reviewed, rotations checked on all 3+ pin parts
 - [ ] This register has no unchecked box
