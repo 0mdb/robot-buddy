@@ -2,19 +2,27 @@
 
 ## Goal
 
-Run the Pi 5 + 2× ESP32-S3 + TFT face + 2× Yahboom TT gearmotors from a single
-18650 pack with UPS function (seamless AC ↔ battery switchover) and software-
-readable battery telemetry.
+Run the Pi 5 + 2× ESP32-S3 + TFT face + 2× Yahboom TT gearmotors from the
+Waveshare UPS HAT (B), with UPS function (seamless AC ↔ battery switchover) and
+software-readable battery telemetry.
+
+**There is no separate battery pack in this design.** The HAT is the entire
+battery subsystem: it owns the cells, the charger, the switchover and the fuel
+gauge, and the only thing it presents to the rest of the robot is **5 V**. No
+board in this robot sees cell voltage.
 
 ## Topology (single-rail, 5 V)
 
 ```
-  USB-C (AC) ─┐
-              ├─► Waveshare UPS HAT (B) ─► 5 V / 5 A ─┬─► Pi 5
-  2× 18650 ───┘                                       │     └─► USB 5 V ─► ESP32-face + ESP32-reflex
-                (2S, 7.4 V nominal)                   │
+  USB-C (AC) ──► Waveshare UPS HAT (B) ──► 5 V / 5 A ─┬─► Pi 5
+                 (cells + charger + UPS               │     └─► USB 5 V ─► ESP32-face
+                  switchover + fuel gauge,            │     └─► J9 5 V ──► ESP32-reflex board
+                  all internal)                       │
                                                       └─► TB6612 VM ─► TT motors
 ```
+
+5 V is the only rail that leaves the HAT, and it is the only rail on the reflex
+board. Nothing carries cell voltage.
 
 Everything downstream of the HAT lives on a shared 5 V rail. The HAT owns
 charging, undervoltage cutoff, UPS switchover, and reports pack voltage +
@@ -37,12 +45,27 @@ flips. No dedicated motor supply needed at this scale.
 
 ## Battery
 
-- **2× 18650 in series** in the Waveshare UPS HAT (B) Pi 5 pogo-pin variant.
-- Cells: start with whatever's on hand. For real runtime (≥1 hr) replace with
-  Samsung 30Q / LG HG2 / Molicel P26A from a reputable US source.
-- Charger: the UPS HAT charges via its USB-C input; no external 18650
-  charger needed during normal use. A dedicated 18650 charger (the one
-  already on hand) stays useful for capacity tests + cell rotation.
+The HAT is the battery. There is no pack to design around, no pack connector,
+and no pack voltage anywhere in the robot's wiring.
+
+- **Waveshare UPS HAT (B), GPIO-header variant** — chosen over the pogo-pin
+  version, which had a CSI-ribbon clearance risk. Confirmed by physical fit
+  check on the Pi 5, 2026-04-25.
+- Cells live inside the HAT. Start with whatever's on hand; for real runtime
+  (≥1 hr) replace with Samsung 30Q / LG HG2 / Molicel P26A from a reputable
+  US source.
+- Charging is the HAT's job, over its own USB-C input. No external charger is
+  needed in normal use; a bench 18650 charger stays useful for capacity tests
+  and cell rotation.
+
+⚠ **One place cell chemistry still shows through, and it is software.** The
+supervisor's `WaveshareUpsBMonitor` derives SoC from a piecewise-linear **2S
+18650** curve, and the dashboard voltage thresholds are tuned to it
+(8.0 / 7.0 / 6.4 V). That calibration is shipped and tested, so it has not been
+touched here. If the HAT's actual cell configuration is not 2S, `_SOC_CURVE`
+and those thresholds are both wrong and the low-battery UX will misfire —
+worth confirming against the unit before the SoC-curve refinement in
+`docs/TODO.md` (Power & Battery follow-ups).
 
 ## Telemetry chain
 
@@ -80,7 +103,10 @@ short — if the HAT's height makes the ribbon tight, swap to a longer
 this topology (the ESP32 only sees USB 5 V, not pack voltage) and the pin
 will be freed in a follow-up cleanup after the HAT is commissioned.
 
-**Confirmed 2026-08-06.** The reflex v1 board contradicted this page: it had a
+**Confirmed 2026-08-06.** The reflex board never sees battery voltage — see the
+topology above; it is fed 5 V through J9 like every other consumer.
+
+The reflex v1 board contradicted this page: it had a
 separate `+BATT` input (J8), a pack-scaled divider into the ESP32 ADC, and a
 `+BATT` inner plane. This page was right and the board was wrong. The v2 reflex
 board drops all of it — no pack input, no `/BAT_SENSE`, TB6612 `VM` fed from
@@ -97,10 +123,7 @@ Two consequences worth carrying:
   face 0.5 A + reflex logic 0.25 A + a 1.5 A motor direction flip) against the
   HAT's 5 A. Motor transients now sag the same rail the Pi runs on.
 
-⚠ **The Battery section above still describes a 2S 18650 pack in the UPS HAT (B).**
-Buddy has moved to powering from the Pi HAT alone; confirm whether the HAT itself
-is unchanged and update that section if not. This does not affect the reflex
-board design either way.
+**Battery section updated 2026-08-06** — no pack, no 2S rail, the HAT only.
 
 Full v2 reasoning: `docs/v2-defect-register.md` §A0/§A3 and
 `docs/electrical-design-calcs.md`.

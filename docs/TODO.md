@@ -139,6 +139,21 @@ _2 items complete (B6 test extensions: guardrail/schema/privacy/RS limits) — s
 - [ ] Dashboard: CalibrationTab IMU — add a “bubble level” / balance graphic (pitch/roll + `tilt_thresh_deg` overlay) to illustrate what the IMU tuning is doing `[sonnet]`
 
 **Phase 2: Motors + Encoders — Open-Loop Test** `[sonnet]`
+- [ ] 🔴 **Direction-change sequencing — required by the v2 board, not optional** `[sonnet]`
+  On v2 the four TB6612 direction pins (AIN1/AIN2/BIN1/BIN2) no longer come from
+  MCU GPIOs. They come from a **TCA9554A I²C expander (U4)**, so setting a
+  direction is an I²C transaction, not a register write: it takes ~100 µs+, and
+  the four bits do **not** change simultaneously. Flipping direction while PWM is
+  still driving walks the H-bridge through invalid states and shoot-through.
+  - Sequence must be: **PWM → 0, write the expander, read back, restore PWM.**
+  - This is where the 1.5 A direction-flip transient in `docs/power.md` comes
+    from, and the VM rail has only **0.5 V of margin** (5 V against the TB6612's
+    4.5 V floor), so a sloppy flip is a brownout, not just a current spike.
+  - Accept when: a scripted forward↔reverse sweep on both motors shows no
+    `BROWNOUT`, no `IMU_FAIL`, and encoder direction reverses cleanly every time.
+  - See `docs/v2-defect-register.md` §A0 (expander baseline) and §A2 (the
+    expander's power-up state is a safety property — it comes up as inputs, with
+    R12–R15 100 kΩ pull-downs holding all four lines low).
 - [ ] Enable `BRINGUP_OPEN_LOOP_TEST 1` in `app_main.cpp`
 - [ ] Verify motor direction matches encoder count direction (both wheels)
 - [ ] Verify encoder counts (1440 counts/rev for TT motor)
@@ -226,7 +241,8 @@ _3 items complete (LLM session memory, TTS resampler hardening, conversation stu
 - [x] `[sonnet]` **`power.soc_warn_pct` / `power.soc_critical_pct` params** _(2026-04-26, `bdcd5ad`)_: registered with defaults 25 / 10. Wired through `_configure_power_policy_from_registry` into `safety.py` (critical → motion gate) and `PlannerEventBus.set_soc_thresholds` (warn-edge + critical-edge emit `power.low_soc_raised` with severity payload, +5% hysteresis). `SpeechPolicy` keys cooldowns + phrases by severity (`power.low_soc_raised:warn` and `:critical`) so warn doesn't silence critical.
 - [x] `[sonnet]` **Session capture** _(confirmed 2026-04-25)_: physical fit check on Pi 5 — went with the GPIO-header variant of UPS HAT (B) instead of the pogo-pin version, which sidesteps the CSI-ribbon clearance risk entirely. Fits cleanly.
 
-**Follow-ups (deferred):** Empirical SoC curve refinement against measured 2S 18650 discharge data — the current waypoints in `_SOC_CURVE` are textbook estimates. Run the pack down once or twice on a real load and adjust waypoints if the kid's experience of "low battery" doesn't line up with reality.
+**Follow-ups (deferred):** Empirical SoC curve refinement against measured discharge data — the current waypoints in `_SOC_CURVE` are textbook estimates. Run it down once or twice on a real load and adjust waypoints if the kid's experience of "low battery" doesn't line up with reality.
+- [ ] `[sonnet]` **Confirm the HAT's actual cell configuration before refining `_SOC_CURVE`.** `docs/power.md` was rewritten 2026-08-06 to state there is no separate battery pack — the HAT is the whole battery subsystem and 5 V is the only rail that leaves it. But `WaveshareUpsBMonitor` still derives SoC from a piecewise-linear **2S 18650** curve, and the dashboard thresholds (8.0 / 7.0 / 6.4 V) are tuned to that. Shipped and tested, so left alone. If the HAT is not 2S, both are wrong and low-battery UX misfires. Measure the pack voltage at rest and settle it before touching the curve.
 
 ---
 

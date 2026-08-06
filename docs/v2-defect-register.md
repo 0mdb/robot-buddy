@@ -1062,9 +1062,18 @@ No gerbers are generated until every line is checked and initialled.
 - [x] A3 decided — drop `/BAT_SENSE`; no pack input; VM ties to `+5V`
 - [x] A0 — v2 baseline agreed: expander (TCA9554APWR C2863976); STBY→`/ESTOP`; NeoPixels cut
 - [x] Pull-downs on all four direction lines — R12–R15 100k
-- [ ] Direction-change sequencing in firmware: PWM=0 → write → restore PWM
+- [~] Direction-change sequencing in firmware: PWM=0 → write → restore PWM.
+      **Logged** as a blocking item in `docs/TODO.md` under Reflex MCU Commissioning
+      Phase 2, with the accept criteria and the reason (the direction bits are an
+      I²C transaction on U4 now, so they are neither fast nor simultaneous). Firmware
+      work, not board work — this line stays open until the firmware lands.
 - [x] X6 — NeoPixels cut entirely, so the 5 A budget question is closed
-- [ ] `docs/power.md` updated so board and doc agree (firmware note + Battery section)
+- [x] `docs/power.md` updated so board and doc agree — Battery section rewritten
+      2026-08-06: no separate pack, no 2S rail, the HAT is the whole battery
+      subsystem and 5 V is the only rail that leaves it. Topology diagram redrawn;
+      the stale "pogo-pin variant" corrected to the GPIO-header variant that was
+      actually fitted. One software follow-up raised in `docs/TODO.md`: the
+      supervisor's SoC curve is still calibrated for 2S cells.
 - [x] A0b — `+5V` is its own DSN class. `RAIL_W` is **0.4 mm**, not the 1.5 mm this line
       once specified; the plane carries the current, not the surface trace (A0d-v2)
 - [x] In2.Cu plane re-homed `+BATT` → `+5V`; `POWER_NETS` updated
