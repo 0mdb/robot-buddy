@@ -624,6 +624,43 @@ class TestBehaviorEngine:
         assert twist.v_mm_s == 100
         assert twist.w_mrad_s == 200
 
+    def test_teleop_twist_expires(self):
+        """A client that stops sending must not leave the last twist latched."""
+        skill = SkillExecutor()
+        be = BehaviorEngine(skill, teleop_ttl_s=0.5)
+        r = RobotState(mode=Mode.TELEOP)
+        w = WorldState()
+
+        be.set_teleop_twist(100, 200, now_s=1000.0)
+        # Still fresh just inside the window.
+        assert be.step(r, w, now_s=1000.4).v_mm_s == 100
+        # Past it, the command is forgotten rather than held.
+        stale = be.step(r, w, now_s=1000.6)
+        assert stale.v_mm_s == 0
+        assert stale.w_mrad_s == 0
+
+    def test_teleop_recovers_after_expiry(self):
+        """A fresh command after a stale gap is honoured immediately."""
+        skill = SkillExecutor()
+        be = BehaviorEngine(skill, teleop_ttl_s=0.5)
+        r = RobotState(mode=Mode.TELEOP)
+        w = WorldState()
+
+        be.set_teleop_twist(100, 200, now_s=1000.0)
+        assert be.step(r, w, now_s=1002.0).v_mm_s == 0
+        be.set_teleop_twist(50, 60, now_s=1002.1)
+        twist = be.step(r, w, now_s=1002.2)
+        assert twist.v_mm_s == 50
+        assert twist.w_mrad_s == 60
+
+    def test_teleop_zero_before_any_command(self):
+        """Entering TELEOP with no command yet must not move."""
+        skill = SkillExecutor()
+        be = BehaviorEngine(skill)
+        twist = be.step(RobotState(mode=Mode.TELEOP), WorldState(), now_s=1000.0)
+        assert twist.v_mm_s == 0
+        assert twist.w_mrad_s == 0
+
     def test_idle_zero(self):
         skill = SkillExecutor()
         be = BehaviorEngine(skill)

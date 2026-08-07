@@ -125,6 +125,7 @@ class TickLoop:
         conv_capture: ConversationCapture | None = None,
         param_registry: Any | None = None,
         power_monitor: PowerMonitor | None = None,
+        teleop_ttl_s: float = 0.5,
     ) -> None:
         self._reflex = reflex
         self._face = face
@@ -143,7 +144,7 @@ class TickLoop:
         self._sm = SupervisorSM()
         self._event_bus = PlannerEventBus()
         self._skill = SkillExecutor()
-        self._behavior = BehaviorEngine(self._skill)
+        self._behavior = BehaviorEngine(self._skill, teleop_ttl_s=teleop_ttl_s)
         self._validator = PlanValidator()
         self._scheduler = ActionScheduler()
         self._speech_policy = SpeechPolicy()

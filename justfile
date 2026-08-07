@@ -279,6 +279,18 @@ mcu-benchmark *args:
 check-parity:
     cd {{project}} && uv run --project tools python tools/check_face_parity.py
 
+# ── Vantage manifest ─────────────────────────────────────
+
+# Emit Buddy's Vantage capability manifest from this repo's real config.
+# Vantage consumes this — never hand-edit a manifest over there.
+emit-manifest *args:
+    cd {{project}} && PYTHONPATH=. uv run --project supervisor python tools/emit_manifest.py {{args}}
+
+# Fail if ~/vantage's checked-in manifest no longer matches this repo's config.
+check-manifest:
+    cd {{project}} && PYTHONPATH=. uv run --project supervisor python tools/emit_manifest.py \
+        --check ~/vantage/profiles/buddy.vehicle.toml
+
 # ── Preflight ────────────────────────────────────────────
 
 # Full pre-commit quality check
