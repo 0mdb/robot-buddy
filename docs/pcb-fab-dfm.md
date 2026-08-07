@@ -173,6 +173,90 @@ rail on the pad silked `−` on all three XT30s.
 
 ---
 
+## Lessons — 2026-08-06 power-board session
+
+A day that found four hardware-destroying defects on a board that passed DRC and
+every gate. **All four were found by a human looking at the render**, and the
+verification tooling gave a confidently wrong answer three separate times about
+boards that were fine. Both halves of that are the lesson.
+
+### Verification
+
+- **"Is there 2 oz copper NEAR this pad" is not "is the PATH on 2 oz."** Every
+  wrong "confirmed on 2 oz" in this project came from answering the first while
+  reporting the second. A pad can carry a fat trace that goes somewhere else
+  entirely while the actual A→B route detours through a plane or a thin stub.
+  Trace paths (`trace_path.py`), don't sample proximity.
+- **A gate that cannot reproduce its own defect is worthless**, and worse than
+  none because it is trusted. Test every gate in BOTH directions: it must FAIL
+  the known-bad board and PASS the known-good one. The first cut of the ampacity
+  gate passed the very board it was written to catch.
+- **A plane is always exactly one hop**, so a shortest-path search reports the
+  plane every single time — even when a complete outer-copper path exists.
+  Search outer-only first, fall back to the plane.
+- **Fewest hops is not the widest path.** Current divides by conductance, so the
+  meaningful route is max-bottleneck, not shortest. A fewest-hop search called a
+  1.00 mm bulk-cap stub the "weakest link" of a rail with a 3.8 mm trunk beside it.
+- **Endpoint-only adjacency misses T-junctions** — a track ending part-way along
+  another. KiCad treats that as connected and hand routing produces them
+  constantly; an endpoint-only test called a perfectly good rail NOT CONNECTED.
+- **Pad coordinates are FOOTPRINT-LOCAL; tracks and vias are absolute.**
+  Comparing them raw makes every distance meaningless.
+- **Net references come in three encodings** and all occur on shipped boards:
+  `(net 5 "+VBAT")`, `(net 5)`, and post-SES-import `(net "+VBAT")`. Handle all
+  three or silently find nothing.
+
+### Specification
+
+- **Declare the stackup in the board.** A board that SILKSCREENS "2oz outer" and
+  does not declare it forces every tool to guess — ours guessed 1 oz and computed
+  a rail at 10.6 A that carries 14 A. This is **F4 recurring one revision later**:
+  an instruction in a document is not a specification; it becomes one when it is
+  in the artifact.
+- **Netclass width IS the statement of design intent.** Put a net in a 4.0 mm
+  class and you asserted it carries what 4.0 mm carries — so every element on its
+  path, vias included, must live up to that. This makes ampacity self-consistent
+  instead of dependent on a current table nobody maintains.
+- **A trace cannot be wider than the destination pin pitch allows.** 4.0 mm on a
+  2.54 mm Pololu row overlaps the pads either side and shorts; 2.8 mm leaves
+  0.29 mm against a 0.30 mm rule and fails; 2.6 mm leaves 0.39 mm and works. Size
+  the rail, then check it can actually land.
+- **Never assume two connector families share a pin-1 convention** — even from one
+  manufacturer, even on one board. XT90PW-F is pin 1 = `+`; AMASS XT30UPB-F is
+  pin 1 = `−`. That inverted three connectors (F10).
+- **A "Mounting Detail" hole callout is not a recommended plated-hole diameter.**
+  Keystone's drawing says Ø1.6 mm; their own KiCad land uses 1.7272. The pin is a
+  1.57 mm tab whose diagonal is 1.62 mm — wider than the drawing's hole.
+- **A bulk capacitor is a STUB across the rail, never a junction in it.** Routing
+  load current through the cap's pad burdens it with current it was never sized
+  for and puts the decoupling at the end of a series path.
+- **An SMD pad exists on ONE layer.** Copper on the other layer at its coordinates
+  can never reach it — and DRC will not say so, because a dangling same-net track
+  is not "unconnected".
+
+### Workflow
+
+- **Duplicate pad numbers do not survive Specctra DSN.** The format keys pins by
+  name, so two pads numbered "2" export as one and the router never joins them.
+  Bridge them explicitly after import.
+- **Rotating a routed footprint invalidates every trace touching it.** The pads
+  swap which net sits where while the copper stays put — 12 shorts, instantly.
+  Clear those traces at the same time as the rotation, and RE-RUN DRC: track
+  count and spot-checks will not show it.
+- **The tree you assume is not the tree the router builds.** Widths solved against
+  an assumed topology are wrong when the router picks a different one. Verify the
+  topology, then size it.
+- **Script-generated boards and hand routing cannot both be the source of truth.**
+  `layout_*.py` and `route_*.py` wipe every trace. Once a board is hand-routed the
+  `.kicad_pcb` is authoritative and the scripts are history — say so in the commit
+  message, because nothing in the files enforces it.
+- **Visual review finds what gates structurally cannot.** DRC checks that copper
+  is self-consistent; it has no opinion on whether the intent is right. Reversed
+  polarity, an 8× overloaded via, a cap wired in series and orphaned copper were
+  all DRC-clean.
+
+---
+
 ## Pre-order checklist
 
 - [ ] **All three shared gates pass** (routing, board-review incl. polarity, ampacity)

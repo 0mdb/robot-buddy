@@ -60,6 +60,57 @@ will not touch it.** Must be fixed here.
 
 ---
 
+### E3. 🔴 The e-stop is not fail-safe against a disconnected cable — **DECISION NEEDED**
+Raised during board review, from the question "why does J7 have so many junctions on
+pin 1?". The junction count is correct — five things share `/ESTOP` by design — but
+checking them surfaced a polarity problem.
+
+`/ESTOP` carries, all deliberately:
+
+| Node | Role |
+|---|---|
+| J7.1 | the e-stop switch |
+| R4.2 | 10 kΩ pull-up to `+3V3` |
+| C1.1 | 100 nF debounce to GND |
+| U1.20 | MCU senses the state |
+| U2.4 | TB6612 **STBY** — the hardware kill, A0 decision 2, no firmware in the path |
+
+The hardware kill works: pull `/ESTOP` low and STBY goes low, disabling the driver
+with no code involved. **But the sense is inverted for fail-safe.**
+
+R4 pulls the line *high*, and high means *run*. So the switch must be normally-open,
+pressed-to-stop, and:
+
+| Condition | `/ESTOP` | Motors |
+|---|---|---|
+| Normal | high (R4) | run |
+| Button pressed | low | **stopped** ✅ |
+| **J7 unplugged** | high (R4) | **run** ❌ |
+| **Cable broken / crimp fails** | high (R4) | **run** ❌ |
+
+A disconnected e-stop silently stops being an e-stop, and nothing indicates it. On a
+robot a child operates, the failure that matters is the one that removes the stop
+without telling you.
+
+**The fail-safe topology is the inverse**: pull-*down* on `/ESTOP`, and a
+**normally-closed** switch tying it to `+3V3`. Then closed = high = run; pressing it,
+unplugging it, or breaking a wire all pull low and stop the motors.
+
+Cost is small and entirely at the schematic level:
+- R4 becomes a pull-down: `R4.1` `+3V3` → `GND`
+- J7.2 becomes `+3V3` instead of `GND`
+- the e-stop switch becomes **normally-closed** (mushroom e-stops are normally sold NC)
+- C1 debounce is unaffected
+- firmware sense inverts: `/ESTOP` high = healthy
+
+⚠ One interaction to check before changing it: `U2.4` is STBY, and the TCA9554A
+expander's power-up state (A2) holds the direction lines low via R12–R15. Inverting
+`/ESTOP` means STBY is *low* until `+3V3` comes up and the switch circuit settles, so
+the driver stays disabled through power-up — which is the safe direction, but confirm
+against the brownout path before committing.
+
+- [ ] Decide: keep press-to-stop as-is, or invert to fail-safe NC
+
 ### E2. C3 was placed on top of U2's pad column — **FIXED 2026-08-06 (2nd pass)**
 C3 (1000 µF, `CP_Elec_10x10.5`) sat at **(53.62, 25.0)** — the same X as U2 pad 9, but
 5.9 mm *below* it. The 10 mm can therefore covered **U2 pads 9–13**. Unbuildable: the
@@ -943,6 +994,41 @@ believed. Both that pass and the clearance repair now use **`kicad-cli pcb drc` 
 oracle**: DRC names the offending item, the script acts on exactly that, and re-runs DRC
 to confirm the count dropped. Slower, and correct.
 
+### P10. 🔴 The silk auto-placer deleted `MOTOR L` — found by board review, not by any gate
+Caught reviewing the rendered board: **J1 had no silkscreen.** Its `Value` *and* its
+`Reference` had both been set invisible, along with J5 `QWIIC 3V3`, J6 `HC-SR04 5V`,
+C7's ref and MH5's ref — six fields in total.
+
+`finish_pcb.py`'s placer hid any field it could not position without a collision, on
+the reasoning that *"an invisible field beats a fab defect"*. That reasoning inverted
+the actual severities:
+
+- A `silk_overlap` is **ink on ink**. Cosmetic.
+- An unlabelled motor connector is a **wiring error on an assembled robot** — and J1/J2
+  are identical 6-pin XH carrying the same net types, so a swap reverses both tracks.
+
+**C2 accepts that swap hazard specifically because the silk says `MOTOR L` / `MOTOR R`.**
+The placer was deleting the sole mitigation for a defect the register had signed off,
+while L4 was ticked saying the label was present. Two documents agreeing with each other
+and both wrong about the board.
+
+Three fixes, all in the pipeline:
+1. **The placer never hides.** If nothing is clear it takes the least-bad position by
+   collision count and lets DRC complain. Only genuinely-off-board can still hide.
+2. **It tries rotated text.** Horizontal `MOTOR L` needs ~5.5 mm; beside J1 the only
+   free space is a ~2.8 mm vertical channel. Without rotation the label was pushed out
+   under the TB6612's body, where the module covers it.
+3. **`make_fab.py` blocks on DRC *errors*, not warnings.** Demanding zero violations of
+   any severity is what made hiding attractive. Warnings are now printed individually
+   on every run instead.
+
+Cost: 2 cosmetic `silk_overlap` warnings (R14/R10 refdes, J10's own ref vs value).
+Gain: every connector on the board is labelled. Correct trade.
+
+🟡 Residual, accepted: `MOTOR L` sits beside J1 at (57.8, 21.5) rotated 90°, and its
+lower ~2 mm falls under MH5's M3 screw head. Legible above the screw. The right edge is
+genuinely crowded there — U2, C3, J1 and MH5 all meet.
+
 ### P8. Fab outputs are now generated, gated, and self-consistent — `hardware/kicad/make_fab.py`
 Replaces hand-made gerbers/BOM/CPL. Three properties, each fixing a defect above:
 
@@ -978,6 +1064,32 @@ destination is under its `root_dir` has this bug.**
 short. They **pass** the routing gate, because it checks whether copper exists, not
 whether the netlist was right. Flagged with `gerbers/DO-NOT-FABRICATE.md`; regenerate
 before any v2 order.
+
+---
+
+### V-review. Board-review questions answered 2026-08-06
+Recorded because two of the three were correct-as-designed, and saying *why* stops
+them being re-raised.
+
+**"Is it OK to have one cap on the L motor but not the right?"** — There is no cap on
+either motor. The 1000 µF near J1 is **C3, the TB6612 VM input bulk** (`+5V` / `GND`),
+and it feeds *both* channels from the shared VM pin, U2.9. It sits by J1 only because
+it must sit at pad 9 — see E2 — and J1 happens to be 8.9 mm away. The apparent
+asymmetry is the layout, not the circuit.
+
+And a capacitor across a motor output would be **actively wrong**: the H-bridge PWMs
+those nodes, so bulk capacitance there is shorted by the bridge on every switching
+edge, drawing large current spikes and interfering with the recirculation path.
+Brush-noise ceramics belong across the motor terminals at the motor, not on this board.
+
+**"J7 e-stop has odd junctions going into 1"** — Five nodes on `/ESTOP` is correct:
+switch, pull-up, debounce cap, MCU sense, and the TB6612 STBY hardware kill. The kill
+being wired in parallel with the MCU sense is the whole point of A0 decision 2 — the
+stop does not depend on firmware. **But checking it surfaced E3**, a real fail-safe
+defect in the polarity.
+
+**"There is no silkscreen for MOTOR L"** — Correct, and a genuine defect the gates
+missed entirely: P10.
 
 ---
 
@@ -1123,7 +1235,8 @@ No gerbers are generated until every line is checked and initialled.
 ### Silkscreen
 - [x] L1 — all 7 connector Value fields moved to F.SilkS by `layout_pcb.py`
 - [x] L2 — moot, J8 deleted; J9 reads `5V+UART Pi` so the inlet states its voltage
-- [x] L4 — J1 `MOTOR L`, J2 `MOTOR R`
+- [x] L4 — J1 `MOTOR L`, J2 `MOTOR R`, both **verified visible on the board**, not just
+      present in the schematic. They were not, for several regenerations — see P10.
 - [x] L3 — J9 now reads **`5V GND TX> RX<`**, pin 1→4 in order, `>` = driven by this
       board, `<` = driven by the far end. Direction taken from the netlist, not the net
       name: J9.3 lands on U1.18 (TX GPIO43, pintype **output**) and J9.4 on U1.19

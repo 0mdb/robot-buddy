@@ -93,11 +93,33 @@ def check_gates():
     )
     with open(tmp) as fh:
         rep = json.load(fh)
-    viol = len(rep.get("violations", []))
+    viols = rep.get("violations", [])
+    errors = [v for v in viols if v.get("severity") == "error"]
+    warnings = [v for v in viols if v.get("severity") != "error"]
     unconn = len(rep.get("unconnected_items", []))
     parity = len(rep.get("schematic_parity", []))
-    print(f"          {viol} violations, {unconn} unconnected, {parity} parity")
-    ok = viol == 0 and unconn == 0 and parity == 0
+    print(
+        f"          {len(errors)} errors, {len(warnings)} warnings, "
+        f"{unconn} unconnected, {parity} parity"
+    )
+
+    # Blocks on ERRORS, unconnected and parity. Warnings are reported, loudly, but
+    # do not stop the package.
+    #
+    # This used to demand zero violations of any severity, and that rule did real
+    # harm. The silk auto-placer hides nothing now, but it used to hide a field it
+    # could not place cleanly — and what it hid was J1's "MOTOR L". J1 and J2 are
+    # identical 6-pin XH connectors, so the silk label is the entire mitigation for
+    # the swap hazard the register accepts under C2. Chasing a zero silk count
+    # deleted the mitigation for a real defect, to satisfy a warning about ink
+    # overlapping ink. Rank them properly: a silk_overlap is cosmetic, an
+    # unlabelled motor connector is a wiring error on an assembled robot.
+    for v in warnings:
+        items = " <-> ".join(
+            i.get("description", "").split(" {")[0] for i in v.get("items", [])
+        )
+        print(f"            warn: {v.get('type')} | {items}")
+    ok = not errors and unconn == 0 and parity == 0
 
     for n, gate in ((2, "check_pcb_routing.py"), (3, "check_board_review.py")):
         print(f"Gate {n}/3  {gate} ...")

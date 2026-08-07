@@ -576,7 +576,7 @@ def place_silk_fields(board):
 
     fields.sort(key=lambda fv: -_fp_area(fv[0]))
 
-    moved = hidden = kept = 0
+    moved = hidden = kept = crowded = 0
     for fp, fld in fields:
         lyr = fld.GetLayer()
         obstacles = copper[lyr] + statics[lyr] + placed[lyr]
@@ -614,24 +614,66 @@ def place_silk_fields(board):
                 pcbnew.VECTOR2I(fr + d, fb + d),
             ]
 
+        # Try each candidate at 0 and 90 degrees. Rotation matters more than it
+        # sounds: a horizontal "MOTOR L" needs ~5.5mm of width, and next to J1 the
+        # only clear space is a ~2.8mm vertical channel between U2 and the board
+        # edge — too narrow flat, ample on its side. Without this the label got
+        # pushed out under the TB6612's body where the module covers it.
+        orig_angle = fld.GetTextAngle()
+        angles = [orig_angle, pcbnew.EDA_ANGLE(90, pcbnew.DEGREES_T)]
+
         won = False
         for c in cands:
-            fld.SetPosition(c)
-            if not clashes():
-                won = True
+            for ang in angles:
+                fld.SetTextAngle(ang)
+                fld.SetPosition(c)
+                if not clashes():
+                    won = True
+                    break
+            if won:
                 break
 
         if won:
             placed[lyr].append(_inflate(_box(fld), gap))
             moved += 1
         else:
-            # nowhere legible to put it — an invisible field beats a fab defect,
-            # and the Value is still on F.Fab for assembly documentation
-            fld.SetPosition(origin)
-            fld.SetVisible(False)
-            hidden += 1
+            # NOTHING FITS CLEANLY — take the least-bad spot, do NOT hide it.
+            #
+            # This used to hide the field, on the reasoning that "an invisible field
+            # beats a fab defect". That reasoning was wrong, and it hid J1's Value.
+            # J1 and J2 are identical 6-pin XH connectors carrying the same net types,
+            # so a swap silently reverses both drive tracks — and register C2 accepts
+            # that risk *specifically because* the silk says MOTOR L / MOTOR R. The
+            # placer was deleting the only mitigation for a defect the register had
+            # signed off, and the register's L4 tick said the label was there.
+            #
+            # A silk_overlap is a cosmetic warning about ink on ink. An unlabelled
+            # motor connector is a wiring error on an assembled robot. Rank
+            # accordingly: always place, and let DRC complain.
+            best, best_score = None, None
+            for c in cands:
+                for ang in angles:
+                    fld.SetTextAngle(ang)
+                    fld.SetPosition(c)
+                    bb = _inflate(_box(fld), gap)
+                    if not _contains(inside, bb):
+                        continue  # off-board is never acceptable — it cannot print
+                    score = sum(1 for o in obstacles if _intersects(bb, o))
+                    if best_score is None or score < best_score:
+                        best, best_score = (c, ang), score
+            if best is not None:
+                fld.SetTextAngle(best[1])
+                fld.SetPosition(best[0])
+                placed[lyr].append(_inflate(_box(fld), gap))
+                crowded += 1
+            else:
+                # cannot be positioned inside the board at all
+                fld.SetTextAngle(orig_angle)
+                fld.SetPosition(origin)
+                fld.SetVisible(False)
+                hidden += 1
 
-    return moved, kept, hidden
+    return moved, kept, hidden, crowded
 
 
 def _clip_segment(inside, p0, p1):
@@ -789,10 +831,10 @@ def run_pass(name):
             f"-> {made} segments kept"
         )
     elif name == "silkfields":
-        moved, kept, hidden = place_silk_fields(board)
+        moved, kept, hidden, crowded = place_silk_fields(board)
         msg = (
             f"  Silk fields: {kept} already clear, {moved} relocated, "
-            f"{hidden} hidden (no clear spot)"
+            f"{crowded} placed with overlap, {hidden} hidden"
         )
     else:
         raise SystemExit(f"finish_pcb: unknown pass {name!r}")
