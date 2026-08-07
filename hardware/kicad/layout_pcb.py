@@ -217,7 +217,11 @@ place(
     3,
     90,
 )
-place("J7", "E-STOP", "Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical", 22, 3)
+# J7 is 3-pin as of E3: pin1=+3V3, pin2=ESTOP (through the NC contact), pin3=the
+# cable-detect loop. It grew one pin, so it now spans 5.0mm of pads instead of 2.5mm
+# — still comfortably inside the top-edge gap between J6 (ends x=14.44) and the
+# clear band before U2's courtyard.
+place("J7", "E-STOP NC", "Connector_JST:JST_XH_B3B-XH-A_1x03_P2.50mm_Vertical", 22, 3)
 
 # ── Left-edge connectors (angle=270 → pads along -Y, housing exits ←) ────────
 #   At angle=270: pad1 at (x,y), pad2 at (x, y-2.5)
@@ -341,6 +345,10 @@ place("R13", "100k", "Resistor_SMD:R_0402_1005Metric", 26, 46.5, 90)  # AIN2 pd
 place("R14", "100k", "Resistor_SMD:R_0402_1005Metric", 26, 49, 90)  # BIN1 pd
 place("R15", "100k", "Resistor_SMD:R_0402_1005Metric", 26, 51.5, 90)  # BIN2 pd
 place("R16", "4.7k", "Resistor_SMD:R_0402_1005Metric", 40, 44, 90)  # SDA pu
+# R18: e-stop cable-detect loop pull-down (E3). Sits with the other pull-downs in
+# the expander cluster rather than near J7 — it only has to hold the net low when
+# the harness is absent, so trace length is irrelevant.
+place("R18", "10k", "Resistor_SMD:R_0402_1005Metric", 40, 41.5, 90)
 place("R17", "4.7k", "Resistor_SMD:R_0402_1005Metric", 40, 46.5, 90)  # SCL pu
 place("C8", "100n", "Capacitor_SMD:C_0402_1005Metric", 40, 49, 90)  # U4 decoupling
 place("C9", "10u", "Capacitor_SMD:C_0402_1005Metric", 40, 51.5, 90)  # +3V3 bulk

@@ -60,7 +60,56 @@ will not touch it.** Must be fixed here.
 
 ---
 
-### E3. 🔴 The e-stop is not fail-safe against a disconnected cable — **DECISION NEEDED**
+### E3. ✅ E-stop made fail-safe, with cable detection — **DECIDED and IMPLEMENTED 2026-08-06**
+Chosen: **fail-safe + detect**. J7 goes 2-pin → 3-pin; the switch becomes normally
+closed; R4 flips from pull-up to pull-down; a new R18 pulls the detect loop down; and
+`/ESTOP_LOOP` lands on U1 pad 9 (GPIO6), one of the two A0c spares.
+
+```
+J7.1  +3V3 ──[NC contact]── J7.2  /ESTOP ─┬─ U1.20 sense
+                                          ├─ U2.4  STBY  (hardware kill)
+                                          ├─ C1 100n debounce
+                                          └─ R4 10k ── GND        (pull-DOWN)
+J7.3  /ESTOP_LOOP ─┬─ U1.9 GPIO6                    tied to J7.1 at the SWITCH end
+                   └─ R18 10k ── GND                (pull-DOWN)
+```
+
+| loop | estop | meaning |
+|---|---|---|
+| HIGH | HIGH | connected, not pressed → run |
+| HIGH | LOW | connected, **PRESSED** → stopped |
+| LOW | LOW | **CABLE MISSING** → stopped |
+
+Pressed, unplugged, broken wire and failed crimp all pull `/ESTOP` low, and low drives
+STBY low — A0 decision 2 is preserved exactly, only its polarity changed. The loop adds
+no safety on its own; both failure modes stop the motors regardless. It exists so
+firmware can *report which*, instead of a silently-absent e-stop.
+
+**⚠ The switch must be NORMALLY CLOSED.** A normally-open switch leaves the motors
+disabled permanently. Mushroom e-stops are commonly sold with NC contacts.
+
+Costs: one connector pin, one 0402, one spare GPIO. **GPIO1 (ADC1_CH0) remains the
+only spare** — and it is the ADC-capable one, which is the better of the two to keep.
++3V3 load rises ~0.66 mA (two 10 kΩ pull-downs energised), against a ~2.5 mA budget.
+
+#### What the original design got wrong, and why nothing caught it
+It was a normally-open switch shorting `/ESTOP` to GND against a pull-up: pressed = low
+= stop. Correct when pressed, and **indistinguishable from an unplugged cable** — both
+read high, both run. The MCU could not tell; there was no second signal to compare.
+
+Nothing flagged it because every check was asking a different question. DRC checks
+geometry. The netlist was self-consistent. §V3 of this register reviewed the circuit and
+recorded *"R4 10k pull-up to +3V3, C1 100n debounce, active-low. Correct."* — correct as
+an active-low input, which it is. **No check asked what happens when the wire is not
+there.** That is the question to add to the review pass: for every safety input, what
+does a disconnected connector look like, and does it look like "safe"?
+
+`docs/reflex-wiring.md` also described the switch as *"NC = HIGH = OK"* where NC meant
+*not connected*, which reads as *normally closed* — an ambiguity that survived because
+the two readings happen to describe the same idle voltage. That file has been updated
+and is now explicit.
+
+### E3-old. (superseded) The original non-fail-safe analysis
 Raised during board review, from the question "why does J7 have so many junctions on
 pin 1?". The junction count is correct — five things share `/ESTOP` by design — but
 checking them surfaced a polarity problem.

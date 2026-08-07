@@ -434,20 +434,39 @@ s.schematicSymbols.append(
     )
 )
 
-# ── E-stop ───────────────────────────────────────────────────────────────
-# J7: E-stop  pin1=ESTOP  pin2=GND
+# ── E-stop — FAIL-SAFE, with cable detection (register E3) ────────────────
+# J7: pin1=+3V3  pin2=ESTOP  pin3=ESTOP_LOOP
+#
+# Was a 2-pin, normally-OPEN switch shorting ESTOP to GND against a pull-up.
+# That stops the motors when pressed, but an unplugged or broken cable reads
+# EXACTLY like "not pressed" — the robot runs with no protection and nothing
+# indicates it. The MCU could not tell the difference; both are the same voltage.
+#
+# Now de-energise-to-stop, the standard e-stop topology:
+#   +3V3 --> [NC contact] --> ESTOP, with R4 pulling ESTOP DOWN
+# so pressed, unplugged, broken wire and failed crimp all pull ESTOP low, and low
+# drives U2 STBY low — the driver is disabled in hardware with no firmware in the
+# path (A0 decision 2 is preserved, only its polarity changes).
+#
+# Pin 3 is the cable-detect loop, tied to pin 1 at the SWITCH end of the harness,
+# with R18 pulling it down on the board. That makes the three states distinct:
+#   loop high + estop high -> connected, not pressed
+#   loop high + estop low  -> connected, PRESSED
+#   loop low               -> CABLE MISSING
+# Both failure modes still stop the motors; the loop only lets firmware say which.
 J7X, J7Y = 192.0, 78.0
-j7_p = conn2_pins(J7X, J7Y)
+j7_p = conn3_pins(J7X, J7Y)
 s.schematicSymbols.append(
     make_sym(
         "Connector_Generic",
-        "Conn_01x02",
+        "Conn_01x03",
         J7X,
         J7Y,
         "J7",
-        "E-STOP",
-        "Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical",
-        "E-stop: pin1=ESTOP(NC=HIGH=safe) pin2=GND",
+        "E-STOP NC",
+        "Connector_JST:JST_XH_B3B-XH-A_1x03_P2.50mm_Vertical",
+        "E-stop, fail-safe: pin1=+3V3 pin2=ESTOP(NC contact) pin3=ESTOP_LOOP. "
+        "Harness ties pin3 to pin1 at the switch. LOW = stopped.",
     )
 )
 
@@ -538,7 +557,8 @@ s.schematicSymbols.append(
 
 # R3 100k: STBY pulldown  (GPIO8, right side, between components)
 
-# R4 10k: E-stop pullup (GPIO13 → 3V3)
+# R4 10k: E-stop pull-DOWN (ESTOP → GND). Was a pull-up to +3V3; inverted for
+# fail-safe, see J7 above. Low is the de-energised, safe state.
 R4X, R4Y = 182.88, 78.74  # x=144×1.27, y=62×1.27
 s.schematicSymbols.append(
     make_sym(
@@ -549,7 +569,7 @@ s.schematicSymbols.append(
         "R4",
         "10k",
         "Resistor_SMD:R_0402_1005Metric",
-        "E-stop pullup to 3V3",
+        "E-stop pull-down to GND (fail-safe: no cable = low = stopped)",
     )
 )
 
@@ -736,7 +756,7 @@ s.schematicSymbols.append(make_pwr("GND", *U2P["GND3"]))  # pin 16
 # Resistor / capacitor power pins (GND at bottom = y+3.81, power at top = y-3.81)
 s.schematicSymbols.append(make_pwr("GND", R1X, R1Y + 3.81))  # R1 bottom
 s.schematicSymbols.append(make_pwr("GND", R2X, R2Y + 3.81))  # R2 bottom
-s.schematicSymbols.append(make_pwr("+3V3", R4X, R4Y - 3.81))  # R4 top
+s.schematicSymbols.append(make_pwr("GND", R4X, R4Y - 3.81))  # R4 top (pull-down)
 s.schematicSymbols.append(make_pwr("GND", R6X, R6Y + 3.81))  # R6 bottom
 s.schematicSymbols.append(make_pwr("GND", C1X, C1Y + 3.81))  # C1 bottom
 # KiCad Y-flip: symbol pin1 at sym_y=+3.81 maps to absolute y = Cy-3.81 (TOP on screen)
@@ -769,8 +789,9 @@ s.schematicSymbols.append(make_pwr("GND", *j1_p[3]))
 s.schematicSymbols.append(make_pwr("+5V", *j2_p[2]))
 s.schematicSymbols.append(make_pwr("GND", *j2_p[3]))
 
-# J7 E-stop: pin2=GND
-s.schematicSymbols.append(make_pwr("GND", *j7_p[1]))
+# J7 E-stop: pin1=+3V3 (through the NC contact to pin2). No GND on this connector
+# any more — the switch loop is powered, so losing it de-energises ESTOP.
+s.schematicSymbols.append(make_pwr("+3V3", *j7_p[0]))
 
 # J9 UART: pin1=+5V  pin2=GND
 s.schematicSymbols.append(make_pwr("+5V", *j9_p[0]))
@@ -870,7 +891,8 @@ lbl.append(make_label("UART_TX", *j9_p[2], 180))
 lbl.append(make_label("UART_RX", *j9_p[3], 180))
 
 # ── E-stop J7 ────────────────────────────────────────────────────────────
-lbl.append(make_label("ESTOP", *j7_p[0], 180))
+lbl.append(make_label("ESTOP", *j7_p[1], 180))
+lbl.append(make_label("ESTOP_LOOP", *j7_p[2], 180))
 
 # ── Power in J8 ──────────────────────────────────────────────────────────
 # Use +BATT power symbol on pin1 so J8 feeds the same +BATT net as TB6612 VM
@@ -1030,6 +1052,27 @@ for _ref, _net, _x in [("R16", "SDA", 95.0), ("R17", "SCL", 105.0)]:
     s.schematicSymbols.append(make_pwr("+3V3", _x, 145.0 - 3.81))
     lbl.append(make_label(_net, _x, 145.0 + 3.81, 270))
 
+# R18 10k: pull-DOWN on the e-stop cable-detect loop (register E3).
+# The loop is tied to J7 pin 1 (+3V3) at the SWITCH end of the harness, so with the
+# cable present it reads high; with the cable gone R18 takes it low. That is what
+# separates "pressed" from "cable missing" — both stop the motors, only this tells
+# firmware which. Must be a pull-DOWN: absence has to be the low, de-energised state.
+R18X, R18Y = 115.0, 145.0
+s.schematicSymbols.append(
+    make_sym(
+        "Device",
+        "R",
+        R18X,
+        R18Y,
+        "R18",
+        "10k",
+        "Resistor_SMD:R_0402_1005Metric",
+        "E-stop cable-detect loop pull-down (no cable = low)",
+    )
+)
+s.schematicSymbols.append(make_pwr("GND", R18X, R18Y - 3.81))
+lbl.append(make_label("ESTOP_LOOP", R18X, R18Y + 3.81, 270))
+
 # ── C8/C9: U4 decoupling and the +3V3 bulk that v1 lacked (X3) ───────────
 for _ref, _val, _x, _desc in [
     ("C8", "100n", 95.0, "U4 TCA9554A supply decoupling"),
@@ -1055,10 +1098,13 @@ for _ref, _val, _x, _desc in [
 # ========================================================================
 # The rear cluster is GONE in v2 (F1: its geometry was fabricated, and A0 removed
 # every signal that used it). Symbol pins 10-17 have no pad on the _NoCluster
-# footprint, so they are all no-connect. Pads 4 (GPIO1, ADC1_CH0) and 9 (GPIO6)
-# are the two deliberate SPARES — see A0c pin map.
-for p in ["4", "9"]:
-    s.noConnects.append(make_nc(*U1L[p]))
+# footprint, so they are all no-connect.
+#
+# Pad 9 (GPIO6) was one of the two A0c spares; E3 spends it on ESTOP_LOOP, the
+# e-stop cable-detect input. Pad 4 (GPIO1, ADC1_CH0) remains the only spare — and
+# it is the ADC-capable one, which is the better of the two to keep.
+lbl.append(make_label("ESTOP_LOOP", *U1L["9"], 0))
+s.noConnects.append(make_nc(*U1L["4"]))
 
 # Right side: GPIO16(27), GPIO15(28), GPIO14(29) are NOT accessible on flat-mount module
 

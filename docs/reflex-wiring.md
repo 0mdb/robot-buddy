@@ -16,6 +16,13 @@
 | 45 | VSPI | Fine but unused |
 | 48 | WS2812 onboard LED | Avoid unless intentional |
 
+
+> ⚠ **Partially updated for the v2 board (2026-08-06).** The e-stop, battery-sense
+> and passive-BOM sections below are current. Other sections still describe v1 —
+> notably the direction pins, which moved from GPIO13/15/16 to the **TCA9554A
+> expander (U4)**. The authoritative sources are the schematic and
+> `docs/v2-defect-register.md`; treat anything here that contradicts them as stale.
+
 ---
 
 ### Wiring Diagram
@@ -40,7 +47,8 @@
    Enc Right A ──── ┤ GPIO11            ├                    ← Right encoder ch A
    Enc Right B ──── ┤ GPIO12            ├                    ← Right encoder ch B
                     │                    │
-   E-Stop SW ────── ┤ GPIO13            ├ ←── 10k pullup 3V3 ← Active-low, NC to GND
+   E-Stop (J7.2) ── ┤ GPIO13            ├ ←── 10k pull-DOWN  ← LOW = stopped (fail-safe)
+   E-Stop loop ──── ┤ GPIO6             ├ ←── 10k pull-DOWN  ← LOW = cable missing
                     │                    │
    TB6612 BIN1 ──── ┤ GPIO15            ├                    ← Right fwd direction
    TB6612 BIN2 ──── ┤ GPIO16            ├                    ← Right rev direction
@@ -73,7 +81,7 @@
    ESP32 GPIO16 ──→│ BIN2             │
                     │                  │
    ESP32 GPIO8 ───→│ STBY         VCC ├───→ 3.3V (logic)
-        GND ──────→│ GND          VM  ├───→ VBAT (motor power, 2S LiPo)
+        GND ──────→│ GND          VM  ├───→ +5V (from the Pi HAT via J9; A3)
                     └──────────────────┘
 
    Direction truth table:
@@ -139,42 +147,62 @@
 
 ---
 
-### E-Stop & Battery Sense
+### E-Stop — fail-safe, de-energise to stop (v2, register E3)
 
 ```
-   E-Stop (GPIO13):                    Battery Sense (GPIO1):
-   ┌─────────────────────┐             ┌─────────────────────┐
-   │                     │             │                     │
-   │  3V3 ──── 10k ─┬── │             │  VBAT ── 100k ─┬── │
-   │                 │   │             │                 │   │
-   │  ESP32 GPIO13 ──┘   │             │  ESP32 GPIO1 ──┘   │
-   │                 │   │             │                 │   │
-   │  E-Stop SW ─── GND  │             │            47k ┤   │
-   │  (NC = HIGH = OK)   │             │                 │   │
-   │  (pressed = LOW      │             │   0.1µF cap ── GND  │
-   │   = ESTOP active)   │             │                     │
-   │                     │             │  Divider: VBAT × 47k/(100k+47k) │
-   │  Optional: 0.1µF    │             │  @ 8.4V (2S full): 2.68V (safe) │
-   │  cap GPIO13→GND     │             │  @ 6.0V (2S low):  1.92V        │
-   │  for debounce       │             │                     │
-   └─────────────────────┘             └─────────────────────┘
+   J7 pin1  +3V3 ─────────────┐          harness ties pin3 to pin1
+                              │          AT THE SWITCH END
+                 ┌── NC contact┘
+                 │            └────────────────────┐
+   J7 pin2 ESTOP ┴──┬── ESP32 GPIO13   (sense)     │
+                    ├── TB6612 STBY    (hardware kill, no firmware)
+                    ├── C1 100nF ── GND (debounce)
+                    └── R4 10k   ── GND (pull-DOWN)
+                                                   │
+   J7 pin3 ESTOP_LOOP ─┬── ESP32 GPIO6  (detect) ──┘
+                       └── R18 10k ── GND (pull-DOWN)
+
+   loop  estop   meaning
+   ────  ─────   ────────────────────────────────
+   HIGH  HIGH    connected, not pressed  -> run
+   HIGH  LOW     connected, PRESSED      -> stopped
+   LOW   LOW     CABLE MISSING           -> stopped
 ```
 
----
+Pressed, unplugged, broken wire and failed crimp **all** pull ESTOP low, and low
+drives STBY low — the driver is disabled in hardware with no firmware in the path.
+The loop only lets firmware report *which* of the two happened; both stop the motors.
+
+⚠ **The switch must be NORMALLY CLOSED.** A normally-open switch here leaves the
+motors disabled permanently. This replaced a normally-open, press-to-GND design
+whose unplugged state was indistinguishable from "not pressed" — see register E3.
+
+### Battery sense — DELETED in v2
+
+`/BAT_SENSE`, its 100k/47k divider, C2 and the J8 pack input are all gone
+(register A3). The reflex board is fed 5 V from the Pi HAT through J9 and never
+sees cell voltage; battery telemetry comes from the HAT's INA219 on the Pi's
+`i2c-1`. See `docs/power.md`.
+
 
 ### Passive Component BOM
 
 | Component | Location | Purpose |
 |-----------|----------|---------|
-| 3x 100k resistor | GPIO4→GND, GPIO5→GND, GPIO8→GND | Motor boot safety pulldowns |
-| 1x 10k resistor | 3V3→GPIO13 | E-stop pullup |
-| 1x 10k resistor | HC-SR04 ECHO → divider node | Echo voltage divider (top) |
-| 1x 20k resistor | Divider node → GND | Echo voltage divider (bottom) |
-| 1x 100-330 ohm | Divider node → GPIO2 (optional) | ESD series protection |
-| 1x 100k resistor | VBAT → divider node | Battery sense (top, future) |
-| 1x 47k resistor | Divider node → GND | Battery sense (bottom, future) |
-| 1x 0.1uF cap | GPIO13 → GND (optional) | E-stop debounce |
-| 1x 0.1uF cap | Battery ADC node → GND | ADC noise filter |
+| 2x 100k (R1,R2) | PWMA→GND, PWMB→GND | PWM boot safety pull-downs |
+| 4x 100k (R12-R15) | expander AIN1/AIN2/BIN1/BIN2 → GND | direction-pin pull-downs (A2) |
+| 1x 10k (R4) | ESTOP → GND | e-stop **pull-DOWN** (fail-safe, E3) |
+| 1x 10k (R18) | ESTOP_LOOP → GND | e-stop cable-detect pull-down (E3) |
+| 1x 10k (R5) | HC-SR04 ECHO → divider node | echo divider (top) |
+| 1x 15k (R6) | divider node → GND | echo divider (bottom) — was 20k, see X5 |
+| 1x 100R (R7) | divider node → GPIO2 | ESD series protection |
+| 2x 4.7k (R16,R17) | SDA→+3V3, SCL→+3V3 | I²C pull-ups (X1) |
+| 1x 330R (R10) | +5V → LED_A | power LED series |
+| 1x 100nF (C1) | ESTOP → GND | e-stop debounce |
+| 4x 100nF (C4,C5,C7,C8) | rail / U4 decoupling | |
+| 1x 10µF (C9) | +3V3 → GND | +3V3 bulk (X3) |
+| 1x 1000µF (C3) | +5V → GND, at U2 pad 9 | TB6612 VM bulk |
+| 1x 100µF (C6) | +5V → GND | +5V bulk |
 
 ---
 

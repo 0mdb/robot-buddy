@@ -151,6 +151,22 @@ _2 items complete (B6 test extensions: guardrail/schema/privacy/RS limits) — s
     4.5 V floor), so a sloppy flip is a brownout, not just a current spike.
   - Accept when: a scripted forward↔reverse sweep on both motors shows no
     `BROWNOUT`, no `IMU_FAIL`, and encoder direction reverses cleanly every time.
+- [ ] 🔴 **E-stop sense inverts, and gains a cable-detect input** `[sonnet]`
+  v2 makes the e-stop fail-safe (register E3), which flips the polarity firmware
+  expects and adds a second signal:
+  - `/ESTOP` on GPIO13 is now **active-LOW = stopped**, held low by R4 pulling down.
+    HIGH means the normally-closed switch is intact and the robot may run. The old
+    code treats high as "not pressed"; that is now "healthy", and low must latch a
+    stop rather than being a momentary event.
+  - `/ESTOP_LOOP` on **GPIO6** (new) distinguishes the two low cases:
+    `loop HIGH + estop LOW` = pressed; `loop LOW` = **cable missing**. Report them
+    separately — a missing e-stop cable should surface as a fault, not as a press.
+  - The hardware kill is unchanged and does not need firmware: `/ESTOP` low drives
+    TB6612 STBY low directly. Firmware is for reporting and for refusing to enter
+    motion modes, not for stopping.
+  - Accept when: unplugging J7 with the robot idle produces a distinct
+    "e-stop cable missing" fault, pressing the button produces "e-stop pressed",
+    and both refuse entry into motion modes.
   - See `docs/v2-defect-register.md` §A0 (expander baseline) and §A2 (the
     expander's power-up state is a safety property — it comes up as inputs, with
     R12–R15 100 kΩ pull-downs holding all four lines low).
