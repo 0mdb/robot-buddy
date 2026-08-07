@@ -1245,7 +1245,10 @@ No gerbers are generated until every line is checked and initialled.
 - [x] X1 — 4.7 kΩ I²C pull-ups added (R16/R17)
 - [x] X3 — 10 µF bulk on `+3V3` (C9); C8 100n decouples U4
 - [x] X5 — R6 changed 20 kΩ → 15 kΩ
-- [ ] Remaining unverified inputs in `electrical-design-calcs.md` §7 resolved or accepted
+- [x] Unverified inputs in `electrical-design-calcs.md` §7 **resolved or accepted**
+      (reviewed 2026-08-07): 1/2/3 closed, 4/6/7 downgraded to 🟢 by X1, X5 and A0e.
+      Nothing left is a fab blocker — 5 affects a conclusion this board no longer
+      rests on, 8 and 9 are bounded assumptions.
 
 ### Schematic capture (v2, 2026-08-06)
 - [x] `_NoCluster` footprint in use; cluster pins 10–17 no-connect

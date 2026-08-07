@@ -455,15 +455,19 @@ from 🟡 to 🔴.
 
 Nothing below has been measured. Each is an assumption this document rests on.
 
+**Status 2026-08-07:** items 1, 2 and 3 are closed; 4, 6 and 7 are downgraded to low by
+later design changes. **Nothing here is a fab blocker.** What is left is either bounded
+(8, 9) or affects a conclusion this board no longer depends on (5).
+
 | # | Input | Assumed | Impact if wrong | Severity |
 |---|-------|---------|-----------------|----------|
 | 1 | ~~**`+BATT` source**~~ **RESOLVED 2026-08-06 — Pi HAT 5 V only, no pack tap. `+BATT` eliminated.** | ~~2S pack, 7.4–8.4 V~~ | **Contradiction between the board and `docs/power.md:9-17`**, which specifies a *single-rail 5 V* topology feeding "TB6612 VM" from the HAT's 5 V. The board implements a separate `+BATT` input (J8), a pack-scaled divider, and a `+BATT` inner plane. If 5 V is correct, §3a measures the wrong thing and VM sits 0.5 V above its 4.5 V floor. | 🔴 blocker — resolve with A3 |
-| 2 | Outer copper weight | 1 oz | None here — every trace passes at 1 oz. Specify on the v2 order for hygiene. | 🟢 low |
+| 2 | ~~Outer copper weight~~ **RESOLVED 2026-08-06 — 1 oz outer / 0.5 oz inner, declared in the board stackup (A0e) and sized in §1a.** `check_pcb_ampacity.py` now reads it from the board instead of assuming. | ~~1 oz~~ | — | ✅ closed |
 | 3 | ~~NeoPixel count on J11~~ **RESOLVED — NeoPixels cut entirely; J11/U3/R11 deleted.** (The board had documented an 8×8 = 64-pixel matrix, which no rail here could feed.) | ~~8~~ | Decides whether the 5 V rail peak exceeds the HAT's 5 A (§4a). At N ≤ 4 it fits. | 🟡 medium |
-| 4 | Qwiic BMI270 pull-up value | 2.2 kΩ | Sole reason I²C works today (§5). At 10 kΩ, 400 kHz is unavailable. | 🟡 medium |
+| 4 | Qwiic BMI270 pull-up value | 2.2 kΩ | **Downgraded** — X1 added R16/R17 4.7 kΩ on-board, so the bus no longer depends on the breakout and works with J5 empty. Only affects the parallel value, and 4.7 ∥ 2.2 = 1.5 kΩ still meets rise time. | 🟢 low |
 | 5 | UPS HAT short-circuit behaviour | sources up to ~5 A | Determines whether the unfused traces are genuinely at risk (§2). If it folds back hard, the exposure shrinks — but the coordination is still inverted. | 🟡 medium |
-| 6 | ESP32-S3-Zero onboard LDO rating | ≥ 100 mA | Irrelevant at today's 2.5 mA; matters once v2 adds expander + ADC. | 🟢 low |
-| 7 | HC-SR04 supply | 5.0 V nom, 5.25 V max | Sets the 100 mV absolute-max margin in §3b. A 5.5 V supply gives 3.67 V — **over absolute maximum**. | 🟡 medium |
+| 6 | ESP32-S3-Zero onboard LDO rating | ≥ 100 mA | v2's additions are counted: U4 expander ~1 µA, I²C pull-ups ~0.7 mA each when the bus is low, R4 + R18 e-stop pull-downs 0.33 mA each when energised. Total ≈ **4 mA**, still far inside any LDO. | 🟢 low |
+| 7 | HC-SR04 supply | 5.0 V nom, 5.25 V max | **Mitigated** — X5 changed R6 20 kΩ → 15 kΩ, taking absolute-max margin from 100 mV to 450 mV. A 5.5 V supply now gives 3.30 V, at the 3.6 V absolute max rather than over it. Still worth measuring the HAT's actual rail. | 🟢 low |
 | 8 | TT motor stall current | 700 mA/motor, 1.5 A both | Feeds §1 and §4a. Doc says 500–700 mA; upper bound taken. | 🟢 low |
 | 9 | LED V_f on J10 | 2.0 V (red) | Brightness only (§6). | 🟢 low |
 
