@@ -121,8 +121,16 @@ def check_gates():
         print(f"            warn: {v.get('type')} | {items}")
     ok = not errors and unconn == 0 and parity == 0
 
-    for n, gate in ((2, "check_pcb_routing.py"), (3, "check_board_review.py")):
-        print(f"Gate {n}/3  {gate} ...")
+    # check_pcb_ampacity.py added 2026-08-06: scout ran it, buddy did not.
+    # It asks "can it CARRY the current" -- the question the other two do not.
+    # Written after robot-scout-power passed DRC and both other gates while the
+    # whole ~15A pack current crossed to a plane through ONE 0.4mm via.
+    for n, gate in (
+        (2, "check_pcb_routing.py"),
+        (3, "check_board_review.py"),
+        (4, "check_pcb_ampacity.py"),
+    ):
+        print(f"Gate {n}/4  {gate} ...")
         r = subprocess.run(
             [sys.executable, os.path.join(REPO, "tools", gate), PCB],
             capture_output=True,
