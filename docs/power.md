@@ -7,22 +7,24 @@ Waveshare UPS HAT (B), with UPS function (seamless AC ↔ battery switchover) an
 software-readable battery telemetry.
 
 **There is no separate battery pack in this design.** The HAT is the entire
-battery subsystem: it owns the cells, the charger, the switchover and the fuel
-gauge, and the only thing it presents to the rest of the robot is **5 V**. No
-board in this robot sees cell voltage.
+battery subsystem: it holds the cells, and owns the charger, the switchover and
+the fuel gauge. The only thing it presents to the rest of the robot is **5 V**.
+No board in this robot sees cell voltage.
 
 ## Topology (single-rail, 5 V)
 
 ```
   USB-C (AC) ──► Waveshare UPS HAT (B) ──► 5 V / 5 A ─┬─► Pi 5
-                 (cells + charger + UPS               │     └─► USB 5 V ─► ESP32-face
-                  switchover + fuel gauge,            │     └─► J9 5 V ──► ESP32-reflex board
-                  all internal)                       │
+                 2× 18650 Li-ion (2S, 7.4 V nom)      │     └─► USB 5 V ─► ESP32-face
+                 + charger + UPS switchover           │     └─► J9 5 V ──► ESP32-reflex board
+                 + INA219 fuel gauge — all internal   │
                                                       └─► TB6612 VM ─► TT motors
 ```
 
-5 V is the only rail that leaves the HAT, and it is the only rail on the reflex
-board. Nothing carries cell voltage.
+The 2S cells sit **inside the HAT**. 7.4 V nominal exists, but only within that
+block: 5 V is the only rail that leaves it, and it is the only rail on the reflex
+board. Nothing outside the HAT carries cell voltage — which is the whole reason
+the v2 reflex board has no `+BATT` input and no pack-sense divider.
 
 Everything downstream of the HAT lives on a shared 5 V rail. The HAT owns
 charging, undervoltage cutoff, UPS switchover, and reports pack voltage +
@@ -45,27 +47,24 @@ flips. No dedicated motor supply needed at this scale.
 
 ## Battery
 
-The HAT is the battery. There is no pack to design around, no pack connector,
-and no pack voltage anywhere in the robot's wiring.
+The HAT holds the cells. There is no pack to design around as a separate
+element, no pack connector, and no pack voltage anywhere outside the HAT.
 
 - **Waveshare UPS HAT (B), GPIO-header variant** — chosen over the pogo-pin
   version, which had a CSI-ribbon clearance risk. Confirmed by physical fit
   check on the Pi 5, 2026-04-25.
-- Cells live inside the HAT. Start with whatever's on hand; for real runtime
-  (≥1 hr) replace with Samsung 30Q / LG HG2 / Molicel P26A from a reputable
-  US source.
+- **2× 18650 Li-ion in series (2S, 7.4 V nominal)**, in the HAT's own holders.
+  Start with whatever's on hand; for real runtime (≥1 hr) replace with
+  Samsung 30Q / LG HG2 / Molicel P26A from a reputable US source.
 - Charging is the HAT's job, over its own USB-C input. No external charger is
   needed in normal use; a bench 18650 charger stays useful for capacity tests
   and cell rotation.
 
-⚠ **One place cell chemistry still shows through, and it is software.** The
-supervisor's `WaveshareUpsBMonitor` derives SoC from a piecewise-linear **2S
-18650** curve, and the dashboard voltage thresholds are tuned to it
-(8.0 / 7.0 / 6.4 V). That calibration is shipped and tested, so it has not been
-touched here. If the HAT's actual cell configuration is not 2S, `_SOC_CURVE`
-and those thresholds are both wrong and the low-battery UX will misfire —
-worth confirming against the unit before the SoC-curve refinement in
-`docs/TODO.md` (Power & Battery follow-ups).
+The 2S configuration is what the supervisor's `WaveshareUpsBMonitor` is
+calibrated against — its `_SOC_CURVE` is a piecewise-linear 2S 18650 discharge
+curve, and the dashboard thresholds (8.0 / 7.0 / 6.4 V) follow from it. **Cell
+count is therefore a software-visible fact even though no board sees cell
+voltage**: swapping to a different series count means re-deriving both.
 
 ## Telemetry chain
 

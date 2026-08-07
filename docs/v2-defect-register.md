@@ -1072,8 +1072,10 @@ No gerbers are generated until every line is checked and initialled.
       2026-08-06: no separate pack, no 2S rail, the HAT is the whole battery
       subsystem and 5 V is the only rail that leaves it. Topology diagram redrawn;
       the stale "pogo-pin variant" corrected to the GPIO-header variant that was
-      actually fitted. One software follow-up raised in `docs/TODO.md`: the
-      supervisor's SoC curve is still calibrated for 2S cells.
+      actually fitted. Cell configuration confirmed: **2× 18650 Li-ion in series
+      inside the HAT**, so the supervisor's 2S `_SOC_CURVE` is correct as shipped.
+      The point for this board is unchanged — 5 V is the only rail leaving the HAT,
+      which is why v2 has no `+BATT` input and no pack-sense divider.
 - [x] A0b — `+5V` is its own DSN class. `RAIL_W` is **0.4 mm**, not the 1.5 mm this line
       once specified; the plane carries the current, not the surface trace (A0d-v2)
 - [x] In2.Cu plane re-homed `+BATT` → `+5V`; `POWER_NETS` updated
