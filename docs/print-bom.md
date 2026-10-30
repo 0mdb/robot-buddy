@@ -64,6 +64,8 @@ What each material is for on this robot, and why.
 all covered; the only "add-if-needed" gaps are **PAHT-CF** (impact/heat beyond
 PC) and a **softer TPU (~70A)** if 85A under-isolates the camera.
 
+Datasheet numbers, the per-part verdicts and the FEA material model: `docs/cad/07_materials_fasteners_fea.md` §2–3.
+
 ## Printed parts → material
 
 | Part | Material (final) | Prototype in | Nozzle / plate | Status |
@@ -71,14 +73,17 @@ PC) and a **softer TPU (~70A)** if 85A under-isolates the camera.
 | **Base plate / chassis** | **PET-CF** | PETG black | 0.6 hard / eng | design next — see `CAD/…03_base_plate_design_spec.md` |
 | Motor mounts L/R (TT) | PET-CF | PETG black | 0.6 hard / eng | CAD exists (`TT_Motor_Mount_L/R`) |
 | Idler / rear follower brackets | PET-CF | PETG black | 0.6 hard / eng | placeholder in base-plate spec |
-| Track tensioners | PET-CF | PETG | 0.6 hard / eng | design slip fits 0.3–0.4 mm/side |
+| Track tensioners (rear follower carriages) | PET-CF | PETG | 0.6 hard / eng | only tension point (`06_frame_design_spec.md` D1); slip fits 0.3–0.4 mm/side |
+| **Front bulkhead** | **PET-CF** | PETG black | 0.6 hard / eng | face, speaker box, sonar, camera; print on its back |
+| Speaker back box | **PETG** | — | 0.6 hard / textured | sealed ~30 cc, solid walls (`docs/audio-hardware.md` §4.3) |
+| Mic grommets / speaker gasket | TPU 85A | — | 0.6 hard / textured | `docs/audio-hardware.md` §4.2 |
 | Tank tracks / treads | **TPU 85A** | — | 0.6 hard / textured | if printing treads; run external, low infill |
 | Raspberry Pi 5 holder / standoffs | PET-CF | PETG | 0.6 hard / eng | heat-set M2.5 bosses |
 | Reflex MCU board mount | PET-CF | PETG | 0.6 hard / eng | `CAD/library/robot-buddy-reflex-mcu.step` |
 | ESP32-face board mount | PET-CF | PETG | 0.6 hard / eng | TBD |
 | Camera mount | PET-CF | PETG | 0.6 hard / eng | CAD exists (`CameraMount1`) |
 | Face screen bezel / surround | **PLA** (or ASA) | — | 0.4 SS / textured | cosmetic; ILI9341 320×240 |
-| Top shell / canopy | **PLA Basic** (ASA/PC if durability) | PETG | 0.4 SS / textured | cosmetic — pick a color |
+| Top shell / canopy | **ASA white** (decided 2026-10-30: heat over Pi 5, drop toughness) | PETG | 0.4 SS / eng | PLA for bolt-on accents only |
 | Cosmetic accents (ears, antenna, badge) | PLA Glow / Wood / colors | — | 0.4 SS / textured | fun parts |
 | Vibration isolators / feet | TPU 85A | — | 0.6 hard / textured | low infill gyroid |
 | Cable strain reliefs / bumpers | TPU 85A | — | 0.6 hard / textured | |
@@ -90,7 +95,7 @@ PC) and a **softer TPU (~70A)** if 85A under-isolates the camera.
   hole patterns / motor + Pi fit / clearances), then commit final in **PET-CF
   black**. Both in stock.
 - Confirm whether tank tracks are printed (TPU 85A) or a purchased belt.
-- Decide face bezel + canopy: PLA (cosmetic, easy) vs ASA (durable/handled).
+- Canopy: **ASA** (decided, `06_frame_design_spec.md` §6). Face bezel: PLA or ASA, still open.
 - Camera isolator approach if vision needs it: TPU 85A grommets vs silicone ball
   dampers — test on the bench.
 - PAHT-CF / TPU ~70A remain add-if-needed only.

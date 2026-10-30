@@ -240,17 +240,23 @@ _3 items complete (LLM session memory, TTS resampler hardening, conversation stu
 - [ ] Repoint Pi 5 `SD CARD` sub-parts off `C:\Users\Ben\Desktop\robots\buddy\model\…` (see skill "Known state"); re-check `sw.py refs`
 - [ ] Save the 3 virtual components in `RB-ASM-100_chassis` (`Part2`, `MirrorPart2`, `Part8`) out to `CAD/parts/` with real names
 
-**Chassis: the remaining build.** It holds the MCUs, motors, screen and mic/speaker.
-- [ ] **Envelopes first** (`CAD/library/*_envelope.SLDPRT`). Have: Pi 5, Yahboom TT motor, reflex board STEP. Need: **face board ES3C28P (2.8" TFT)**, **speaker + mic** (blocked on the item below), battery pack + UPS HAT (B), TB6612 if off-board
-- [ ] **Specify a proper mic + speaker solution** to replace the Amazon USB specials. Needs a mic choice, speaker driver + amp, how they connect to the Pi (USB vs I2S), acoustic porting and mic/speaker isolation. Write it in a doc before any CAD; it drives the mounts below
+**Chassis: the remaining build.** It holds the MCUs, motors, screen and mic/speaker. Frame spec: `docs/cad/06_frame_design_spec.md` (rear-follower tensioning, 3-piece body: plate / front bulkhead / canopy, plate 170 × 110).
+- [ ] **Materials / fasteners / FEA**: `docs/cad/07_materials_fasteners_fea.md`. Measure insert stock (M2.5/M3 OD × L) + screw stock; print **insert ladder coupon** in PET-CF + ASA (07 §4.2); port fpv250 `swsim.cs` → `tools/swsim.cs`; run S1/S2/S5 before the first PET-CF print, S3/S4 with the canopy (07 §3)
+- [ ] **Assembly rebuild in chassis frame** (06 §2): re-base `bottom_plate` (origin top-face centre, Z up), save follower blocks out as real parts, place all components with explicit transforms
+- [ ] **Envelopes first** (`CAD/library/*_envelope.SLDPRT`). Have: Pi 5, Yahboom TT motor, reflex board STEP. Need: **face board Freenove FNK0104 (2.8" TFT)**, **speaker + mic** (XVF3800 Flex mic disc + core board, CE40P-8 + back box; blocked on bench measurements, `docs/audio-hardware.md` §7), battery pack + UPS HAT (B), TB6612 if off-board
+- [x] **Specify a proper mic + speaker solution**: `docs/audio-hardware.md` (2026-10-30). USB XVF3800 with hardware AEC (reSpeaker Flex Circular-4), Dayton CE40P-8 in a ~30 cc sealed box, PAM8302A only if the Flex amp won't run on 5 V
+- [ ] **Order audio parts + bench-validate** per `docs/audio-hardware.md` §7 (enumerate, amp-on-5V, AEC/barge-in, motor noise, SPL cap, USB current, measure boards). Gates the speaker/mic envelopes + mounts
+- [ ] Audio software follow-ups (`docs/audio-hardware.md` §8): 2-ch capture + ASR channel select, ALSA card names, keep VAD/wake word live during TTS, `max_volume` hard cap, persist XVF tuning
 - [ ] **Base plate** (`bottom_plate`): finish per `docs/cad/03_base_plate_design_spec.md`; add reflex-MCU + face-board provisions (spec gap noted there)
-- [ ] **Motor mounts** L/R: true mirror pair placed on the plate; confirm Ø on SLDPRT
+- [ ] **Motor mounts** L/R: **fixed** (round holes, no slots); true mirror pair placed on the plate; print on side; confirm Ø on SLDPRT
 - [ ] **Screen/face mount**: TFT bezel + touch clearance, viewing angle, USB cable exit
-- [ ] **Speaker + mic mounts**: speaker grille/acoustic port, mic port away from speaker and motors
+- [ ] **Speaker + mic mounts** per `docs/audio-hardware.md` §4: mic disc on canopy top, grommeted, gasketed Ø1.2 mm ports; speaker forward below TFT, sealed box, ≤2 mm grille + mesh; ≥70 mm mic↔speaker
 - [ ] **Raspberry Pi 5 holder**: PET-CF; heat-set M2.5 inserts (boss per insert spec, not printed threads)
-- [ ] **Tank-tread tensioners**: idler tensioner mechanism; PET-CF structure, slip/adjust fits 0.3–0.4 mm/side, precision on bearings/bushings not on printed features
-- [ ] **Top shell / canopy**: closes it out; access to USB + power switch
+- [ ] **Tank-tread tensioners** = rear follower carriages per `05_follower_spec.md` (the only tension point); PET-CF structure, slip/adjust fits 0.3–0.4 mm/side, precision on bearings/bushings not on printed features
+- [ ] **Front bulkhead** (06 §5): face TFT (15° tilt), speaker box, HC-SR04, camera; PET-CF
+- [ ] **Top shell / canopy** (06 §6): ASA white, tool-only opening (cells inside), mic disc on top; access to USB-C charge + power switch
 - [ ] Assembly: interference check + mass/CoG; review renders with Ben before any print (eyes before electrons)
+- [ ] **Reflex PCB: verify + order** (`hardware/kicad/robot-buddy-reflex/`). Re-run ERC/DRC, check footprints/pinouts against the parts actually bought, confirm the 65 × 60 outline + M3 holes (51 × 45 pattern) and connector exits against the frame (06 §3–4) before the plate locks; then order (fab + Canadian shipping)
 
 ---
 

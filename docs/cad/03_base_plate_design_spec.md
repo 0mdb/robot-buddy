@@ -1,5 +1,7 @@
 # Robot Buddy — Base Plate Design Spec
 
+> **Superseded in part by `06_frame_design_spec.md` (2026-10-30):** plate is **170 × 110** (not 180), motor mounts are fixed, and track tension is at the rear followers only (`05_follower_spec.md`). The rest of this spec still applies.
+
 Starting target for the first printable base plate. Tracked vehicle, 2 driven motors at the front (Yahboom encoder TT), 2 idler followers at the rear, Raspberry Pi mounted on top.
 
 > **⚠ Material reconciliation (read first).** This spec predates the framework

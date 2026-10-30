@@ -1,5 +1,7 @@
 # Robot Buddy — Base Plate Hole Coordinate Table
 
+> **Superseded in part by `06_frame_design_spec.md` (2026-10-30):** plate is **170 × 110** (X ∈ [−85, +85]); the §2 idler holes become follower tension slots; the motor mount now has **4 × Ø3.5 holes** (06 §7), not the 2 in §1. Re-derive positions once the assembly is rebuilt in the chassis frame.
+
 Plate-side hole positions to drive the SolidWorks sketches for
 `RB-PRT-001_base_plate`. Companion to `03_base_plate_design_spec.md`.
 

@@ -1,0 +1,191 @@
+# Robot Buddy — Materials, Fasteners, FEA — Rev 1
+
+**Status:** 2026-10-30. Companion to `06_frame_design_spec.md` (layout) and
+`docs/print-dfm.md` (print rules). Method and lessons carried over from fpv250:
+`~/fpv250/fpv250/docs/simulation.md`, `docs/fasteners.md`, `docs/tolerances.md` §5.5.
+Values marked **[TDS]** are Bambu technical data sheets (their own printed
+specimens, 100 % infill: use them for comparison, not as guarantees);
+**[calc]** are worked here; **[assumption]** are flagged.
+
+## 1. Modelling conventions (SolidWorks)
+
+Use the standard features, driven from **global variables**
+(Tools → Equations) so a rule change is one edit:
+
+| Variable | Value | Used by |
+|---|---|---|
+| `wall` | 2.4 (PET-CF/PC), 1.8 (ASA canopy) | **Shell** thickness |
+| `rib_t` | 1.2 | **Rib** thickness (≤ 3 × `rib_t` tall unless filleted/tapered) |
+| `fil_in` | 1.0 (2.0 at load roots) | internal fillets (PET-CF is notch-sensitive) |
+| `ins_m3_hole`, `ins_m3_depth` | 4.0, 7.2 🟡 | heat-set pockets (coupon decides, §4.2) |
+| `ins_m25_hole`, `ins_m25_depth` | 3.6, 7.2 🟡 | " |
+| `boss_m3_od`, `boss_m25_od` | 9.2, 8.0 | ≥ 2 × insert OD |
+| `clr_m3`, `clr_m25` | 3.4, 2.9 | clearance holes |
+
+- **Mount Boss** (Fastening Features) for every insert boss: hole = `ins_*_hole`, depth =
+  `ins_*_depth`, OD = `boss_*_od`, with fins (gussets) on any boss taller than 2 × OD.
+- **Hole Wizard** for clearance holes and counterbores (ISO SHCS / ISO 7380 button head).
+- **Shell** for the bulkhead and canopy; **Rib** for plate, bulkhead and canopy stiffening.
+- Heat-set axis along **Z** in the print orientation (pressed from the top; fpv250 rule).
+- One body per printed part; model at nominal; compensation only in holes and fits (print-dfm).
+
+## 2. Filaments on hand: evaluation
+
+| Material | E X-Y / Z (MPa) | UTS X-Y / Z (MPa) | Heat (HDT 0.45 MPa) | Verdict for buddy |
+|---|---|---|---|---|
+| **PET-CF** (Bambu) | **4730 / 2160** [TDS] | **74 / 35** [TDS] | 205 °C (annealed figure on the TDS; as-printed lower) | **Structure:** plate, bulkhead, Pi deck, motor mounts, follower carriages. Stiffest we have, low moisture uptake. Brittle (4.5 % elongation) → fillets, no snap fits. |
+| **PC** (Bambu) | 2110 / 1450 [TDS] | 62 / **56** [TDS] | ~115 °C [assumption] | **Best Z strength by far** (56 vs PET-CF 35) and tough. Use where a part is loaded *across* layers and can't be reoriented, or takes shock: **follower wheels and motor mounts are candidates if PET-CF cracks.** Warps in thick sections; enclosed, dried. |
+| **ASA** (Bambu) | 2450 / ~2120 | ~37 / ~31 (third-party sheet matching Bambu's E/HDT) | 100 °C [TDS] | **Canopy** and handled covers: tough, heat-safe over the Pi 5. Takes heat-set inserts (solid ASA, not the Aero foam). |
+| **PETG** (SUNLU, Polymaker) | ≈1460 / 1120 (Bambu PETG Basic as proxy) | ≈48 / 39 | ~70 °C | **Fit-test prototypes** (geometry only: about a third of PET-CF's stiffness, so don't judge stiffness on a PETG print). **Speaker back box** (seals well). Transparent: light pipes. |
+| **PLA** (Bambu Basic, Glow, Wood) | 2680 / 2160 [TDS] | 39 / 35 [TDS] | ~55 °C | **Accents only**, bolt-on, away from the Pi and motors. Not structure, not near heat. |
+| **TPU 85A** (Bambu) | very low | ~12 | — | Mic grommets, speaker gasket, bumpers, feet; tracks only if printed. |
+
+**Correction to 03 §1:** its deflection check used E = 5320 MPa, which is PET-CF's
+**bending** modulus. FEA uses Young's modulus: **4730 X-Y**, with a knockdown (§3.2).
+
+**Spool budget (PET-CF, 1 kg):** plate ~100 g, bulkhead ~60 g, Pi deck ~30 g, mounts +
+carriages ~60 g → **~250 g per robot**, enough for one remake. Buy a second spool before the
+final print run. ASA canopy ~150–200 g of 1 kg.
+
+## 3. FEA plan (SolidWorks Simulation, as in fpv250)
+
+### 3.1 Tooling
+
+Port `~/fpv250/fpv250/design/swsim.cs` to `tools/swsim.cs` (C# 5, `[STAThread]`, interop
+DLLs beside the exe, SolidWorks started by hand, one COM client). Keep the fpv250 lessons:
+
+- Read stress back on **named hot-spot faces in batches of ≤ 10** (`GetStressForEntities`), never the whole mesh.
+- An all-zero force is refused; unloaded cases get 1 µN.
+- Check every body has nodes (a body that won't mesh drops out silently).
+- Pin each study to the part's STEP sha256; write results to CSV.
+- **Convergence:** halve the mesh-control size once; top-5 hot spots must move < 10 %.
+
+### 3.2 Material model
+
+Linear isotropic, per part material:
+
+- **Stiffness:** E = **0.8 × E X-Y** [assumption: perimeters/infill and layer-line
+  compliance]. PET-CF 3780 MPa, PC 1690, ASA 1960. ν 0.35.
+- **Strength:** judge peak von Mises against the **Z** tensile strength wherever the stress
+  crosses layers (bosses, uprights, roots), else X-Y. Static safety factor **≥ 3**; sustained
+  loads (preload, standing weight) ≥ 5 for creep.
+- Results are **comparative** first (geometry A vs B, feature vs feature), absolute second.
+- Print structural parts to match the model: **≥ 4 walls, ≥ 40 % gyroid**, solid around inserts
+  (slicer modifier).
+
+### 3.3 Mass (for loads)
+
+[assumption, update from the assembly's Mass Properties]: Pi 5 + NVMe + UPS HAT + 2 × 18650
+~260 g; motors ~100 g; tracks + wheels ~120 g; plate + bulkhead + deck ~200 g; canopy ~180 g;
+face, audio, misc ~150 g → **m ≈ 1.0 kg**, W ≈ 10 N.
+
+### 3.4 Load cases and pass criteria
+
+| Case | Part(s) | Load | Restraint | Pass |
+|---|---|---|---|---|
+| **S1 Track tension** | Plate + motor mounts + follower carriages | T per track, both sides: 20 N [assumption, measure with a spring scale at set-up], at the shaft / axle | Inertia relief, or fix the far end | Shaft/axle deflection **< 0.2 mm**; F4b jack end-stop ≤ Z / 3 |
+| **S2 Drive torque** | Motor mount upright | Stall torque reaction 0.25 N·m [assumption, Yahboom 1:48 TT] + S1 | Mount foot at the 2 M3 | Upright root ≤ Z allowable / 3 |
+| **S3 Pick-up by the canopy** | Canopy + its 4 inserts | 3 W = 30 N through the canopy (the whole robot hangs from it) | Hand grip region on canopy sides | Insert pull-out ratio ≥ 3 (§4.3); canopy ≤ Z / 3 |
+| **S4 Hand press on top** | Canopy | 100 N on a Ø40 patch on the top centre | Canopy screw bosses | Deflection < 3 mm (clearance to the stack); stress ≤ UTS / 2 |
+| **S5 Poke the screen** | Bulkhead | 50 N normal to the face TFT bezel | Bulkhead foot screws | Deflection < 0.5 mm; ≤ Z / 3 |
+| **S6 Drop** | Whole assembly | 0.75 m table drop, as 20 g quasi-static on each heavy mass (stack, motors) in turn [assumption] | Contact face fixed | Comparative: find the weakest joint; nothing above Z UTS. Confirm with a physical drop of the PETG prototype |
+| **S7 Modes** | Plate + deck + stack | Free-free | — | First mode clear of motor/gear excitation (report; no hard target yet) |
+
+Run S1, S2 and S5 on the plate/mount/bulkhead **before** the first PET-CF print; S3, S4 with
+the canopy. Fillets and ribs are added *after* the first S-run picks where they go (fpv250's
+"simulate first, then fillet, then print").
+
+## 4. Fasteners
+
+### 4.1 Standards
+
+**Selection rule (Ben, 2026-10-30): the best fastener for each joint; buy what's missing.**
+Ben has a wide M2/M3/M4 range on hand, so stock doesn't constrain any choice.
+
+- Screws: **A2 stainless SHCS ISO 4762** inside (strength is never the limit into plastic;
+  A2 doesn't rust or stain). **ISO 7380-2 flanged button head** on the canopy outside: the flange
+  spreads load on the ASA without a loose washer, and nothing sharp stands proud where kids touch.
+- Inserts: **Ruthex** brass heat-set, tapered knurl: **M3 × 5.7** (RX-M3x5.7) and **M2.5 × 5.7**
+  (RX-M2.5x5.7). Consistent geometry and a published hole spec, which the coupon (§4.2) starts from.
+  Amazon.ca stocks both.
+- **No M4.** No joint needs it: M3 inserts carry ~820 N pull-out against single-digit-newton
+  working loads, and an M4 insert needs a ~11 mm boss that doesn't fit the walls.
+- **M2.5 only where a board dictates it** (Pi stack, possibly FNK0104); M3 everywhere else, so
+  one driver and one insert size cover almost the whole robot.
+- Nuts: M3 nyloc DIN 985 where a through-bolt is unavoidable (TT motor, follower axle).
+- Threadlocker: **Loctite 222 only steel-to-brass on motor-side joints**, a small drop, kept
+  off the plastic (anaerobics craze PC and ASA). None on serviced joints.
+
+### 4.2 Insert pockets: coupon first
+
+Placeholder geometry (typical datasheet values) until a coupon says otherwise:
+
+| Insert | OD × L | Drawn hole | Pocket depth | Boss OD |
+|---|---|---|---|---|
+| M3 | 4.6 × 5.7 | 4.0 | 7.2 (L + 1.5 relief) | 9.2 |
+| M2.5 | 4.0 × 5.7 | 3.6 | 7.2 | 8.0 |
+
+Rule I1 (fpv250): drawn hole = datasheet hole **+0.00 for PET-CF**. Then print a **ladder
+coupon** (drawn −0.3 … +0.3 in 0.1 steps) in **PET-CF and ASA**, press at ~245 °C (PET-CF) /
+~230 °C (ASA), and pick the **largest hole that seats with no spin** at the §4.3 torque. The
+coupon result replaces the placeholders, as it did in fpv250 (Ø3.1 drawn there for M2).
+
+### 4.3 Torque [calc]
+
+Preload F = T / (0.2 d). Insert pull-out capacity ≈ 10 MPa × knurl area (fpv250 §3):
+M3 ~820 N, M2.5 ~720 N.
+
+| Into | Max torque | Preload | Margin |
+|---|---|---|---|
+| M3 brass insert | **0.30 N·m** | 500 N | 1.6 |
+| M2.5 brass insert | **0.20 N·m** | 400 N | 1.8 |
+| M2.5 brass standoff (Pi stack) | 0.30 N·m | — | metal thread |
+| M3 through-bolt + nyloc | 0.50 N·m | — | clamp on PET-CF ≤ 20 MPa bearing with a washer |
+
+0.3 N·m is "snug with a short L-key held by the short arm". Use the preset driver from fpv250.
+
+### 4.4 Joint table
+
+Lengths assume the thicknesses shown. **Re-check each length against the modelled grip**
+before ordering (screw engagement ≥ 1.3 d, tip ≥ 0.5 mm short of the pocket floor).
+
+| # | Joint | Screw | Into | Grip → engagement | Qty |
+|---|---|---|---|---|---:|
+| F1 | Plate → bulkhead foot | M3 × 8 SHCS, up from below | M3 inserts in bulkhead foot | plate 4 → 4.0 | 3 |
+| F2 | Motor mount → plate | **M3 × 8** SHCS + ISO 7089 washer, down from the top | M3 inserts in plate under-bosses (plate 4 + boss 4) | foot **3.0** (measured) → 5.0 | **8** (4 per mount) |
+| F3 | TT motor → mount | M3 × 30 SHCS + **ISO 7089 washers both sides** + DIN 985 nyloc (TT gearbox through-holes are Ø3; the upright is too thin for an insert) | through | through-bolt | 4 |
+| F4 | Follower axle + clamp | per `05_follower_spec.md`: Ø4 shoulder bolt (M3 thread) as the axle; clamp M3 × 16 SHCS + washer + nyloc from below | — | — | 2 + 2–4 |
+| **F4b** | **Follower tension jack** (new) | **M3 × 20 SHCS** in an M3 insert in a plate end-stop, tip bearing on the carriage (cup point: set screw ISO 4029 if preferred) | M3 insert, axis along X | screw sets tension; clamp only locks | 2 |
+| F5 | Pi deck → plate posts | M3 × 8 SHCS, down from the top (service with the canopy off) | M3 inserts at post tops | deck 3 → 5 | 4 |
+| F6 | Pi stack → deck | M2.5 × 6 SHCS, up through the deck | the existing **6 mm brass standoffs** | deck 3 → 3 | 4 |
+| F7 | Reflex board → plate standoffs | M3 × 6 SHCS | M3 inserts in 5 mm printed standoffs | PCB 1.6 → 4.4 | 4 |
+| F8 | XVF3800 core board → plate | M3 × 6 SHCS | M3 inserts, printed standoffs | PCB 1.6 → 4.4 | 4 |
+| F9 | Canopy → body | M3 × 8 **ISO 7380-2 flanged** button head | M3 inserts: bulkhead top ×2, plate rear posts ×2 | canopy 1.8 + boss land 1.2 → 5 | 4 |
+| F10 | Mic disc → canopy | M3 × 10 SHCS through TPU grommets | M3 inserts in ASA canopy bosses | PCB 1.6 + grommet 3 🟡 → 5.4 | 3 |
+| F11 | Face board FNK0104 → bulkhead | **M3 × 6** SHCS through the PCB (Ø3.2 holes, **42.0 × 78.0** c-c per the ES3C28P drawing; PCB 50 × 86 confirmed by Ben) | M3 inserts in bulkhead standoffs | PCB 1.6 → 4.4 | 4 |
+| F12 | Speaker box → bulkhead | M2.5 × 8 SHCS through the gasket | M2.5 inserts in bulkhead | 🟡 | 4 |
+| F13 | HC-SR04 housing, camera | as their existing models (M1.6 countersunk in the HC-SR04 housing) | — | — | — |
+
+**Totals (per robot, +20 % spares when ordering):** M3 inserts ~34 (F1, F2, F5, F7, F8,
+F9, F10, F11), M2.5 inserts 4 (F12); M3 × 6 ×12, M3 × 8 ×15, M3 × 8 button ×4,
+M3 × 10 ×3, M3 × 30 ×4 (kit), M2.5 × 6 ×4, M2.5 × 8 ×4, M3 nyloc ×8, M3 washers ×8.
+
+### 4.5 The Pi stack (measured by Ben, 2026-10-30)
+
+Bottom to top: 6 mm brass standoffs (M2.5, female down) → Freenove M.2 NVMe adapter → Pi 5
+→ UPS HAT (B) with cells on top.
+
+| From the adapter's bottom | Height |
+|---|---|
+| Top of Pi USB ports | 30 mm |
+| Top of UPS HAT (stack top) | **53 mm** |
+| With the 6 mm standoffs | **59 mm** overall |
+
+**Keep the standoffs:** they give a metal thread for F6 and clear the adapter's underside.
+Pi PCB height inside the stack (for side cut-outs) comes from the vendor Pi 5 model when the
+envelope is built.
+
+## 5. Measure / decide before ordering
+
+1. Order Ruthex M3 × 5.7 (~45) and M2.5 × 5.7 (~10); everything else in §4.4 from Ben's range or bought to length.
+2. Track tension at set-up with a spring scale (replaces the 20 N in S1).

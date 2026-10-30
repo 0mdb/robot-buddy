@@ -13,8 +13,10 @@ clamps down to lock. An inboard **journal boss** on the carriage carries a long
 bearing pressed into the **flanged idler wheel** spins on the shoulder at the
 outboard end. The tread wraps the wheel on the open outboard side.
 
-- **Tension:** loosen the carriage clamp, slide rearward (−X) to tension the
-  tread, re-clamp. Design **8–10 mm** of travel.
+- **Tension:** loosen the carriage clamp, turn the **M3 jack screw** (in an insert in a plate
+  end-stop behind the carriage, axis along X) to push the carriage rearward (−X), re-clamp.
+  The screw holds the tension positively; the clamp only locks. Design **8–10 mm** of travel.
+  (Added 2026-10-30, `07_materials_fasteners_fea.md` F4b.)
 - **Lock:** carriage clamp screw(s) drop through the base slot to a nut (or
   thumb-nut) under the plate.
 - **Axle path (outboard → inboard):** head + washer (retains wheel) → bearing →
@@ -65,7 +67,12 @@ under tread load. If rev 1 wobbles, add a **second 624** spaced on the shank
 + carriage foot ~4 mm + nut → M3 × 16 mm is about right; confirm against final
 carriage height.*
 
-## Still needed to finalize the wheel (two measurements off the kit)
+## Kit measurements (Ben, 2026-10-30)
+
+Drive gear root Ø48.2, tip Ø54.34, width 31.6; track outside width **44.2** → flange inner gap **45.2**.
+Running OD still open (lugs between teeth → Ø54.34; teeth into holes → Ø48.2). See `06_frame_design_spec.md` §7.
+
+## Originally needed to finalize the wheel (two measurements off the kit)
 
 1. **Tread width** → flange inner gap = width + 1.0 mm.
 2. **Drive sprocket effective OD** (diameter the tread rides) → set the idler

@@ -17,6 +17,9 @@ robot-buddy/
       01_petg_bambu_profile_guide.md   ← Bambu Studio filament + 0.6 mm nozzle setup
       02_solidworks_setup_for_3dp.md   ← Templates, units, project-level setup
       03_base_plate_design_spec.md     ← First printable part — full spec to drive into SW
+      05_follower_spec.md              ← rear follower = the track tensioner
+      06_frame_design_spec.md          ← FRAME: 3-piece body, layout (start here)
+      07_materials_fasteners_fea.md    ← filament evaluation, SW modelling conventions, fasteners, FEA plan
       motor_mount_split_topdown.svg    ← Visual confirmation of the L/R split
       split_stl.py                     ← Script that did the split (run again on any pair file)
   CAD/                                  ← see CAD/README.md for structure + SW search-path setup

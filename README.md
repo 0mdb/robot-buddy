@@ -13,7 +13,7 @@ Reflexes are local and deterministic. Planner is remote and optional.
 | Component | Hardware | Role |
 |---|---|---|
 | Supervisor | Raspberry Pi 5 | 50 Hz orchestration, safety policy, HTTP/WS API |
-| Face MCU | ESP32-S3 (ES3C28P) | 320x240 TFT face renderer + touch/buttons telemetry |
+| Face MCU | ESP32-S3 (Freenove FNK0104) | 320x240 TFT face renderer + touch/buttons telemetry |
 | Reflex MCU | ESP32-S3 WROOM | Differential drive, PID, encoders, IMU, ultrasonic, safety |
 | AI Server | PC with 3090 Ti (off-robot) | Planner/conversation LLM + TTS on LAN (`LLM_BACKEND=ollama|vllm`) |
 | Motor Driver | TB6612FNG | Dual H-bridge for differential drive |
