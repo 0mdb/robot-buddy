@@ -26,14 +26,30 @@ origin is off-centre (box X[−25.6, 84.4], Z[−30.5, 139.5]), and the other
 components float unmated. Two virtual parts (`Part2^…`, `MirrorPart2^…`, the
 follower blocks) and an empty `Part8^…` live only inside the assembly.
 
-Rebuild step (first CAD task):
+**Rebuild done 2026-10-30** (`tools/chassis.py rebuild`, engine `tools/swbuild.cs`):
 
-1. Re-base `bottom_plate.SLDPRT` so its origin is the top-face centre and +Z is up
-   (sketch the outline on the **Front** plane, whose normal is +Z, and extrude −Z 4 mm).
-2. Save the follower blocks out of the assembly as real parts
-   (`follower_carriage_L/R.SLDPRT`); delete `Part8^…`.
-3. Place every component with an explicit `Transform2` in chassis coordinates
-   (skill rule 7), and fix the plate.
+- `CAD/parts/RB-PRT-001_base_plate.SLDPRT`: new plate in the chassis frame, 170 × 110 × 4,
+  Ben's outline (20 mm 45° front chamfers, R20 rear corners), top face at Z = 0. Volume
+  72,513.3 mm³, matching the independent calculation exactly. Holes and bosses come with §4.
+- `CAD/library/TT_Motor_envelope_v2.SLDPRT`: TT motor from the Yahboom drawing. Frame:
+  origin at the mounting-hole midpoint on the bracket face, +X to the gearbox/shaft end,
+  +Y along the shaft. Widths marked TBD in `chassis.py` are not measured.
+- `CAD/assemblies/RB-ASM-101_chassis.SLDASM`: plate (fixed), mounts, motors, each with an
+  explicit transform (read back with zero error). Centroid Y = 0.00: the left/right
+  placement is symmetric. `RB-ASM-100_chassis.SLDASM` is left untouched until Ben OKs
+  deleting it; the follower blocks inside it are still virtual (to be redesigned per 05).
+- **Motor orientation** (from the drawing: Ø3.2 holes 17.5 apart parallel to the shaft;
+  shaft 19.8 from the hole line toward the gearbox end): motor on the upright's outboard
+  side, shaft outboard, gearbox forward against the mount's gusset, can and encoder aft.
+  So **`TT_Motor_Mount_L` fits the RIGHT side** (rotated 180° about Z) and its mirror the left.
+- **Station:** shaft at X = 52.7, gearbox face flush with the plate edge (|Y| = 55). That is
+  as far forward as the mount foot can go and stay inside the 20 mm front chamfer; the
+  sprocket tip (Ø54.34) lands 5 mm behind the plate nose. 🟡 review.
+- **Interference, both sides (🟡, envelope widths unmeasured):** encoder (25 tall) dips
+  1.0 mm into the plate (323 mm³); gearbox (22 wide, guessed) overlaps the mount foot
+  (197 mm³). The mount puts the motor centre 11.5 above the plate, so any motor part
+  wider than 23 mm touches. Fix after measuring the motor: plate relief under the encoder,
+  or raise the mount holes.
 
 ## 3. Architecture
 
@@ -88,7 +104,11 @@ Keep from 03: 4 mm thickness, perimeter + cross ribs on the bottom face, 0.5 mm
 bottom-edge chamfer, ≥ 2 mm rib fillets, chamfered wire slots.
 
 **Existing features:** the notch in the left edge is **dropped** (Ben, 2026-10-30).
-The upright bracket at the rear left: purpose still to confirm. Keep, move or drop.
+The upright bracket I first called "rear left" is at the **front left** (Ben's plate has
+its chamfered end forward). It carries a horizontal Ø3 pair 18 mm apart, the TT motor bolt
+pattern: an older built-in motor mount, now replaced by the separate L-brackets. The
+notch was its motor clearance. Ben's plate is also **3.0 mm** thick (spec: 4.0, kept for
+the insert under-bosses). The left-rear Ø3.5 × 7 slot pair was an early follower slot.
 
 ## 5. Front bulkhead (piece 2)
 
