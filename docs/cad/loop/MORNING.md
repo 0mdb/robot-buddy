@@ -12,6 +12,8 @@ _Pass 1 starting (2026-10-30 17:05). Rewritten every tick._
 | S2 motor mount, pull | 41–46 MPa | 0.43 mm | FAIL ×3.5 |
 | S5 bulkhead, screen poke | — | — | no bulkhead yet |
 
+**Tooling so far:** `tools/meshcheck.py` (T2) measures overhang, min wall and sharp edges from an STL; validated on test shapes.
+
 **Next:** P1 front bulkhead, then P2 motor mount v2 (outboard axle support, Q4 default), P3 plate stiffening.
 
 **Open questions:** Q4–Q12 in `QUESTIONS.md`, each with a default the loop is using.

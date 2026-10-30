@@ -20,7 +20,7 @@ Baseline at loop start (commit on `cad`): plate rev 1, envelopes, Ben's imported
 
 ## T: Tooling (measure before optimising)
 - [ ] T1 `[sw]` `stl|<doc>|<out>` command in swbuild.cs; export every printed part to `CAD/exports/` on each rebuild
-- [ ] T2 `[py]` `tools/meshcheck.py`: from the STL, report overhang area >45° (in print orientation), min wall (ray-cast), sharp convex edges (dihedral angle), bounding box vs the P2S bed, and volume → grams at the infill/wall settings in print-bom.md. Add `trimesh` to tools/pyproject.toml
+- [x] T2 `[py]` `tools/meshcheck.py`: from the STL, report overhang area >45° (in print orientation), min wall (ray-cast), sharp convex edges (dihedral angle), bounding box vs the P2S bed, and volume → grams at the infill/wall settings in print-bom.md. Add `trimesh` to tools/pyproject.toml. **Done tick 1**: controls pass (1.0 mm slab wall, 12 sharp edges / 164 mm, cylinder rims only, floating-cube overhang 1.0 cm²); grams are solid-ρ only, as-printed grams wait for T4. Sharp-edge count includes hole rims (true unchamfered edges)
 - [ ] T3 `[sw]` per-part mass/volume/CoG line in the build output, and assembly CoG
 - [ ] T4 `[py]` headless slice with the installed Bambu Studio CLI: real print time, grams and support volume per part. The output is a `.3mf` per part = the "print ready" file. **Port, don't rediscover:** `~/fpv250/fpv250/docs/print-settings.md` §3 (the CLI prints nothing; it ignores `inherits` and reports success anyway, so pass flattened presets), `tools/slicemass.py`, and its calibrated P2S PA6-CF presets (`docs/print-calibration.md`). Check sliced grams against CAD volume × ρ: a mismatch means a bad preset
 - [ ] T5 `[py]` `metrics.csv` writer that gathers T1–T4 + FEA into one row
