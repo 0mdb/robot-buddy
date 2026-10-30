@@ -241,7 +241,8 @@ _3 items complete (LLM session memory, TTS resampler hardening, conversation stu
 - [ ] Save the 3 virtual components in `RB-ASM-100_chassis` (`Part2`, `MirrorPart2`, `Part8`) out to `CAD/parts/` with real names
 
 **Chassis: the remaining build.** It holds the MCUs, motors, screen and mic/speaker.
-- [ ] **Envelopes first** (`CAD/library/*_envelope.SLDPRT`). Have: Pi 5, Yahboom TT motor, reflex board STEP. Need: **face board ES3C28P (2.8" TFT)**, **USB speaker**, **USB mic** (exact models + measured dims), battery pack + UPS HAT (B), TB6612 if off-board
+- [ ] **Envelopes first** (`CAD/library/*_envelope.SLDPRT`). Have: Pi 5, Yahboom TT motor, reflex board STEP. Need: **face board ES3C28P (2.8" TFT)**, **speaker + mic** (blocked on the item below), battery pack + UPS HAT (B), TB6612 if off-board
+- [ ] **Specify a proper mic + speaker solution** to replace the Amazon USB specials. Needs a mic choice, speaker driver + amp, how they connect to the Pi (USB vs I2S), acoustic porting and mic/speaker isolation. Write it in a doc before any CAD; it drives the mounts below
 - [ ] **Base plate** (`bottom_plate`): finish per `docs/cad/03_base_plate_design_spec.md`; add reflex-MCU + face-board provisions (spec gap noted there)
 - [ ] **Motor mounts** L/R: true mirror pair placed on the plate; confirm Ø on SLDPRT
 - [ ] **Screen/face mount**: TFT bezel + touch clearance, viewing angle, USB cable exit
