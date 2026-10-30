@@ -230,6 +230,29 @@ _3 items complete (LLM session memory, TTS resampler hardening, conversation stu
 
 ---
 
+### Frame & Mechanical (CAD)
+
+> **Repo `CAD/` is the master** (Git LFS); SolidWorks works on the Windows mirror via `tools/sw.py push|pull` (`just cad-*`), driven over COM from WSL. See `.claude/skills/solidworks/SKILL.md` and `docs/cad/solidworks-api.md` (ported from fpv250 2026-10-30). NAS share `smb://freenas2.local/dev/Robots/robot-buddy/CAD/` is retired as a working store (backup only). Design rules: **`docs/print-dfm.md`** (0.6 mm nozzle, PET-CF structural). Print on P2S.
+
+**Setup (2026-10-30)**
+- [x] CAD tree imported from the NAS snapshot into git (branch `cad`), LFS for authored CAD, vendor raw downloads ignored
+- [x] `tools/sw.py` push/pull/probe/refs verified against SOLIDWORKS 32.3.1
+- [ ] Repoint Pi 5 `SD CARD` sub-parts off `C:\Users\Ben\Desktop\robots\buddy\model\…` (see skill "Known state"); re-check `sw.py refs`
+- [ ] Save the 3 virtual components in `RB-ASM-100_chassis` (`Part2`, `MirrorPart2`, `Part8`) out to `CAD/parts/` with real names
+
+**Chassis: the remaining build.** It holds the MCUs, motors, screen and mic/speaker.
+- [ ] **Envelopes first** (`CAD/library/*_envelope.SLDPRT`). Have: Pi 5, Yahboom TT motor, reflex board STEP. Need: **face board ES3C28P (2.8" TFT)**, **USB speaker**, **USB mic** (exact models + measured dims), battery pack + UPS HAT (B), TB6612 if off-board
+- [ ] **Base plate** (`bottom_plate`): finish per `docs/cad/03_base_plate_design_spec.md`; add reflex-MCU + face-board provisions (spec gap noted there)
+- [ ] **Motor mounts** L/R: true mirror pair placed on the plate; confirm Ø on SLDPRT
+- [ ] **Screen/face mount**: TFT bezel + touch clearance, viewing angle, USB cable exit
+- [ ] **Speaker + mic mounts**: speaker grille/acoustic port, mic port away from speaker and motors
+- [ ] **Raspberry Pi 5 holder**: PET-CF; heat-set M2.5 inserts (boss per insert spec, not printed threads)
+- [ ] **Tank-tread tensioners**: idler tensioner mechanism; PET-CF structure, slip/adjust fits 0.3–0.4 mm/side, precision on bearings/bushings not on printed features
+- [ ] **Top shell / canopy**: closes it out; access to USB + power switch
+- [ ] Assembly: interference check + mass/CoG; review renders with Ben before any print (eyes before electrons)
+
+---
+
 ### Dashboard
 
 - [ ] `[opus]` **Tuning Studio (expand Face tab; consolidate dashboard; built to complete B6)** — one place to tune face parameters (mouth sync), personality, models, server settings, and the full voice pipeline

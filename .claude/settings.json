@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/ben/robot-buddy/.claude/hooks/auto-format.sh",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}

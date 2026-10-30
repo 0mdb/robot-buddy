@@ -285,3 +285,17 @@ check-parity:
 preflight: lint test-all check-parity
     @echo ""
     @echo "✓ All checks passed — ready to commit."
+
+# ── CAD (SolidWorks over COM; see .claude/skills/solidworks) ──
+
+# Copy repo CAD/ to the Windows mirror SolidWorks works on
+cad-push *args:
+    python3 {{project}}/tools/sw.py push {{args}}
+
+# Copy the Windows mirror back into CAD/ (close docs in SolidWorks first; -n = dry run)
+cad-pull *args:
+    python3 {{project}}/tools/sw.py pull {{args}}
+
+# Attach to the running SolidWorks and list open documents
+cad-probe:
+    python3 {{project}}/tools/sw.py probe
