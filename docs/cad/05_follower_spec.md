@@ -70,7 +70,7 @@ carriage height.*
 ## Kit measurements (Ben, 2026-10-30)
 
 Drive gear root Ø48.2, tip Ø54.34, width 31.6; track outside width **44.2** → flange inner gap **45.2**.
-Running OD still open (lugs between teeth → Ø54.34; teeth into holes → Ø48.2). See `06_frame_design_spec.md` §7.
+**Running OD Ø49.6** (Ben, 2026-10-30). See `06_frame_design_spec.md` §7.
 
 ## Originally needed to finalize the wheel (two measurements off the kit)
 

@@ -136,12 +136,9 @@ below, 624 bearing on a Ø4 shoulder bolt).
 | Drive gear total width | 31.6 mm | Follower centre plane = drive gear centre plane (same Y) |
 | Track outside width | 44.2 mm | Follower flange inner gap **45.2 mm** (width + 1.0); each track takes ≈ 45 mm of overall width |
 
-- **Follower running OD is still open:** it must equal the diameter the track's inner face rests on
-  at the drive gear. That is **Ø54.34** if the track has inner lugs that sit between the teeth (inner face
-  rides on the tips), or **Ø48.2** if the teeth poke into holes in the track (inner face rides on the root).
+- **Follower running OD: Ø49.6** (Ben, 2026-10-30). This is the diameter the track's inner face runs on.
 - The existing `follower_wheel.SLDPRT` is Ø50 × 45 wide with Ø7.3 / Ø11 bores and no flanges, and 33 cm³
-  (~43 g in PET-CF). It doesn't match the 624 pocket (Ø13.1) in 05. Rework it to: running OD per the
-  line above, 45.2 mm flange gap, 2 mm flanges standing 2–3 mm proud, 624 pocket, shell + ribs instead
+  (~43 g in PET-CF). It doesn't match the 624 pocket (Ø13.1) in 05. Rework it to: running OD **Ø49.6** (was Ø50), 45.2 mm flange gap, 2 mm flanges standing 2–3 mm proud, 624 pocket, shell + ribs instead
   of near-solid.
 - Overall robot width = plate 110 + 2 × (track 44.2 + running clearance) ≈ **205 mm** if the tracks run
   outboard of the plate; confirm from the drive gear's position on the shaft in the rebuilt assembly.
