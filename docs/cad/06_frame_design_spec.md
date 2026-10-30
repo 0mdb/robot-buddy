@@ -110,6 +110,27 @@ pattern: an older built-in motor mount, now replaced by the separate L-brackets.
 notch was its motor clearance. Ben's plate is also **3.0 mm** thick (spec: 4.0, kept for
 the insert under-bosses). The left-rear Ø3.5 × 7 slot pair was an early follower slot.
 
+### 4.1 As built, rev 1 (2026-10-30, `tools/chassis.py`, all numbers in `chassis.py`)
+
+`RB-PRT-001_base_plate.SLDPRT`, volume 78,195 mm³ (independent slab integration
+78,228, within 0.04 %), ~98 g in PET-CF at 1.25 g/cm³ solid (less as printed).
+
+| Feature | As built | Note |
+|---|---|---|
+| Motor-mount inserts (F2) | 8 × Ø4.0 × 7.2 pockets from the top, Ø9.2 under-bosses to Z −8 | hole positions from the measured foot; all full-size bosses fit (chamfer line x + \|y\| = 120) |
+| Bottom ribs | 1.2 × 3.6: longitudinal at y 0, ±25 (x −80…75); transverse at x −60, −20, 20, 60 (\|y\| ≤ 44) | placement before FEA; S1 decides |
+| Pi deck posts (F5) | 4 × Ø9.2 × 24 at (30, ±8) and (−48, ±20); Ø4.0 × 7.2 insert pockets at the top | clear the reflex board, mount feet (0.8 mm) and carriages. No fins yet (24 tall > 2 × OD, 07 §1): add after FEA |
+| Reflex standoffs (F7) | 4 × Ø9.2 × 5, insert pockets 7.2 deep (into the plate) | at the board's moved station, below |
+| Follower slots (05) | per side: guide slots 4.7 wide at \|y\| 31 and 41, x −75…−45; clamp slot Ø3.4 at \|y\| 36, x −65…−55; jack end-stop block 10 × 11 × 10 at x −38…−28 with an Ø4.0 insert bore along X at z 5 (F4b) | axle mid-travel at x −60, ±5 mm; rail length 20 🟡 until the carriage is designed |
+| Rear-corner relief | plate half-width 46 behind x −27 | **new:** the 44.2 track hangs ~6.3 inboard of the 31.6 gear, so the follower wheel (flanges at \|y\| ≈ 47) would cut the plate edge |
+| Bulkhead foot (F1) | 3 × Ø3.4 at x 81.5, y 0 / ±22, counterbored Ø6.5 × 2 from below; 2 tab slots 4.6 × 10.4 at y ±11 | only x ≥ 78.5 is clear of the mount feet: a 6.5 mm strip. 🟡 review with the bulkhead design |
+| Wire slot | 6 wide, x 35…55 on the centreline | between the mount feet |
+
+**Layout changes found while building:** the reflex board moved forward to the space between
+the motors (pattern centre (−10.5, −3.5), board x −40…25, 0.7 mm to the encoders), because
+the follower carriages (\|y\| 28…44 aft of x −40) left no room aft. The XVF3800 core
+board and any off-board TB6612 now go aft, between the carriages (x −85…−40, \|y\| < 28) 🟡.
+
 ## 5. Front bulkhead (piece 2)
 
 - Spans the plate width, inboard of the tracks; foot bolts to the plate (§4) with

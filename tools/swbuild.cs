@@ -13,7 +13,8 @@
 //                                             (c1 c2 = the other two coords in
 //                                             x,y,z order; a0 a1 = span, or
 //                                             'all' for a through cut)
-//   prof|z0 z1|<segs>                         closed profile on Front, along Z.
+//   prof|z0 z1|<segs>[|cut|all]               closed profile on Front, along Z
+//                                             (boss, blind cut, or through cut).
 //                                             segs: 'M x y' start, 'L x y' line,
 //                                             'A cx cy x y' arc (CCW), space-sep
 //   expect|vol <mm3> <tol>|box x0 x1 y0 y1 z0 z1 <tol>
@@ -228,7 +229,9 @@ class SwBuild
         if (Math.Abs(px - sx) > 1e-6 || Math.Abs(py - sy) > 1e-6)
             sm.CreateLine(M(px), M(py), 0, M(sx), M(sy), 0);
         CloseSketch();
-        After("prof " + segs + " segs z " + f[1], Extrude(z[0], z[1], false, false));
+        bool cut = f.Length > 3 && (f[3] == "cut" || f[3] == "all");
+        After("prof " + segs + " segs z " + f[1] + (cut ? " " + f[3] : ""),
+              Extrude(z[0], z[1], cut, f.Length > 3 && f[3] == "all"));
     }
 
     static string Measure()
