@@ -1,0 +1,2 @@
+time,pass,tick,item,verdict,commit,plate_g,mounts_g,asm_g,cog_x,cog_y,cog_z,s1a_sf,s1b_sf,s2_sf,max_defl_mm,interferences,overhang_cm2,min_wall_mm,sharp_edges,print_min,support_g
+2026-10-30T17:05,1,0,baseline,baseline,,100.9,15.6,,,,,2.22,13.4,0.85,0.44,4,,,,,
