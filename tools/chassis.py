@@ -150,10 +150,148 @@ ROT_Y180 = [-1, 0, 0, 0, 1, 0, 0, 0, -1]
 ROT_X180 = [1, 0, 0, 0, -1, 0, 0, 0, -1]
 
 
+# ------------------------------------------------- envelopes (06 §9, 07 §4.5)
+# Pi stack, measured by Ben 2026-10-30: 6 mm brass standoffs -> Freenove M.2 NVMe
+# adapter -> Pi 5 -> UPS HAT (B). 53 mm adapter bottom -> HAT top. Frame: origin at
+# the centre of the Pi's 58 x 49 hole pattern, Z = 0 at the standoff feet, +X toward
+# the USB/Ethernet end. The Pi's holes sit 3.5 in from the board's left edge, so the
+# 85 x 56 board spans X -32.5 .. 52.5; ports stand 2 proud. TBD: HAT/adapter overhang.
+PI_HOLES = (29.0, 24.5)
+PI_STANDOFF_H, PI_STANDOFF_D = 6.0, 5.0
+PI_STACK_H = 53.0
+PI_BOX_X = (-32.5, 54.5)
+PI_BOX_Y = (-28.0, 28.0)
+
+# Face board FNK0104 = QDtech ES3C28P drawing (V1.0, 2025-06-11), PCB 50 x 86 confirmed.
+# Frame: origin at the PCB centre on its BACK component plane, +Y toward the MIC end,
+# +Z toward the viewer. Back parts 4.7 max, PCB 1.6, LCD/touch stack 4.3 (10.6 total).
+FACE_W, FACE_H, FACE_R = 50.0, 86.0, 3.5
+FACE_HOLES = (21.0, 39.0)
+FACE_HOLE_D, FACE_PAD_D = 3.2, 5.6
+FACE_BACK, FACE_PCB, FACE_FRONT = 4.7, 1.6, 4.3
+FACE_LCD_H, FACE_LCD_TOP = (
+    69.2,
+    8.22,
+)  # backlight/touch outline, offset from the MIC end
+
+# Reflex board (KiCad hardware/kicad/robot-buddy-reflex): 65 x 60, M3 holes at
+# (4,11) (55,11) (4,56) (55,56). Frame: origin at the hole-pattern centre on the
+# PCB's bottom face, KiCad Y flipped. TBD: component heights (12 top, 2 bottom).
+REFLEX_X = (-29.5, 35.5)
+REFLEX_Y = (-26.5, 33.5)
+REFLEX_HOLES = (25.5, 22.5)
+REFLEX_Z = (-2.0, 13.6)
+
+
+def rounded_rect(w: float, h: float, r: float) -> str:
+    x, y = w / 2, h / 2
+    return " ".join(
+        [
+            f"M {x} {-(y - r)}",
+            f"L {x} {y - r}",
+            f"A {x - r} {y - r} {x - r} {y}",
+            f"L {-(x - r)} {y}",
+            f"A {-(x - r)} {y - r} {-x} {y - r}",
+            f"L {-x} {-(y - r)}",
+            f"A {-(x - r)} {-(y - r)} {-(x - r)} {-y}",
+            f"L {x - r} {-y}",
+            f"A {x - r} {-(y - r)} {x} {-(y - r)}",
+        ]
+    )
+
+
+def corners(hx: float, hy: float) -> list[tuple[float, float]]:
+    return [(sx * hx, sy * hy) for sx in (-1, 1) for sy in (-1, 1)]
+
+
+def pi_ops() -> tuple[list[str], float]:
+    ops = [
+        f"cyl|z|{x} {y}|0 {PI_STANDOFF_H}|{PI_STANDOFF_D / 2}|boss"
+        for x, y in corners(*PI_HOLES)
+    ]
+    ops.append(
+        f"box|{PI_BOX_X[0]} {PI_BOX_X[1]}|{PI_BOX_Y[0]} {PI_BOX_Y[1]}|"
+        f"{PI_STANDOFF_H} {PI_STANDOFF_H + PI_STACK_H}"
+    )
+    vol = 4 * math.pi * (PI_STANDOFF_D / 2) ** 2 * PI_STANDOFF_H + (
+        (PI_BOX_X[1] - PI_BOX_X[0]) * (PI_BOX_Y[1] - PI_BOX_Y[0]) * PI_STACK_H
+    )
+    return ops, vol
+
+
+def face_ops() -> tuple[list[str], float]:
+    z_pcb = FACE_BACK + FACE_PCB
+    lcd_top = FACE_H / 2 - FACE_LCD_TOP
+    ops = [f"prof|0 {z_pcb}|{rounded_rect(FACE_W, FACE_H, FACE_R)}"]
+    # standoff landing pads: clear the back-component zone around each hole
+    ops += [
+        f"cyl|z|{x} {y}|0 {FACE_BACK}|{FACE_PAD_D / 2}|cut"
+        for x, y in corners(*FACE_HOLES)
+    ]
+    ops += [f"cyl|z|{x} {y}|all|{FACE_HOLE_D / 2}|cut" for x, y in corners(*FACE_HOLES)]
+    ops.append(
+        f"box|{-FACE_W / 2} {FACE_W / 2}|{lcd_top - FACE_LCD_H} {lcd_top}|"
+        f"{z_pcb} {z_pcb + FACE_FRONT}"
+    )
+    area = FACE_W * FACE_H - (4 - math.pi) * FACE_R**2
+    vol = (
+        area * z_pcb
+        - 4 * math.pi * (FACE_PAD_D / 2) ** 2 * FACE_BACK
+        - 4 * math.pi * (FACE_HOLE_D / 2) ** 2 * FACE_PCB
+        + FACE_W * FACE_LCD_H * FACE_FRONT
+    )
+    return ops, vol
+
+
+def reflex_ops() -> tuple[list[str], float]:
+    ops = [
+        f"box|{REFLEX_X[0]} {REFLEX_X[1]}|{REFLEX_Y[0]} {REFLEX_Y[1]}|{REFLEX_Z[0]} {REFLEX_Z[1]}"
+    ]
+    ops += [f"cyl|z|{x} {y}|all|1.6|cut" for x, y in corners(*REFLEX_HOLES)]
+    h = REFLEX_Z[1] - REFLEX_Z[0]
+    vol = (REFLEX_X[1] - REFLEX_X[0]) * (
+        REFLEX_Y[1] - REFLEX_Y[0]
+    ) * h - 4 * math.pi * 1.6**2 * h
+    return ops, vol
+
+
+def matmul(a: list[float], b: list[float]) -> list[float]:
+    return [
+        sum(a[i * 3 + k] * b[k * 3 + j] for k in range(3))
+        for i in range(3)
+        for j in range(3)
+    ]
+
+
+def rot_y(deg: float) -> list[float]:
+    c, s = math.cos(math.radians(deg)), math.sin(math.radians(deg))
+    return [c, 0, s, 0, 1, 0, -s, 0, c]
+
+
+# Provisional placements (06 §3 height table; TBD until the plate layout is set):
+PI_AT = (
+    -10.0,
+    0.0,
+    27.0,
+)  # pattern centre over the plate, standoff feet on the deck top
+REFLEX_AT = (
+    -44.5,
+    -3.5,
+    5.0,
+)  # aft of the motor cans, 0.7 clear of the encoders' |y| 30.7
+FACE_AT = (72.0, 0.0, 68.0)  # on the bulkhead, screen facing +X, tilted 15° back
+FACE_TILT = 15.0
+# board X (short side) -> chassis Z, board Y (MIC end) -> chassis -Y, board Z (screen) -> chassis X
+FACE_BASE = [0, 0, 1, 0, -1, 0, 1, 0, 0]
+
+
 def rebuild_manifest(win: str) -> list[str]:
     cad = win + r"\CAD"
     plate = cad + r"\parts\RB-PRT-001_base_plate.SLDPRT"
     motor = cad + r"\library\TT_Motor_envelope_v2.SLDPRT"
+    pi = cad + r"\library\Pi5_stack_envelope.SLDPRT"
+    face = cad + r"\library\FNK0104_face_envelope.SLDPRT"
+    reflex = cad + r"\library\reflex_board_envelope.SLDPRT"
     mount_r = cad + r"\parts\TT_Motor_Mount_L.SLDPRT"  # fits the right side
     mount_l = cad + r"\parts\MirrorTT_Motor_Mount_L.SLDPRT"  # fits the left side
     asm = cad + r"\assemblies\RB-ASM-101_chassis.SLDASM"
@@ -185,18 +323,45 @@ def rebuild_manifest(win: str) -> list[str]:
         f"expect|vol {m_vol:.1f} 5.0|box {MOT_CAN_END} {MOT_GEAR_END} {(MOT_THICK - MOT_ENC_T) / 2} "
         f"{MOT_THICK + MOT_SHAFT_LEN} {-MOT_ENC_W / 2} {MOT_ENC_W / 2} 0.05",
         "save",
+        *envelope_lines(pi, face, reflex),
         f"asm|{asm}",
         f"comp|plate|{plate}|{row(ROT_I, (0, 0, 0))}|fix",
         f"comp|mount_R|{mount_r}|{row(ROT_Z180, (tx, -ty, 0))}",
         f"comp|mount_L|{mount_l}|{row(ROT_Y180, (tx, ty, 0))}",
         f"comp|motor_R|{motor}|{row(ROT_X180, mot_r_t)}",
         f"comp|motor_L|{motor}|{row(ROT_I, mot_l_t)}",
+        f"comp|pi_stack|{pi}|{row(ROT_Z180, PI_AT)}",
+        f"comp|reflex|{reflex}|{row(ROT_I, REFLEX_AT)}",
+        f"comp|face|{face}|{row(matmul(rot_y(-FACE_TILT), FACE_BASE), FACE_AT)}",
         "interfere",
         "asmsave",
         f"shot|{asm}|{shots}",
         f"close|{asm}",
     ]
     return lines
+
+
+def envelope_lines(pi: str, face: str, reflex: str) -> list[str]:
+    p_ops, p_vol = pi_ops()
+    f_ops, f_vol = face_ops()
+    r_ops, r_vol = reflex_ops()
+    top = PI_STANDOFF_H + PI_STACK_H
+    fz = FACE_BACK + FACE_PCB + FACE_FRONT
+    return [
+        f"part|{pi}",
+        *p_ops,
+        f"expect|vol {p_vol:.1f} 2.0|box {PI_BOX_X[0]} {PI_BOX_X[1]} {PI_BOX_Y[0]} {PI_BOX_Y[1]} 0 {top} 0.01",
+        "save",
+        f"part|{face}",
+        *f_ops,
+        f"expect|vol {f_vol:.1f} 2.0|box {-FACE_W / 2} {FACE_W / 2} {-FACE_H / 2} {FACE_H / 2} 0 {fz} 0.01",
+        "save",
+        f"part|{reflex}",
+        *r_ops,
+        f"expect|vol {r_vol:.1f} 2.0|box {REFLEX_X[0]} {REFLEX_X[1]} {REFLEX_Y[0]} {REFLEX_Y[1]} "
+        f"{REFLEX_Z[0]} {REFLEX_Z[1]} 0.01",
+        "save",
+    ]
 
 
 # ------------------------------------------------------------------- runner

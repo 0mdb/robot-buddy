@@ -153,8 +153,10 @@ class SwBuild
         double len = a1 - a0;
         int t0 = Math.Abs(a0) < 1e-9 ? 0 : 3;          // 3 = swStartOffset
         bool flipStart = a0 < 0;
+        // A blind cut runs AGAINST the plane normal unless Dir is set (measured
+        // 2026-10-30: Front-plane cut 0..4.7 went to -Z and returned null).
         if (cut)
-            return (IFeature)fm.FeatureCut4(true, false, false, 0, 0, M(len), 0.0,
+            return (IFeature)fm.FeatureCut4(true, false, true, 0, 0, M(len), 0.0,
                 false, false, false, false, 0.0, 0.0, false, false, false, false,
                 false, true, true, true, true, false, t0, M(Math.Abs(a0)), flipStart, false);
         return (IFeature)fm.FeatureExtrusion3(true, false, false, 0, 0, M(len), 0.0,

@@ -190,6 +190,21 @@ Heat-set pockets per the insert datasheet (M3 ≈ Ø4.0, M2.5 ≈ Ø3.5); boss O
 | Reflex board | Have STEP (65 × 60) |
 | Camera, HC-SR04 housing | Have parts |
 
+**Envelopes built 2026-10-30** (`tools/chassis.py rebuild`, all volume-checked):
+
+| File (`CAD/library/`) | Frame | Status |
+|---|---|---|
+| `Pi5_stack_envelope.SLDPRT` | Pi hole-pattern centre, Z 0 at the standoff feet, +X to the USB/Ethernet end; 4 × Ø5 × 6 standoffs + 87 × 56 × 53 block | measured; HAT/adapter overhang 🟡 |
+| `FNK0104_face_envelope.SLDPRT` | PCB centre on the back-component plane, +Y to the MIC end, +Z to the viewer; back 4.7 + PCB 1.6 + LCD/touch 4.3; Ø5.6 pad clearances + Ø3.2 holes at 42 × 78 | from the ES3C28P drawing |
+| `reflex_board_envelope.SLDPRT` | hole-pattern centre, PCB bottom face Z 0; 65 × 60, holes 51 × 45 | outline + holes from KiCad; heights 🟡 (12 top, 2 bottom) |
+| `TT_Motor_envelope_v2.SLDPRT` | see §2 | widths 🟡 |
+| XVF3800 Flex disc + core board, CE40P-8 + back box | — | **not built**: no measured dimensions yet (audio bench step 7) |
+
+Provisional placements in `RB-ASM-101_chassis` (set properly with the plate layout, §4):
+Pi stack Rz180 at (−10, 0, 27), ports aft; reflex at (−44.5, −3.5, 5), aft of the motor
+cans with 0.7 mm to the encoders; face board at (72, 0, 68), screen forward, tilted 15° back.
+No new interferences.
+
 ## 10. Build order
 
 1. Assembly rebuild in chassis frame (§2).
