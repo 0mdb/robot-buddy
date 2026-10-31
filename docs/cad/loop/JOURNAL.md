@@ -224,3 +224,8 @@ Newest at the bottom. One entry per tick.
 - Plate +z: 151 cm² overhang = 106 bridged + 17 steep + 27.5 ledge (perimeter strips outside the outer ribs, and the 40.6 mm front-centre bay) + 0.1 floating.
 - All six orientations for every part → `docs/cad/loop/D3_print_orientation.md`, chosen strength first: plate +z (27.6 cm² perimeter support), bulkhead face down (1.0), deck / mounts +z (0), wheels +z (1.3–1.4), carriages front face down (0.4). The support-minimum for the plate is on edge; rejected (bending across layers).
 - No CAD change. Next: D3b (perimeter ledges) or D1; rotate first.
+
+## tick 31 · E1 design language · accepted (doc → Q18) · 2026-10-31 04:55
+- Proposal: fillet family 1 / 3 / 8 (accessible edges / handled edges + openings / silhouette), a pebble canopy with a 2–3 mm crown (no flat white panel > 60 × 60), no exposed screw heads on child-facing faces, one slot/hole pattern for grille, vents and mic, face high as the "head". Written so P6 and E2 can be built to it.
+- Q18 asks for the taste call with options (a) as proposed / (b) crisper 1 / 2 / 4 robot look / (c) reference. Default (a).
+- No CAD change. Next: SW items: D1 (mount internal fillets) or S1b (bulkhead edges, now that the family exists).

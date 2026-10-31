@@ -133,7 +133,8 @@ Rules the loop enforces from here on (ASTM F963 / EN 71-1 / IEC 62115 as design 
 - [ ] R5 `[doc]` spares list + which parts are consumables (tracks, followers)
 
 ## E: Aesthetics
-- [ ] E1 `[doc]` design language: one fillet family (e.g. 1 / 3 / 8 mm), soft "pebble" silhouette, no exposed screw heads on the faces a child sees. Proposal → QUESTIONS for Ben's taste call
+- [x] E1 `[doc]` design language: one fillet family (e.g. 1 / 3 / 8 mm), soft "pebble" silhouette, no exposed screw heads on the faces a child sees. Proposal → QUESTIONS for Ben's taste call
+  **Done tick 31:** proposal `docs/cad/loop/E1_design_language.md` → **Q18** (default (a): 1 / 3 / 8 family, pebble canopy with a crown, hidden screws, one opening pattern, face as the head).
 - [ ] E2 `[sw]` exterior edge radii to the chosen family (after S1)
 - [ ] E3 `[doc]` colour scheme from the materials: a **white PC shell over a black CF chassis** is the default palette. Where can the black show on purpose (track guards, face bezel), and where should it hide? Any accent (AMS second colour) must not add parts. Proposal + render → QUESTIONS for Ben's taste call. White shows dirt and layer lines: favour textured or curved surfaces over large flat ones
 - [ ] E4 `[sw]` hero renders each pass: iso, front-face (eye level of a 5-year-old ~40 cm off the floor), top

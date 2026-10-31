@@ -64,6 +64,8 @@ _Pass 1 starting (2026-10-30 17:05). Rewritten every tick._
 
 **Print orientations (D3):** chosen per part (`docs/cad/loop/D3_print_orientation.md`). Only the plate needs real support: 27.6 cm² at its perimeter strips (tree supports there). Bulkhead prints face-down on PEI; deck and mounts need none; carriages print on their front face.
 
-**Next:** D1, S1a3, D3b, then P2o / P6 (plate + FEA for the new track), then P2 motor mount v2 (outboard axle support, Q4 default), P3 plate stiffening.
+**Look (E1 → Q18):** a design-language proposal for your taste call: fillets only 1 / 3 / 8 mm, a soft "pebble" canopy, hidden screws, one pattern for grille/vents/mic, the face as the head (`docs/cad/loop/E1_design_language.md`).
+
+**Next:** S1b, D1, S1a3, then P2o / P6 (plate + FEA for the new track), then P2 motor mount v2 (outboard axle support, Q4 default), P3 plate stiffening.
 
 **Open questions:** Q4–Q12 in `QUESTIONS.md`, each with a default the loop is using.
