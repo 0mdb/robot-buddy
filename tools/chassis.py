@@ -1095,7 +1095,10 @@ def mount_v2_features(mirror: bool) -> list[tuple]:
         (yi - MM_CHAMFER, MM_FOOT_T),
         (yi + 0.6, MM_FOOT_T + MM_CHAMFER + 0.6),
     ]
-    ops.append(("add", ("prismx", ch, xa, xb)))
+    # D7: stop the chamfer 1 mm short of the lower motor-insert pocket, which runs through
+    # the upright; where the two crossed they left a knife edge (S2's unconverged peak, T9)
+    ch_x1 = MOUNT_HOLE[0] - INS_HOLE / 2 - 1.0
+    ops.append(("add", ("prismx", ch, xa, ch_x1)))
     hx, _, hz = MOUNT_HOLE
     for dz in (-MOT_HOLE_PITCH / 2, MOT_HOLE_PITCH / 2):
         ops.append(

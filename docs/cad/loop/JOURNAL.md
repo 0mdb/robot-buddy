@@ -91,3 +91,11 @@ Newest at the bottom. One entry per tick.
 - Step 2, rear relief removed (REAR_RELIEF flag; plate 81,653 vs 81,686 mm³ voxel; 0 interferences): S1a peak 17.62 (singular), jack stops 12.56 → 11.91, UX 0.247 → 0.241, UZ 3.15 → 3.03; S1b 2.88 → 2.55 MPa.
 - Verdict: accepted with +4.6 g as a deliberate trade: modest stiffness gain, and the carriage can now reach the plate edge (P5: ~11 mm shorter idler-axle cantilever). Q10 note updated, 06 amended.
 - Next: rotate: D7 (mount insert/chamfer knife edge) or a T item; then P3 / P5.
+
+## tick 11 · D7 mount insert/chamfer knife edge · accepted · 2026-10-30 22:45
+- Hypothesis: end the root chamfer 1 mm short of the lower insert pocket so the through-pocket exits on a flat face; the peak drops and converges.
+- Build: 10,796 vs 10,771.5 mm³ (+0.2 %), both sides; 0 interferences.
+- S2 pull + torque: 12.6 (tick 10, singular) → 11.38 MPa default mesh, 11.95 at half mesh (+5.0 %: converged, first converged S2 peak); deflection 0.0431 / 0.0432 mm. SF = 35 / 11.95 = 2.93.
+- Hot spots: (1) the pocket cylinder, (2) gusset 3's side face at x 13.2: the through-pocket (x 12.5–16.5) cuts 0.7 mm into that gusset's root. Last intersection → D8.
+- Accepted: removes the singularity and is ~10 % better, with nothing worse; SF 2.93 recorded as is, not rounded to a pass.
+- Next: rotate away from D: T or M/S, then D8.

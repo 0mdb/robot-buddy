@@ -26,6 +26,8 @@ _Pass 1 starting (2026-10-30 17:05). Rewritten every tick._
 
 **P12 (done):** FEA loads now sit on the TPU belt's centre line; the plate is full width again at the rear (+4.6 g, slightly stiffer, and it gives the follower carriage room at the plate edge). The motor mount's lever arm grew ~7 % with the 36 mm belt, not halved.
 
-**Next:** D7 (motor-mount insert knife edge), P3 (plate + FEA for the new track), then P2 motor mount v2 (outboard axle support, Q4 default), P3 plate stiffening.
+**Motor mount stress, converged (D7):** with the knife edge removed, S2 converges for the first time: 11.95 MPa at the finest mesh, SF 2.93 (2 % short of 3). The last notch is the same insert hole nicking a gusset root (D8).
+
+**Next:** D8, P3 (plate + FEA for the new track), then P2 motor mount v2 (outboard axle support, Q4 default), P3 plate stiffening.
 
 **Open questions:** Q4–Q12 in `QUESTIONS.md`, each with a default the loop is using.
