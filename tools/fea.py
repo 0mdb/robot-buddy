@@ -26,6 +26,24 @@ import sw  # noqa: E402
 
 # 07 §3.2: E = 0.8 x E(X-Y), strength judged on Z UTS, static SF >= 3.
 PETCF = {"E": 0.8 * 4730e6, "nu": 0.35, "rho": 1290.0, "uts_z": 35e6, "uts_xy": 74e6}
+# M1: Fiberon PA6-CF20, TDS V1.1 (as fpv250 params.yaml `pa6cf`). Dry: E 8636.5, UTS
+# 109.3 / 54.0 Z (measured). Conditioned ("wet", 3.3 % water): E 2508, UTS XY 54.7;
+# Z wet is not published, so it is scaled like XY (54.0 x 54.7 / 109.3 = 27.0) [assumption].
+PA6CF_DRY = {
+    "E": 0.8 * 8636.5e6,
+    "nu": 0.35,
+    "rho": 1170.0,
+    "uts_z": 54.0e6,
+    "uts_xy": 109.3e6,
+}
+PA6CF_COND = {
+    "E": 0.8 * 2508.1e6,
+    "nu": 0.35,
+    "rho": 1170.0,
+    "uts_z": 27.0e6,
+    "uts_xy": 54.7e6,
+}
+MATERIALS = {"PET-CF": PETCF, "PA6CF_DRY": PA6CF_DRY, "PA6CF_COND": PA6CF_COND}
 SF = 3.0
 
 # 07 §3.4 loads. TBD: measure track tension with a spring scale at set-up.
@@ -186,7 +204,9 @@ def s1m() -> dict:
     the feet bear on the plate over their footprint; held at the jack-screw bores."""
     gx, gy, gz = gear_centre()
     f = AXLE_F
-    face = chassis.MOUNT_HOLE[1] + chassis.mount_ty()  # |y| of the motor faces: -28 + 60.4 = 32.4
+    face = (
+        chassis.MOUNT_HOLE[1] + chassis.mount_ty()
+    )  # |y| of the motor faces: -28 + 60.4 = 32.4
     ins = chassis.INS_HOLE / 2
     lines = ["discard_open", "fix cyl 1 0 0 2.0 0.05"]
     for name, sgn in (("left", 1), ("right", -1)):
@@ -331,10 +351,13 @@ def run_watched(exe: str, man: str) -> str:
     return "".join(chunks).replace("\r", "")
 
 
-def run_study(st: dict, exe: str, dry: bool, mesh_scale: float = 1.0) -> str:
+def run_study(
+    st: dict, exe: str, dry: bool, mesh_scale: float = 1.0, material: str = "PET-CF"
+) -> str:
     stage = sw.staging()
     win = sw.winpath(stage)
     tag = st["name"] + ("" if mesh_scale == 1.0 else f"_m{mesh_scale:g}")
+    tag += "" if material == "PET-CF" else f"_{material}"
     out = os.path.join(stage, "fea", tag)
     if mesh_scale != 1.0:  # convergence run (07 §3.1): same study, finer mesh
         st = dict(st)
@@ -345,11 +368,11 @@ def run_study(st: dict, exe: str, dry: bool, mesh_scale: float = 1.0) -> str:
             for ln in st["lines"]
         ]
     os.makedirs(out, exist_ok=True)
-    m = PETCF
+    m = MATERIALS[material]
     lines = [
         f"part {win}{st['part']}",
         f"out {sw.winpath(out)}",
-        f"material {m['E']:.4g} {m['nu']} {m['rho']} {m['uts_z']:.4g} PET-CF",
+        f"material {m['E']:.4g} {m['nu']} {m['rho']} {m['uts_z']:.4g} {material}",
         *st["lines"],
     ]
     man = os.path.join(stage, "tools", f"fea_{tag}.txt")
@@ -387,12 +410,13 @@ def main() -> None:
     ap.add_argument(
         "--mesh-scale", type=float, default=1.0, help="0.5 = convergence run"
     )
+    ap.add_argument("--material", choices=list(MATERIALS), default="PET-CF")
     a = ap.parse_args()
     tool = os.path.join(sw.staging(), "tools")
     exe = "" if a.dry_run else compile_sim(tool)
     for name in a.studies:
         st = STUDIES[name]()
-        path = run_study(st, exe, a.dry_run, a.mesh_scale)
+        path = run_study(st, exe, a.dry_run, a.mesh_scale, a.material)
         if path:
             with open(path) as fh:
                 for row in csv.DictReader(fh):

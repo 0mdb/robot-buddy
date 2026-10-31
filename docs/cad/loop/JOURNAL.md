@@ -133,3 +133,10 @@ Newest at the bottom. One entry per tick.
 - Reading: plate 111.6 g, bulkhead 43.7, mounts 13.9 each, sprockets 35.9 each, idlers 34.7 each → 324.5 g printed, CoG (12.8, −0.1, 13.8) mm; the hand sum agrees.
 - Housekeeping: 34 Simulation `*-BenchMark-Solver.txt` logs had been committed under CAD/parts; untracked (files kept), gitignored, added to sw.py EXCLUDE.
 - Next: rotate: M1 (PA6-CF in fea.py) or S1 edge audit; D9 after.
+
+## tick 17 · M1 PA6-CF in fea.py · accepted · 2026-10-31 02:30
+- Added PA6CF_DRY (E 0.8 × 8636, Z 54, ρ 1.17) and PA6CF_COND (E 0.8 × 2508, Z 27 🟡 scaled like XY) from the Fiberon TDS fpv250 uses; `--material` flag; output dirs get a `_<material>` suffix.
+- Instead of eight more runs: one material, linear, so σ is independent of E and δ ∝ 1/E. Checked on S2 in PA6CF_COND: 7.151 MPa (same), motor holes 0.0908 mm vs 0.0909 predicted.
+- Table in `docs/cad/fea/m1_materials.md`: dry PA6-CF −9 % mass, δ ×0.55, SF ×1.54 on everything; conditioned PA6-CF δ ×1.89 (S1m 1.83 mm, S5c 0.502 vs 0.5) and SF 2.79 on the S1m / S2 peaks (S2 converged: 3.78).
+- No part changes material: that is M2 (doc, needs the moisture call).
+- Next: rotate: S1 edge audit (kid safety), then D9.
