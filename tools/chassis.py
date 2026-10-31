@@ -175,6 +175,10 @@ INS_HOLE, INS_DEPTH, INS_BOSS = 4.0, 7.2, 9.2
 CLR_M3, CBORE_M3, CBORE_DEPTH = 3.4, 6.5, 2.0
 UNDER_BOSS_Z = -8.0  # plate 4 + 4 mm under-boss for the motor-mount inserts (07 F2)
 RIB_T, RIB_H = 1.2, 3.6  # 07 §1: rib <= 3 x thickness tall
+# W3: the plate's grid ribs 1.2 x 3.6 -> 2.4 x 4.0: bottoms at -8 with the load ribs and
+# insert bosses (no clearance lost), stiffer, and wide enough to round r 1.0 (a 1.2 rib
+# couldn't be filleted, S1a2)
+PLATE_RIB_T, PLATE_RIB_H = 2.4, 4.0
 
 # Track and followers (06 §7, 05). The track is 44.2 wide on a 31.6 drive gear, so it
 # hangs ~6.3 inboard of the gear; the follower wheel (flange gap 45.2 + 2 mm flanges)
@@ -216,8 +220,11 @@ WIRE_SLOT = (
     3.0,
 )  # forward wire slot x0 x1 y r (between the mount feet)
 
-LONG_RIBS_Y, LONG_RIBS_X = (-25.0, 0.0, 25.0), (-80.0, 75.0)
-CROSS_RIBS_X, CROSS_RIBS_Y = (-60.0, -20.0, 20.0, 60.0), (-44.0, 44.0)
+# W3: long ribs through the insert-boss centres (|y| 21.5; at 25 their edge ran 0.1 mm
+# past the bosses' and no fillet would take the sliver); the y 0 rib stops before the wire
+# slot and the knee counterbore; the front cross rib 60 -> 66 clears that counterbore
+LONG_RIBS = ((-21.5, (-80.0, 75.0)), (0.0, (-80.0, 30.0)), (21.5, (-80.0, 75.0)))
+CROSS_RIBS_X, CROSS_RIBS_Y = (-60.0, -20.0, 20.0, 66.0), (-44.0, 44.0)
 # P3 (b): load-path ribs under the track-tension line (S1m: the plate bends in XZ between
 # the mount feet and the jack stops). Top-side rails don't fit: the reflex board edge
 # (|y| 30) and the encoder (|y| 30.7, z 1) leave 0.7 mm. Kept to the -8 underside of the
@@ -295,12 +302,12 @@ def plate_features() -> list[tuple[str, tuple, float, float]]:
         add.append(("add", ("circle", x, y, r), UNDER_BOSS_Z, -PLATE_T))
         cut.append(("cut", ("circle", x, y, INS_HOLE / 2), -INS_DEPTH, 0.0))
     # bottom ribs
-    for y in LONG_RIBS_Y:
+    for y, (lx0, lx1) in LONG_RIBS:
         add.append(
             (
                 "add",
-                ("rect", *LONG_RIBS_X, y - RIB_T / 2, y + RIB_T / 2),
-                -PLATE_T - RIB_H,
+                ("rect", lx0, lx1, y - PLATE_RIB_T / 2, y + PLATE_RIB_T / 2),
+                -PLATE_T - PLATE_RIB_H,
                 -PLATE_T,
             )
         )
@@ -312,11 +319,14 @@ def plate_features() -> list[tuple[str, tuple, float, float]]:
                 )
                 add.append(("add", ("rect", x0, x1, y0, y1), LOAD_RIB_Z, -PLATE_T))
     for x in CROSS_RIBS_X:
+        # W3: the x -60 rib ran through the follower guide/clamp slots (x -75..-45), which
+        # cut it into 0.6-1 mm slivers (no use, and no fillet would take them): stop it inside
+        ys = CROSS_RIBS_Y if x > -40 else (-26.0, 26.0)
         add.append(
             (
                 "add",
-                ("rect", x - RIB_T / 2, x + RIB_T / 2, *CROSS_RIBS_Y),
-                -PLATE_T - RIB_H,
+                ("rect", x - PLATE_RIB_T / 2, x + PLATE_RIB_T / 2, *ys),
+                -PLATE_T - PLATE_RIB_H,
                 -PLATE_T,
             )
         )
@@ -386,7 +396,7 @@ def plate_features() -> list[tuple[str, tuple, float, float]]:
         (
             "cut",
             ("circle", kx, ky, CBORE_M3 / 2),
-            -PLATE_T - RIB_H,
+            -PLATE_T - PLATE_RIB_H,
             -PLATE_T + CBORE_DEPTH,
         )
     )
@@ -445,6 +455,37 @@ def plate_perimeter() -> float:
     return front + rear + sides + 2 * c * math.sqrt(2) + 2 * (math.pi / 2) * r
 
 
+def belly_edge_length(step: float = 0.05) -> float:
+    """Edge length of the plate's z -8 footprint (features whose bottom is at -8), from a
+    raster: boundary pixel edges, with the staircase on the boss circles taken out."""
+    import numpy as np
+
+    xs = np.arange(-PLATE_L / 2 + step / 2, PLATE_L / 2, step)
+    ys = np.arange(-PLATE_W / 2 + step / 2, PLATE_W / 2, step)
+    X, Y = np.meshgrid(xs, ys, indexing="ij")
+    feats = plate_features()
+    m = np.zeros_like(X, dtype=bool)
+    for op, sh, z0, _ in feats:
+        if op == "add" and abs(z0 - UNDER_BOSS_Z) < 1e-6:
+            m |= shape_mask(sh, X, Y)
+    for op, sh, z0, z1 in feats:
+        if op == "all" or (op == "cut" and z0 <= UNDER_BOSS_Z + 1e-6):
+            m &= ~shape_mask(sh, X, Y)
+    n = np.count_nonzero(m[1:, :] != m[:-1, :]) + np.count_nonzero(
+        m[:, 1:] != m[:, :-1]
+    )
+    raw = n * step
+    # circles read 4/pi long on a raster; take that out for the boss rims (and the holes)
+    circ = sum(
+        2 * math.pi * s[3]
+        for op, s, z0, _ in feats
+        if s[0] == "circle"
+        and (abs(z0 - UNDER_BOSS_Z) < 1e-6 or op != "add")
+        and (op == "add" or z0 <= UNDER_BOSS_Z + 1e-6)
+    )
+    return raw - circ * (4 / math.pi - 1)
+
+
 def plate_lines(plate: str) -> list[str]:
     lines = [f"part|{plate}"]
     for op, s, z0, z1 in plate_features():
@@ -470,32 +511,14 @@ def plate_lines(plate: str) -> list[str]:
             f"filletface|{PLATE_EDGE_R}|{nz}|{z}|{-hx} {-hy} {hx} {hy}|max|{-dv:.2f} {0.1 * dv:.2f}"
         )
         vol -= dv
-    # S1a2: the load ribs' bottom edges (z -8). Per side two faces: the |y| 47 rib and the
-    # |y| 36.5 rib merged with the under-boss at (72.6, 37.4). Perimeters by hand: 300.8 and
-    # 249.3 (rect 232.8 - 9.9 inside the boss + 26.4 of boss arc)
-    if LOAD_RIBS:
-        dv2 = (1 - math.pi / 4) * PLATE_EDGE_R**2 * (300.8 + 249.3)
-        for sgn in (1, -1):
-            y0, y1 = sorted((sgn * 34.0, sgn * 50.0))
-            lines.append(
-                f"filletface|{PLATE_EDGE_R}|-1|{LOAD_RIB_Z}|{-hx} {y0} {hx} {y1}|2|{-dv2:.2f} {0.2 * dv2:.2f}"
-            )
-            vol -= dv2
-    # (the 1.2 grid ribs at z -7.6 are left sharp: one r 0.5 fillet over their 24 faces /
-    # 153 edges returned nothing, tick 26; widen them to 2.4 and round them in W3)
-    # under-boss rims at z -8 inboard (|y| 21.5): r 1.0 round each circle
-    rims = [
-        min(INS_BOSS / 2, round(edge_room(x, y) - 0.04, 2))
-        for x, y in mount_holes()
-        if abs(y) < 30
-    ]
-    dv4 = (
-        (1 - math.pi / 4) * PLATE_EDGE_R**2 * sum(2 * math.pi * (r - 0.3) for r in rims)
-    )
+    # S1a2 + W3: every bottom face at z -8 (grid ribs, load ribs, insert bosses, now one
+    # level) rounded r 1.0, inner loops included (the grid's cells). Edge length from a
+    # raster of that footprint (belly_edge_length).
+    dvb = (1 - math.pi / 4) * PLATE_EDGE_R**2 * belly_edge_length()
     lines.append(
-        f"filletface|{PLATE_EDGE_R}|-1|{UNDER_BOSS_Z}|{-hx} -30 {hx} 30|{len(rims)}|{-dv4:.2f} {0.2 * dv4:.2f}"
+        f"filletface|{PLATE_EDGE_R}|-1|{UNDER_BOSS_Z}|{-hx} {-hy} {hx} {hy}|any|{-dvb:.2f} {0.15 * dvb:.2f}|all"
     )
-    vol -= dv4
+    vol -= dvb
     lines += [
         f"expect|vol {vol:.1f} {vol * 0.004:.1f}|box {-hx} {hx} {-hy} {hy} {UNDER_BOSS_Z} {DECK_Z} 0.01",
         "save",

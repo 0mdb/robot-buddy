@@ -56,6 +56,8 @@ _Pass 1 starting (2026-10-30 17:05). Rewritten every tick._
 
 **Plate belly (S1a2):** the load-rib bottoms and boss rims are rounded r 1.0; plate sharp edges 4.5 m → 2.2 m since S1. The thin 1.2 grid ribs couldn't be rounded (W3 will widen them).
 
-**Next:** W3, D1, then P2o / P6 (plate + FEA for the new track), then P2 motor mount v2 (outboard axle support, Q4 default), P3 plate stiffening.
+**Plate ribs + belly (W3):** the thin grid ribs are now 2.4 × 4 and the whole underside is rounded r 1.0. Finding why the rounding kept failing exposed four sliver-making rib clashes (ribs through the follower slots, edges 0.1 mm off the bosses); all fixed. +3.9 g, plate SF 4.0, axle motion 1.0 → 0.9 mm, plate sharp edges down to 0.7 m (from 4.5 m).
+
+**Next:** D1, S1a3, A2, then P2o / P6 (plate + FEA for the new track), then P2 motor mount v2 (outboard axle support, Q4 default), P3 plate stiffening.
 
 **Open questions:** Q4–Q12 in `QUESTIONS.md`, each with a default the loop is using.

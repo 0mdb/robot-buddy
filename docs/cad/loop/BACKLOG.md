@@ -89,7 +89,10 @@ Rules the loop enforces from here on (ASTM F963 / EN 71-1 / IEC 62115 as design 
 ## W: Weight vs strength
 - [ ] W1 `[sw]` baseline: mass per part + FEA SF/deflection per study → first metrics row
 - [ ] W2 `[sw]` plate: pockets / isogrid between ribs where FEA stress < 20 % of allowable; keep load paths from motor-mount inserts → follower slots continuous
-- [ ] W3 `[sw]` (also: the 1.2 grid ribs can't be rounded as they are, S1a2; try 2.4 with r 1.0) rib height/thickness sweep (keep ≤ 3× t, 0.6 multiples). Plot mass vs S1a deflection, pick the knee
+- [x] W3 (targeted) `[sw]` (also: the 1.2 grid ribs can't be rounded as they are, S1a2; try 2.4 with r 1.0) rib height/thickness sweep (keep ≤ 3× t, 0.6 multiples). Plot mass vs S1a deflection, pick the knee
+  **Done tick 27:** not a sweep; one targeted step. Plate grid ribs 1.2 × 3.6 → 2.4 × 4.0 (`PLATE_RIB_T/H`; bottoms at −8 with the load ribs and bosses), and the whole −8 belly rounded r 1.0 in one `filletface … any|all` (−536.7 vs −532.1 mm³ from a raster edge length, `belly_edge_length`). The first tries failed; a new per-face diagnostic in the engine showed why: slivers. The x −60 cross rib ran through the follower slots (0.6–1 mm pieces) → stops at |y| 26; the ±25 long ribs ran 0.1 mm past the boss edges → moved to ±21.5 (through the boss centres); the y 0 rib stops at x 30 (wire slot, knee counterbore); the front cross rib 60 → 66. Plate 111.0 → 114.9 g. S1m 9.37 → 8.64 MPa (SF 4.05), inserts 0.996 → 0.900 mm; S1b 3.88 → 3.61 MPa, deck 0.147 → 0.125. Plate accessible sharp edges 2,212 → 735 mm (left: slot edges on the belly). A real height/thickness sweep is still open (W3b).
+- [ ] W3b `[sw]` the actual rib sweep (height 4 → 6 / 8 within ground clearance, Q17 context): plot mass vs S1m deflection
+- [ ] S1a3 `[sw]` plate belly slot edges (guide, clamp, wire, bulkhead tab slots at z −4): r 0.6–1.0 per slot loop (`filletface` on the z −4 face's inner loops, or per-slot)
 - [ ] W4 `[sw]` plate thickness 4.0 → 3.0/3.6 with deeper ribs: same stiffness, less mass?
 - [ ] W5 `[sw]` deck posts: fins vs hollow posts (TODO open item "fins on deck posts")
 - [ ] W6 `[py]` check whether wall/infill choices in the slicer profile beat geometry changes for the same grams

@@ -200,3 +200,9 @@ Newest at the bottom. One entry per tick.
 - The 1.2 grid ribs (z −7.6, 24 faces, 153 edges incl. the cells' inner loops) at r 0.5 returned nothing; dropped, → W3 (widen to 2.4, then round).
 - Full rebuild 0 interferences, plate 111.4 → 111.0 g. S1m 8.88 → 9.37 MPa (SF 3.74), inserts 0.970 → 0.996 mm; S1b 3.34 → 3.88 MPa (+16 %, SF 9.0, deck 0.145 → 0.147 mm). Accepted as a kid-safety trade. Plate accessible sharp edges 3,466 → 2,212 mm.
 - Next: rotate: W3 (which also unblocks the grid-rib rounding) or A/M.
+
+## tick 27 · W3 2.4 grid ribs + whole belly r 1.0 · accepted (+3.9 g, strength + safety) · 2026-10-31 03:50
+- Grid ribs 1.2 × 3.6 → 2.4 × 4.0 (bottom −8 like the load ribs / bosses); one r 1.0 `filletface` over every −8 face incl. inner loops, expected volume from a raster of the footprint.
+- Failed twice; added an engine diagnostic (on failure, retry face by face and print which faces fail). Culprits were slivers, all pre-existing layout flaws: the x −60 cross rib cut into 0.6–1 mm pieces by the follower slots; the ±25 long ribs' edges 0.1 mm past the boss edges; the y 0 rib against the wire slot and the knee counterbore; the x 60 cross rib against that counterbore. Fixed the layout (rib through the boss centres at ±21.5, y 0 rib to x 30, cross ribs −60 trimmed to |y| 26 and 60 → 66) → BUILD OK, −536.7 vs −532.1 mm³.
+- Full rebuild 0 interferences. Plate 111.0 → 114.9 g. S1m 9.37 → 8.64 MPa (SF 4.05), inserts 0.996 → 0.900 mm; S1b 3.88 → 3.61 MPa, deck 0.147 → 0.125 mm. Accessible sharp edges 2,212 → 735 mm.
+- Next: rotate: A/M/E doc items or D1; S1a3 (slot edges) later.

@@ -529,6 +529,28 @@ class SwBuild
         doc.ClearSelection2(true);
         doc.EditRebuild3();
         double d = PartVolume() - v0;
+        if (fil == null && cand.Count > 1)  // diagnostic: which face's loops won't fillet?
+            foreach (IFace2 fc in cand)
+            {
+                double[] bx = (double[])fc.GetBox();
+                doc.ClearSelection2(true);
+                int ne = 0;
+                foreach (object lo in (object[])fc.GetLoops())
+                {
+                    ILoop2 lp = (ILoop2)lo;
+                    if (!lp.IsOuter() && !inner) continue;
+                    foreach (object eo in (object[])lp.GetEdges()) if (((IEntity)eo).Select2(true, 1)) ne++;
+                }
+                IFeature one = (IFeature)doc.FeatureManager.FeatureFillet3(
+                    (int)swFeatureFilletOptions_e.swFeatureFilletUniformRadius, M(r), 0.0, 0.0,
+                    (int)swFeatureFilletType_e.swFeatureFilletType_Simple,
+                    (int)swFilletOverFlowType_e.swFilletOverFlowType_Default,
+                    (int)swFeatureFilletProfileType_e.swFeatureFilletCircular,
+                    null, null, null, null, null, null, null);
+                Console.WriteLine(string.Format(ci, "    face X[{0:F1},{1:F1}] Y[{2:F1},{3:F1}] {4} edges: {5}",
+                    bx[0] * 1e3, bx[3] * 1e3, bx[1] * 1e3, bx[4] * 1e3, ne, one == null ? "FAILS" : "ok"));
+                if (one != null) { one.Select2(false, 0); doc.EditDelete(); }
+            }
         Check(what, fil != null && Math.Abs(d - dv[0]) <= dv[1],
             string.Format(ci, "{0} faces, {1} edges selected {2}, dvol {3:F2} vs {4:F2} +- {5:F2} mm3 | {6}",
                 faces, picked.Count, nsel, d, dv[0], dv[1], Measure()));
