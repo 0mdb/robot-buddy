@@ -320,3 +320,10 @@ Newest at the bottom. One entry per tick.
 - First assembly: 2 × 0.1 mm³ bulkhead/canopy (ceiling on the tilted lug tops) → CAN_LUG_GAP 0.1 → **0 interferences**. Canopy 83.2 g; printed parts 368.6 → 451.8 g, CoG z 14.0 → 24.7.
 - meshcheck: min wall 1.77; overhang 133 cm² open side down (the ceiling: orientation → D3); 2.0 m sharp edges (skirt rim, front lips, apron: first-cut square edges, like P1) → P6e.
 - Next: P6b plate holes for the rear screws, then P6c S7 (300 N heel) + S5c with the real canopy.
+
+## tick 48 · P6b plate holes for the canopy's rear screws · accepted · 2026-10-31 12:15
+- 2 × Ø3.4 through at (−80.4, ±12) (M3 × 10 button up from the belly into the canopy apron inserts, 07 F9); clear of the belly ribs (y 0, ±21.5; cross ribs x ≥ −60), 2.9 mm to the rear edge, square edge for the head.
+- Plate alone: each hole −36.3 mm³ (= π 1.7² × 4); 86,426.7 vs 86,465.9 (tol 346). Slip: a trailing `close` after `save` (save already closes) failed the standalone run; harmless.
+- Full rebuild 0 interferences. S1m 8.87 → 9.03 MPa (SF 3.88), inserts 1.032 mm (=); S1b 3.49 → 3.76 MPa (+7.7 %, the holes are 13 mm from the rear deck posts; SF 9.3), deck 0.126 mm.
+- Ben (~12:00): canopy material M4: PC White 60100 favoured, ASA White 45100 the alternative; S7 runs both (ribs under the top if needed). Mass roll-up now uses PC (ρ 1.20 🟡): canopy ~93 g, printed total ~461.6 g.
+- Next: P6c S7 (both materials) + S5c with the real canopy.

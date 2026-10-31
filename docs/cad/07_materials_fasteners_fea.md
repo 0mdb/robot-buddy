@@ -199,6 +199,8 @@ before ordering (screw engagement ≥ 1.3 d, tip ≥ 0.5 mm short of the pocket 
 
 > Amendment (loop A2, 2026-10-31): F7 / F8 / F11 M3 × 6 → **× 8** (the 7.2 pockets take 6.4 of engagement; one length fewer). F4b jack screw M3 × 20 → **× 30**: the block-to-carriage gap runs 7–17 mm over the travel plus 10 mm through the block. F12 could go M3 too (P7). Bill and driver notes: `docs/cad/loop/A2_fasteners.md`.
 
+> Amendment (loop P6, 2026-10-31, Ben): canopy material **PC White (60100) favoured, ASA White (45100) the alternative; S7 decides (M4)**. PC: Z UTS 56 vs ~31 MPa and much tougher (a child's shell splits along a layer in a drop); ASA: 15–45 % stiffer and easier to print. S7 runs both on the same mesh: PC if it holds < 10 mm and S5c still passes, with ribs under the top (= S4's cell-retention ribs) if needed; otherwise ASA. The mass roll-up uses PC (ρ 1.20 🟡, TDS to check).
+
 > Amendment (loop P6, 2026-10-31): F9's two **rear** joints turn round: **M3 × 10 button head up from the belly through Ø3.4 plate holes at (−80.4, ±12) into M3 inserts in two Ø9.2 bosses on the canopy's rear apron** (pocket 7.2, 6 mm engaged), instead of inserts in plate rear posts with the head on the canopy. Why: E1 §3, no screw heads on the faces a child sees, and the plate keeps no posts. The two **front** joints are unchanged (M3 × 8 flanged button down through the hood ceiling into the bulkhead lugs); those heads sit on the hood top behind the head, visible from above (open point for E2).
 
 **Totals (per robot, +20 % spares when ordering):** M3 inserts ~34 (F1, F2, F5, F7, F8,

@@ -425,6 +425,12 @@ def plate_features() -> list[tuple[str, tuple, float, float]]:
         )
     x0, x1, wy, wr = WIRE_SLOT
     cut.append(("all", ("slot", x0, wy, x1, wy, wr), 0, 0))
+    # P6b: the canopy's rear screws, M3 x 10 button up from the belly into the inserts in
+    # its apron bosses (07 F9 amendment); square edge for the head, clear of the ribs
+    for sgn in (-1, 1):
+        cut.append(
+            ("all", ("circle", CAN_BOSS[0], sgn * CAN_BOSS[1], CLR_M3 / 2), 0, 0)
+        )
     return add + cut
 
 
@@ -1798,7 +1804,7 @@ def wheel_at(x: float, side: int) -> tuple[list[float], tuple[float, float, floa
 
 
 # ------------------------------------------------------------- canopy (06 §6, P6)
-# First cut to E1 / Q18 (a) "pebble": one ASA shell, CAN_T wall, open at the bottom.
+# First cut to E1 / Q18 (a) "pebble": one PC shell, CAN_T wall, open at the bottom.
 # Side profile (XZ) extruded |y| <= CAN_HW: the body over the Pi stack (top CAN_TOP) and
 # a "hood" behind the bulkhead's head that rises to the wall top, so its ceiling bears on
 # the two canopy lugs (S5c: the canopy holds them). The hood's front follows the wall's
@@ -1807,7 +1813,7 @@ def wheel_at(x: float, side: int) -> tuple[list[float], tuple[float, float, floa
 # carriages; the tracks cover the sides below it (belt inner edge |y| 56.5, 3.5 mm off).
 # At the rear an apron reaches the plate between the carriages with 2 insert bosses:
 # M3 buttons go up through the plate from the belly (hidden, E1 §3; F9 amended).
-CAN_T = 1.8  # 06 §6 / 07: ASA shell
+CAN_T = 1.8  # 06 §6 / 07: PC White 60100 favoured, ASA White 45100 the alternative (M4: S7 decides)
 CAN_HW = 53.0  # 3.5 inboard of the belt's inner edge (< 5 mm: no finger gap)
 CAN_Z0 = 30.0  # skirt bottom: 3.5 over the mount tops
 CAN_TOP = 93.0  # 06 §3: Pi stack top 86 + 5.2 clearance + wall
@@ -2042,12 +2048,12 @@ def compile_engine(tool: str) -> str:
 
 # T3: printed parts and their material (07 / Bambu TDS, g/cm³). Envelopes (motor, Pi
 # stack, boards, belt stand-ins) and analysis-only parts are left out.
-RHO = {"PET-CF": 1.29, "TPU": 1.22, "ASA": 1.07}
+RHO = {"PET-CF": 1.29, "TPU": 1.22, "PC": 1.20}  # PC 🟡 until checked on the TDS
 PART_MATERIAL = {
     "RB-PRT-001": "PET-CF",
     "RB-PRT-002": "PET-CF",
     "RB-PRT-003": "PET-CF",
-    "RB-PRT-004": "ASA",  # canopy (06 §6, P6)
+    "RB-PRT-004": "PC",  # canopy (06 §6, P6): PC favoured, M4 decides on S7
     "RB-PRT-030": "PET-CF",
     "RB-PRT-031": "PET-CF",
     "RB-PRT-010": "PET-CF",

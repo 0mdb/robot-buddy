@@ -1,9 +1,9 @@
 # CAD loop state
 
 pass: 1, leg 2 (leg 1 ended 2026-10-31 ~11:10 at tick 46)
-tick: 47
+tick: 48
 sw: up (restarted by Ben 2026-10-31 ~06:45)
-current: none (tick 47 P6 first cut accepted; next P6b plate holes)
+current: none (tick 48 P6b accepted; next P6c S7 in PC + ASA, S5c with the canopy)
 hypothesis: —
 baseline_commit: d8179d2 (cad)
 stop_after: 2026-11-01 07:00 (Ben, leg 2: "until 7am tomorrow or completed")

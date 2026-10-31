@@ -180,7 +180,8 @@ board and any off-board TB6612 now go aft, between the carriages (x −85…−4
 - Uniform 1.8 mm wall; 1 mm fillets; vent slots over the Pi cooler, ≤ 2 mm wide.
 
 > Amendment (loop P6, 2026-10-31): canopy first cut built, `RB-PRT-004_canopy`
-> (generated, `tools/chassis.py`), ASA 1.8 shell, ~83 g, to E1 / Q18 (a):
+> (generated, `tools/chassis.py`), 1.8 shell, ~93 g in PC white (favoured; ASA the alternative, S7
+> decides, 07 §2 amendment), to E1 / Q18 (a):
 > - Body over the Pi stack: x −85 (flush with the plate's rear edge) to the bulkhead,
 >   |y| ≤ 53 (3.5 inboard of the belt), top z 93 (stack top 86). Plan corners r 20,
 >   top edges r 8.
