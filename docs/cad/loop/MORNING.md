@@ -50,6 +50,8 @@ _Pass 1 starting (2026-10-30 17:05). Rewritten every tick._
 
 **Follower carriages (P5):** new parts RB-PRT-030/031, 12.3 g each: rails in the plate's guide slots, clamp, jack-screw pad, and a Ø15 journal boss that reaches into the idler (short unsupported axle). Fits clean; belt-tension test SF 5.1, 0.03 mm. Prints flat on its front face, no supports.
 
-**Next:** S1a2, D1, W2, then P2o / P6 (plate + FEA for the new track), then P2 motor mount v2 (outboard axle support, Q4 default), P3 plate stiffening.
+**Assembly check (R1):** a walk-through of every screw found one trapped pair: the Pi deck's two rear screws end up under the Pi board (fix queued, P4b). Also: fit the motor before the sprocket, the mounts before the bulkhead; tensioning needs a ball-end key (`docs/cad/loop/R1_assembly.md`).
+
+**Next:** P4b, S1a2, D1, W2, then P2o / P6 (plate + FEA for the new track), then P2 motor mount v2 (outboard axle support, Q4 default), P3 plate stiffening.
 
 **Open questions:** Q4–Q12 in `QUESTIONS.md`, each with a default the loop is using.

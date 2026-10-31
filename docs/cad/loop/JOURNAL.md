@@ -180,3 +180,10 @@ Newest at the bottom. One entry per tick.
 - One slip: launched the first rebuild with a bare `&` (no completion notice); it ran fine, checked by a timed wakeup.
 - Printed parts now 365.9 g, CoG (6.8, −0.1, 14.0).
 - Next: rotate: S1a2 / W2 / R1; the carriage joins D1 (fillets) and the edge audit.
+
+## tick 24 · R1 assembly sequence · accepted (doc) · 2026-10-31 03:00
+- Walked every joint (06 §8 + deck, carriages, idlers) against the generated geometry: `docs/cad/loop/R1_assembly.md`.
+- Trapped fastener: the Pi deck's rear M3s at (−48, ±20) lie under the Pi board (x −64.5…22.5, |y| ≤ 28) → P4b (move the rear posts to ~(−70, ±20)).
+- Order constraints: motor → mount before the sprocket (heads 21.6 from the shaft, sprocket r 31.4); mounts before the bulkhead (its 15° lean puts the top over x ≈ 50, above the foot screws at x 43.9–72.6).
+- Service: the jack screw head has 18 mm to the encoder; ball-end key or a knurled thumb screw (R2).
+- No CAD change. Next: P4b (a real fix), then S1a2 / W2.
