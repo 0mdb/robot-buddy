@@ -263,3 +263,9 @@ Newest at the bottom. One entry per tick.
 - SolidWorks has exited (no SLDWORKS process; probe fails). sw: DOWN; doc/py items only.
 - Timed battery / track / motor / reflex-USB service against the geometry: `docs/cad/loop/R2_service.md`. Battery ✓; track needs two tools (blind nyloc under the plate) → R2a (insert in the carriage); motor ~8–10 min because its lead ends on the reflex board under the deck → R2b (inline connector); reflex USB reachable only if the connector faces the rear bay → R2c, a PCB layout note before the board is ordered.
 - No CAD change.
+
+## tick 38 · R2c reflex USB-C note into TODO · accepted (doc) · 2026-10-31 06:45
+- Ben: SolidWorks restarted; drivetrain reviewed and good (logged in QUESTIONS as the sign-off for the sprocket and idler test prints).
+- The probe still can't see SolidWorks (no SLDWORKS.exe in this session; "not running"). D1 stays a patch; tree clean.
+- R2c: the reflex PCB verify item in docs/TODO.md now carries the connector exits: USB-C on the rear edge (x −40), motor leads on inline connectors.
+- Next: retry the probe; if up, rebuild + D1 + S2 pair.

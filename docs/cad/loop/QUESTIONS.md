@@ -7,6 +7,8 @@ The loop adds questions here and moves on. Answer inline (`**A:** …`); the nex
 - **Q2 Material.** **A:** PET-CF or PA6-CF (fpv250's Fiberon PA6-CF20) for structure; PETG for fit/test prints. Bambu **white PC** is a candidate for the shell/canopy (added later the same day). → The loop picks per part by FEA + toughness (workstream M) and records the choice as a 07 amendment.
 - **Q3 Integrated motor mounts.** **A:** Acceptable. → A1 may replace the baseline if the variant wins on the metrics.
 
+- **Drivetrain review (eyes before electrons).** **A (Ben, 2026-10-31 ~06:40): reviewed, looks good.** → Sprocket RB-PRT-020 and idler RB-PRT-021 (with the S1c rim round) are cleared for test prints; belt per 08.
+
 ## Open (2026-10-30; the loop uses the default until you answer)
 
 - **Q4 Motor mount fix** (S2 fails: 41–46 MPa vs 11.7 allowable, because the drive gear sits 39 mm outboard of a 3 mm upright).

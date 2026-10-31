@@ -1,7 +1,7 @@
 # CAD loop state
 
 pass: 1
-tick: 37
+tick: 38
 sw: DOWN (SLDWORKS exited after hanging at ~41 GB, 06:25; needs Ben to start it. Rebuild the baseline first when it's back)
 current: D1 pending (patch patches/D1-endstop-fillet-r2.2-pending.patch; reapply + rebuild + S2 pair when SW is back)
 hypothesis: —

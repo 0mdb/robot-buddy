@@ -136,7 +136,7 @@ Rules the loop enforces from here on (ASTM F963 / EN 71-1 / IEC 62115 as design 
   **Done tick 37:** `docs/cad/loop/R2_service.md`. Battery ✓ (~3 min, 2.0 key). Track ⚠️ (two tools: nyloc under the plate) → R2a. Motor ❌ (~8–10 min: the lead ends on the reflex board under the deck) → R2b inline connector. Reflex USB depends on the PCB layout → R2c: USB-C on the board's rear edge.
 - [ ] R2a `[sw]` carriage clamp: M3 heat-set in the carriage foot (05's option) instead of the nyloc under the plate; foot boss for the insert; rerun S6
 - [ ] R2b `[doc]` motor leads: inline 2-pin connector near each mount + a cable clip on the plate (A5)
-- [ ] R2c `[doc]` reflex PCB: USB-C on the rear edge (x −40) facing the free bay under the deck: add to the PCB verify step in docs/TODO.md before ordering
+- [x] R2c (tick 38: added to the PCB verify item in docs/TODO.md) `[doc]` reflex PCB: USB-C on the rear edge (x −40) facing the free bay under the deck: add to the PCB verify step in docs/TODO.md before ordering
 - [ ] R3 `[sw]` embossed part numbers + revision on hidden faces (0.6 deep, 0.4 nozzle only if needed)
 - [ ] R4 `[sw]` self-locating features (pins/keys) so parts only go together one way
 - [ ] R5 `[doc]` spares list + which parts are consumables (tracks, followers)

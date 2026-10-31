@@ -76,6 +76,8 @@ _Pass 1 starting (2026-10-30 17:05). Rewritten every tick._
 
 **Battery (S4):** safe in the frame as built (tool-only access, 10 g shock covered). The canopy (P6) now carries three battery requirements: keep the cells captive, route a stepped-on load to the frame (new FEA case S7), nothing sharp near the cells (`docs/cad/loop/S4_battery.md`).
 
+**Drivetrain: reviewed by Ben, good to test-print** (sprocket + idler).
+
 **Service (R2):** battery swap ✓ (3 min). A motor swap takes ~10 min because its lead ends on the reflex board under the deck: add an inline connector per motor (R2b). **Before you order the reflex PCB: put its USB-C on the rear edge (x −40)**, the only edge you can reach with the deck on (R2c). Track swap needs a spanner under the plate: an insert in the carriage fixes it (R2a).
 
 *(D1 end-stop fillet is parked as a patch until SolidWorks is back.)*
