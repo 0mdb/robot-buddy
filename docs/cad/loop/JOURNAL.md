@@ -292,3 +292,8 @@ Newest at the bottom. One entry per tick.
 - The bulkhead counterbores still aren't z −4 loops because they break the plate outline: x 81.5 + 3.25 = 84.75 vs the front at 85, a 0.25 mm wall (tick 5's 0.24 min wall) → D5b.
 - Full rebuild 0 interferences; S1m 9.00 MPa (+3.6 %), inserts 0.900 mm; S1b 3.57 MPa. Plate accessible sharp edges 351 → 259 mm.
 - Ben (~08:15): add a 2 mm motor-bell depression in the plate under each motor's can/encoder (P14), next.
+
+## tick 43 · P14 motor-bell relief (Ben) · accepted · 2026-10-31 09:05
+- Ben: the motors don't sit flat; the can/encoder end would bear on the plate and lever the bracket. Added a 2 mm deep relief under each (x −11…20, |y| 31…53, clear of the reflex standoff and 2 mm in from the edge), floor edge r 1.0.
+- Plate alone: each relief −1,364 mm³ (31 × 22 × 2), floor fillets +22.3 vs +22.75 mm³. Full rebuild 0 interferences; plate 111.3 g (−3.4 g).
+- S1m 9.03 MPa (=), inserts 0.900 → 1.033 mm (+15 %: thinner plate in the tension path); S1b 3.68 MPa. Accepted as Ben's fix; W7 queued to win the stiffness back.

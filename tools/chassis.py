@@ -201,6 +201,9 @@ RAIL_L = 20.0  # TBD with the carriage design
 JACK_BLOCK_X, JACK_BLOCK_Y, JACK_BLOCK_Z = (-38.0, -28.0), (31.0, 42.0), (0.0, 10.0)
 JACK_Y, JACK_Z = 36.5, 5.0  # F4b: M3 jack screw in an insert along X
 
+# P14 motor-bell relief: x span, |y| span, depth
+BELL_POCKET = ((-11.0, 20.0), (31.0, 53.0), 2.0)
+
 # Bulkhead foot (06 §5, F1): only x >= 78.5 is clear of the motor-mount feet.
 BULK_X = 81.5
 BULK_HOLES_Y = (-22.0, 0.0, 22.0)
@@ -379,6 +382,12 @@ def plate_features() -> list[tuple[str, tuple, float, float]]:
             cut.append(
                 ("all", ("rect", -PLATE_L / 2 - 1, REAR_RELIEF_X, ry0, ry1), 0, 0)
             )
+    # P14 (Ben, 2026-10-31): the motors don't sit exactly flat, and the can/encoder end
+    # would bear on the plate and lever the bracket: a 2 mm deep relief under each
+    # (not through), clear of the reflex standoff boss (|y| 30.6) and 2 mm in from the edge
+    for sgn in (-1, 1):
+        ys = sorted((sgn * BELL_POCKET[1][0], sgn * BELL_POCKET[1][1]))
+        cut.append(("cut", ("rect", *BELL_POCKET[0], *ys), -BELL_POCKET[2], 0.0))
     # bulkhead foot: screws up from below (counterbored), locating-tab slots
     for y in BULK_HOLES_Y:
         cut.append(("all", ("circle", BULK_X, y, CLR_M3 / 2), 0, 0))
@@ -511,6 +520,15 @@ def plate_lines(plate: str) -> list[str]:
             f"filletface|{PLATE_EDGE_R}|{nz}|{z}|{-hx} {-hy} {hx} {hy}|max|{-dv:.2f} {0.1 * dv:.2f}"
         )
         vol -= dv
+    # P14: r 1.0 round each relief's floor edge (concave: adds (1 - pi/4) r² per mm)
+    (bx0, bx1), (by0, by1), bd = BELL_POCKET
+    dvp = (1 - math.pi / 4) * PLATE_EDGE_R**2 * 2 * ((bx1 - bx0) + (by1 - by0))
+    for sgn in (1, -1):
+        ya, yb = sorted((sgn * by0, sgn * by1))
+        lines.append(
+            f"filletface|{PLATE_EDGE_R}|1|{-bd}|{bx0 - 1} {ya - 1} {bx1 + 1} {yb + 1}|1|{dvp:.2f} {0.15 * dvp:.2f}"
+        )
+        vol += dvp
     # S1a2 + W3: every bottom face at z -8 (grid ribs, load ribs, insert bosses, now one
     # level) rounded r 1.0, inner loops included (the grid's cells). Edge length from a
     # raster of that footprint (belly_edge_length).

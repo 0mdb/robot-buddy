@@ -1,9 +1,9 @@
 # CAD loop state
 
 pass: 1
-tick: 42
+tick: 43
 sw: up (restarted by Ben 2026-10-31 ~06:45)
-current: P14 next (Ben's motor-bell clearance)
+current: none (P14 done)
 hypothesis: —
 baseline_commit: d8179d2 (cad)
 stop_after: 2026-10-31 12:00   (Ben, 2026-10-31 ~06:20: extended from 07:00)
