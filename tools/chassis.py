@@ -1295,6 +1295,7 @@ MM_GUSSETS = (
 # lower motor-insert pocket (x 12.5-16.5, through the upright) misses gusset 3's root
 MM_GUSSET_T, MM_GUSSET_Y, MM_GUSSET_Z = 2.4, -45.5, 20.0
 MM_CHAMFER = 3.6  # root chamfer on the inboard side (stands in for a fillet until T7)
+MM_ROOT_R = 2.2  # 07 fil_in at load roots (D1); not 2.0: an r 2.0 y-cylinder is what S2 selects as a motor insert
 MM_INS_DEPTH = MM_T  # M3 inserts through the upright, pressed from the motor face (F3)
 MM_INS_BOSS_H = 1.8  # D10: local boss on the inboard face around the lower insert
 MM_INS_BLIND = MM_T + MM_INS_BOSS_H - 1.2  # 6.6: lower pocket stops 1.2 inside the boss
@@ -1433,9 +1434,19 @@ def mount_v2_lines(path: str, mirror: bool) -> list[str]:
     vol, bb = solid_volume_numeric(
         ops, ((-36.0, 36.0), (-50.0, -5.0), (-1.0, MM_TOP + 1.0))
     )
+    # D1 (tick 36): r 2.0 (07 fil_in at load roots) in the concave step where the end
+    # stop's top (z MM_TOP - 4) meets the upright's end face (x MM_X[0]), y yi..MM_FACE:
+    # S2's half-mesh peak after D10. Not the vertical corner at y MM_FACE: the gearbox's
+    # end corner bears there. A concave 90° round adds (1 - pi/4) r² per mm.
+    xa = MM_X[0] * (-1 if mirror else 1)
+    zs = MM_TOP - 4.0
+    yi = MM_FACE - MM_T
+    dvs = (1 - math.pi / 4) * MM_ROOT_R**2 * (MM_FACE - yi)
+    vol += dvs
     return [
         f"part|{path}",
         *emit_ops(ops),
+        f"fillet|{MM_ROOT_R}|y|{xa - 0.1} {yi - 0.1} {zs - 0.1} {xa + 0.1} {MM_FACE + 0.1} {zs + 0.1}|1|{dvs:.2f} {0.15 * dvs:.2f}",
         f"expect|vol {vol:.1f} {vol * 0.01:.1f}|box {' '.join(f'{v:.2f}' for v in bb)} 0.35",
         "save",
     ]

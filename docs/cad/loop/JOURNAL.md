@@ -269,3 +269,8 @@ Newest at the bottom. One entry per tick.
 - The probe still can't see SolidWorks (no SLDWORKS.exe in this session; "not running"). D1 stays a patch; tree clean.
 - R2c: the reflex PCB verify item in docs/TODO.md now carries the connector exits: USB-C on the rear edge (x −40), motor leads on inline connectors.
 - Next: retry the probe; if up, rebuild + D1 + S2 pair.
+
+## tick 39 · D1 mount end-stop fillet r 2.2 · accepted · 2026-10-31 07:25
+- SolidWorks back (Ben restarted it). Rebuilt the baseline with D1 reapplied from the patch: BUILD OK, 0 interferences, mounts +6.23 mm³ (fillet exactly as predicted).
+- S2 now selects 2 motor-hole faces (the r 2.2 fillet isn't mistaken for an insert). Pull + torque: default 6.42 MPa, half mesh 6.63 MPa: +3.2 %, converged for the first time. SF 5.28 (= D10's half-mesh value, now trustworthy); holes 0.0416 mm (=). The end-stop spot left the top 5; the peak sits on the boss/chamfer face.
+- Next: rotate: S1a3 / S1b2 / R2a.

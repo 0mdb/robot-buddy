@@ -1,5 +1,3 @@
-**⚠️ SolidWorks hung at ~41 GB (06:25) and has since exited. Please start it by hand; the loop continues with doc/py work until then and rebuilds the baseline first when it's back.**
-
 # Morning report
 
 _Pass 1 starting (2026-10-30 17:05). Rewritten every tick._
@@ -80,7 +78,7 @@ _Pass 1 starting (2026-10-30 17:05). Rewritten every tick._
 
 **Service (R2):** battery swap ✓ (3 min). A motor swap takes ~10 min because its lead ends on the reflex board under the deck: add an inline connector per motor (R2b). **Before you order the reflex PCB: put its USB-C on the rear edge (x −40)**, the only edge you can reach with the deck on (R2c). Track swap needs a spanner under the plate: an insert in the carriage fixes it (R2a).
 
-*(D1 end-stop fillet is parked as a patch until SolidWorks is back.)*
+**Motor mount converged (D1):** an r 2.2 fillet at the motor end stop; the mount's drive test now gives the same peak on two mesh sizes (6.42 / 6.63 MPa, SF 5.3): the first fully trustworthy mount number.
 
 **Next:** D1 (reapply), S1b2, S1a3, then P6 (plate + FEA for the new track), then P2 motor mount v2 (outboard axle support, Q4 default), P3 plate stiffening.
 
