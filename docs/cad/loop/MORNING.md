@@ -20,8 +20,8 @@ _Pass 1 starting (2026-10-30 17:05). Rewritten every tick._
 
 **Fillets (T7):** the generator can now round chosen edges, with volume checks. Its first use on the motor mounts made the stress worse and was reverted; a hot-spot locator (T9) will aim the next ones.
 
-**Your steering (Q8):** printed TPU track system adopted; P11 brings it in next.
+**TPU track system (P11, done):** sprocket and idler are native SolidWorks parts generated from drivetrain.py's own geometry (volumes match to 0.1 mm³), placed with belt envelopes; the assembly has 0 interferences. Renders: `shots/1-P11/`.
 
-**Next:** P11 TPU track system, then P2 motor mount v2 (outboard axle support, Q4 default), P3 plate stiffening.
+**Next:** T9 hot-spot locator, P12 (plate + FEA for the new track), then P2 motor mount v2 (outboard axle support, Q4 default), P3 plate stiffening.
 
 **Open questions:** Q4–Q12 in `QUESTIONS.md`, each with a default the loop is using.

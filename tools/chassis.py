@@ -24,6 +24,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import drivetrain as dt  # noqa: E402  (08: the TPU track system's numbers and wheel geometry)
 import sw  # noqa: E402  (staging/winpath/sync helpers)
 
 # ---------------------------------------------------------------- plate (06 §1, §4)
@@ -39,6 +40,9 @@ MOT_HOLE_PITCH = 17.5
 MOT_HOLE_D = 3.2
 MOT_SHAFT_X = 19.8  # hole line -> output shaft, along the body
 MOT_SHAFT_D = 5.4
+MOT_SHAFT_FLAT = (
+    3.7  # double-D across the flats (Yahboom drawing; 08 / drivetrain TT_FLAT)
+)
 MOT_SHAFT_LEN = 10.0  # TBD: protrusion past the gearbox face
 MOT_GEAR_END = 32.1  # hole line -> gearbox end (75 overall)
 MOT_CAN_END = -42.9  # hole line -> encoder end
@@ -131,13 +135,24 @@ def motor_ops() -> tuple[list[str], float]:
         f"box|{e1} {g0}|1.7 {MOT_THICK - 1.7}|{-cw} {cw}",  # can
         f"box|{MOT_CAN_END} {e1}|{ey0} {ey0 + MOT_ENC_T}|{-ew} {ew}",  # encoder
         f"cyl|y|{MOT_SHAFT_X} 0|{MOT_THICK} {MOT_THICK + MOT_SHAFT_LEN}|{MOT_SHAFT_D / 2}|boss",
+        *[
+            f"prof|-3 3|M {MOT_SHAFT_X + sgn * MOT_SHAFT_FLAT / 2} {MOT_THICK} "
+            f"L {MOT_SHAFT_X + sgn * (MOT_SHAFT_D / 2 + 0.5)} {MOT_THICK} "
+            f"L {MOT_SHAFT_X + sgn * (MOT_SHAFT_D / 2 + 0.5)} {MOT_THICK + MOT_SHAFT_LEN + 0.1} "
+            f"L {MOT_SHAFT_X + sgn * MOT_SHAFT_FLAT / 2} {MOT_THICK + MOT_SHAFT_LEN + 0.1}|cut"
+            for sgn in (-1, 1)
+        ],
         f"cyl|y|0 {MOT_HOLE_PITCH / 2}|all|{MOT_HOLE_D / 2}|cut",
         f"cyl|y|0 {-MOT_HOLE_PITCH / 2}|all|{MOT_HOLE_D / 2}|cut",
     ]
     v_gear = (MOT_GEAR_END - g0) * MOT_THICK * MOT_GEAR_W
     v_can = (g0 - e1) * (MOT_THICK - 3.4) * MOT_CAN_W
     v_enc = MOT_ENC_LEN * MOT_ENC_T * MOT_ENC_W
-    v_shaft = math.pi * (MOT_SHAFT_D / 2) ** 2 * MOT_SHAFT_LEN
+    # double-D flats, normal to the motor's X (the sprocket's D-bore flats face the same
+    # way): a round envelope here read as a 15.4 mm3 clash with the bore (P11)
+    r, f = MOT_SHAFT_D / 2, MOT_SHAFT_FLAT / 2
+    seg = r * r * math.acos(f / r) - f * math.sqrt(r * r - f * f)
+    v_shaft = math.pi * r * r * MOT_SHAFT_LEN - 2 * seg * MOT_SHAFT_LEN
     v_holes = (
         2 * math.pi * (MOT_HOLE_D / 2) ** 2 * MOT_THICK
     )  # both holes lie in the gearbox
@@ -578,12 +593,22 @@ def rebuild_manifest(win: str) -> list[str]:
     face = cad + r"\library\FNK0104_face_envelope.SLDPRT"
     reflex = cad + r"\library\reflex_board_envelope.SLDPRT"
     bulkhead = cad + r"\parts\RB-PRT-002_bulkhead.SLDPRT"
+    sprocket = cad + r"\parts\RB-PRT-020_sprocket.SLDPRT"  # 08, outrigger variant (P2o)
+    idler = cad + r"\parts\RB-PRT-021_idler.SLDPRT"  # 08, 2 x 624
+    belt_l = cad + r"\library\belt_envelope_L.SLDPRT"
+    belt_r = cad + r"\library\belt_envelope_R.SLDPRT"
     mount_r = cad + r"\parts\RB-PRT-010_motor_mount_R.SLDPRT"  # generated v2 (P2)
     mount_l = cad + r"\parts\RB-PRT-011_motor_mount_L.SLDPRT"  # its X-mirror
     asm = cad + r"\assemblies\RB-ASM-101_chassis.SLDASM"
     shots = win + r"\shots\rebuild"
 
     m_ops, m_vol = motor_ops()
+    # the drivetrain's shaft station must be ours (it keeps its own copy of 52.7 / 13.5)
+    shaft_x = mount_tx() - (MOUNT_HOLE[0] - MOT_SHAFT_X)
+    assert abs(shaft_x - dt.X_DRIVE) < 0.05 and abs(MOUNT_HOLE[2] - dt.Z_AXLE) < 1e-9, (
+        shaft_x,
+        dt.X_DRIVE,
+    )
     tx, ty = mount_tx(), mount_ty()
     hxm, hym, hzm = MOUNT_HOLE
 
@@ -609,6 +634,10 @@ def rebuild_manifest(win: str) -> list[str]:
         *bulkhead_lines(bulkhead),
         *mount_v2_lines(mount_r, mirror=False),
         *mount_v2_lines(mount_l, mirror=True),
+        *wheel_lines(sprocket, dt.sprocket_layers(True)),
+        *wheel_lines(idler, dt.idler_layers(2)),
+        *belt_envelope_lines(belt_l, +1),
+        *belt_envelope_lines(belt_r, -1),
         f"asm|{asm}",
         f"comp|plate|{plate}|{row(ROT_I, (0, 0, 0))}|fix",
         f"comp|mount_R|{mount_r}|{row(ROT_Z180, (tx, -ty, 0))}",
@@ -618,6 +647,12 @@ def rebuild_manifest(win: str) -> list[str]:
         f"comp|pi_stack|{pi}|{row(ROT_Z180, PI_AT)}",
         f"comp|reflex|{reflex}|{row(ROT_I, REFLEX_AT)}",
         f"comp|bulkhead|{bulkhead}|{row(ROT_I, (0, 0, 0))}",
+        f"comp|sprocket_L|{sprocket}|{row(*wheel_at(dt.X_DRIVE, +1))}",
+        f"comp|sprocket_R|{sprocket}|{row(*wheel_at(dt.X_DRIVE, -1))}",
+        f"comp|idler_L|{idler}|{row(*wheel_at(dt.belt_fit()['x_fit'], +1))}",
+        f"comp|idler_R|{idler}|{row(*wheel_at(dt.belt_fit()['x_fit'], -1))}",
+        f"comp|belt_L|{belt_l}|{row(ROT_I, (0, 0, 0))}",
+        f"comp|belt_R|{belt_r}|{row(ROT_I, (0, 0, 0))}",
         f"comp|face|{face}|{row(*face_on_bulkhead())}",
         "interfere",
         "asmsave",
@@ -635,6 +670,8 @@ def rebuild_manifest(win: str) -> list[str]:
                 (bulkhead, "RB-PRT-002_bulkhead"),
                 (mount_r, "RB-PRT-010_motor_mount_R"),
                 (mount_l, "RB-PRT-011_motor_mount_L"),
+                (sprocket, "RB-PRT-020_sprocket"),
+                (idler, "RB-PRT-021_idler"),
             )
         ],
     ]
@@ -1169,6 +1206,95 @@ def mount_v2_lines(path: str, mirror: bool) -> list[str]:
         f"expect|vol {vol:.1f} {vol * 0.01:.1f}|box {' '.join(f'{v:.2f}' for v in bb)} 0.35",
         "save",
     ]
+
+
+# ------------------------------------------------- printed TPU track system (08, P11)
+# drivetrain.py owns the drivetrain numbers and the wheel geometry (its layer stacks);
+# this only turns them into native SolidWorks parts and places them. Part frames
+# (drivetrain.py): Z = wheel axis, Z = 0 on the outboard (bed) face.
+
+
+def _loop(c) -> str:
+    import numpy as np
+
+    c = np.asarray(c, float)
+    if float(np.ptp(c)) < 1e-9:
+        return f"c {c[0]:.6f}"
+    return "p " + " ".join(f"{v:.5f}" for v in c)
+
+
+def ring_lines(layers: list) -> list[str]:
+    """Annuli from a drivetrain.py layer stack; consecutive layers with the same two
+    curves merge into one extrusion."""
+    rows: list[list] = []
+    for z0, z1, ann in layers:
+        for ri, ro in ann:
+            key = (ri.tobytes(), ro.tobytes())
+            prev = next(
+                (r for r in rows if r[4] == key and abs(r[1] - z0) < 1e-9), None
+            )
+            if prev is not None:
+                prev[1] = z1
+            else:
+                rows.append([z0, z1, ri, ro, key])
+    return [
+        f"ring|{z0:.4f} {z1:.4f}|{_loop(ro)}|{_loop(ri)}|boss"
+        for z0, z1, ri, ro, _ in rows
+    ]
+
+
+def wheel_lines(path: str, layers: list) -> list[str]:
+    vol = dt.check(dt.mesh(layers))[1]
+    r = max(float(ro.max()) for _, _, ann in layers for _, ro in ann)
+    return [
+        f"part|{path}",
+        *ring_lines(layers),
+        f"expect|vol {vol:.1f} {vol * 0.003:.1f}|box {-r:.3f} {r:.3f} {-r:.3f} {r:.3f} 0 {dt.BELT_W} 0.05",
+        "save",
+    ]
+
+
+def track_y() -> tuple[float, float]:
+    """Belt inner / outer face, |y| (08 §3: inner edge SIDE_GAP off the plate edge)."""
+    y0 = PLATE_W / 2 + dt.SIDE_GAP
+    return y0, y0 + dt.BELT_W
+
+
+def belt_envelope_lines(path: str, side: int) -> list[str]:
+    """The belt as a stadium annulus (lugs left out) for interference only."""
+    ri, ro = dt.R_RUN, dt.outer_r()
+    xd, xi, z = dt.X_DRIVE, dt.belt_fit()["x_fit"], dt.Z_AXLE
+    y0, y1 = track_y()
+    ya, yb = (y0, y1) if side > 0 else (-y1, -y0)
+
+    def stadium(
+        r: float,
+    ) -> str:  # Top plane: sketch (x, -z), arcs CCW in sketch coords
+        return (
+            f"M {xd} {-z - r} A {xd} {-z} {xd} {-z + r} L {xi} {-z + r} "
+            f"A {xi} {-z} {xi} {-z - r}"
+        )
+
+    c = xd - xi
+    vol = (math.pi * (ro * ro - ri * ri) + 2 * c * (ro - ri)) * dt.BELT_W
+    return [
+        f"part|{path}",
+        f"prof|{ya} {yb}|{stadium(ro)}|boss|top",
+        f"prof|{ya - 0.1} {yb + 0.1}|{stadium(ri)}|cut|top",
+        f"expect|vol {vol:.1f} {vol * 0.002:.1f}|box {xi - ro:.3f} {xd + ro:.3f} {ya} {yb} {z - ro:.3f} {z + ro:.3f} 0.05",
+        "save",
+    ]
+
+
+# wheel part frame -> chassis: part X -> X, part Z (outboard -> inboard) -> -Y on the
+# left, +Y on the right; part Y completes a right-handed frame
+ROT_WHEEL_L = [1, 0, 0, 0, 0, -1, 0, 1, 0]
+ROT_WHEEL_R = [1, 0, 0, 0, 0, 1, 0, -1, 0]
+
+
+def wheel_at(x: float, side: int) -> tuple[list[float], tuple[float, float, float]]:
+    y_out = track_y()[1]
+    return (ROT_WHEEL_L if side > 0 else ROT_WHEEL_R), (x, side * y_out, dt.Z_AXLE)
 
 
 # ------------------------------------------------------------------- runner

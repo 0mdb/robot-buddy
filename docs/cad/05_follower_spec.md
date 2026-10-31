@@ -1,5 +1,12 @@
 # Robot Buddy — Rear Follower (Tread Tensioner) Spec — Rev 1
 
+> Amendment (loop P11, 2026-10-30): **superseded for the wheel by `08_tpu_track_rnd.md`**
+> (Q8: printed TPU track system). The idler is 08's toothed wheel (`RB-PRT-021_idler`,
+> Ø54.8 running, 36 wide, no flanges, 2 × 624 with crush ribs per Q14), not the flanged
+> wheel below. Axle height **13.5** (level belt with the TT shaft), idler at x −57.3 with the
+> belt just taut. The carriage, its rails, clamp and jack screw stay as specified here; the
+> kit numbers (44.2 track, 45.2 flange gap, Ø49.6) are obsolete.
+
 Custom rear idler/follower for each track. **Cantilever** design (rev 1): the
 tread loops around the idler, so it can only be supported from the **inboard**
 side. Two per robot (left + right), sliding in base-plate slots for tread

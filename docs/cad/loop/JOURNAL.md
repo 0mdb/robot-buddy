@@ -69,3 +69,12 @@ Newest at the bottom. One entry per tick.
 - Lesson: aim fillets with data. Added T9 (hot-spot locator in swsim).
 - Steering arrived mid-tick (Ben): Q8 answered, printed TPU track system (08 spec, drivetrain-rnd e7d8659); P11/P12 added, P2o unblocked, P5 rescoped, Q14/Q15 added. Committed separately.
 - Next: P11 (adopt the TPU track system), Ben's stated next P item.
+
+## tick 8 · P11 adopt the printed TPU track system · accepted · 2026-10-30 21:05
+- Ben's next P item (Q8). Cherry-picked e7d8659 → 03d46e5 (drivetrain.py, 08 spec).
+- drivetrain.py: split `sprocket_layers()` / `idler_layers()` out of the mesh functions (pure refactor; all four mesh volumes identical before/after).
+- swbuild `ring|z0 z1|outer|inner|boss`: loops are `c R` or an 864-point polar polyline, so SolidWorks builds the same polygons drivetrain.py meshes; chassis.py merges consecutive identical annuli (39 rings for both wheels).
+- Result: sprocket 27,842.0 vs 27,841.9 mm³, idler 26,935.1 vs 26,935.0 (≤ 0.0004 %); belt envelopes exact. Build ≈ 4 min.
+- Interference: 4 × 15.4 mm³ = the round Ø5.4 shaft envelope vs the D-bore flats (segment beyond 1.95 × 8 mm engagement = 15.4 exactly). Gave the envelope its 3.7 double-D → 0 interferences.
+- 05 and 06 §7 amended (kit → 08). FEA unchanged this tick (P12 re-runs S1a/S1b/S2 with the new geometry; TRACK_T stays 20 N).
+- Next: rotate to T (T9 hot-spot locator), then P12.

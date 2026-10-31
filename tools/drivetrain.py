@@ -318,6 +318,11 @@ def _wheel(
 
 
 def sprocket(outrigger: bool = True, m: int = N_TEETH * 48) -> np.ndarray:
+    """Drive sprocket mesh; geometry in sprocket_layers()."""
+    return mesh(sprocket_layers(outrigger, m))
+
+
+def sprocket_layers(outrigger: bool = True, m: int = N_TEETH * 48) -> list:
     """Drive sprocket. Bed face = outboard. Inboard face (Z = BELT_W) sits SIDE_GAP off
     the gearbox; the D-bore takes the TT shaft from that end. With `outrigger`, a 624
     pocket on the outboard face takes the outboard support of Q4(a)/P2o."""
@@ -335,10 +340,15 @@ def sprocket(outrigger: bool = True, m: int = N_TEETH * 48) -> np.ndarray:
         (BELT_W - TT_ENGAGE, BELT_W, dbore(m), TUBE_R),
     ]
     # web: pocket (outrigger) or screw hole through it
-    return mesh(_wheel(m, hub, (web_t, pocket if outrigger else tube)))
+    return _wheel(m, hub, (web_t, pocket if outrigger else tube))
 
 
 def idler(bearings: int = 2, interf: float = 0.15, m: int = N_TEETH * 48) -> np.ndarray:
+    """Idler mesh; geometry in idler_layers()."""
+    return mesh(idler_layers(bearings, interf, m))
+
+
+def idler_layers(bearings: int = 2, interf: float = 0.15, m: int = N_TEETH * 48) -> list:
     """Idler: same rim as the sprocket, hub = 624 pocket(s) on the Ø4 shoulder axle.
     Bed face = outboard (axle head side). Two bearings span the tube so a single
     cantilevered bearing can't cock (05 tilt note); the carriage boss reaches into
@@ -352,7 +362,7 @@ def idler(bearings: int = 2, interf: float = 0.15, m: int = N_TEETH * 48) -> np.
         hub.append((tube_end - BRG_W, tube_end, pocket, tube_r))
     else:
         hub[-1] = (BRG_W, BRG_W + 1.5, bore, tube_r)
-    return mesh(_wheel(m, hub, (3.0, pocket)))
+    return _wheel(m, hub, (3.0, pocket))
 
 
 def belt(n: int = N_TEETH, steps: int = 8) -> tuple[np.ndarray, dict]:

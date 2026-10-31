@@ -30,6 +30,10 @@
 //                                             parallel to the axis whose midpoint is in the
 //                                             box; expects exactly n edges and a volume
 //                                             change of dvol +- tol (mm3, + = concave)
+//   ring|z0 z1|<loop>|<loop>|boss|cut         annulus on Front about the Z axis, along Z.
+//                                             loop: "c R" circle, or "p r0 r1 .. rn-1" a
+//                                             polyline through radii at equal angles from
+//                                             theta = 0 (tools/drivetrain.py's polar curves)
 //   stl|<doc.SLDPRT>|<out.stl>                binary STL, mm, fine, in the part's own
 //                                             coordinates (not shifted to positive space)
 //   rotbody|px py pz|y|deg                    rotate every solid body about the axis
@@ -114,6 +118,7 @@ class SwBuild
                 case "rotbody": RotBody(f); break;
                 case "stl": Stl(f[1], f[2]); break;
                 case "fillet": Fillet(f); break;
+                case "ring": Ring(f); break;
                 default: Check("command " + f[0], false, "unknown"); break;
             }
             if (failures > 0 && f[0] != "expect") break;   // stop at the first broken step
@@ -450,6 +455,33 @@ class SwBuild
         Check("fillet r" + f[1] + " " + ax + " box " + f[3], fil != null && Math.Abs(d - dv[0]) <= dv[1],
             string.Format(ci, "{0} edges selected {1}, dvol {2:F2} vs {3:F2} +- {4:F2} mm3 | {5}",
                 picked.Count, nsel, d, dv[0], dv[1], Measure()));
+    }
+
+    static void Loop(ISketchManager sm, string spec)
+    {
+        double[] v = Nums(spec.Substring(2));
+        if (spec[0] == 'c') { sm.CreateCircleByRadius(0, 0, 0, M(v[0])); return; }
+        int n = v.Length;
+        for (int k = 0; k < n; k++)
+        {
+            double a0 = 2 * Math.PI * k / n, a1 = 2 * Math.PI * (k + 1) / n;
+            double r0 = v[k], r1 = v[(k + 1) % n];
+            sm.CreateLine(M(r0 * Math.Cos(a0)), M(r0 * Math.Sin(a0)), 0, M(r1 * Math.Cos(a1)), M(r1 * Math.Sin(a1)), 0);
+        }
+    }
+
+    static void Ring(string[] f)
+    {
+        double[] z = Nums(f[1]);
+        if (!Sketch("front")) return;
+        ISketchManager sm = doc.SketchManager;
+        sm.AddToDB = true;
+        Loop(sm, f[2]);
+        if (f[3] != "-") Loop(sm, f[3]);
+        CloseSketch();
+        bool cut = f[4] == "cut";
+        string tag = (f[2][0] == 'p' ? "poly" : f[2]) + " / " + (f[3][0] == 'p' ? "poly" : f[3]);
+        After("ring z " + f[1] + " " + tag + (cut ? " cut" : ""), Extrude(z[0], z[1], cut, false));
     }
 
     static void Stl(string path, string outPath)

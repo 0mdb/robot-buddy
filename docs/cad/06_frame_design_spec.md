@@ -199,6 +199,16 @@ teardrop the horizontal motor-screw holes; ≥ 2 mm fillet at the inside corner.
 > screws go into inserts in the upright (F3). ≈ 14 g each (Ben's 7.8 g). S2: hole
 > deflection 0.437 → 0.039 mm; peaks 41 → 12–14 MPa, not converged (singular), see 07 §3.
 
+> Amendment (loop P11, 2026-10-30): **kit track → printed TPU track system (`08`, Q8).**
+> `tools/drivetrain.py` owns the drivetrain numbers; `chassis.py` imports them. Generated
+> native parts: `RB-PRT-020_sprocket` (08 outrigger variant, D-bore on the TT shaft, 624
+> pocket outboard for P2o) at x 52.7, and `RB-PRT-021_idler` (2 × 624) at x −57.3, both at
+> z 13.5, outboard faces at |y| 92.5, inboard 56.5 (belt inner edge 1.5 off the plate edge).
+> SolidWorks volumes equal drivetrain.py's meshes (27,842.0 / 26,935.1 mm³ vs 27,841.9 /
+> 26,935.0). Belt as an envelope (stadium annulus, lugs omitted) for interference. The TT
+> shaft envelope now has its double-D flats (3.7). Interferences: 0. Track/drive-gear
+> numbers below (44.2, 31.6, Ø49.6) are the kit's and obsolete for new work.
+
 **Followers:** per `05_follower_spec.md` (carriage in plate slots, clamp from
 below, 624 bearing on a Ø4 shoulder bolt).
 
