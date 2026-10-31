@@ -20,6 +20,7 @@ robot-buddy/
       05_follower_spec.md              ← rear follower = the track tensioner
       06_frame_design_spec.md          ← FRAME: 3-piece body, layout (start here)
       07_materials_fasteners_fea.md    ← filament evaluation, SW modelling conventions, fasteners, FEA plan
+      08_tpu_track_rnd.md              ← R&D: printed TPU belt + sprocket + idler (branch drivetrain-rnd, not integrated)
       motor_mount_split_topdown.svg    ← Visual confirmation of the L/R split
       split_stl.py                     ← Script that did the split (run again on any pair file)
   CAD/                                  ← see CAD/README.md for structure + SW search-path setup
