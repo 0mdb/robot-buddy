@@ -218,3 +218,9 @@ Newest at the bottom. One entry per tick.
 - Full rebuild 0 interferences. S1m 8.64 → 8.79 MPa, inserts 0.900 → 0.908 mm; S1b 3.61 → 3.62; +1.7 g; meshcheck overhang 158 → 150 cm² (it counts bridged bays as overhang, so it can't show the gain); front-middle ledge remains.
 - Rejected: no strength gain, heavier, a new boss-size violation, partial DFM gain. Generator restored, baseline rebuilt (plate 89,049.1 mm³), repo CAD restored; engine tooling kept. Patch saved.
 - Next: D3 needs a bridge-aware overhang check before more printability geometry. Rotate: E1 / S3 (doc) or D1.
+
+## tick 30 · D3 bridge-aware overhang check + print orientations · accepted · 2026-10-31 04:45
+- meshcheck: `overhang_split` (bridge / ledge / floating / steep) from horizontal ray casts 0.3 mm under each flat downward face; `--bridge` 40 mm. Guarded the no-hit case (crashed on the deck).
+- Plate +z: 151 cm² overhang = 106 bridged + 17 steep + 27.5 ledge (perimeter strips outside the outer ribs, and the 40.6 mm front-centre bay) + 0.1 floating.
+- All six orientations for every part → `docs/cad/loop/D3_print_orientation.md`, chosen strength first: plate +z (27.6 cm² perimeter support), bulkhead face down (1.0), deck / mounts +z (0), wheels +z (1.3–1.4), carriages front face down (0.4). The support-minimum for the plate is on edge; rejected (bending across layers).
+- No CAD change. Next: D3b (perimeter ledges) or D1; rotate first.

@@ -8,7 +8,10 @@
 Reports, in print orientation (mm):
   - watertight, volume, mass (solid, at --rho), bounding box and fit on the P2S bed
   - overhang: area of downward faces steeper than --overhang deg from vertical,
-    excluding the bed face (dfm: <= 45 deg prints without support)
+    excluding the bed face (dfm: <= 45 deg prints without support), split (D3) into
+    bridges (a flat underside with material within --bridge mm on both sides along x or
+    y, which a slicer bridges), ledges (support on one side only, cantilever > 1 mm) and
+    floating area: only ledges and floating area need support
   - min wall: ray-cast inward from sampled faces to the opposite surface
     (dfm: >= 1.2 mm, 2 perimeters at 0.6)
   - sharp edges: convex edges with a dihedral turn > --sharp deg (an unfilleted
@@ -52,6 +55,62 @@ def overhang_area(m: trimesh.Trimesh, limit_deg: float, bed_tol: float = 0.05) -
     return float(m.area_faces[down & ~on_bed].sum())
 
 
+def overhang_split(
+    m: trimesh.Trimesh,
+    limit_deg: float,
+    bridge_mm: float,
+    samples: int = 4000,
+    seed: int = 0,
+) -> dict:
+    """Split the overhang area into bridge / ledge / floating / steep (D3, tick 30).
+
+    Flat downward faces are sampled by area; from 0.3 mm below each sample, rays run along
+    +-x and +-y to the first wall. A bridge has walls on both sides of one axis within
+    bridge_mm in total; a ledge has a wall on some side but no such pair (a cantilever of
+    <= 1 mm is ignored); floating has none. Steep (not flat) downward faces are reported
+    as they are."""
+    nz = m.face_normals[:, 2]
+    on_bed = m.triangles[:, :, 2].max(axis=1) < 0.05
+    down = (nz < -np.cos(np.radians(limit_deg))) & ~on_bed
+    flat = down & (nz < -0.98)
+    out = {"steep_cm2": float(m.area_faces[down & ~flat].sum()) / 100}
+    a_flat = float(m.area_faces[flat].sum())
+    if a_flat == 0:
+        return {**out, "bridge_cm2": 0.0, "ledge_cm2": 0.0, "float_cm2": 0.0}
+    rng = np.random.default_rng(seed)
+    fidx = np.nonzero(flat)[0]
+    pick = rng.choice(fidx, size=samples, p=m.area_faces[fidx] / a_flat)
+    tri = m.triangles[pick]
+    u, v = rng.random(samples), rng.random(samples)
+    swap = u + v > 1
+    u[swap], v[swap] = 1 - u[swap], 1 - v[swap]
+    pts = (
+        tri[:, 0]
+        + u[:, None] * (tri[:, 1] - tri[:, 0])
+        + v[:, None] * (tri[:, 2] - tri[:, 0])
+    )
+    pts[:, 2] -= 0.3
+    dirs = np.array([[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0]], float)
+    dist = np.full((samples, 4), np.inf)
+    for k, d in enumerate(dirs):
+        loc, ray, _ = m.ray.intersects_location(
+            pts, np.repeat(d[None], samples, 0), multiple_hits=False
+        )
+        if len(ray):
+            dist[ray, k] = np.linalg.norm(loc - pts[ray], axis=1)
+    span_x, span_y = dist[:, 0] + dist[:, 1], dist[:, 2] + dist[:, 3]
+    bridge = (span_x <= bridge_mm) | (span_y <= bridge_mm) | (dist.min(axis=1) <= 1.0)
+    floating = ~bridge & np.isinf(dist).all(axis=1)
+    ledge = ~bridge & ~floating
+    w = a_flat / samples / 100
+    return {
+        **out,
+        "bridge_cm2": float(bridge.sum() * w),
+        "ledge_cm2": float(ledge.sum() * w),
+        "float_cm2": float(floating.sum() * w),
+    }
+
+
 def min_wall(m: trimesh.Trimesh, samples: int, seed: int = 0) -> tuple[float, float]:
     """Min and 1st-percentile wall thickness from inward rays at area-weighted faces."""
     rng = np.random.default_rng(seed)
@@ -77,7 +136,13 @@ def sharp_edges(m: trimesh.Trimesh, sharp_deg: float) -> tuple[int, float]:
 
 
 def check(
-    path: str, up: str, rho: float, overhang: float, sharp: float, samples: int
+    path: str,
+    up: str,
+    rho: float,
+    overhang: float,
+    sharp: float,
+    samples: int,
+    bridge: float = 40.0,
 ) -> dict:
     mesh = trimesh.load_mesh(path, force="mesh")
     m = orient(mesh, up)
@@ -94,6 +159,7 @@ def check(
         "bbox_mm": [round(float(v), 2) for v in ext],
         "fits_bed": bool(all(e <= b for e, b in zip(sorted(ext), sorted(BED)))),
         "overhang_cm2": round(overhang_area(m, overhang) / 100, 2),
+        **{k: round(v, 2) for k, v in overhang_split(m, overhang, bridge).items()},
         "min_wall_mm": round(wmin, 2),
         "wall_p1_mm": round(w1, 2),
         "sharp_edges": n_sharp,
@@ -110,12 +176,15 @@ def main() -> None:
     ap.add_argument("--rho", type=float, default=1.29, help="g/cm3 (PET-CF 1.29)")
     ap.add_argument("--overhang", type=float, default=45.0)
     ap.add_argument("--sharp", type=float, default=30.0)
+    ap.add_argument(
+        "--bridge", type=float, default=40.0, help="max bridge span, mm (D3)"
+    )
     ap.add_argument("--samples", type=int, default=20000)
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args()
     bad = 0
     for path in a.stl:
-        r = check(path, a.up, a.rho, a.overhang, a.sharp, a.samples)
+        r = check(path, a.up, a.rho, a.overhang, a.sharp, a.samples, a.bridge)
         if a.json:
             print(json.dumps(r))
             continue

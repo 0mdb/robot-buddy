@@ -62,6 +62,8 @@ _Pass 1 starting (2026-10-30 17:05). Rewritten every tick._
 
 *(Tick 29 tried a rim under the plate edge for printability; no stiffness gain, +1.7 g, one boss under spec: rejected.)*
 
-**Next:** D3 (bridge-aware overhang check), D1, S1a3, then P2o / P6 (plate + FEA for the new track), then P2 motor mount v2 (outboard axle support, Q4 default), P3 plate stiffening.
+**Print orientations (D3):** chosen per part (`docs/cad/loop/D3_print_orientation.md`). Only the plate needs real support: 27.6 cm² at its perimeter strips (tree supports there). Bulkhead prints face-down on PEI; deck and mounts need none; carriages print on their front face.
+
+**Next:** D1, S1a3, D3b, then P2o / P6 (plate + FEA for the new track), then P2 motor mount v2 (outboard axle support, Q4 default), P3 plate stiffening.
 
 **Open questions:** Q4–Q12 in `QUESTIONS.md`, each with a default the loop is using.
