@@ -1653,9 +1653,15 @@ def ring_lines(layers: list) -> list[str]:
 def wheel_lines(path: str, layers: list) -> list[str]:
     vol = dt.check(dt.mesh(layers))[1]
     r = max(float(ro.max()) for _, _, ann in layers for _, ro in ann)
+    # S1c (kid safety): r 1.0 on the outboard rim, the running disc's outer edge on the bed
+    # face (part z 0), the wheel edge a hand meets from the side: (1 - pi/4) r² x 2 pi R
+    r0 = float(layers[0][2][0][1].max())  # bed-face layer's outer radius
+    dvr = (1 - math.pi / 4) * PLATE_EDGE_R**2 * 2 * math.pi * r0
+    vol -= dvr
     return [
         f"part|{path}",
         *ring_lines(layers),
+        f"filletface|{PLATE_EDGE_R}|-1|0.0|{-r - 1} {-r - 1} {r + 1} {r + 1}|1|{-dvr:.2f} {0.1 * dvr:.2f}",
         f"expect|vol {vol:.1f} {vol * 0.003:.1f}|box {-r:.3f} {r:.3f} {-r:.3f} {r:.3f} 0 {dt.BELT_W} 0.05",
         "save",
     ]

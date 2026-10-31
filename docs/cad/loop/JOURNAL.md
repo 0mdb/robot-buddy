@@ -240,3 +240,9 @@ Newest at the bottom. One entry per tick.
 - Rescaled M1 to today's stresses: conditioned PA6-CF now passes SF 3 on S1m (3.1), S2 (4.1), S6 (4.0), S1d (3.0, no margin) but deflects ×1.9: plate axles 1.7 mm, S5c bezel 0.50 (on the limit).
 - Decision (07 §2 amended): all structural parts PET-CF this pass. Plate / bulkhead / deck on stiffness; mounts and carriages because their screws clamp through them (wet PA6 creeps, fpv250); wheels for bore stability. PA6-CF reserved for impact parts and as the mounts' fallback. Canopy PC/ASA stays M4.
 - No CAD change. Next: SW: D1 or S1b2 / S1a3.
+
+## tick 34 · S1c wheel outboard rims r 1.0 · accepted · 2026-10-31 05:30
+- The bed-face layer is a true circle (r 27.40), so one `filletface` on the outboard face's outer loop does it. Both wheels alone: −36.6 vs −36.9 mm³ each; volumes 27,805.4 / 26,898.4 vs expected.
+- Full rebuild (ran past the 10-minute command limit; finished in the background): 0 interferences, printed parts 371.1 g.
+- Accessible sharp edges per wheel 213 → 41 mm (hub bore edge left). drivetrain.py's meshes now differ from the printed parts by the round; the SW export is the print file.
+- Next: rotate: D1 (mount fillets) or a quick doc (S3/S4).
