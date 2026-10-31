@@ -253,6 +253,7 @@ _3 items complete (LLM session memory, TTS resampler hardening, conversation stu
 - [ ] **Speaker + mic mounts** per `docs/audio-hardware.md` §4: mic disc on canopy top, grommeted, gasketed Ø1.2 mm ports; speaker forward below TFT, sealed box, ≤2 mm grille + mesh; ≥70 mm mic↔speaker
 - [ ] **Raspberry Pi 5 holder**: PET-CF; heat-set M2.5 inserts (boss per insert spec, not printed threads)
 - [ ] **Tank-tread tensioners** = rear follower carriages per `05_follower_spec.md` (the only tension point); PET-CF structure, slip/adjust fits 0.3–0.4 mm/side, precision on bearings/bushings not on printed features
+- [ ] **Printed TPU track system** (decided 2026-10-30, replaces the kit track): TPU belt + D-bore sprocket + 2×624 toothed idler per `docs/cad/08_tpu_track_rnd.md`, generator `tools/drivetrain.py` (branch `drivetrain-rnd`). CAD integration = loop BACKLOG P11–P12. Bench first (08 §7): TT shaft measurements, bore/624 coupons, TPU 85A vs 95A strip creep, lug ratchet, pivot current, mic noise
 - [ ] **Front bulkhead** (06 §5): face TFT (15° tilt), speaker box, HC-SR04, camera; PET-CF
 - [ ] **Top shell / canopy** (06 §6): ASA white, tool-only opening (cells inside), mic disc on top; access to USB-C charge + power switch
 - [ ] Assembly: interference check + mass/CoG; review renders with Ben before any print (eyes before electrons)
