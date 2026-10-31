@@ -470,6 +470,32 @@ def plate_lines(plate: str) -> list[str]:
             f"filletface|{PLATE_EDGE_R}|{nz}|{z}|{-hx} {-hy} {hx} {hy}|max|{-dv:.2f} {0.1 * dv:.2f}"
         )
         vol -= dv
+    # S1a2: the load ribs' bottom edges (z -8). Per side two faces: the |y| 47 rib and the
+    # |y| 36.5 rib merged with the under-boss at (72.6, 37.4). Perimeters by hand: 300.8 and
+    # 249.3 (rect 232.8 - 9.9 inside the boss + 26.4 of boss arc)
+    if LOAD_RIBS:
+        dv2 = (1 - math.pi / 4) * PLATE_EDGE_R**2 * (300.8 + 249.3)
+        for sgn in (1, -1):
+            y0, y1 = sorted((sgn * 34.0, sgn * 50.0))
+            lines.append(
+                f"filletface|{PLATE_EDGE_R}|-1|{LOAD_RIB_Z}|{-hx} {y0} {hx} {y1}|2|{-dv2:.2f} {0.2 * dv2:.2f}"
+            )
+            vol -= dv2
+    # (the 1.2 grid ribs at z -7.6 are left sharp: one r 0.5 fillet over their 24 faces /
+    # 153 edges returned nothing, tick 26; widen them to 2.4 and round them in W3)
+    # under-boss rims at z -8 inboard (|y| 21.5): r 1.0 round each circle
+    rims = [
+        min(INS_BOSS / 2, round(edge_room(x, y) - 0.04, 2))
+        for x, y in mount_holes()
+        if abs(y) < 30
+    ]
+    dv4 = (
+        (1 - math.pi / 4) * PLATE_EDGE_R**2 * sum(2 * math.pi * (r - 0.3) for r in rims)
+    )
+    lines.append(
+        f"filletface|{PLATE_EDGE_R}|-1|{UNDER_BOSS_Z}|{-hx} -30 {hx} 30|{len(rims)}|{-dv4:.2f} {0.2 * dv4:.2f}"
+    )
+    vol -= dv4
     lines += [
         f"expect|vol {vol:.1f} {vol * 0.004:.1f}|box {-hx} {hx} {-hy} {hy} {UNDER_BOSS_Z} {DECK_Z} 0.01",
         "save",
@@ -484,7 +510,10 @@ def plate_lines(plate: str) -> list[str]:
 # The wide part stays aft of the mount uprights (x >= 27.4, |y| >= 26.4) and inside the
 # encoders (|y| 30.7); a tongue at |y| <= 14 reaches the front posts (30, +-8).
 DECK_T = 3.0
-DECK_X = (-75.0, 25.0)  # covers the Pi board (x -64.5 .. 22.5 after Rz180) + the rear posts (P4b)
+DECK_X = (
+    -75.0,
+    25.0,
+)  # covers the Pi board (x -64.5 .. 22.5 after Rz180) + the rear posts (P4b)
 DECK_HW = 29.5
 DECK_TONGUE = (36.0, 14.0)  # front end x, half-width
 CLR_M25 = 2.9

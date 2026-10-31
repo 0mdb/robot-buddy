@@ -77,7 +77,8 @@ Rules the loop enforces from here on (ASTM F963 / EN 71-1 / IEC 62115 as design 
   **Done tick 18:** `tools/edgeaudit.py` (meshcheck's > 30° convex-edge test + a per-part accessibility rule, canopy fitted) → `docs/cad/loop/S1_edge_audit.md`. No generated part has any fillet yet. Accessible sharp edges: plate 4.5 m (belly ribs + perimeter), bulkhead 1.6 m (sides, window rim, foot front), sprocket/idler 0.21 m each (outboard rim); mounts covered (0.8 m, for D1).
 - [x] S1a (outline) `[sw]` plate edges: r 1.0 on the outline's top + bottom perimeter; rib bottoms rounded (2.4 ribs r 1.0, 1.2 ribs full round r 0.6); boss rims r 0.6. Via the `fillet` engine command (selection box per edge set); `expect` volume from the fillet's analytic removal (r²(1 − π/4) × length). Rerun edgeaudit + S1m
   **Done tick 21 (outline part):** new engine command `filletface` (outer loop of planar faces by normal + plane + box; `max` = only the largest face, since the rib grid splits the belly into 11 faces). Plate outline top + bottom r 1.0: −222.5 mm³ vs −222.9 predicted ((1 − π/4) r² × 519.4 mm). S1m 9.68 → 8.88 MPa (SF 3.94), inserts 0.970 mm (=); S1b 2.51 → 2.38. Accessible sharp edges 4,506 → 3,466 mm.
-- [ ] S1a2 `[sw]` plate belly: rib bottoms (load ribs 2.4 → r 1.0 via `filletface` on their bottom faces at z −8; 1.2 ribs → r 0.5 both edges, their bottoms are cells joined at the grid, try `filletface` on the z −7.6 faces) and the under-boss rims (r 0.6). Rerun edgeaudit + S1m
+- [x] S1a2 (partial) `[sw]` plate belly: rib bottoms (load ribs 2.4 → r 1.0 via `filletface` on their bottom faces at z −8; 1.2 ribs → r 0.5 both edges, their bottoms are cells joined at the grid, try `filletface` on the z −7.6 faces) and the under-boss rims (r 0.6). Rerun edgeaudit + S1m
+  **Done tick 26:** `filletface` gains `any` (≥ 1 face) and `|all` (inner loops). r 1.0 on the four load-rib bottoms (−117.0 / −117.3 vs −118.05 mm³; the cross ribs crossing the |y| 36.5 ribs didn't stop it) and the six inboard under-boss rims (−34.4 vs −34.8). **Failed:** one r 0.5 fillet over the 1.2 grid ribs (24 faces, 153 edges) returned nothing; left sharp → W3 (2.4 ribs, then round). Accessible sharp edges 3,466 → 2,212 mm. S1m 8.88 → 9.37 MPa (SF 3.74), inserts 0.970 → 0.996 mm; S1b 3.34 → 3.88 MPa (SF 9.0; +16 %, local, deck deflection 0.145 → 0.147): accepted as a kid-safety trade.
 - [ ] S1b `[sw]` bulkhead edges: r 1.0 on the outer side edges, the window rim and the foot front; rerun edgeaudit + S5c
 - [ ] S1c `[py]` `[sw]` wheels: r 1.0 on the outboard rim (a rounded ring in drivetrain.py's layer stack, so the meshes and the SW parts stay identical)
 - [ ] S2 `[sw]` pinch-point audit around the track path, drive sprockets and follower slots; propose track skirts/guards
@@ -88,7 +89,7 @@ Rules the loop enforces from here on (ASTM F963 / EN 71-1 / IEC 62115 as design 
 ## W: Weight vs strength
 - [ ] W1 `[sw]` baseline: mass per part + FEA SF/deflection per study → first metrics row
 - [ ] W2 `[sw]` plate: pockets / isogrid between ribs where FEA stress < 20 % of allowable; keep load paths from motor-mount inserts → follower slots continuous
-- [ ] W3 `[sw]` rib height/thickness sweep (keep ≤ 3× t, 0.6 multiples). Plot mass vs S1a deflection, pick the knee
+- [ ] W3 `[sw]` (also: the 1.2 grid ribs can't be rounded as they are, S1a2; try 2.4 with r 1.0) rib height/thickness sweep (keep ≤ 3× t, 0.6 multiples). Plot mass vs S1a deflection, pick the knee
 - [ ] W4 `[sw]` plate thickness 4.0 → 3.0/3.6 with deeper ribs: same stiffness, less mass?
 - [ ] W5 `[sw]` deck posts: fins vs hollow posts (TODO open item "fins on deck posts")
 - [ ] W6 `[py]` check whether wall/infill choices in the slicer profile beat geometry changes for the same grams

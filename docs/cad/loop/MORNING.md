@@ -54,6 +54,8 @@ _Pass 1 starting (2026-10-30 17:05). Rewritten every tick._
 
 **Trapped screws fixed (P4b):** the deck's rear posts moved to x −70, clear of the Pi board; +2.1 g, deck SF 3.9, still inside every limit.
 
-**Next:** S1a2, D1, W2, then P2o / P6 (plate + FEA for the new track), then P2 motor mount v2 (outboard axle support, Q4 default), P3 plate stiffening.
+**Plate belly (S1a2):** the load-rib bottoms and boss rims are rounded r 1.0; plate sharp edges 4.5 m → 2.2 m since S1. The thin 1.2 grid ribs couldn't be rounded (W3 will widen them).
+
+**Next:** W3, D1, then P2o / P6 (plate + FEA for the new track), then P2 motor mount v2 (outboard axle support, Q4 default), P3 plate stiffening.
 
 **Open questions:** Q4–Q12 in `QUESTIONS.md`, each with a default the loop is using.

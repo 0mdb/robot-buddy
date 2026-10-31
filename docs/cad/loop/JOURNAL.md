@@ -193,3 +193,10 @@ Newest at the bottom. One entry per tick.
 - Rebuild: 0 interferences; deck 12,981 → 14,574 mm³ (+2.1 g; the 9 × 59 × 3 extension), plate volume unchanged.
 - S1b 2.38 → 3.34 MPa, deck-post tops 0.032 → 0.145 mm (the rear posts now sit further aft of the jack-bore fixture); S1d 6.30 → 8.93 MPa (SF 3.92), Pi holes 0.10 → 0.19 mm (longer span). Worse than the baseline by more than 10 %, but this is an assembly fix and every limit holds.
 - Next: rotate: S1a2 or W (a deck rib).
+
+## tick 26 · S1a2 plate belly edges · accepted (partial, kid-safety trade) · 2026-10-31 03:30
+- `filletface` options: `any` face count, `|all` for inner loops. Built the plate alone after each step.
+- r 1.0 on the four load-rib bottom faces (2 per side: the |y| 47 rib, the |y| 36.5 rib merged with its boss): −117.0 / −117.3 vs −118.05 mm³ by hand; the 1.2 cross ribs crossing them didn't stop the fillet. r 1.0 on the six inboard under-boss rims: −34.4 vs −34.8.
+- The 1.2 grid ribs (z −7.6, 24 faces, 153 edges incl. the cells' inner loops) at r 0.5 returned nothing; dropped, → W3 (widen to 2.4, then round).
+- Full rebuild 0 interferences, plate 111.4 → 111.0 g. S1m 8.88 → 9.37 MPa (SF 3.74), inserts 0.970 → 0.996 mm; S1b 3.34 → 3.88 MPa (+16 %, SF 9.0, deck 0.145 → 0.147 mm). Accepted as a kid-safety trade. Plate accessible sharp edges 3,466 → 2,212 mm.
+- Next: rotate: W3 (which also unblocks the grid-rib rounding) or A/M.

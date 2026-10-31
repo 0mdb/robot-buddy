@@ -463,16 +463,18 @@ class SwBuild
                 picked.Count, nsel, d, dv[0], dv[1], Measure()));
     }
 
-    // filletface|r|nz|z|x0 y0 x1 y1|n|dvol tol  (S1a): fillet every edge of the OUTER loop
-    // of each planar face with normal (0,0,nz) lying in the plane z whose centre is inside
-    // the XY box; n = faces expected, or "max" for only the largest one. A plate's top /
-    // bottom face outer loop is its outline.
+    // filletface|r|nz|z|x0 y0 x1 y1|n|dvol tol[|all]  (S1a): fillet every edge of the
+    // OUTER loop (inner loops too with "all") of each planar face with normal (0,0,nz) in
+    // the plane z whose centre is inside the XY box; n = faces expected, "max" for only the
+    // largest one, "any" for >= 1. A plate's top / bottom face outer loop is its outline.
     static void FilletFace(string[] f)
     {
         double r = double.Parse(f[1], ci), nz = double.Parse(f[2], ci), z = double.Parse(f[3], ci);
         double[] b = Nums(f[4]);
         bool largest = f[5] == "max";  // keep only the face with the largest box (the rib
-        int want = largest ? 1 : int.Parse(f[5], ci);  // grid splits a belly into cells)
+        bool anyN = f[5] == "any";      // grid splits a belly into cells); "any" = >= 1 face
+        int want = largest ? 1 : anyN ? -1 : int.Parse(f[5], ci);
+        bool inner = f.Length > 7 && f[7] == "all";  // inner loops too (a rib grid's cells)
         double[] dv = Nums(f[6]);
         var picked = new List<IEdge>();
         var cand = new List<IFace2>();
@@ -508,12 +510,12 @@ class SwBuild
             foreach (object lo in (object[])fc.GetLoops())
             {
                 ILoop2 lp = (ILoop2)lo;
-                if (!lp.IsOuter()) continue;
+                if (!lp.IsOuter() && !inner) continue;
                 foreach (object eo in (object[])lp.GetEdges()) picked.Add((IEdge)eo);
             }
         }
         string what = "filletface r" + f[1] + " nz " + f[2] + " z " + f[3];
-        if (faces != want) { Check(what, false, "matched " + faces + " faces, expected " + want); return; }
+        if (anyN ? faces < 1 : faces != want) { Check(what, false, "matched " + faces + " faces, expected " + f[5]); return; }
         double v0 = PartVolume();
         doc.ClearSelection2(true);
         int nsel = 0;
