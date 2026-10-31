@@ -211,3 +211,10 @@ Newest at the bottom. One entry per tick.
 - Bill of every fastener from 07 F1–F13 + the knee screw, carriages, moved deck posts: `docs/cad/loop/A2_fasteners.md`.
 - Found: F4b's M3 × 20 jack screw can't cover the travel (block-to-carriage gap 7–17 mm + 10 mm block) → × 30. Unified F7/F8/F11 × 6 → × 8. One 2.5 key for every M3 SHCS; the canopy's 2.0 button heads kept as a deliberate small barrier. F12 suggested M3. 07 amended (dated note).
 - No CAD change. Next: rotate to D1 or S1a3 (SW), or E1 (doc).
+
+## tick 29 · perimeter flange (W + D3) · rejected · 2026-10-31 04:30
+- Hypothesis: a rim under the outline in place of the |y| 47 ribs ends the free ledges at the plate edge (printable without support) and adds stiffness.
+- Engine: `a` token for clockwise arcs (the rim's inset rear corners); a per-loop fillet diagnostic. Three builds: rim ending at x 78 (acute end + the (72.6, ±37.4) boss poking past it) failed; rim to |y| 30 on the front failed (boss merged into the rim); boss kept 1 mm clear (r 3.67, under 07's Ø 8) built: belly fillet −601 vs −539 mm³.
+- Full rebuild 0 interferences. S1m 8.64 → 8.79 MPa, inserts 0.900 → 0.908 mm; S1b 3.61 → 3.62; +1.7 g; meshcheck overhang 158 → 150 cm² (it counts bridged bays as overhang, so it can't show the gain); front-middle ledge remains.
+- Rejected: no strength gain, heavier, a new boss-size violation, partial DFM gain. Generator restored, baseline rebuilt (plate 89,049.1 mm³), repo CAD restored; engine tooling kept. Patch saved.
+- Next: D3 needs a bridge-aware overhang check before more printability geometry. Rotate: E1 / S3 (doc) or D1.

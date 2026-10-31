@@ -60,6 +60,8 @@ _Pass 1 starting (2026-10-30 17:05). Rewritten every tick._
 
 **Fasteners (A2):** one M3 family and one 2.5 key for everything you'll touch (Pi M2.5 and the TT's M2 are bench-only). The jack screw in 07 was too short for the tension travel: now M3 × 30. Shopping list in `docs/cad/loop/A2_fasteners.md`.
 
-**Next:** D1, S1a3, then P2o / P6 (plate + FEA for the new track), then P2 motor mount v2 (outboard axle support, Q4 default), P3 plate stiffening.
+*(Tick 29 tried a rim under the plate edge for printability; no stiffness gain, +1.7 g, one boss under spec: rejected.)*
+
+**Next:** D3 (bridge-aware overhang check), D1, S1a3, then P2o / P6 (plate + FEA for the new track), then P2 motor mount v2 (outboard axle support, Q4 default), P3 plate stiffening.
 
 **Open questions:** Q4–Q12 in `QUESTIONS.md`, each with a default the loop is using.

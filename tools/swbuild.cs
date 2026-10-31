@@ -238,11 +238,11 @@ class SwBuild
                 double x = double.Parse(t[i + 1], ci), y = double.Parse(t[i + 2], ci);
                 sm.CreateLine(M(px), M(py), 0, M(x), M(y), 0); px = x; py = y; i += 3; segs++;
             }
-            else if (k == "A")
+            else if (k == "A" || k == "a")  // A = counter-clockwise, a = clockwise
             {
                 double cx = double.Parse(t[i + 1], ci), cy = double.Parse(t[i + 2], ci);
                 double x = double.Parse(t[i + 3], ci), y = double.Parse(t[i + 4], ci);
-                sm.CreateArc(M(cx), M(cy), 0, M(px), M(py), 0, M(x), M(y), 0, 1);
+                sm.CreateArc(M(cx), M(cy), 0, M(px), M(py), 0, M(x), M(y), 0, (short)(k == "A" ? 1 : -1));
                 px = x; py = y; i += 5; segs++;
             }
             else { Check("prof token " + k, false, ""); return; }
@@ -529,6 +529,34 @@ class SwBuild
         doc.ClearSelection2(true);
         doc.EditRebuild3();
         double d = PartVolume() - v0;
+        if (fil == null && cand.Count == 1)  // diagnostic: which loop of the face won't fillet?
+            foreach (object lo in (object[])cand[0].GetLoops())
+            {
+                ILoop2 lp = (ILoop2)lo;
+                if (!lp.IsOuter() && !inner) continue;
+                doc.ClearSelection2(true);
+                double x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; int ne = 0;
+                foreach (object eo in (object[])lp.GetEdges())
+                {
+                    if (((IEntity)eo).Select2(true, 1)) ne++;
+                    foreach (object vo in new object[] { ((IEdge)eo).GetStartVertex(), ((IEdge)eo).GetEndVertex() })
+                    {
+                        if (vo == null) continue;
+                        double[] q = (double[])((IVertex)vo).GetPoint();
+                        x0 = Math.Min(x0, q[0]); y0 = Math.Min(y0, q[1]); x1 = Math.Max(x1, q[0]); y1 = Math.Max(y1, q[1]);
+                    }
+                }
+                IFeature one = (IFeature)doc.FeatureManager.FeatureFillet3(
+                    (int)swFeatureFilletOptions_e.swFeatureFilletUniformRadius, M(r), 0.0, 0.0,
+                    (int)swFeatureFilletType_e.swFeatureFilletType_Simple,
+                    (int)swFilletOverFlowType_e.swFilletOverFlowType_Default,
+                    (int)swFeatureFilletProfileType_e.swFeatureFilletCircular,
+                    null, null, null, null, null, null, null);
+                if (one == null)
+                    Console.WriteLine(string.Format(ci, "    loop {0} X[{1:F1},{2:F1}] Y[{3:F1},{4:F1}] {5} edges: FAILS",
+                        lp.IsOuter() ? "outer" : "inner", x0 * 1e3, x1 * 1e3, y0 * 1e3, y1 * 1e3, ne));
+                else { one.Select2(false, 0); doc.EditDelete(); }
+            }
         if (fil == null && cand.Count > 1)  // diagnostic: which face's loops won't fillet?
             foreach (IFace2 fc in cand)
             {

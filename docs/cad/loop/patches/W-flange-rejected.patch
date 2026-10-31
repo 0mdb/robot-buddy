@@ -1,0 +1,137 @@
+diff --git a/tools/chassis.py b/tools/chassis.py
+index 13981e9..878a3f1 100644
+--- a/tools/chassis.py
++++ b/tools/chassis.py
+@@ -232,7 +232,17 @@ CROSS_RIBS_X, CROSS_RIBS_Y = (-60.0, -20.0, 20.0, 66.0), (-44.0, 44.0)
+ # stops at x -42, short of the guide and clamp slots.
+ LOAD_RIBS = True
+ LOAD_RIB_T, LOAD_RIB_Z = 2.4, UNDER_BOSS_Z
+-LOAD_RIBS_YX = ((36.5, (-42.0, 72.0)), (47.0, (-78.0, 70.0)))
++LOAD_RIBS_YX = ((36.5, (-42.0, 72.0)),)  # tick 29: the |y| 47 rib -> PLATE_FLANGE
++# Tick 29 (W + D3): a perimeter flange under the outline (sides, chamfers, rear) replaces
++# the |y| 47 load ribs. The 6.8 mm ledge outboard of that rib and the rear ledge floated
++# 4 mm over the bed (D3: 158 cm² of overhang printed ribs-down); with a rim every bay
++# bridges between ribs. Open at the front middle: a rim there would block the bulkhead
++# foot's counterbored screws (|y| < 30). Further out than the rib it replaces: stiffer.
++PLATE_FLANGE = True
++FLANGE_T, FLANGE_FRONT_Y = 2.4, 30.0
++# it runs round the front corners and ends square on the front edge at |y| 30 (the
++# bulkhead-foot counterbores reach |y| 25.25); ending it at x 78 on the chamfers left an
++# acute end and the (72.6, 37.4) boss poking past it, which no fillet took (tick 29)
+ 
+ 
+ def mount_holes() -> list[tuple[float, float]]:
+@@ -253,9 +263,44 @@ def edge_room(x: float, y: float) -> float:
+ 
+ # Shapes: ("outline",), ("rect", x0, x1, y0, y1), ("circle", cx, cy, r),
+ # ("slot", xa, ya, xb, yb, r) with the slot axis along X or Y.
++def flange_profile() -> str:
++    """The rim: outline (CCW) from the front edge at y +FLANGE_FRONT_Y round the rear to
++    y -FLANGE_FRONT_Y, then the inset outline back (CW arcs); square ends on the front."""
++    hx, hy, c, r, t = PLATE_L / 2, PLATE_W / 2, FRONT_CHAMFER, REAR_RADIUS, FLANGE_T
++    k_out = hx + hy - c  # chamfer line x + |y| = k
++    k_in = k_out - t * math.sqrt(2)
++    hxi, hyi, fy = hx - t, hy - t, FLANGE_FRONT_Y
++    return " ".join(
++        [
++            f"M {hx} {fy}",
++            f"L {hx} {k_out - hx}",
++            f"L {k_out - hy} {hy}",
++            f"L {-(hx - r)} {hy}",
++            f"A {-(hx - r)} {hy - r} {-hx} {hy - r}",
++            f"L {-hx} {-(hy - r)}",
++            f"A {-(hx - r)} {-(hy - r)} {-(hx - r)} {-hy}",
++            f"L {k_out - hy} {-hy}",
++            f"L {hx} {-(k_out - hx)}",
++            f"L {hx} {-fy}",
++            f"L {hxi} {-fy}",
++            f"L {hxi} {-(k_in - hxi)}",
++            f"L {k_in - hyi} {-hyi}",
++            f"L {-(hx - r)} {-hyi}",
++            f"a {-(hx - r)} {-(hy - r)} {-hxi} {-(hy - r)}",
++            f"L {-hxi} {hy - r}",
++            f"a {-(hx - r)} {hy - r} {-(hx - r)} {hyi}",
++            f"L {k_in - hyi} {hyi}",
++            f"L {hxi} {k_in - hxi}",
++            f"L {hxi} {fy}",
++        ]
++    )
++
++
+ def shape_prof(s: tuple) -> str:
+     if s[0] == "outline":
+         return plate_profile()
++    if s[0] == "flange":
++        return flange_profile()
+     if s[0] == "rect":
+         _, x0, x1, y0, y1 = s
+         return f"M {x0} {y0} L {x1} {y0} L {x1} {y1} L {x0} {y1}"
+@@ -270,6 +315,19 @@ def shape_prof(s: tuple) -> str:
+ def shape_mask(s: tuple, X, Y):
+     import numpy as np
+ 
++    if s[0] == "flange":
++        t, k = FLANGE_T, PLATE_L / 2 + PLATE_W / 2 - FRONT_CHAMFER
++        hx, hy, r = PLATE_L / 2, PLATE_W / 2, REAR_RADIUS
++        ri = r - t
++        inner = (
++            (np.abs(X) <= hx - t)
++            & (np.abs(Y) <= hy - t)
++            & (X + np.abs(Y) <= k - t * math.sqrt(2))
++        )
++        corner = (X < -(hx - r)) & (np.abs(Y) > hy - r)
++        inner &= ~(corner & ((X + hx - r) ** 2 + (np.abs(Y) - (hy - r)) ** 2 > ri * ri))
++        front = (X > hx - t) & (np.abs(Y) < FLANGE_FRONT_Y)
++        return shape_mask(("outline",), X, Y) & ~inner & ~front
+     if s[0] == "outline":
+         hx, hy, c, r = PLATE_L / 2, PLATE_W / 2, FRONT_CHAMFER, REAR_RADIUS
+         m = (np.abs(X) <= hx) & (np.abs(Y) <= hy) & (X + np.abs(Y) <= hx + hy - c)
+@@ -299,6 +357,14 @@ def plate_features() -> list[tuple[str, tuple, float, float]]:
+     # motor-mount inserts: under-boss, sized down where the front chamfer is close
+     for x, y in mount_holes():
+         r = min(INS_BOSS / 2, round(edge_room(x, y) - 0.04, 2))
++        if PLATE_FLANGE:
++            # a boss that would stop just short of the rim (0.07 mm at (72.6, 37.4)) leaves a
++            # sliver no fillet takes, and merging it into the rim failed too (tick 29): keep
++            # 1 mm clear. That boss drops to r 3.67 (1.67 wall on the 4.0 pocket; 07 wants
++            # Ø >= 8, flagged in BACKLOG)
++            gap = edge_room(x, y) - FLANGE_T
++            if gap - r < 1.0:
++                r = round(gap - 1.0, 2)
+         add.append(("add", ("circle", x, y, r), UNDER_BOSS_Z, -PLATE_T))
+         cut.append(("cut", ("circle", x, y, INS_HOLE / 2), -INS_DEPTH, 0.0))
+     # bottom ribs
+@@ -311,6 +377,8 @@ def plate_features() -> list[tuple[str, tuple, float, float]]:
+                 -PLATE_T,
+             )
+         )
++    if PLATE_FLANGE:
++        add.append(("add", ("flange",), UNDER_BOSS_Z, -PLATE_T))
+     if LOAD_RIBS:
+         for y, (x0, x1) in LOAD_RIBS_YX:
+             for sgn in (-1, 1):
+@@ -506,9 +574,22 @@ def plate_lines(plate: str) -> list[str]:
+     # grabs. The outer loop of the top (z 0) and bottom (z -4) faces is the outline; a
+     # convex 90° round removes (1 - pi/4) r² per mm of edge.
+     dv = (1 - math.pi / 4) * PLATE_EDGE_R**2 * plate_perimeter()
+-    for nz, z in ((1, 0.0), (-1, -PLATE_T)):
++    lines.append(
++        f"filletface|{PLATE_EDGE_R}|1|0.0|{-hx} {-hy} {hx} {hy}|max|{-dv:.2f} {0.1 * dv:.2f}"
++    )
++    vol -= dv
++    if PLATE_FLANGE:
++        # the rim's bottom is rounded with the belly (z -8); only the open front edge of
++        # the z -4 face is left, a straight line at x 85 between the rim's ends
++        fl = 2 * FLANGE_FRONT_Y
++        dvf = (1 - math.pi / 4) * PLATE_EDGE_R**2 * fl
++        lines.append(
++            f"fillet|{PLATE_EDGE_R}|y|{hx - 0.1} {-fl / 2 - 1} {-PLATE_T - 0.1} {hx + 0.1} {fl / 2 + 1} {-PLATE_T + 0.1}|1|{-dvf:.2f} {0.1 * dvf:.2f}"
++        )
++        vol -= dvf
++    else:
+         lines.append(
+-            f"filletface|{PLATE_EDGE_R}|{nz}|{z}|{-hx} {-hy} {hx} {hy}|max|{-dv:.2f} {0.1 * dv:.2f}"
++            f"filletface|{PLATE_EDGE_R}|-1|{-PLATE_T}|{-hx} {-hy} {hx} {hy}|max|{-dv:.2f} {0.1 * dv:.2f}"
+         )
+         vol -= dv
+     # S1a2 + W3: every bottom face at z -8 (grid ribs, load ribs, insert bosses, now one
