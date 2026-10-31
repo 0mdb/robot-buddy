@@ -99,3 +99,10 @@ Newest at the bottom. One entry per tick.
 - Hot spots: (1) the pocket cylinder, (2) gusset 3's side face at x 13.2: the through-pocket (x 12.5–16.5) cuts 0.7 mm into that gusset's root. Last intersection → D8.
 - Accepted: removes the singularity and is ~10 % better, with nothing worse; SF 2.93 recorded as is, not rounded to a pass.
 - Next: rotate away from D: T or M/S, then D8.
+
+## tick 12 · P3 step 1 (footprint coupling via split lines) · rejected (tooling) · 2026-10-30 23:15
+- Hypothesis: S1a's 17.6 MPa pocket peak is a coupling artefact; spreading the axle load over each mount foot's footprint (split lines on the plate top) would show the plate's real weak point before choosing rails vs ribs.
+- Built a `split` engine command. `FeatureManager.InsertSplitLineProject` doesn't exist in this interop (compile error); `IModelDoc2.InsertSplitLineProject(bool, bool)` returns void and created nothing in three variants: coplanar sketch on Front; sketch on a +1 mm reference plane; face picked by SelectByID2 and as an entity (both selections reported true). Face count stayed 254 each time.
+- Reverted per PROMPT (patch kept), baseline rebuilt: BUILD OK, 0 interferences. No CAD change committed.
+- Better route: T10, a multi-body S1a (plate + both mount bodies bonded), which needs no split lines and models the foot bearing directly.
+- Next: rotate (not D/P twice more): T10, then P3 geometry with hotspots.
