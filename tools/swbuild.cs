@@ -469,7 +469,12 @@ class SwBuild
     // largest one, "any" for >= 1. A plate's top / bottom face outer loop is its outline.
     static void FilletFace(string[] f)
     {
-        double r = double.Parse(f[1], ci), nz = double.Parse(f[2], ci), z = double.Parse(f[3], ci);
+        // normal: "<z sign>" (legacy) or "<axis>:<sign>" (S1b, tick 32); the plane value is
+        // along that axis and the box is over the other two axes, in x, y, z order
+        int ax = 2; string nspec = f[2];
+        if (nspec.Contains(":")) { ax = "xyz".IndexOf(nspec[0]); nspec = nspec.Substring(2); }
+        int ua = ax == 0 ? 1 : 0, va = ax == 2 ? 1 : 2;
+        double r = double.Parse(f[1], ci), nz = double.Parse(nspec, ci), z = double.Parse(f[3], ci);
         double[] b = Nums(f[4]);
         bool largest = f[5] == "max";  // keep only the face with the largest box (the rib
         bool anyN = f[5] == "any";      // grid splits a belly into cells); "any" = >= 1 face
@@ -486,10 +491,10 @@ class SwBuild
                 IFace2 fc = (IFace2)fo;
                 if (!((ISurface)fc.GetSurface()).IsPlane()) continue;
                 double[] n = (double[])fc.Normal;
-                if (Math.Abs(n[2] - nz) > 1e-6) continue;
+                if (Math.Abs(n[ax] - nz) > 1e-6) continue;
                 double[] bx = (double[])fc.GetBox();
-                if (Math.Abs(bx[2] * 1e3 - z) > 1e-3 || Math.Abs(bx[5] * 1e3 - z) > 1e-3) continue;
-                double cx = (bx[0] + bx[3]) * 500, cy = (bx[1] + bx[4]) * 500;
+                if (Math.Abs(bx[ax] * 1e3 - z) > 1e-3 || Math.Abs(bx[ax + 3] * 1e3 - z) > 1e-3) continue;
+                double cx = (bx[ua] + bx[ua + 3]) * 500, cy = (bx[va] + bx[va + 3]) * 500;
                 if (cx < b[0] || cy < b[1] || cx > b[2] || cy > b[3]) continue;
                 cand.Add(fc);
             }

@@ -1214,6 +1214,9 @@ def _right_rect(y0: float, y1: float, z0: float, z1: float) -> str:
     return f"M {-z0} {y0} L {-z0} {y1} L {-z1} {y1} L {-z1} {y0}"
 
 
+BH_SIDE_EDGE = 266.6  # S1b: edge length round one outer side face (STL, tick 32)
+
+
 def bulkhead_lines(path: str) -> list[str]:
     pre, post = bulkhead_features()
 
@@ -1244,6 +1247,16 @@ def bulkhead_lines(path: str) -> list[str]:
         else:
             lines.append(emit(op, sh))
     vol, bb = bulkhead_volume_numeric()
+    # S1b (kid safety): r 1.0 round the two outer side faces (|y| 47, normals +-y): their
+    # outer loops are the wall's side edges, front, back, top and foot. Edge length per
+    # side, all convex, measured from the generated STL (tick 32): 266.6 mm
+    ys = BH_W / 2
+    dvs = (1 - math.pi / 4) * PLATE_EDGE_R**2 * BH_SIDE_EDGE
+    for sgn in (1, -1):
+        lines.append(
+            f"filletface|{PLATE_EDGE_R}|y:{sgn}|{sgn * ys:.2f}|30 -10 100 130|1|{-dvs:.2f} {0.15 * dvs:.2f}"
+        )
+        vol -= dvs
     lines += [
         f"expect|vol {vol:.1f} {vol * 0.01:.1f}|box {' '.join(f'{v:.2f}' for v in bb)} 0.35",
         "save",

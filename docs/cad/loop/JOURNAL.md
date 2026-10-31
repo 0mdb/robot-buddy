@@ -229,3 +229,9 @@ Newest at the bottom. One entry per tick.
 - Proposal: fillet family 1 / 3 / 8 (accessible edges / handled edges + openings / silhouette), a pebble canopy with a 2–3 mm crown (no flat white panel > 60 × 60), no exposed screw heads on child-facing faces, one slot/hole pattern for grille, vents and mic, face high as the "head". Written so P6 and E2 can be built to it.
 - Q18 asks for the taste call with options (a) as proposed / (b) crisper 1 / 2 / 4 robot look / (c) reference. Default (a).
 - No CAD change. Next: SW items: D1 (mount internal fillets) or S1b (bulkhead edges, now that the family exists).
+
+## tick 32 · S1b bulkhead outer side edges r 1.0 · accepted · 2026-10-31 05:10
+- `filletface` normal field now `axis:sign` (legacy number = z); the box spans the other two axes. Expected volume from the side faces' boundary in the generated STL: 266.6 mm each, all convex. First try missed the plane (voxel bbox gives 46.9, the face is at 47.0): use BH_W / 2.
+- Bulkhead alone: −56.9 / −56.8 vs −57.2 mm³. Full rebuild 0 interferences. S5c 7.01 → 7.52 MPa (+7 %, SF 4.7), bezel 0.266 mm unchanged; 43.6 g. Accessible sharp edges 1,647 → 1,113 mm.
+- Left: the face side (window rim, grille slots too narrow for r 1, foot front) → S1b2.
+- Next: rotate: D1 or a doc item (S3 small parts / S4 battery).
