@@ -166,3 +166,10 @@ Newest at the bottom. One entry per tick.
 - Tested the plate alone first (P4's lesson): top −111.50 vs −111.46 mm³, then the bottom; plate 86,547 → 86,325 mm³ (−0.2 g). One miss on the way: my string replace skipped a ruff-wrapped line (the manifest still said `1`); fixed with sed on the line.
 - Full rebuild: 0 interferences. S1m peak 9.68 → 8.88 MPa (SF 3.94), inserts 0.968 → 0.970 mm; S1b 2.51 → 2.38 MPa. Edge audit: plate accessible sharp edges 4,506 → 3,466 mm (−1,040 = 2 × the 519 mm outline).
 - Next: S1a2 (rib bottoms + boss rims) later; rotate now: D10 or P5.
+
+## tick 22 · D10 blind insert pocket + full root chamfer · accepted · 2026-10-31 02:10
+- Hypothesis: with the lower insert pocket blind (inside a local boss) nothing crosses the root, so one full-length chamfer removes S2's singular corner.
+- Built the mount alone first: 10,874 vs 10,850.7 mm³ voxel; full rebuild 0 interferences; +0.1 g per mount.
+- S2 pull + torque: default 7.15 → 5.26 MPa, half mesh 9.67 → 6.63 MPa (SF 5.28); motor holes 0.0482 → 0.0417 mm.
+- Convergence still short: the root region 5.26 → 6.53 (+24 %, the boss/chamfer intersection), and the half-mesh max is now the end-stop step corner (x −17.6, z 22.5), untouched by D10. Both go to D1 (fillets). Accepted: every gate improves; SF taken on the half-mesh peak.
+- Next: rotate: P5 (carriages + idler mounting) or W/A/R items.

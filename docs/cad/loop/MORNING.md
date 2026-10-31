@@ -46,6 +46,8 @@ _Pass 1 starting (2026-10-30 17:05). Rewritten every tick._
 
 **Plate edges (S1a):** the plate's outline is rounded r 1.0 top and bottom (a new `filletface` engine command); 1 m less sharp edge, plate SF 3.9, −0.2 g. The rib bottoms underneath are next (S1a2).
 
-**Next:** D10, P5, S1a2, then P2o (plate + FEA for the new track), then P2 motor mount v2 (outboard axle support, Q4 default), P3 plate stiffening.
+**Motor mount (D10):** the lower insert pocket is now blind (in a small boss), so the root chamfer runs the full length. Mount drive test SF 3.6 → **5.3**, stiffer too; +0.1 g per mount. Two small sharp inside corners remain for the fillet pass (D1).
+
+**Next:** P5, S1a2, D1, then P2o (plate + FEA for the new track), then P2 motor mount v2 (outboard axle support, Q4 default), P3 plate stiffening.
 
 **Open questions:** Q4–Q12 in `QUESTIONS.md`, each with a default the loop is using.

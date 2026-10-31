@@ -1221,6 +1221,8 @@ MM_GUSSETS = (
 MM_GUSSET_T, MM_GUSSET_Y, MM_GUSSET_Z = 2.4, -45.5, 20.0
 MM_CHAMFER = 3.6  # root chamfer on the inboard side (stands in for a fillet until T7)
 MM_INS_DEPTH = MM_T  # M3 inserts through the upright, pressed from the motor face (F3)
+MM_INS_BOSS_H = 1.8  # D10: local boss on the inboard face around the lower insert
+MM_INS_BLIND = MM_T + MM_INS_BOSS_H - 1.2  # 6.6: lower pocket stops 1.2 inside the boss
 
 
 def mount_v2_features(mirror: bool) -> list[tuple]:
@@ -1248,25 +1250,18 @@ def mount_v2_features(mirror: bool) -> list[tuple]:
         (yi - MM_CHAMFER, MM_FOOT_T),
         (yi + 0.6, MM_FOOT_T + MM_CHAMFER + 0.6),
     ]
-    # D7: stop the chamfer 1 mm short of the lower motor-insert pocket, which runs through
-    # the upright; where the two crossed they left a knife edge (S2's unconverged peak, T9)
-    ch_x1 = MOUNT_HOLE[0] - INS_HOLE / 2 - 1.0
-    ops.append(("add", ("prismx", ch, xa, ch_x1)))
+    # D10: the lower motor-insert pocket used to run through the upright and open across
+    # the root corner, so the root chamfer had to stop short of it (D7) and the bare corner
+    # past it was S2's singular peak (D8; a stub chamfer made it worse, D9). Now that
+    # pocket is blind, ending 1.2 mm inside a local boss on the inboard face, and the
+    # chamfer runs the full length with nothing crossing it.
+    ops.append(("add", ("prismx", ch, xa, xb)))
     hx, _, hz = MOUNT_HOLE
+    bz = hz - MOT_HOLE_PITCH / 2
+    ops.append(("add", ("cyly", hx, bz, yi - MM_INS_BOSS_H, yi + 0.5, INS_BOSS / 2)))
     for dz in (-MOT_HOLE_PITCH / 2, MOT_HOLE_PITCH / 2):
-        ops.append(
-            (
-                "cut",
-                (
-                    "cyly",
-                    hx,
-                    hz + dz,
-                    MM_FACE - MM_INS_DEPTH - 0.1,
-                    MM_FACE + 0.1,
-                    INS_HOLE / 2,
-                ),
-            )
-        )
+        y0 = MM_FACE - MM_INS_BLIND if dz < 0 else MM_FACE - MM_INS_DEPTH - 0.1
+        ops.append(("cut", ("cyly", hx, hz + dz, y0, MM_FACE + 0.1, INS_HOLE / 2)))
     for x, y in [(-11.2, -38.9), (-25.2, -38.9), (3.5, -38.9), (-25.2, -23.0)]:
         ops.append(("cut", ("cylz", x, y, -0.1, MM_FOOT_T + 0.1, CLR_M3 / 2)))
     if not mirror:
