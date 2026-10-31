@@ -187,3 +187,9 @@ Newest at the bottom. One entry per tick.
 - Order constraints: motor → mount before the sprocket (heads 21.6 from the shaft, sprocket r 31.4); mounts before the bulkhead (its 15° lean puts the top over x ≈ 50, above the foot screws at x 43.9–72.6).
 - Service: the jack screw head has 18 mm to the encoder; ball-end key or a knurled thumb screw (R2).
 - No CAD change. Next: P4b (a real fix), then S1a2 / W2.
+
+## tick 25 · P4b deck rear posts out from under the Pi · accepted (deliberate trade) · 2026-10-31 03:15
+- R1-F1 fix: rear deck posts (−48, ±20) → (−70, ±20), deck to x −75; 06 amended. Screw heads 2.75 clear of the Pi board (with ports) in plan.
+- Rebuild: 0 interferences; deck 12,981 → 14,574 mm³ (+2.1 g; the 9 × 59 × 3 extension), plate volume unchanged.
+- S1b 2.38 → 3.34 MPa, deck-post tops 0.032 → 0.145 mm (the rear posts now sit further aft of the jack-bore fixture); S1d 6.30 → 8.93 MPa (SF 3.92), Pi holes 0.10 → 0.19 mm (longer span). Worse than the baseline by more than 10 %, but this is an assembly fix and every limit holds.
+- Next: rotate: S1a2 or W (a deck rib).

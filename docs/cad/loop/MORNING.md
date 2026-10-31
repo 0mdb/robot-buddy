@@ -52,6 +52,8 @@ _Pass 1 starting (2026-10-30 17:05). Rewritten every tick._
 
 **Assembly check (R1):** a walk-through of every screw found one trapped pair: the Pi deck's two rear screws end up under the Pi board (fix queued, P4b). Also: fit the motor before the sprocket, the mounts before the bulkhead; tensioning needs a ball-end key (`docs/cad/loop/R1_assembly.md`).
 
-**Next:** P4b, S1a2, D1, W2, then P2o / P6 (plate + FEA for the new track), then P2 motor mount v2 (outboard axle support, Q4 default), P3 plate stiffening.
+**Trapped screws fixed (P4b):** the deck's rear posts moved to x −70, clear of the Pi board; +2.1 g, deck SF 3.9, still inside every limit.
+
+**Next:** S1a2, D1, W2, then P2o / P6 (plate + FEA for the new track), then P2 motor mount v2 (outboard axle support, Q4 default), P3 plate stiffening.
 
 **Open questions:** Q4–Q12 in `QUESTIONS.md`, each with a default the loop is using.

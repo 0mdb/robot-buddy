@@ -205,7 +205,9 @@ BULK_TAB_Y, BULK_TAB = 11.0, (4.6, 10.4)  # locating-tab slots (X x Y)
 # Pi deck posts (F5): clear of the reflex board (x -40..25, |y| <= 30), the mount
 # feet (x >= 27.4, |y| >= 13.4) and the follower carriages (|y| >= 28 aft of x -40).
 DECK_Z = 24.0  # deck underside (06 §3 height table)
-DECK_POSTS = [(30.0, -8.0), (30.0, 8.0), (-48.0, -20.0), (-48.0, 20.0)]
+DECK_POSTS = [(30.0, -8.0), (30.0, 8.0), (-70.0, -20.0), (-70.0, 20.0)]
+# P4b (R1-F1): rear pair -48 -> -70. At -48 their deck screws sat under the Pi board
+# (x -64.5 .. 22.5 with ports) and were trapped once the stack was on.
 REFLEX_STANDOFF = 5.0
 WIRE_SLOT = (
     35.0,
@@ -482,7 +484,7 @@ def plate_lines(plate: str) -> list[str]:
 # The wide part stays aft of the mount uprights (x >= 27.4, |y| >= 26.4) and inside the
 # encoders (|y| 30.7); a tongue at |y| <= 14 reaches the front posts (30, +-8).
 DECK_T = 3.0
-DECK_X = (-66.0, 25.0)  # covers the Pi board (x -64.5 .. 22.5 after Rz180)
+DECK_X = (-75.0, 25.0)  # covers the Pi board (x -64.5 .. 22.5 after Rz180) + the rear posts (P4b)
 DECK_HW = 29.5
 DECK_TONGUE = (36.0, 14.0)  # front end x, half-width
 CLR_M25 = 2.9

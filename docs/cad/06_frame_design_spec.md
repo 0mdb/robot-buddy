@@ -119,7 +119,7 @@ the insert under-bosses). The left-rear Ø3.5 × 7 slot pair was an early follow
 |---|---|---|
 | Motor-mount inserts (F2) | 8 × Ø4.0 × 7.2 pockets from the top, Ø9.2 under-bosses to Z −8 | hole positions from the measured foot; all full-size bosses fit (chamfer line x + \|y\| = 120) |
 | Bottom ribs | 1.2 × 3.6: longitudinal at y 0, ±25 (x −80…75); transverse at x −60, −20, 20, 60 (\|y\| ≤ 44) | placement before FEA; S1 decides |
-| Pi deck posts (F5) | 4 × Ø9.2 × 24 at (30, ±8) and (−48, ±20); Ø4.0 × 7.2 insert pockets at the top | clear the reflex board, mount feet (0.8 mm) and carriages. No fins yet (24 tall > 2 × OD, 07 §1): add after FEA |
+| Pi deck posts (F5) | 4 × Ø9.2 × 24 at (30, ±8) and ~~(−48, ±20)~~ **(−70, ±20)**; Ø4.0 × 7.2 insert pockets at the top | clear the reflex board, mount feet (0.8 mm) and carriages. No fins yet (24 tall > 2 × OD, 07 §1): add after FEA |
 | Reflex standoffs (F7) | 4 × Ø9.2 × 5, insert pockets 7.2 deep (into the plate) | at the board's moved station, below |
 | Follower slots (05) | per side: guide slots 4.7 wide at \|y\| 31 and 41, x −75…−45; clamp slot Ø3.4 at \|y\| 36, x −65…−55; jack end-stop block 10 × 11 × 10 at x −38…−28 with an Ø4.0 insert bore along X at z 5 (F4b) | axle mid-travel at x −60, ±5 mm; rail length 20 🟡 until the carriage is designed |
 | Rear-corner relief | plate half-width 46 behind x −27 | **new:** the 44.2 track hangs ~6.3 inboard of the 31.6 gear, so the follower wheel (flanges at \|y\| ≈ 47) would cut the plate edge |
@@ -286,3 +286,5 @@ No new interferences.
 4. Pi deck, then bulkhead, then canopy.
 5. Interference check + Mass Properties (CoG between the axles).
 6. Renders to Ben, then print in PETG to check fit, then PET-CF/ASA.
+
+> Amendment (loop P4b, 2026-10-31): rear deck posts (−48, ±20) → (−70, ±20), deck rear edge x −66 → −75. At −48 the deck's M3 screws sat under the Pi board and could not be reached with the stack fitted (R1-F1, `docs/cad/loop/R1_assembly.md`).

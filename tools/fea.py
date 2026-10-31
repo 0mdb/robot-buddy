@@ -103,7 +103,7 @@ def s1b() -> dict:
             "fix cyl 0 0 1 2.0 0.05 box 40 -60 -9 80 60 1",
             f"load deck plane 0 0 1 {chassis.DECK_Z}",
             f"disp deck plane 0 0 1 {chassis.DECK_Z}",
-            "probe posts -55 -30 -1 37 30 25",
+            "probe posts -77 -30 -1 37 30 25",
             "probe midplate -30 -50 -9 35 50 1",
             "mesh 2.0 0.1",
             f"case payload deck:0,0,{-f:.2f}",
