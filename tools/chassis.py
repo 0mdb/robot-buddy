@@ -454,6 +454,116 @@ def plate_lines(plate: str) -> list[str]:
     return lines
 
 
+# ------------------------------------------------------- Pi deck (06 §3, F5/F6, P4)
+# Level 1: a 3 mm deck on the four plate posts (M3 down into their inserts), the Pi
+# stack on it (M2.5 up from below into its brass standoffs). Part frame = chassis x, y
+# with the deck top at z 0 and the body below, like the plate. Placed at DECK_Z + DECK_T.
+# The wide part stays aft of the mount uprights (x >= 27.4, |y| >= 26.4) and inside the
+# encoders (|y| 30.7); a tongue at |y| <= 14 reaches the front posts (30, +-8).
+DECK_T = 3.0
+DECK_X = (-66.0, 25.0)  # covers the Pi board (x -64.5 .. 22.5 after Rz180)
+DECK_HW = 29.5
+DECK_TONGUE = (36.0, 14.0)  # front end x, half-width
+CLR_M25 = 2.9
+DECK_VENTS = ((-45.0, 5.0), (-12.0, -6.0, 0.0, 6.0, 12.0), 2.0)  # x0 x1, ys, r
+DECK_CABLE_REAR = (-62.0, -54.0, -10.0, 10.0)  # to level 0 (reflex board)
+DECK_CABLE_FRONT = (
+    26.0,
+    32.0,
+    0.0,
+    3.0,
+)  # forward, to the bulkhead; ends 1 mm short of
+# the tongue's front edge (x 36): a slot end tangent to an edge makes the cut return null
+
+
+def pi_holes_chassis() -> list[tuple[float, float]]:
+    px, py, _ = PI_AT
+    return [(px + dx, py + dy) for dx, dy in corners(*PI_HOLES)]
+
+
+def deck_features() -> list[tuple[str, tuple, float, float]]:
+    z0, z1 = (
+        -DECK_T,
+        0.0,
+    )  # deck frame: top at z 0, like the plate (placed at DECK_Z + DECK_T)
+    x0, x1 = DECK_X
+    add = [
+        ("add", ("rect", x0, x1, -DECK_HW, DECK_HW), z0, z1),
+        (
+            "add",
+            ("rect", x1 - 1.0, DECK_TONGUE[0], -DECK_TONGUE[1], DECK_TONGUE[1]),
+            z0,
+            z1,
+        ),
+    ]
+    cut: list[tuple[str, tuple, float, float]] = []
+    for x, y in DECK_POSTS:
+        cut.append(("all", ("circle", x, y, CLR_M3 / 2), 0, 0))
+    for x, y in pi_holes_chassis():
+        cut.append(("all", ("circle", x, y, CLR_M25 / 2), 0, 0))
+    (vx0, vx1), vys, vr = DECK_VENTS
+    for y in vys:
+        cut.append(("all", ("slot", vx0, y, vx1, y, vr), 0, 0))
+    cut.append(("all", ("rect", *DECK_CABLE_REAR), 0, 0))
+    fx0, fx1, fy, fr = DECK_CABLE_FRONT
+    cut.append(("all", ("slot", fx0, fy, fx1, fy, fr), 0, 0))
+    return add + cut
+
+
+def features_volume(feats: list, xr: tuple, yr: tuple, step: float = 0.1) -> float:
+    """Slab-integrate an (op, shape, z0, z1) feature list on a 2D grid (as plate_volume_numeric)."""
+    import numpy as np
+
+    xs = np.arange(xr[0] + step / 2, xr[1], step)
+    ys = np.arange(yr[0] + step / 2, yr[1], step)
+    X, Y = np.meshgrid(xs, ys, indexing="ij")
+    masks = [shape_mask(s, X, Y) for _, s, _, _ in feats]
+    zs = sorted({z for op, _, z0, z1 in feats if op != "all" for z in (z0, z1)})
+    vol = 0.0
+    for za, zb in zip(zs, zs[1:]):
+        zm = (za + zb) / 2
+        solid = np.zeros_like(X, dtype=bool)
+        hole = np.zeros_like(X, dtype=bool)
+        for (op, _, z0, z1), m in zip(feats, masks):
+            if op == "all" or (z0 <= zm <= z1):
+                if op == "add":
+                    solid |= m
+                else:
+                    hole |= m
+        vol += float((solid & ~hole).sum()) * step * step * (zb - za)
+    return vol
+
+
+def feature_lines(feats: list) -> list[str]:
+    out = []
+    for op, s, z0, z1 in feats:
+        if s[0] == "circle":
+            if op == "all":
+                out.append(f"cyl|z|{s[1]} {s[2]}|all|{s[3]}|cut")
+            else:
+                out.append(
+                    f"cyl|z|{s[1]} {s[2]}|{z0} {z1}|{s[3]}|{'boss' if op == 'add' else 'cut'}"
+                )
+        elif op == "add":
+            out.append(f"prof|{z0} {z1}|{shape_prof(s)}")
+        else:
+            out.append(f"prof|{z0} {z1}|{shape_prof(s)}|{op}")
+    return out
+
+
+def deck_lines(path: str) -> list[str]:
+    feats = deck_features()
+    vol = features_volume(
+        feats, (DECK_X[0] - 1, DECK_TONGUE[0] + 1), (-DECK_HW - 1, DECK_HW + 1)
+    )
+    return [
+        f"part|{path}",
+        *feature_lines(feats),
+        f"expect|vol {vol:.1f} {vol * 0.004:.1f}|box {DECK_X[0]} {DECK_TONGUE[0]} {-DECK_HW} {DECK_HW} {-DECK_T} 0 0.01",
+        "save",
+    ]
+
+
 # ------------------------------------------------- envelopes (06 §9, 07 §4.5)
 # Pi stack, measured by Ben 2026-10-30: 6 mm brass standoffs -> Freenove M.2 NVMe
 # adapter -> Pi 5 -> UPS HAT (B). 53 mm adapter bottom -> HAT top. Frame: origin at
@@ -615,6 +725,7 @@ def rebuild_manifest(win: str) -> list[str]:
     face = cad + r"\library\FNK0104_face_envelope.SLDPRT"
     reflex = cad + r"\library\reflex_board_envelope.SLDPRT"
     bulkhead = cad + r"\parts\RB-PRT-002_bulkhead.SLDPRT"
+    deck = cad + r"\parts\RB-PRT-003_pi_deck.SLDPRT"  # P4
     sprocket = cad + r"\parts\RB-PRT-020_sprocket.SLDPRT"  # 08, outrigger variant (P2o)
     idler = cad + r"\parts\RB-PRT-021_idler.SLDPRT"  # 08, 2 x 624
     belt_l = cad + r"\library\belt_envelope_L.SLDPRT"
@@ -654,6 +765,7 @@ def rebuild_manifest(win: str) -> list[str]:
         "save",
         *envelope_lines(pi, face, reflex),
         *bulkhead_lines(bulkhead),
+        *deck_lines(deck),
         *mount_v2_lines(mount_r, mirror=False),
         *mount_v2_lines(mount_l, mirror=True),
         *wheel_lines(sprocket, dt.sprocket_layers(True)),
@@ -669,6 +781,7 @@ def rebuild_manifest(win: str) -> list[str]:
         f"comp|pi_stack|{pi}|{row(ROT_Z180, PI_AT)}",
         f"comp|reflex|{reflex}|{row(ROT_I, REFLEX_AT)}",
         f"comp|bulkhead|{bulkhead}|{row(ROT_I, (0, 0, 0))}",
+        f"comp|pi_deck|{deck}|{row(ROT_I, (0, 0, DECK_Z + DECK_T))}",
         f"comp|sprocket_L|{sprocket}|{row(*wheel_at(dt.X_DRIVE, +1))}",
         f"comp|sprocket_R|{sprocket}|{row(*wheel_at(dt.X_DRIVE, -1))}",
         f"comp|idler_L|{idler}|{row(*wheel_at(dt.belt_fit()['x_fit'], +1))}",
@@ -692,6 +805,7 @@ def rebuild_manifest(win: str) -> list[str]:
             for p, n in (
                 (plate, "RB-PRT-001_base_plate"),
                 (bulkhead, "RB-PRT-002_bulkhead"),
+                (deck, "RB-PRT-003_pi_deck"),
                 (mount_r, "RB-PRT-010_motor_mount_R"),
                 (mount_l, "RB-PRT-011_motor_mount_L"),
                 (sprocket, "RB-PRT-020_sprocket"),
@@ -1417,6 +1531,7 @@ RHO = {"PET-CF": 1.29, "TPU": 1.22}
 PART_MATERIAL = {
     "RB-PRT-001": "PET-CF",
     "RB-PRT-002": "PET-CF",
+    "RB-PRT-003": "PET-CF",
     "RB-PRT-010": "PET-CF",
     "RB-PRT-011": "PET-CF",
     "RB-PRT-020": "PET-CF",

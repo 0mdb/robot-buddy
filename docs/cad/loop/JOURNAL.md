@@ -153,3 +153,10 @@ Newest at the bottom. One entry per tick.
 - Reverted (patch kept), baseline rebuilt: BUILD OK, 0 interferences, mount 10,785.1 mm³ = D8.
 - Lesson: short chamfer segments add corners. The pocket has to stop crossing the root first → D10 (blind pocket in a local boss, then a full-length chamfer or fillet).
 - Next: rotate off D: S1a or P4.
+
+## tick 20 · P4 Pi deck · accepted · 2026-10-31 01:10
+- New part `RB-PRT-003_pi_deck` (PET-CF): 3 mm on the four posts, z 24–27; wide part x −66…25 × |y| ≤ 29.5 (0.7 mm inside the encoders would be too tight, so 1.2), tongue to x 36 × |y| ≤ 14 for the front posts, clear of the mount uprights. M3 clearance at the posts, M2.5 at the Pi holes, 5 vent slots, rear and front cable cut-outs.
+- Took four builds: three failed at "prof … all feature null" and I blamed the sketch plane / cut direction (moved the deck to its own frame, then flipped it). Building the part alone showed every cut passed except the last: the front cable slot's end was tangent to the tongue's front edge. Ended it 1 mm short → BUILD OK, 12,981.5 vs 12,981.4 mm³. The deck keeps its own frame (top at z 0, placed at z 27); harmless. Lesson: build a failing part alone and read every line before theorising.
+- Full rebuild: 0 interferences; printed parts 341.3 g, CoG (11.4, −0.1, 14.4).
+- S1d (new): deck held at the post holes, 25.5 N via the M2.5 holes: 6.30 MPa (SF 5.6), Pi holes 0.10 mm (limit 0.5); equilibrium exact.
+- Next: rotate: S1a (plate edges) or W/A items; D10 after.

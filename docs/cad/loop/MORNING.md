@@ -42,6 +42,8 @@ _Pass 1 starting (2026-10-30 17:05). Rewritten every tick._
 
 *(D9, a short chamfer at the mount root, was tried and rejected: it added corners. D10 queues the proper fix.)*
 
-**Next:** S1a / P4, D10, then P2o (plate + FEA for the new track), then P2 motor mount v2 (outboard axle support, Q4 default), P3 plate stiffening.
+**Pi deck (P4):** new part RB-PRT-003, 16.7 g PET-CF, 3 mm, on the four posts; fits with no interference; 10 g shock test SF 5.6, 0.10 mm. Ready for your look (it sits under the Pi envelope in the assembly shots).
+
+**Next:** S1a, D10, then P2o / P5 (plate + FEA for the new track), then P2 motor mount v2 (outboard axle support, Q4 default), P3 plate stiffening.
 
 **Open questions:** Q4–Q12 in `QUESTIONS.md`, each with a default the loop is using.

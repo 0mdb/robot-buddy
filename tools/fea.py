@@ -113,6 +113,29 @@ def s1b() -> dict:
     }
 
 
+def s1d() -> dict:
+    """Pi deck alone (P4): the stack's 10 g shock through its four M2.5 holes, deck
+    held at the four M3 post holes (screw clamps; conservative: no bearing on the post tops)."""
+    f = STACK_MASS * 9.81 * SHOCK_G
+    z0, z1 = -chassis.DECK_T, 0.0  # deck part frame (top at z 0)
+    return {
+        "name": "S1d",
+        "title": "Pi deck, stack payload (10 g)",
+        "part": r"\CAD\parts\RB-PRT-003_pi_deck.SLDPRT",
+        "lines": [
+            "discard_open",
+            f"fix cyl 0 0 1 {chassis.CLR_M3 / 2} 0.05",
+            f"load pi cyl 0 0 1 {chassis.CLR_M25 / 2} 0.05",
+            f"disp pi cyl 0 0 1 {chassis.CLR_M25 / 2} 0.05",
+            f"probe deck -70 -35 {z0 - 1} 40 35 {z1 + 1}",
+            "mesh 1.5 0.1",
+            f"case payload pi:0,0,{-f:.2f}",
+        ],
+        "applied": (0, 0, -f),
+        "limit_disp_mm": 0.5,
+    }
+
+
 def s2() -> dict:
     """Motor mount v2 (RB-PRT-010, right side) in its own part frame (P2).
 
@@ -237,6 +260,7 @@ def s1m() -> dict:
 
 STUDIES = {
     "S1m": s1m,
+    "S1d": s1d,
     "S1a": s1a,
     "S1b": s1b,
     "S2": s2,
