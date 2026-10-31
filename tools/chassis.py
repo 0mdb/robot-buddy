@@ -621,6 +621,16 @@ def rebuild_manifest(win: str) -> list[str]:
         f"close|{plate}",
         f"shot|{bulkhead}|{win}\\shots\\bulkhead",
         f"close|{bulkhead}",
+        # printed parts -> STL in chassis coordinates (T1); meshcheck reads these
+        *[
+            f"stl|{p}|{cad}\\exports\\gen\\{n}.stl"
+            for p, n in (
+                (plate, "RB-PRT-001_base_plate"),
+                (bulkhead, "RB-PRT-002_bulkhead"),
+                (mount_r, "TT_Motor_Mount_L"),
+                (mount_l, "MirrorTT_Motor_Mount_L"),
+            )
+        ],
     ]
     return lines
 

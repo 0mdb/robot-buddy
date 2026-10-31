@@ -12,7 +12,7 @@ _Pass 1 starting (2026-10-30 17:05). Rewritten every tick._
 | S2 motor mount, pull | 41–46 MPa | 0.43 mm | FAIL ×3.5 |
 | S5c bulkhead rev 2, screen poke, canopy fitted | 7.0 MPa | 0.27 mm | PASS (standalone 39 MPa / 8 mm: Q13) |
 
-**Tooling so far:** `tools/meshcheck.py` (T2) measures overhang, min wall and sharp edges from an STL; validated on test shapes. FEA runs now have a watchdog (T8) that answers the solver's "excessive displacement" pop-up, so the loop can't hang on it overnight.
+**Tooling so far:** `tools/meshcheck.py` (T2) measures overhang, min wall and sharp edges from an STL; validated on test shapes. FEA runs now have a watchdog (T8) that answers the solver's "excessive displacement" pop-up, so the loop can't hang on it overnight. Every rebuild now exports STLs of the printed parts to `CAD/exports/gen/` (T1); meshcheck on them flags the plate's underside as 158 cm² of unsupported overhang in its planned print orientation, which D3 has to solve.
 
 **Bulkhead rev 2 (accepted, P1b):** 43.7 g PET-CF, face board behind a window, sonar + speaker grille + camera hole, one knee gusset bolted to the plate. Passes the screen poke with the canopy fitted; alone it still flexes 8 mm (Q13). Renders in `shots/1-P1b/`. Not print-ready: square edges (needs T7), sonar tilted 15° up.
 

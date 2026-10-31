@@ -45,3 +45,11 @@ Newest at the bottom. One entry per tick.
 - Q13 asks Ben which S5 restraint counts; default = canopy fitted (07 amended). P6 now carries the lug-stiffness requirement.
 - Next: rotate to T (T1 STL export or T3 mass/CoG), then P2 motor mount v2.
 - (tick 4, fix) `cad-pull` copied 48 Simulation result files (.CWR/.gsz/.LOG, 2.8 GB) that the studies write next to the parts, and they landed in the P1b commit. Amended the (unpushed) commit to drop them; `.gitignore` + `sw.py` EXCLUDE now skip them. Their blobs stay in `.git` until the reflog expires (local only): `git reflog expire --expire=now --all && git gc --prune=now` reclaims ~1.5 GB if wanted.
+
+## tick 5 · T1 STL export per rebuild · accepted · 2026-10-30 19:30
+- Hypothesis: binary mm STLs in chassis coordinates for every printed part, trimesh volume = SolidWorks within 0.5 %.
+- `stl|doc|out` in swbuild.cs; the rebuild writes plate, bulkhead, both motor mounts to `CAD/exports/gen/` (kept apart from Ben's July STLs).
+- First run: the mounts' STLs were the reflex envelope (12 triangles, 65 × 60 × 15.6): STL export writes the ACTIVE document; plate/bulkhead only worked because a render had just activated them. Fixed by activating before SaveAs.
+- Check: plate 78,031 vs 78,070; bulkhead 33,885 vs 33,889; mounts 6,039.7 vs 6,039.3 mm³ (all ≤ 0.05 %).
+- meshcheck findings for D3 (as modelled, +Z up): plate 158 cm² overhang + a 0.07 mm min-wall sliver; bulkhead 23 cm²; mounts 0.6 / 8.8 cm².
+- Next: P2 motor mount v2 (outboard axle support, Q4 default).

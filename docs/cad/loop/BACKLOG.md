@@ -22,7 +22,8 @@ Baseline at loop start (commit on `cad`): plate rev 1, envelopes, Ben's imported
 - [ ] P10 `[sw]` **Full assembly**: every part placed, interference clean (except the 🟡 motor-envelope overlaps), assembly mass + CoG, hero renders (E4)
 
 ## T: Tooling (measure before optimising)
-- [ ] T1 `[sw]` `stl|<doc>|<out>` command in swbuild.cs; export every printed part to `CAD/exports/` on each rebuild
+- [x] T1 `[sw]` `stl|<doc>|<out>` command in swbuild.cs; export every printed part to `CAD/exports/` on each rebuild
+  **Done tick 5:** `stl|doc|out` in swbuild.cs (binary, mm, fine, chassis coordinates, no positive shift); the rebuild exports plate, bulkhead and both mounts to `CAD/exports/gen/` (Ben's originals untouched). Trimesh volumes match SolidWorks within 0.05 %. Gotcha: STL export writes the ACTIVE document, so the command activates it first.
 - [x] T2 `[py]` `tools/meshcheck.py`: from the STL, report overhang area >45° (in print orientation), min wall (ray-cast), sharp convex edges (dihedral angle), bounding box vs the P2S bed, and volume → grams at the infill/wall settings in print-bom.md. Add `trimesh` to tools/pyproject.toml. **Done tick 1**: controls pass (1.0 mm slab wall, 12 sharp edges / 164 mm, cylinder rims only, floating-cube overhang 1.0 cm²); grams are solid-ρ only, as-printed grams wait for T4. Sharp-edge count includes hole rims (true unchamfered edges)
 - [ ] T3 `[sw]` per-part mass/volume/CoG line in the build output, and assembly CoG
 - [ ] T4 `[py]` headless slice with the installed Bambu Studio CLI: real print time, grams and support volume per part. The output is a `.3mf` per part = the "print ready" file. **Port, don't rediscover:** `~/fpv250/fpv250/docs/print-settings.md` §3 (the CLI prints nothing; it ignores `inherits` and reports success anyway, so pass flattened presets), `tools/slicemass.py`, and its calibrated P2S PA6-CF presets (`docs/print-calibration.md`). Check sliced grams against CAD volume × ρ: a mismatch means a bad preset
@@ -66,7 +67,7 @@ Rules the loop enforces from here on (ASTM F963 / EN 71-1 / IEC 62115 as design 
 ## D: Stress risers, printability, DFM
 - [ ] D1 `[sw]` fillet every internal corner on a load path (insert bosses, rib roots, slot ends, bulkhead foot); `fil_in` 2.0 at load roots
 - [ ] D2 `[sw]` slot ends and wire slot: full-radius ends, no square ends
-- [ ] D3 `[py]` print-orientation decision per part, written into the part list; chamfer (not fillet) the bed-side edges; teardrop the horizontal holes
+- [ ] D3 `[py]` print-orientation decision per part — **meshcheck (tick 5) in +Z as modelled: plate 158 cm² overhang (the underside between the bottom ribs floats 3.6 mm over the bed when printed top-up, ribs down) and a 0.07 mm min wall (p1 0.95) to locate; bulkhead 23 cm²; mounts 0.6 / 8.8 cm² (the mirror part is Z-flipped)**, written into the part list; chamfer (not fillet) the bed-side edges; teardrop the horizontal holes
 - [ ] D4 `[sw]` bulkhead foot strip 6.5 mm (TODO open item): widen or re-route
 - [ ] D5 `[doc]` hole-size table vs print-dfm.md (insert bores, clearance, M3 jack screws), checked against the measured insert stock
 - [ ] D6 `[sw]` fit coupons: a small printable coupon per critical fit (insert ladder, motor hole pair, follower slide, bearing seat). Cheap prints that de-risk the expensive ones

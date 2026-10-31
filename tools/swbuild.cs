@@ -25,6 +25,8 @@
 //   asmsave
 //   shot|<doc>|<outprefix>                    iso/top/front/right BMPs
 //   close|<doc>                               close a document this run opened
+//   stl|<doc.SLDPRT>|<out.stl>                binary STL, mm, fine, in the part's own
+//                                             coordinates (not shifted to positive space)
 //   rotbody|px py pz|y|deg                    rotate every solid body about the axis
 //                                             through (px,py,pz) parallel to Y (Move/Copy Body)
 // Ends with "BUILD OK" or "BUILD FAILED n".
@@ -105,6 +107,7 @@ class SwBuild
                 case "shot": Shot(f[1], f[2]); break;
                 case "close": CloseByPath(f[1]); break;
                 case "rotbody": RotBody(f); break;
+                case "stl": Stl(f[1], f[2]); break;
                 default: Check("command " + f[0], false, "unknown"); break;
             }
             if (failures > 0 && f[0] != "expect") break;   // stop at the first broken step
@@ -386,6 +389,30 @@ class SwBuild
         bool ok = asmDoc.Extension.SaveAs(asmPath, (int)swSaveAsVersion_e.swSaveAsCurrentVersion,
             (int)swSaveAsOptions_e.swSaveAsOptions_Silent, null, ref e, ref w);
         Check("save " + Path.GetFileName(asmPath), ok, "err " + e + " warn " + w);
+    }
+
+    static void Stl(string path, string outPath)
+    {
+        int e = 0, w = 0;
+        IModelDoc2 d = (IModelDoc2)sw.OpenDoc6(path, (int)swDocumentTypes_e.swDocPART,
+            (int)swOpenDocOptions_e.swOpenDocOptions_Silent, "", ref e, ref w);
+        if (d == null) { Check("stl open " + Path.GetFileName(path), false, "err " + e); return; }
+        // STL export writes the ACTIVE document, not the one SaveAs is called on (measured
+        // 2026-10-30: a mount's STL came out as the last-active reflex envelope)
+        d.Visible = true;
+        sw.ActivateDoc3(d.GetTitle(), false, (int)swRebuildOnActivation_e.swDontRebuildActiveDoc, ref e);
+        sw.SetUserPreferenceIntegerValue((int)swUserPreferenceIntegerValue_e.swExportStlUnits, (int)swLengthUnit_e.swMM);
+        sw.SetUserPreferenceIntegerValue((int)swUserPreferenceIntegerValue_e.swSTLQuality, (int)swSTLQuality_e.swSTLQuality_Fine);
+        sw.SetUserPreferenceToggle((int)swUserPreferenceToggle_e.swSTLBinaryFormat, true);
+        sw.SetUserPreferenceToggle((int)swUserPreferenceToggle_e.swSTLDontTranslateToPositive, true);
+        IMassProperty mp = (IMassProperty)d.Extension.CreateMassProperty();
+        double vol = mp.Volume * 1e9;
+        bool ok = d.Extension.SaveAs(outPath, (int)swSaveAsVersion_e.swSaveAsCurrentVersion,
+            (int)swSaveAsOptions_e.swSaveAsOptions_Silent | (int)swSaveAsOptions_e.swSaveAsOptions_Copy, null, ref e, ref w);
+        bool exists = File.Exists(outPath);
+        Check("stl " + Path.GetFileName(outPath), ok && exists,
+            string.Format(ci, "part vol {0:F1} mm3, {1} bytes, err {2}", vol, exists ? new FileInfo(outPath).Length : 0, e));
+        sw.CloseDoc(d.GetTitle());
     }
 
     static void RotBody(string[] f)
