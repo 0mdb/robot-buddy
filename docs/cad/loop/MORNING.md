@@ -30,6 +30,8 @@ _Pass 1 starting (2026-10-30 17:05). Rewritten every tick._
 
 **Plate test made realistic (T10):** the plate is now analysed with the motor mounts bonded on. The fake pocket peak is gone; the real issue is bending: under 20 N track tension the motor axles move ~0.9 mm back and 1.2 mm up relative to the rear followers (target 0.2). Rails along the sides at axle height (P3) are the fix this points to.
 
-**Next:** P3 rails, D8 (plate + FEA for the new track), then P2 motor mount v2 (outboard axle support, Q4 default), P3 plate stiffening.
+**Plate ribs (P3):** four 2.4 × 4 mm ribs under the plate along the track-tension line (+6.3 g, no ground clearance lost). The plate test now passes on strength (SF 3.6, was 2.6), and axle motion dropped 37 % to ~1 mm, still over the 0.2 mm limit. **Q17** asks whether to judge that limit on the drive-torque increment (~0.18 mm, passes) or build an outboard track frame.
+
+**Next:** D8, then P2o / P4 (plate + FEA for the new track), then P2 motor mount v2 (outboard axle support, Q4 default), P3 plate stiffening.
 
 **Open questions:** Q4–Q12 in `QUESTIONS.md`, each with a default the loop is using.

@@ -113,3 +113,10 @@ Newest at the bottom. One entry per tick.
 - Results: the pocket artefact is gone (plate top 11.3 MPa vs S1a's 17.6); peak 13.3 / 12.6 MPa on the jack-stop blocks' root faces (fixture-adjacent, unfilleted); motor inserts UX −0.16…−0.91 mm, UZ +1.13…+1.27 mm. The mounts' eccentric moment bends the plate between mounts and jack stops, 4× what pocket-coupled S1a showed.
 - 07 gets S1m as the verdict study for P3. Evidence points to P3 (a): rails at axle height from the mount feet to the jack stops.
 - Next: P3 (a) side rails, judged on S1m.
+
+## tick 14 · P3 (b) load-path ribs · accepted (strength fix, +6.3 g) · 2026-10-31 00:40
+- (a) rails at axle height don't fit: the reflex board edge (|y| 30) and the encoder (|y| 30.7, z 1) leave 0.7 mm between the jack stops and the mount feet. Beam check: S1m's motion is whole-plate XZ bending from the 15.5 mm load offset (EI 782 mm⁴ gives ~1.1 mm, matching the FEA). 0.2 mm would need ~6× EI.
+- Change: `LOAD_RIBS`, two ribs per side 2.4 × 4.0 under the plate at |y| 36.5 (x −42…72) and 47 (x −78…70), bottom at −8 (same as the insert bosses, so no clearance loss). Plate 81,595 → 86,489 mm³ (numeric), BUILD OK, 0 interferences.
+- S1m: peak 13.33 → 9.68 MPa (SF 2.63 → 3.62, passes); inserts UX −0.91 → −0.59, UZ 1.27 → 0.79, URES 1.54 → 0.97 mm. S1b 2.55 → 2.51 MPa. Equilibrium exact.
+- Verdict: accepted as a strength fix (stress gate now passes). Deflection still 5× over → Q17 (judge on the drive increment ≈ 0.18 mm; or an outboard track frame folded into P2o).
+- Next: rotate off P: T/M/S/W item, or D8.

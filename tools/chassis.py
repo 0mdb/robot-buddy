@@ -216,6 +216,14 @@ WIRE_SLOT = (
 
 LONG_RIBS_Y, LONG_RIBS_X = (-25.0, 0.0, 25.0), (-80.0, 75.0)
 CROSS_RIBS_X, CROSS_RIBS_Y = (-60.0, -20.0, 20.0, 60.0), (-44.0, 44.0)
+# P3 (b): load-path ribs under the track-tension line (S1m: the plate bends in XZ between
+# the mount feet and the jack stops). Top-side rails don't fit: the reflex board edge
+# (|y| 30) and the encoder (|y| 30.7, z 1) leave 0.7 mm. Kept to the -8 underside of the
+# insert bosses so ground clearance is unchanged. |y| 36.5 is the jack-screw line; it
+# stops at x -42, short of the guide and clamp slots.
+LOAD_RIBS = True
+LOAD_RIB_T, LOAD_RIB_Z = 2.4, UNDER_BOSS_Z
+LOAD_RIBS_YX = ((36.5, (-42.0, 72.0)), (47.0, (-78.0, 70.0)))
 
 
 def mount_holes() -> list[tuple[float, float]]:
@@ -294,6 +302,13 @@ def plate_features() -> list[tuple[str, tuple, float, float]]:
                 -PLATE_T,
             )
         )
+    if LOAD_RIBS:
+        for y, (x0, x1) in LOAD_RIBS_YX:
+            for sgn in (-1, 1):
+                y0, y1 = sorted(
+                    (sgn * (y - LOAD_RIB_T / 2), sgn * (y + LOAD_RIB_T / 2))
+                )
+                add.append(("add", ("rect", x0, x1, y0, y1), LOAD_RIB_Z, -PLATE_T))
     for x in CROSS_RIBS_X:
         add.append(
             (
