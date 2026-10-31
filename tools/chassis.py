@@ -1411,6 +1411,59 @@ def compile_engine(tool: str) -> str:
     return w + "\\swbuild.exe"
 
 
+# T3: printed parts and their material (07 / Bambu TDS, g/cm³). Envelopes (motor, Pi
+# stack, boards, belt stand-ins) and analysis-only parts are left out.
+RHO = {"PET-CF": 1.29, "TPU": 1.22}
+PART_MATERIAL = {
+    "RB-PRT-001": "PET-CF",
+    "RB-PRT-002": "PET-CF",
+    "RB-PRT-010": "PET-CF",
+    "RB-PRT-011": "PET-CF",
+    "RB-PRT-020": "PET-CF",
+    "RB-PRT-021": "PET-CF",
+}
+
+
+def mass_report(lines: list[str], out: str) -> list[tuple]:
+    """Per-part mass + centroid from the engine's MASS lines, and the printed-part
+    total + CoG in the chassis frame using each component's transform (v' = R v + t)."""
+    parts: dict[str, tuple[float, list[float]]] = {}
+    for ln in out.splitlines():
+        if ln.startswith("MASS|"):
+            _, name, vol, com = ln.split("|")
+            parts[name.upper()] = (float(vol), [float(v) for v in com.split()])
+    rows = []
+    for name, (vol, com) in parts.items():
+        mat = PART_MATERIAL.get(name[:10])
+        if mat:
+            rows.append((name, mat, vol, vol / 1000 * RHO[mat], com))
+    print("\nMASS (printed parts, part frame)")
+    for name, mat, vol, g, com in rows:
+        print(
+            f"  {name:40s} {mat:6s} {vol:10.1f} mm3 {g:7.1f} g  com ({com[0]:.1f}, {com[1]:.1f}, {com[2]:.1f})"
+        )
+    tot, mom = 0.0, [0.0, 0.0, 0.0]
+    for ln in lines:
+        if not ln.startswith("comp|"):
+            continue
+        _, cname, path, nums, *_ = ln.split("|")
+        key = path.split("\\")[-1].upper()
+        hit = next((r for r in rows if r[0] == key), None)
+        if hit is None:
+            continue
+        n = [float(v) for v in nums.split()]
+        c = hit[4]
+        p = [sum(n[i * 3 + j] * c[j] for j in range(3)) + n[9 + i] for i in range(3)]
+        tot += hit[3]
+        mom = [m + hit[3] * v for m, v in zip(mom, p)]
+    if tot:
+        cog = [m / tot for m in mom]
+        print(
+            f"  printed parts in the assembly: {tot:.1f} g, CoG ({cog[0]:.1f}, {cog[1]:.1f}, {cog[2]:.1f}) mm"
+        )
+    return rows
+
+
 def run(lines: list[str], dry: bool) -> None:
     stage = sw.staging()
     tool = os.path.join(stage, "tools")
@@ -1434,6 +1487,7 @@ def run(lines: list[str], dry: bool) -> None:
     out = r.stdout.replace("\r", "")
     print(out, end="")
     # cmd.exe swallows .NET exit codes through WSL interop -- trust the last line
+    mass_report(lines, out)
     if "BUILD OK" not in out:
         sys.exit("swbuild did not report BUILD OK")
 

@@ -293,6 +293,11 @@ class SwBuild
 
     static void SavePart()
     {
+        // T3: one machine-readable line per part; chassis.py applies density and placement
+        IMassProperty mp = (IMassProperty)doc.Extension.CreateMassProperty();
+        double[] com = (double[])mp.CenterOfMass;
+        Console.WriteLine(string.Format(ci, "MASS|{0}|{1:F1}|{2:F3} {3:F3} {4:F3}",
+            Path.GetFileName(docPath), mp.Volume * 1e9, com[0] * 1e3, com[1] * 1e3, com[2] * 1e3));
         int e = 0, w = 0;
         bool ok = doc.Extension.SaveAs(docPath, (int)swSaveAsVersion_e.swSaveAsCurrentVersion,
             (int)swSaveAsOptions_e.swSaveAsOptions_Silent, null, ref e, ref w);

@@ -65,3 +65,4 @@ CAD/**/*.CWR
 CAD/**/*.gsz
 CAD/**/*.LOG
 CAD/**/PerformanceLog.txt
+CAD/**/*-BenchMark-Solver.txt

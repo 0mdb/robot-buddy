@@ -32,6 +32,7 @@ CSC = r"C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
 SWAPI = "/mnt/c/Program Files/SOLIDWORKS Corp/SOLIDWORKS/api/redist"
 DLLS = ("SolidWorks.Interop.sldworks.dll", "SolidWorks.Interop.swconst.dll")
 EXCLUDE = (
+    "*-BenchMark-Solver.txt",
     "~$*",
     "*.~*",
     "*.SLDBAK",

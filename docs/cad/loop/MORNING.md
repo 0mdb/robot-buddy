@@ -34,6 +34,8 @@ _Pass 1 starting (2026-10-30 17:05). Rewritten every tick._
 
 **Motor mount (D8):** gusset 3 moved 2 mm clear of the insert pocket; the mount drive test (S2) is now SF 3.6 (was 2.9), a pass. One sharp inside corner left to round (D9).
 
-**Next:** T3 / M1, D9, then P2o / P4 (plate + FEA for the new track), then P2 motor mount v2 (outboard axle support, Q4 default), P3 plate stiffening.
+**Mass (T3):** every build now prints part masses: printed parts so far 324.5 g (plate 111.6, bulkhead 43.7, sprockets + idlers 141, mounts 27.8).
+
+**Next:** M1, D9, then P2o / P4 (plate + FEA for the new track), then P2 motor mount v2 (outboard axle support, Q4 default), P3 plate stiffening.
 
 **Open questions:** Q4–Q12 in `QUESTIONS.md`, each with a default the loop is using.

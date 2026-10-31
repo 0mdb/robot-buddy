@@ -127,3 +127,9 @@ Newest at the bottom. One entry per tick.
 - S2 pull + torque: default 11.38 → 7.15 MPa; half mesh 11.95 → 9.67 (+35 %). The new peak is singular: the sharp inboard root corner (upright y −34 / foot top z 3) between the chamfer end (x 11.5) and the upright end (x 20). The pocket drops out of the half-mesh top 5. Motor holes 0.0432 → 0.0483 mm (+12 %).
 - Verdict: accepted. SF ≥ 35 / 9.67 = 3.62 even on the singular peak (was 2.93); the +12 % deflection is a deliberate trade, 0.05 mm being far inside 07 §3.4. Next for that corner: D9 (fillet or short chamfer x 11.5–20).
 - Next: rotate: T3 (mass/CoG line) or M1.
+
+## tick 16 · T3 per-part mass / CoG line · accepted · 2026-10-31 01:55
+- Engine: `SavePart` prints `MASS|<file>|<vol mm³>|<com mm>`. chassis.py: `PART_MATERIAL` + `RHO` → grams; the printed-part total and CoG come from the `comp|` transforms in the manifest. Checked on dummy lines first, then a live rebuild (BUILD OK, 0 interferences, geometry unchanged).
+- Reading: plate 111.6 g, bulkhead 43.7, mounts 13.9 each, sprockets 35.9 each, idlers 34.7 each → 324.5 g printed, CoG (12.8, −0.1, 13.8) mm; the hand sum agrees.
+- Housekeeping: 34 Simulation `*-BenchMark-Solver.txt` logs had been committed under CAD/parts; untracked (files kept), gitignored, added to sw.py EXCLUDE.
+- Next: rotate: M1 (PA6-CF in fea.py) or S1 edge audit; D9 after.
