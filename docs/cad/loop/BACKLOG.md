@@ -5,6 +5,15 @@ Tags: `[sw]` needs SolidWorks · `[py]` Python only · `[doc]` docs only. The lo
 
 Priority order for a pass: **P → T → M → S → W → D → A → R → E**. Ben (2026-10-30): "we need all the parts", so P (a first cut of every missing part) leads, rotating with T so the tooling keeps pace. Material comes next because every FEA verdict depends on it.
 
+## Leg 2 order (Ben, 2026-10-31 ~10:40): canopy → treads → polish. Take items in this order; rotation applies within it.
+1. **P6 canopy** to Q18 (a) pebble 1/3/8: first cut, holding the bulkhead's two top lugs (S5c), S4's battery requirements, the canopy rear bosses on the plate (F9: 2 × M3 inserts at x −85…−75, not on the plate yet), then **S7** (300 N heel, < 10 mm, SF ≥ 3) and S5c re-run with the real canopy. Material per M4 (PC vs ASA) inside the item.
+2. **P2o → outboard track frame (Q17 b):** amend 06 §7 first; a frame per side inside the belt loop from the sprocket's outboard 624 (Ø4 shoulder bolt) to the idler axle, carrying the jack screw; new study for it; S1m then measures what the plate still sees.
+3. **Treads track (new T11–T13):**
+   - **T11 `[sw]`** native belt part from `drivetrain.belt()`'s layer stack (ring + lug + bar profiles; the engine's `ring` command), volume-checked against the mesh; replaces the belt envelope for fit checks.
+   - **T12 `[py]`** `drivetrain.py check-wrap`: bend the printed profile onto the pitch circle, lug ↔ pocket clearance at 0 / 0.5 / 1 / 2 % stretch over the 9 engaged lugs, base bending strain, tooth tops below the running surface over the wrap.
+   - **T13 `[py]`** print package: seam on the lug inner faces, walls-only base, shrink compensation on the 400 mm length, 85A / 95A profile; coupon + 6-lug test-piece + strip-test files (08 §7) sliced (T4).
+4. **Polish:** S1b2 (bulkhead face edges), D1b (internal fillets), R2b (motor-lead connectors), W7 (only if the track frame doesn't make it moot).
+
 ## P: Parts (a first cut of every part; Ben 2026-10-30)
 - [x] **P14 `[sw]` (Ben, 2026-10-31 ~08:15) motor-bell clearance in the plate:** the motor doesn't sit exactly flat, so its can/encoder end would bear on the plate and push the back of the motor up (a moment on the bracket, stress on the gearbox). A **2 mm deep depression** in the plate top (not through) under each motor's can + encoder: x −11 … 20, |y| 31 … 53 (clear of the reflex standoff at |y| 30.6 and 2 mm short of the plate edge), floor-edge r 1.0. Check S1m (it thins the plate in the tension load path), S1b and interference
   **Done tick 43:** `BELL_POCKET` x −11…20, |y| 31…53, 2 mm deep (each −1,364 mm³), floor edge r 1.0 (+22.3 vs +22.75 mm³). Plate 114.7 → 111.3 g. 0 interferences. S1m 9.00 → 9.03 MPa (=), **inserts 0.900 → 1.033 mm (+15 %)**: the plate is 2 mm thinner in the tension path (Q17 context). S1b 3.57 → 3.68 MPa, deck 0.126. Accepted as Ben's functional fix.
@@ -133,7 +142,7 @@ Rules the loop enforces from here on (ASTM F963 / EN 71-1 / IEC 62115 as design 
 - [ ] D6 `[sw]` fit coupons: a small printable coupon per critical fit (insert ladder, motor hole pair, follower slide, bearing seat). Cheap prints that de-risk the expensive ones
 
 ## A: Simplification & integration
-- [ ] A1 `[sw]` **variant**: motor mounts integrated into the plate (`RB-PRT-001b`). Compare mass, part count, fasteners, FEA S1/S2, print time, support volume, and repair cost (a cracked mount now means reprinting the plate)
+- [x] A1 **closed (Ben 2026-10-31: keep the mounts bolted)** `[sw]` **variant**: motor mounts integrated into the plate (`RB-PRT-001b`). Compare mass, part count, fasteners, FEA S1/S2, print time, support volume, and repair cost (a cracked mount now means reprinting the plate)
 - [x] A2 `[doc]` fastener consolidation: one screw family (M3?) + one driver; count inserts and screws per assembly
   **Done tick 28:** `docs/cad/loop/A2_fasteners.md`: M3 everywhere except the Pi (M2.5, fixed) and the TT end screw (M2, fixed); 12 screws × 6 → × 8 (5 SHCS lengths); F4b jack screw × 20 → × 30 (it couldn't cover the travel); one 2.5 key for every M3 SHCS, 2.0 kept on purpose for the canopy buttons; F12 suggested M3. 07 amended.
 - [ ] A3 `[sw]` hybrid: integrated mount saddles + bolt-on caps (repairable *and* fewer parts)?

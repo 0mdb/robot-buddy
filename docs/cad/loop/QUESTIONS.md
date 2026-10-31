@@ -2,6 +2,14 @@
 
 The loop adds questions here and moves on. Answer inline (`**A:** …`); the next tick picks it up.
 
+## Answered 2026-10-31 (~10:40, Ben)
+- **Q17 plate deflection → (b) outboard track frame.** A frame inside each belt loop carries the belt tension between the sprocket's outboard 624 and the idler axle, so the plate no longer sees it. Folds into P2o; 06 §7 gets an amendment before the CAD diverges. The S1m deflection limit stays as written until the frame exists.
+- **A1 integrated motor mounts → keep them bolted.** (Integration doesn't help the deflection; a cracked mount stays a 14 g reprint.)
+- **Q18 design language → (a) pebble 1 / 3 / 8.** The canopy (P6) and E2 are built to `docs/cad/loop/E1_design_language.md`.
+- **Don't print the plate yet**; next leg: canopy, treads, polish.
+- **Closed as settled by the work:** Q4 (mount fixed: S2 converged SF 5.3), Q8 (printed TPU), Q10 (rear relief removed, P12), Q11 (stop times set by Ben), Q13 (S5 judged with the canopy holding the lugs, S5c).
+- **Defaults standing** (proposed 10:40, no objection): Q5 room for both links, Q6 Pi Camera 3 above the screen, Q7 15° / ~68 mm, Q9 keep old CAD, Q12 propose a recessed grip, Q14 crush ribs, Q15 18 pockets, Q16 road wheels + staggered pads.
+
 ## Answered (2026-10-30)
 - **Q1 Age band.** **A:** 6–12. → Sharp-edge/point rules apply in full (ASTM F963 tests them for under 8). The under-3 small-parts cylinder is not a hard rule, but loose bits stay screw-captive because of younger siblings.
 - **Q2 Material.** **A:** PET-CF or PA6-CF (fpv250's Fiberon PA6-CF20) for structure; PETG for fit/test prints. Bambu **white PC** is a candidate for the shell/canopy (added later the same day). → The loop picks per part by FEA + toughness (workstream M) and records the choice as a 07 amendment.

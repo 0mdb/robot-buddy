@@ -95,3 +95,14 @@ to the backlog.
   plainly at the top of MORNING.md.
 
 Each tick ends with: `tick <n> · <item-id> · <verdict> · next in <s>`.
+
+## Lessons from leg 1 (2026-10-31; read before your first change)
+
+- **Build a changed part alone first** (`chassis.run(<part>_lines(...))`) and read every line; only then the full rebuild. A filtered log hid the real failing feature for four builds (P4).
+- **Fillets fail on slivers.** Before a `filletface`, check that no two features nearly touch (a 0.1 mm step, a boss 0.07 mm from a rim, a slot within 0.2 mm of a counterbore). The per-face / per-loop diagnostic and `SWB_DEBUG=1 WSLENV=SWB_DEBUG` say which.
+- **Never give a feature the radius a study selects by shape** (S2 picks `cyl 0 1 0 2.0` as motor inserts; an r 2.0 fillet became a third insert, tick 36).
+- **Don't kill swsim mid-run unless you must**: it left a part open (the next save failed) and SolidWorks grew to ~41 GB and hung. If you do, close the documents before rebuilding; if SolidWorks stops answering, mark sw DOWN and leave the restart to Ben.
+- **Background jobs: use `run_in_background`**, never a bare `&` (no completion notice).
+- **String edits to generated Python**: ruff wraps long lines; a `str.replace` that misses must fail loudly (`assert old in s`), and check the expected volume changed.
+- **meshcheck's min wall finds real defects** (0.25 / 0.23 / 0.95 mm walls this leg); locate them with inward ray casts before guessing.
+
