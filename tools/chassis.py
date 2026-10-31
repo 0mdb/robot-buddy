@@ -519,6 +519,29 @@ def plate_lines(plate: str) -> list[str]:
         f"filletface|{PLATE_EDGE_R}|-1|{UNDER_BOSS_Z}|{-hx} {-hy} {hx} {hy}|any|{-dvb:.2f} {0.15 * dvb:.2f}|all"
     )
     vol -= dvb
+    # S1a3: r 1.0 on the slot and hole edges in the belly (z -4), loop by loop (not the
+    # rib roots, which are concave and one sits 1.05 mm from a counterbore). Edge lengths
+    # by hand: guide slots 2 x (2 x 40 + 2 pi 2.35) + clamp slot (2 x 10 + 2 pi 1.7) per
+    # side; wire slot (2 x 20 + 2 pi 3) + knee counterbore pi 6.5; tab slots 2 x 30 +
+    # three counterbores 3 x pi 6.5
+    a0, a1 = AXLE_X_MID - TRAVEL / 2, AXLE_X_MID + TRAVEL / 2
+    g_len = 2 * (a1 + RAIL_L / 2 - (a0 - RAIL_L / 2)) + 2 * math.pi * GUIDE_W / 2
+    c_len = 2 * (a1 - a0) + 2 * math.pi * CLR_M3 / 2
+    cb = math.pi * CBORE_M3
+    groups = [
+        (f"{a0 - RAIL_L / 2 - 3} 26 {a1 + RAIL_L / 2 + 3} 46", 2 * g_len + c_len),
+        (f"{a0 - RAIL_L / 2 - 3} -46 {a1 + RAIL_L / 2 + 3} -26", 2 * g_len + c_len),
+        # the wire slot's loop isn't found on any z -4 face (tick 41, open): knee cbore only
+        (f"{BH_KNEE_HOLE[0] - 5} -5 {BH_KNEE_HOLE[0] + 5} 8", cb),
+        # the front tab slots and bulkhead counterbores aren't found as z -4 loops either
+        # (tick 41, open, with the wire slot): left sharp for now
+    ]
+    for box, length in groups:
+        dvl = (1 - math.pi / 4) * PLATE_EDGE_R**2 * length
+        lines.append(
+            f"filletface|{PLATE_EDGE_R}|-1|{-PLATE_T}|{-hx} {-hy} {hx} {hy}|any|{-dvl:.2f} {0.15 * dvl:.2f}|loops:{box}"
+        )
+        vol -= dvl
     lines += [
         f"expect|vol {vol:.1f} {vol * 0.004:.1f}|box {-hx} {hx} {-hy} {hy} {UNDER_BOSS_Z} {DECK_Z} 0.01",
         "save",

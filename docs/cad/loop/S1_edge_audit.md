@@ -66,6 +66,17 @@ Tool: `uv run --project tools --extra cad python tools/edgeaudit.py --md docs/ca
 | RB-PRT-020_sprocket | outboard face | 3419 | 41 | 31 @ (6, -3, 0); 10 @ (-6, 3, 0) |
 | RB-PRT-021_idler | outboard face | 3459 | 41 | 31 @ (6, 1, 0); 10 @ (-4, -5, 0) |
 
+## After S1a3 (tick 41: belly slot edges, partial)
+
+| Part | Accessible zone | Sharp edges total (mm) | Accessible (mm) | Biggest accessible clusters (length @ x, y, z) |
+|---|---|---|---|---|
+| RB-PRT-001_base_plate | plate perimeter + belly | 1617 | 351 | 45 @ (45, 3, -4); 50 @ (84, -11, -4); 46 @ (84, 11, -4); 15 @ (32, 1, -4); 9 @ (-59, 26, -6); 9 @ (-80, -1, -6) |
+| RB-PRT-002_bulkhead | face side + outer sides | 3145 | 1113 | 344 @ (78, 23, 27); 74 @ (85, 0, 9); 45 @ (65, 30, 75); 45 @ (65, -30, 75); 33 @ (52, 23, 122); 30 @ (59, -8, 97) |
+| RB-PRT-010_motor_mount_R | covered (motor, sprocket, canopy) | 796 | 0 | — |
+| RB-PRT-011_motor_mount_L | covered (motor, sprocket, canopy) | 796 | 0 | — |
+| RB-PRT-020_sprocket | outboard face | 3419 | 41 | 31 @ (6, -3, 0); 10 @ (-6, 3, 0) |
+| RB-PRT-021_idler | outboard face | 3459 | 41 | 31 @ (6, 1, 0); 10 @ (-4, -5, 0) |
+
 ## Reading
 - **No generated part has a single fillet yet** (the engine has `fillet` since T7, used nowhere in production). So "sharp" ≈ every edge, and the accessible column is the real to-do list.
 - **Plate (4.5 m accessible):** the belly is the bulk: every rib bottom edge (load ribs at |y| 36.5 / 47: 426 + 261 mm per side) plus the 1.2 ribs and the boss rims, then the outline's top and bottom perimeter edges. The 1.2 mm ribs can't take r 1.0 per edge; give them a full round (r 0.6) or make them 2.4 and round. The belly faces the floor but is handled every time the robot is picked up.

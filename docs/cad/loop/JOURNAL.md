@@ -280,3 +280,9 @@ Newest at the bottom. One entry per tick.
 - Carriages alone: 9,872.5 vs 9,878.2 mm³; full rebuild 0 interferences; 12.7 g each.
 - S6 (fixture moved to the insert pocket): 6.83 → 7.58 MPa (SF 4.6), peak on the boss top beside the fixture; bore 0.026 → 0.0235 mm. Accepted as a serviceability trade (track swap: one 2.5 key). 07 F4 amended (M3 × 12 into the insert).
 - Next: rotate: S1b2 / S1a3 / D1b / R2b.
+
+## tick 41 · S1a3 belly slot edges · accepted (partial) · 2026-10-31 08:15
+- New `filletface` option `loops:<box>`: only inner loops whose centre falls in the box (curve sampling so full circles count). Two compile slips (a clashing local name, `Environment` ambiguous with the SW interop).
+- Rounded r 1.0: guide + clamp slots both sides (−38.4 vs −38.7 mm³ each), knee counterbore (−4.40 vs −4.38). The wire slot, tab slots and bulkhead counterbores aren't loops of any z −4 face (debug print showed only the knee cbore in that region); dropped for now → S1a4.
+- Full rebuild 0 interferences, plate 114.8 g. S1m 8.64 → 8.69 MPa, inserts 0.900 mm (=); S1b 3.61 → 3.74 MPa, deck 0.126 mm. Plate accessible sharp edges 735 → 351 mm.
+- Next: rotate: S1b2 / D1b / R2b.

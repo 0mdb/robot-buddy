@@ -480,6 +480,9 @@ class SwBuild
         bool anyN = f[5] == "any";      // grid splits a belly into cells); "any" = >= 1 face
         int want = largest ? 1 : anyN ? -1 : int.Parse(f[5], ci);
         bool inner = f.Length > 7 && f[7] == "all";  // inner loops too (a rib grid's cells)
+        // "loops:u0 v0 u1 v1" (S1a3): ONLY the inner loops whose box centre is inside this box
+        double[] lb = null;
+        if (f.Length > 7 && f[7].StartsWith("loops:")) { lb = Nums(f[7].Substring(6)); inner = true; }
         double[] dv = Nums(f[6]);
         var picked = new List<IEdge>();
         var cand = new List<IFace2>();
@@ -516,6 +519,31 @@ class SwBuild
             {
                 ILoop2 lp = (ILoop2)lo;
                 if (!lp.IsOuter() && !inner) continue;
+                if (lb != null)
+                {
+                    if (lp.IsOuter()) continue;
+                    double lu0 = 1e9, lv0 = 1e9, lu1 = -1e9, lv1 = -1e9;
+                    foreach (object eo in (object[])lp.GetEdges())
+                    {
+                        // sample along the curve: a full circle has no vertices
+                        IEdge ed = (IEdge)eo;
+                        double[] cp = (double[])ed.GetCurveParams2();
+                        ICurve clv0 = (ICurve)ed.GetCurve();
+                        for (int k = 0; k <= 8; k++)
+                        {
+                            double t = cp[6] + (cp[7] - cp[6]) * k / 8.0;
+                            double[] q = (double[])clv0.Evaluate2(t, 0);
+                            lu0 = Math.Min(lu0, q[ua] * 1e3); lv0 = Math.Min(lv0, q[va] * 1e3);
+                            lu1 = Math.Max(lu1, q[ua] * 1e3); lv1 = Math.Max(lv1, q[va] * 1e3);
+                        }
+                    }
+                    double lcu = (lu0 + lu1) / 2, lcv = (lv0 + lv1) / 2;
+                    bool keep = !(lu0 > lu1 || lcu < lb[0] || lcv < lb[1] || lcu > lb[2] || lcv > lb[3]);
+                    if (System.Environment.GetEnvironmentVariable("SWB_DEBUG") != null || keep)
+                        Console.WriteLine(string.Format(ci, "    loop centre ({0:F1}, {1:F1}) size {2:F1} x {3:F1}: {4}",
+                            lcu, lcv, lu1 - lu0, lv1 - lv0, keep ? "kept" : "skipped"));
+                    if (!keep) continue;
+                }
                 foreach (object eo in (object[])lp.GetEdges()) picked.Add((IEdge)eo);
             }
         }
