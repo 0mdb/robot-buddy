@@ -32,6 +32,8 @@ _Pass 1 starting (2026-10-30 17:05). Rewritten every tick._
 
 **Plate ribs (P3):** four 2.4 × 4 mm ribs under the plate along the track-tension line (+6.3 g, no ground clearance lost). The plate test now passes on strength (SF 3.6, was 2.6), and axle motion dropped 37 % to ~1 mm, still over the 0.2 mm limit. **Q17** asks whether to judge that limit on the drive-torque increment (~0.18 mm, passes) or build an outboard track frame.
 
-**Next:** D8, then P2o / P4 (plate + FEA for the new track), then P2 motor mount v2 (outboard axle support, Q4 default), P3 plate stiffening.
+**Motor mount (D8):** gusset 3 moved 2 mm clear of the insert pocket; the mount drive test (S2) is now SF 3.6 (was 2.9), a pass. One sharp inside corner left to round (D9).
+
+**Next:** T3 / M1, D9, then P2o / P4 (plate + FEA for the new track), then P2 motor mount v2 (outboard axle support, Q4 default), P3 plate stiffening.
 
 **Open questions:** Q4–Q12 in `QUESTIONS.md`, each with a default the loop is using.

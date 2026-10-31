@@ -1080,8 +1080,9 @@ MM_STOP_T = 3.0  # end stop at the gearbox end (Ben's gusset)
 MM_GUSSETS = (
     -18.2,
     -3.9,
-    12.0,
-)  # inboard, between the foot screws (x -25.2, -11.2, 3.5)
+    10.0,
+)  # inboard, between the foot screws (x -25.2, -11.2, 3.5); D8: 12.0 -> 10.0 so the
+# lower motor-insert pocket (x 12.5-16.5, through the upright) misses gusset 3's root
 MM_GUSSET_T, MM_GUSSET_Y, MM_GUSSET_Z = 2.4, -45.5, 20.0
 MM_CHAMFER = 3.6  # root chamfer on the inboard side (stands in for a fillet until T7)
 MM_INS_DEPTH = MM_T  # M3 inserts through the upright, pressed from the motor face (F3)

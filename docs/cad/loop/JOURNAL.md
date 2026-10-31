@@ -120,3 +120,10 @@ Newest at the bottom. One entry per tick.
 - S1m: peak 13.33 → 9.68 MPa (SF 2.63 → 3.62, passes); inserts UX −0.91 → −0.59, UZ 1.27 → 0.79, URES 1.54 → 0.97 mm. S1b 2.55 → 2.51 MPa. Equilibrium exact.
 - Verdict: accepted as a strength fix (stress gate now passes). Deflection still 5× over → Q17 (judge on the drive increment ≈ 0.18 mm; or an outboard track frame folded into P2o).
 - Next: rotate off P: T/M/S/W item, or D8.
+
+## tick 15 · D8 gusset 3 off the insert pocket · accepted · 2026-10-31 01:30
+- Hypothesis: the through-pocket (x 12.5–16.5) nicking gusset 3's root (x 10.8–13.2) set S2's 11.95 MPa peak; gusset 3 → x 10.0 leaves 1.3 mm.
+- Build OK, 0 interferences, mass ≈ unchanged.
+- S2 pull + torque: default 11.38 → 7.15 MPa; half mesh 11.95 → 9.67 (+35 %). The new peak is singular: the sharp inboard root corner (upright y −34 / foot top z 3) between the chamfer end (x 11.5) and the upright end (x 20). The pocket drops out of the half-mesh top 5. Motor holes 0.0432 → 0.0483 mm (+12 %).
+- Verdict: accepted. SF ≥ 35 / 9.67 = 3.62 even on the singular peak (was 2.93); the +12 % deflection is a deliberate trade, 0.05 mm being far inside 07 §3.4. Next for that corner: D9 (fillet or short chamfer x 11.5–20).
+- Next: rotate: T3 (mass/CoG line) or M1.
