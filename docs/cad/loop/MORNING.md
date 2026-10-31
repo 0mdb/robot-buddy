@@ -1,3 +1,5 @@
+**⚠️ SolidWorks is hung (06:25): ~41 GB, not answering. Please restart it by hand; the loop continues with doc/py work until then and rebuilds the baseline first when it's back.**
+
 # Morning report
 
 _Pass 1 starting (2026-10-30 17:05). Rewritten every tick._
@@ -74,6 +76,8 @@ _Pass 1 starting (2026-10-30 17:05). Rewritten every tick._
 
 **Battery (S4):** safe in the frame as built (tool-only access, 10 g shock covered). The canopy (P6) now carries three battery requirements: keep the cells captive, route a stepped-on load to the frame (new FEA case S7), nothing sharp near the cells (`docs/cad/loop/S4_battery.md`).
 
-**Next:** D1, S1b2, S1a3, then P6 (plate + FEA for the new track), then P2 motor mount v2 (outboard axle support, Q4 default), P3 plate stiffening.
+*(D1 end-stop fillet is parked as a patch until SolidWorks is back.)*
+
+**Next:** D1 (reapply), S1b2, S1a3, then P6 (plate + FEA for the new track), then P2 motor mount v2 (outboard axle support, Q4 default), P3 plate stiffening.
 
 **Open questions:** Q4–Q12 in `QUESTIONS.md`, each with a default the loop is using.

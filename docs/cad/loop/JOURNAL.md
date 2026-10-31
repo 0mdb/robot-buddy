@@ -251,3 +251,10 @@ Newest at the bottom. One entry per tick.
 - The 2 × 18650 sit in the UPS HAT at the stack top (z ≤ 80) under ~13 mm of canopy clearance. Access is tool-only (A2's 2.0-key canopy screws); charging via cut-outs.
 - Gaps, all on the canopy: cells can pop from their clips in a tumble; a stepped-on canopy has no defined load path; puncture clearance. → P6 requirements + a new FEA case S7 (300 N heel pad, < 10 mm, SF ≥ 3). Cell choice note (name-brand, protected, matched).
 - `docs/cad/loop/S4_battery.md`. No CAD change. Next: SW: D1, or S1a3.
+
+## tick 36 · D1 end-stop step fillet · pending (SolidWorks hung) · 2026-10-31 06:25
+- r 2.0 on the concave step where the mount's end stop meets the upright (S2's half-mesh hot spot after D10); not the vertical corner, where the gearbox bears. Built alone: +5.15 vs +5.15 mm³.
+- S2 showed `disp motorholes: 3 faces`: the r 2.0 fillet is a y-cylinder of radius 2.0, which S2's insert selector (and its remote-load coupling) also picks. Run invalid; killed. Lesson: never give a fillet the radius of a feature a study selects by shape (or make the selectors box-limited).
+- r 2.2: the rebuild failed to save RB-PRT-010 (the killed swsim left it open), S2 reran on the old part, killed again. A close-documents manifest then hung: SLDWORKS at ~41 GB and no longer answering the probe. Not killing it (Ben starts SolidWorks; his own documents may be open).
+- Generator restored, change parked as a patch. sw: DOWN in STATE. Ben extended the stop to 12:00 (message ~06:20).
+- Next: doc / py items until SolidWorks is back; then rebuild the baseline, reapply D1, S2 pair.

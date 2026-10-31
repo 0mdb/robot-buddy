@@ -1,12 +1,12 @@
 # CAD loop state
 
 pass: 1
-tick: 35
-sw: up (SLDWORKS 32.3.1)
-current: none (S4 done)
+tick: 36
+sw: DOWN (hung, 2026-10-31 06:25: SLDWORKS at ~41 GB after two killed Simulation runs; probe gets no answer. Needs Ben to restart it. The Windows mirror is mid-build: rebuild the baseline first when it's back)
+current: D1 pending (patch patches/D1-endstop-fillet-r2.2-pending.patch; reapply + rebuild + S2 pair when SW is back)
 hypothesis: —
 baseline_commit: d8179d2 (cad)
-stop_after: 2026-10-31 07:00   (Q11 default)
+stop_after: 2026-10-31 12:00   (Ben, 2026-10-31 ~06:20: extended from 07:00)
 
 ## Stop conditions
 - every workstream finished for this pass, and a full review pass after it accepts no change
