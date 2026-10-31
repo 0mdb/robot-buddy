@@ -12,7 +12,7 @@ _Pass 1 starting (2026-10-30 17:05). Rewritten every tick._
 | S2 motor mount, pull | 41–46 MPa | 0.43 mm | FAIL ×3.5 |
 | S5 bulkhead rev 1, screen poke | 45.9 MPa | 15.5 mm | FAIL, rejected; retry braced (P1b) |
 
-**Tooling so far:** `tools/meshcheck.py` (T2) measures overhang, min wall and sharp edges from an STL; validated on test shapes.
+**Tooling so far:** `tools/meshcheck.py` (T2) measures overhang, min wall and sharp edges from an STL; validated on test shapes. FEA runs now have a watchdog (T8) that answers the solver's "excessive displacement" pop-up, so the loop can't hang on it overnight.
 
 **Bulkhead rev 1 (rejected):** built and fitted cleanly (~41 g), but it hinges at its shallow foot under a 50 N screen poke. Renders in `shots/1-P1/`. Rev 2 adds knee braces down to the plate.
 

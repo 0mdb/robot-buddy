@@ -30,3 +30,10 @@ Newest at the bottom. One entry per tick.
 - The run hung ~50 min on a solver dialog ("Excessive displacements … use Large Displacement?", owned by star.exe, not SLDWORKS); answered No via Win32 BM_CLICK after identifying it by its KB link. → T8 watchdog.
 - Reverted chassis.py / fea.py / 06 per PROMPT; saved them as `patches/P1-rev1-bulkhead.patch`. Kept the engine additions (Right-plane profiles, `rotbody` Move/Copy rotation, verified by the bbox check). Baseline rebuilt: BUILD OK, 4 interferences.
 - Next idea (P1b): knee gussets to the plate in the |y| < 13.4 corridor between the mount feet + a canopy-tied S5 case.
+
+## tick 3 · T8 Simulation dialog watchdog · accepted · 2026-10-30 18:40
+- Hypothesis: polling for the solver's modal dialog while swsim runs stops FEA runs hanging overnight (tick 2 lost ~50 min).
+- `tools/swdialog.ps1`: EnumWindows → visible #32770 dialogs owned by star.exe / SLDWORKS → title, readable texts, buttons; with -Answer it clicks No only on the identified excessive-displacement prompt (title "Simulation" + KB link QA00000118617). `fea.py run_watched`: Popen + reader thread, poll every 20 s, unknown dialog still up after 3 polls → kill + fail loudly, 3 h cap.
+- Controls: two real MessageBoxes titled "Simulation": the KB-text one was answered No (its return value says No), the other was reported only (closed afterwards with Cancel by WM_CLOSE).
+- Regression: S1b through the watchdog = 2.612 MPa, equilibrium exact, identical to baseline.
+- Next: P1b braced bulkhead (rotation: P after T).

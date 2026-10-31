@@ -153,6 +153,76 @@ def compile_sim(tool: str) -> str:
     return w + "\\swsim.exe"
 
 
+POLL_S = 20  # dialog watchdog period
+UNKNOWN_DIALOG_POLLS = (
+    3  # an unknown dialog still up after this many polls fails the run
+)
+MAX_RUN_S = 3 * 3600
+
+
+def dialogs(answer: bool) -> list[str]:
+    """Run tools/swdialog.ps1: report (and with answer=True, answer known) modal
+    dialogs owned by the solver (star.exe) or SolidWorks."""
+    tool = os.path.join(sw.staging(), "tools")
+    shutil.copyfile(
+        os.path.join(sw.REPO, "tools", "swdialog.ps1"),
+        os.path.join(tool, "swdialog.ps1"),
+    )
+    args = [
+        "powershell.exe",
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        sw.winpath(os.path.join(tool, "swdialog.ps1")),
+    ]
+    if answer:
+        args.append("-Answer")
+    r = subprocess.run(args, capture_output=True, text=True, cwd="/mnt/c", timeout=120)
+    return [
+        ln.strip()
+        for ln in r.stdout.replace("\r", "").splitlines()
+        if ln.strip().startswith(("DIALOG", "ANSWERED"))
+    ]
+
+
+def run_watched(exe: str, man: str) -> str:
+    """Run swsim while polling for blocking dialogs (BACKLOG T8). A solver dialog leaves
+    SolidWorks idle and 'not responding' forever, so a plain blocking call would hang."""
+    import threading
+    import time
+
+    proc = subprocess.Popen(
+        ["cmd.exe", "/c", exe, sw.winpath(man)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        encoding="utf-8",
+        errors="replace",
+        cwd="/mnt/c",
+    )
+    chunks: list[str] = []
+    reader = threading.Thread(target=lambda: chunks.extend(proc.stdout), daemon=True)
+    reader.start()
+    t0, seen = time.monotonic(), {}
+    while proc.poll() is None:
+        time.sleep(POLL_S)
+        for ln in dialogs(answer=True):
+            print(f"  [watchdog {time.monotonic() - t0:5.0f} s] {ln}")
+            if ln.startswith("DIALOG"):
+                hwnd = ln.split()[1]
+                seen[hwnd] = seen.get(hwnd, 0) + 1
+                if seen[hwnd] > UNKNOWN_DIALOG_POLLS:
+                    proc.kill()
+                    sys.exit(
+                        f"unknown dialog {hwnd} is blocking the solver: {ln}  (answer it by hand)"
+                    )
+        if time.monotonic() - t0 > MAX_RUN_S:
+            proc.kill()
+            sys.exit(f"swsim ran longer than {MAX_RUN_S} s")
+    reader.join(timeout=10)
+    return "".join(chunks).replace("\r", "")
+
+
 def run_study(st: dict, exe: str, dry: bool, mesh_scale: float = 1.0) -> str:
     stage = sw.staging()
     win = sw.winpath(stage)
@@ -181,15 +251,7 @@ def run_study(st: dict, exe: str, dry: bool, mesh_scale: float = 1.0) -> str:
     if dry:
         print("\n".join(lines))
         return ""
-    r = subprocess.run(
-        ["cmd.exe", "/c", exe, sw.winpath(man)],
-        capture_output=True,
-        encoding="utf-8",
-        errors="replace",
-        cwd="/mnt/c",
-        timeout=1800,
-    )
-    text = r.stdout.replace("\r", "")
+    text = run_watched(exe, man)
     print(text, end="")
     if "SIM OK" not in text:
         sys.exit(f"{st['name']}: swsim did not report SIM OK")
