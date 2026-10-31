@@ -165,16 +165,18 @@ before ordering (screw engagement ≥ 1.3 d, tip ≥ 0.5 mm short of the pocket 
 | F2 | Motor mount → plate | **M3 × 8** SHCS + ISO 7089 washer, down from the top | M3 inserts in plate under-bosses (plate 4 + boss 4) | foot **3.0** (measured) → 5.0 | **8** (4 per mount) |
 | F3 | TT motor → mount v2 | **M3 × 28 SHCS** through the motor into **M3 inserts pressed through the 6 mm upright** from the motor face (amended tick 6: no nuts, which used to sit against the foot) | M3 inserts | motor 22.6 → 5.4 | 4 |
 | F4 | Follower axle + clamp | per `05_follower_spec.md`: Ø4 shoulder bolt (M3 thread) as the axle; clamp M3 × 16 SHCS + washer + nyloc from below | — | — | 2 + 2–4 |
-| **F4b** | **Follower tension jack** (new) | **M3 × 20 SHCS** in an M3 insert in a plate end-stop, tip bearing on the carriage (cup point: set screw ISO 4029 if preferred) | M3 insert, axis along X | screw sets tension; clamp only locks | 2 |
+| **F4b** | **Follower tension jack** (new) | ~~M3 × 20~~ **M3 × 30 SHCS** (A2) in an M3 insert in a plate end-stop, tip bearing on the carriage (cup point: set screw ISO 4029 if preferred) | M3 insert, axis along X | screw sets tension; clamp only locks | 2 |
 | F5 | Pi deck → plate posts | M3 × 8 SHCS, down from the top (service with the canopy off) | M3 inserts at post tops | deck 3 → 5 | 4 |
 | F6 | Pi stack → deck | M2.5 × 6 SHCS, up through the deck | the existing **6 mm brass standoffs** | deck 3 → 3 | 4 |
-| F7 | Reflex board → plate standoffs | M3 × 6 SHCS | M3 inserts in 5 mm printed standoffs | PCB 1.6 → 4.4 | 4 |
-| F8 | XVF3800 core board → plate | M3 × 6 SHCS | M3 inserts, printed standoffs | PCB 1.6 → 4.4 | 4 |
+| F7 | Reflex board → plate standoffs | ~~M3 × 6~~ **M3 × 8** SHCS (A2) | M3 inserts in 5 mm printed standoffs | PCB 1.6 → 4.4 | 4 |
+| F8 | XVF3800 core board → plate | ~~M3 × 6~~ **M3 × 8** SHCS (A2) | M3 inserts, printed standoffs | PCB 1.6 → 4.4 | 4 |
 | F9 | Canopy → body | M3 × 8 **ISO 7380-2 flanged** button head | M3 inserts: bulkhead top ×2, plate rear posts ×2 | canopy 1.8 + boss land 1.2 → 5 | 4 |
 | F10 | Mic disc → canopy | M3 × 10 SHCS through TPU grommets | M3 inserts in ASA canopy bosses | PCB 1.6 + grommet 3 🟡 → 5.4 | 3 |
-| F11 | Face board FNK0104 → bulkhead | **M3 × 6** SHCS through the PCB (Ø3.2 holes, **42.0 × 78.0** c-c per the ES3C28P drawing; PCB 50 × 86 confirmed by Ben) | M3 inserts in bulkhead standoffs | PCB 1.6 → 4.4 | 4 |
+| F11 | Face board FNK0104 → bulkhead | ~~M3 × 6~~ **M3 × 8** SHCS (A2) through the PCB (Ø3.2 holes, **42.0 × 78.0** c-c per the ES3C28P drawing; PCB 50 × 86 confirmed by Ben) | M3 inserts in bulkhead standoffs | PCB 1.6 → 4.4 | 4 |
 | F12 | Speaker box → bulkhead | M2.5 × 8 SHCS through the gasket | M2.5 inserts in bulkhead | 🟡 | 4 |
 | F13 | HC-SR04 housing, camera | as their existing models (M1.6 countersunk in the HC-SR04 housing) | — | — | — |
+
+> Amendment (loop A2, 2026-10-31): F7 / F8 / F11 M3 × 6 → **× 8** (the 7.2 pockets take 6.4 of engagement; one length fewer). F4b jack screw M3 × 20 → **× 30**: the block-to-carriage gap runs 7–17 mm over the travel plus 10 mm through the block. F12 could go M3 too (P7). Bill and driver notes: `docs/cad/loop/A2_fasteners.md`.
 
 **Totals (per robot, +20 % spares when ordering):** M3 inserts ~34 (F1, F2, F5, F7, F8,
 F9, F10, F11), M2.5 inserts 4 (F12); M3 × 6 ×12, M3 × 8 ×15, M3 × 8 button ×4,

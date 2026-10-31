@@ -115,7 +115,8 @@ Rules the loop enforces from here on (ASTM F963 / EN 71-1 / IEC 62115 as design 
 
 ## A: Simplification & integration
 - [ ] A1 `[sw]` **variant**: motor mounts integrated into the plate (`RB-PRT-001b`). Compare mass, part count, fasteners, FEA S1/S2, print time, support volume, and repair cost (a cracked mount now means reprinting the plate)
-- [ ] A2 `[doc]` fastener consolidation: one screw family (M3?) + one driver; count inserts and screws per assembly
+- [x] A2 `[doc]` fastener consolidation: one screw family (M3?) + one driver; count inserts and screws per assembly
+  **Done tick 28:** `docs/cad/loop/A2_fasteners.md`: M3 everywhere except the Pi (M2.5, fixed) and the TT end screw (M2, fixed); 12 screws × 6 → × 8 (5 SHCS lengths); F4b jack screw × 20 → × 30 (it couldn't cover the travel); one 2.5 key for every M3 SHCS, 2.0 kept on purpose for the canopy buttons; F12 suggested M3. 07 amended.
 - [ ] A3 `[sw]` hybrid: integrated mount saddles + bolt-on caps (repairable *and* fewer parts)?
 - [ ] A4 `[doc]` part-count review across plate / bulkhead / canopy / followers: which joints exist only because of the build volume?
 - [ ] A5 `[sw]` cable routing: channels, clip points, strain relief at the motor leads and the reflex board

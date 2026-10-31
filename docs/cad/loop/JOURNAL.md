@@ -206,3 +206,8 @@ Newest at the bottom. One entry per tick.
 - Failed twice; added an engine diagnostic (on failure, retry face by face and print which faces fail). Culprits were slivers, all pre-existing layout flaws: the x −60 cross rib cut into 0.6–1 mm pieces by the follower slots; the ±25 long ribs' edges 0.1 mm past the boss edges; the y 0 rib against the wire slot and the knee counterbore; the x 60 cross rib against that counterbore. Fixed the layout (rib through the boss centres at ±21.5, y 0 rib to x 30, cross ribs −60 trimmed to |y| 26 and 60 → 66) → BUILD OK, −536.7 vs −532.1 mm³.
 - Full rebuild 0 interferences. Plate 111.0 → 114.9 g. S1m 9.37 → 8.64 MPa (SF 4.05), inserts 0.996 → 0.900 mm; S1b 3.88 → 3.61 MPa, deck 0.147 → 0.125 mm. Accessible sharp edges 2,212 → 735 mm.
 - Next: rotate: A/M/E doc items or D1; S1a3 (slot edges) later.
+
+## tick 28 · A2 fastener consolidation · accepted (doc) · 2026-10-31 04:00
+- Bill of every fastener from 07 F1–F13 + the knee screw, carriages, moved deck posts: `docs/cad/loop/A2_fasteners.md`.
+- Found: F4b's M3 × 20 jack screw can't cover the travel (block-to-carriage gap 7–17 mm + 10 mm block) → × 30. Unified F7/F8/F11 × 6 → × 8. One 2.5 key for every M3 SHCS; the canopy's 2.0 button heads kept as a deliberate small barrier. F12 suggested M3. 07 amended (dated note).
+- No CAD change. Next: rotate to D1 or S1a3 (SW), or E1 (doc).
