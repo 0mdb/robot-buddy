@@ -1,9 +1,9 @@
 # CAD loop state
 
 pass: 1
-tick: 45
+tick: 46
 sw: up (restarted by Ben 2026-10-31 ~06:45)
-current: D5c next (slot webs)
+current: D5c guide slots spread (webs 0.95 -> 1.45)
 hypothesis: —
 baseline_commit: d8179d2 (cad)
 stop_after: 2026-10-31 12:00   (Ben, 2026-10-31 ~06:20: extended from 07:00)

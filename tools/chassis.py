@@ -199,7 +199,9 @@ AXLE_X_MID, TRAVEL = (
     -60.0,
     10.0,
 )  # follower axle station (mid travel); 05: 8-10 mm travel
-GUIDE_Y, CLAMP_Y = (31.0, 41.0), 36.0  # carriage guide slots and clamp slot, |y|
+GUIDE_Y, CLAMP_Y = (30.5, 41.5), 36.0  # carriage guide slots and clamp slot, |y|
+# D5c: guide slots 31 / 41 -> 30.5 / 41.5: the webs to the clamp slot were 0.95 mm (0.86
+# after S1a3's fillets), now 1.45; the carriage rails follow GUIDE_Y
 GUIDE_W = 4.7  # 4.0 rail + 0.35/side slip (05)
 RAIL_L = 20.0  # TBD with the carriage design
 JACK_BLOCK_X, JACK_BLOCK_Y, JACK_BLOCK_Z = (-38.0, -28.0), (31.0, 42.0), (0.0, 10.0)

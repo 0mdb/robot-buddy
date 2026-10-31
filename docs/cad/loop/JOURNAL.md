@@ -307,3 +307,8 @@ Newest at the bottom. One entry per tick.
 - Hole table vs DFM: `docs/cad/loop/D5_holes.md`. The plate's motor-mount insert pockets (7.2 in an 8 mm stack) left 0.8 mm floors → 6.7 deep, floor 1.3. 07 F2 amended.
 - Rebuild 0 interferences; S1m 8.71 MPa, inserts 1.032 mm (=). meshcheck min wall 0.86: located at the 0.95 mm webs between the guide slots and the clamp slot (thinned by S1a3's fillets) → D5c (spread the guide slots to |y| 30.5 / 41.5).
 - Slip: launched the rebuild with a bare `&` again (no notification); checked by timer.
+
+## tick 46 · D5c carriage slot webs · accepted · 2026-10-31 11:05
+- Guide slots (and carriage rails) |y| 31 / 41 → 30.5 / 41.5: webs to the clamp slot 0.95 → 1.45 mm. Plate + carriages alone: BUILD OK; full rebuild 0 interferences.
+- meshcheck min wall 0.86 → 1.19 mm. S1m 8.87 MPa, inserts 1.032 mm; S6 7.13 MPa, bore 0.024 mm.
+- Ben (~10:40): don't print yet; answered Q17 (outboard track frame), A1 (keep the mounts bolted), Q18 (pebble 1/3/8); next leg = canopy, treads, polish. This leg ends here.
