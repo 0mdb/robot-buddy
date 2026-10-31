@@ -1,4 +1,4 @@
-# Morning summary: CAD loop leg 1 (2026-10-30 22:00 → 2026-10-31 11:10, 46 ticks)
+# Morning summary: CAD loop (leg 1: 46 ticks to 2026-10-31 11:10 · leg 2: from tick 47, stops 2026-11-01 07:00)
 
 **Nothing is print-ready yet, by your call (don't print before the open items).** Drivetrain (sprocket + idler) is reviewed by you and cleared for test prints.
 
@@ -11,7 +11,8 @@
 | Motor mounts 010/011 | 14.0 g each | S2 **converged**, SF 5.3; stay bolted (your call) |
 | Sprocket 020 / idler 021 | 35.9 / 34.7 g | your review: good; outboard rims r 1 |
 | Carriages 030/031 | 12.7 g each | S6 SF 4.9; one-key track swap (clamp insert) |
-| **Printed total** | **368.6 g** | CoG (5.9, −0.1, 14.0) |
+| **Canopy 004 (leg 2, new)** | **83.2 g ASA** | first cut, pebble: body over the stack + hood behind the head on the lugs, rear screws hidden under the belly. Not yet: S7 heel test, openings, crown, edge rounds (P6b–f). Renders: `shots/1-P6/` |
+| **Printed total** | **451.8 g** | CoG (1.3, −0.1, 24.7) |
 
 ## Biggest wins this leg
 - Motor mount from failing to **converged SF 5.3** (D7–D10, D1).
@@ -19,8 +20,8 @@
 - New parts: Pi deck, carriages. Tools: `filletface` (faces/loops by normal, box, loops), mass/CoG roll-up, PA6-CF in fea.py, bridge-aware overhang check, edge audit.
 - Reviews: assembly order (R1, one trapped pair fixed), service times (R2), fasteners (A2: one 2.5 key), materials (M2: all PET-CF), print orientation (D3), battery (S4), design language (E1 → your pebble choice).
 
-## Next leg (your order): canopy → treads → polish
-1. **P6 canopy** (pebble 1/3/8, holds the bulkhead lugs, battery rules, S7), plus the 2 canopy bosses on the plate.
+## Leg 2 (your order): canopy → track frame → treads → polish
+1. **P6 canopy**: first cut in (tick 47). Next: plate holes (P6b), S7 + S5c with the real canopy (P6c), openings (P6d), edges (P6e), crown (P6f).
 2. **Outboard track frame** (Q17): takes belt tension off the plate.
 3. **Treads:** native belt part, wrap-fit/stretch check, print package + test pieces.
 4. **Polish:** bulkhead face edges, fillets, motor-lead connectors.

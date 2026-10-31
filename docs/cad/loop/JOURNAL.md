@@ -312,3 +312,11 @@ Newest at the bottom. One entry per tick.
 - Guide slots (and carriage rails) |y| 31 / 41 → 30.5 / 41.5: webs to the clamp slot 0.95 → 1.45 mm. Plate + carriages alone: BUILD OK; full rebuild 0 interferences.
 - meshcheck min wall 0.86 → 1.19 mm. S1m 8.87 MPa, inserts 1.032 mm; S6 7.13 MPa, bore 0.024 mm.
 - Ben (~10:40): don't print yet; answered Q17 (outboard track frame), A1 (keep the mounts bolted), Q18 (pebble 1/3/8); next leg = canopy, treads, polish. This leg ends here.
+
+## tick 47 · P6 canopy first cut · accepted (new part) · 2026-10-31 11:55
+- Leg 2 starts (stop_after 2026-11-01 07:00). `RB-PRT-004_canopy`, ASA 1.8 shell to E1 (a): side profile extruded |y| 53; body top z 93 over the stack (top 86); a **hood** behind the head whose ceiling (square to the 15° wall) sits 0.1 over the two lugs and takes the front screws (S5c); front open over the bulkhead (|y| ≤ 47.3); skirt stops at z 30 (mount tops 26.5); rear apron + 2 insert bosses, screws up from the belly (07 F9 amended, 06 §6 as-built note).
+- Engine: `shell` (faces by normal/plane/box, judged by feature count + dvol) and filletface `skip:<box>` (leave out the concave hood junction). Rounds r 20 plan / r 8 hood + top.
+- Slip: the hood back-top edge is 105° interior, not 75° (dvol −1793 vs −3767 → vs −1907 after the fix). Every other step within its formula: shell −955,132 vs −955,023 mm³; part 77,690 vs 77,563.
+- First assembly: 2 × 0.1 mm³ bulkhead/canopy (ceiling on the tilted lug tops) → CAN_LUG_GAP 0.1 → **0 interferences**. Canopy 83.2 g; printed parts 368.6 → 451.8 g, CoG z 14.0 → 24.7.
+- meshcheck: min wall 1.77; overhang 133 cm² open side down (the ceiling: orientation → D3); 2.0 m sharp edges (skirt rim, front lips, apron: first-cut square edges, like P1) → P6e.
+- Next: P6b plate holes for the rear screws, then P6c S7 (300 N heel) + S5c with the real canopy.

@@ -199,6 +199,8 @@ before ordering (screw engagement ≥ 1.3 d, tip ≥ 0.5 mm short of the pocket 
 
 > Amendment (loop A2, 2026-10-31): F7 / F8 / F11 M3 × 6 → **× 8** (the 7.2 pockets take 6.4 of engagement; one length fewer). F4b jack screw M3 × 20 → **× 30**: the block-to-carriage gap runs 7–17 mm over the travel plus 10 mm through the block. F12 could go M3 too (P7). Bill and driver notes: `docs/cad/loop/A2_fasteners.md`.
 
+> Amendment (loop P6, 2026-10-31): F9's two **rear** joints turn round: **M3 × 10 button head up from the belly through Ø3.4 plate holes at (−80.4, ±12) into M3 inserts in two Ø9.2 bosses on the canopy's rear apron** (pocket 7.2, 6 mm engaged), instead of inserts in plate rear posts with the head on the canopy. Why: E1 §3, no screw heads on the faces a child sees, and the plate keeps no posts. The two **front** joints are unchanged (M3 × 8 flanged button down through the hood ceiling into the bulkhead lugs); those heads sit on the hood top behind the head, visible from above (open point for E2).
+
 **Totals (per robot, +20 % spares when ordering):** M3 inserts ~34 (F1, F2, F5, F7, F8,
 F9, F10, F11), M2.5 inserts 4 (F12); M3 × 6 ×12, M3 × 8 ×15, M3 × 8 button ×4,
 M3 × 10 ×3, M3 × 30 ×4 (kit), M2.5 × 6 ×4, M2.5 × 8 ×4, M3 nyloc ×8, M3 washers ×8.

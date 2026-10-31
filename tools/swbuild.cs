@@ -120,6 +120,7 @@ class SwBuild
                 case "fillet": Fillet(f); break;
                 case "filletface": FilletFace(f); break;
                 case "ring": Ring(f); break;
+                case "shell": Shell(f); break;
                 default: Check("command " + f[0], false, "unknown"); break;
             }
             if (failures > 0 && f[0] != "expect") break;   // stop at the first broken step
@@ -483,6 +484,10 @@ class SwBuild
         // "loops:u0 v0 u1 v1" (S1a3): ONLY the inner loops whose box centre is inside this box
         double[] lb = null;
         if (f.Length > 7 && f[7].StartsWith("loops:")) { lb = Nums(f[7].Substring(6)); inner = true; }
+        // "skip:x0 y0 z0 x1 y1 z1" (P6): leave out edges whose vertex midpoint is in the box
+        // (e.g. a concave edge in the loop that another radius owns)
+        double[] skip = null;
+        if (f.Length > 7 && f[7].StartsWith("skip:")) skip = Nums(f[7].Substring(5));
         double[] dv = Nums(f[6]);
         var picked = new List<IEdge>();
         var cand = new List<IFace2>();
@@ -558,7 +563,24 @@ class SwBuild
                             lcu, lcv, lu1 - lu0, lv1 - lv0, keep ? "kept" : "skipped"));
                     if (!keep) continue;
                 }
-                foreach (object eo in (object[])lp.GetEdges()) picked.Add((IEdge)eo);
+                foreach (object eo in (object[])lp.GetEdges())
+                {
+                    if (skip != null)
+                    {
+                        object v0o = ((IEdge)eo).GetStartVertex(), v1o = ((IEdge)eo).GetEndVertex();
+                        if (v0o != null && v1o != null)
+                        {
+                            double[] q0 = (double[])((IVertex)v0o).GetPoint(), q1 = (double[])((IVertex)v1o).GetPoint();
+                            double mx = (q0[0] + q1[0]) * 500, my = (q0[1] + q1[1]) * 500, mz = (q0[2] + q1[2]) * 500;
+                            if (mx >= skip[0] && my >= skip[1] && mz >= skip[2] && mx <= skip[3] && my <= skip[4] && mz <= skip[5])
+                            {
+                                Console.WriteLine(string.Format(ci, "    skipped edge at ({0:F1}, {1:F1}, {2:F1})", mx, my, mz));
+                                continue;
+                            }
+                        }
+                    }
+                    picked.Add((IEdge)eo);
+                }
             }
         }
         string what = "filletface r" + f[1] + " nz " + f[2] + " z " + f[3];
@@ -629,6 +651,50 @@ class SwBuild
         Check(what, fil != null && Math.Abs(d - dv[0]) <= dv[1],
             string.Format(ci, "{0} faces, {1} edges selected {2}, dvol {3:F2} vs {4:F2} +- {5:F2} mm3 | {6}",
                 faces, picked.Count, nsel, d, dv[0], dv[1], Measure()));
+    }
+
+    // shell|t|<axis>:<sign>|plane|u0 v0 u1 v1|n|dvol tol  (P6): hollow the part to wall t,
+    // removing the n planar faces with that normal in that plane whose centre is inside
+    // the box over the other two axes (x, y, z order), e.g. the canopy's open bottom.
+    static void Shell(string[] f)
+    {
+        double t = double.Parse(f[1], ci);
+        int ax = "xyz".IndexOf(f[2][0]);
+        double sg = double.Parse(f[2].Substring(2), ci), pl = double.Parse(f[3], ci);
+        int ua = ax == 0 ? 1 : 0, va = ax == 2 ? 1 : 2;
+        double[] b = Nums(f[4]);
+        int want = int.Parse(f[5], ci);
+        double[] dv = Nums(f[6]);
+        var cand = new List<IFace2>();
+        object[] bodies = (object[])((IPartDoc)doc).GetBodies2((int)swBodyType_e.swSolidBody, true);
+        foreach (object bo in bodies)
+            foreach (object fo in (object[])((IBody2)bo).GetFaces())
+            {
+                IFace2 fc = (IFace2)fo;
+                if (!((ISurface)fc.GetSurface()).IsPlane()) continue;
+                double[] n = (double[])fc.Normal;
+                if (Math.Abs(n[ax] - sg) > 1e-6) continue;
+                double[] bx = (double[])fc.GetBox();
+                if (Math.Abs(bx[ax] * 1e3 - pl) > 1e-3 || Math.Abs(bx[ax + 3] * 1e3 - pl) > 1e-3) continue;
+                double cu = (bx[ua] + bx[ua + 3]) * 500, cv = (bx[va] + bx[va + 3]) * 500;
+                if (cu < b[0] || cv < b[1] || cu > b[2] || cv > b[3]) continue;
+                cand.Add(fc);
+            }
+        string what = "shell t" + f[1] + " open " + f[2] + " @" + f[3];
+        if (cand.Count != want) { Check(what, false, "matched " + cand.Count + " faces, expected " + want); return; }
+        double v0 = PartVolume();
+        int nf0 = doc.FeatureManager.GetFeatureCount(true);
+        doc.ClearSelection2(true);
+        int nsel = 0;
+        foreach (IFace2 fc in cand) if (((IEntity)fc).Select2(true, 0)) nsel++;
+        doc.InsertFeatureShell(M(t), false);  // void: judge by feature count and volume
+        doc.ClearSelection2(true);
+        doc.EditRebuild3();
+        double d = PartVolume() - v0;
+        bool made = doc.FeatureManager.GetFeatureCount(true) > nf0;
+        Check(what, made && Math.Abs(d - dv[0]) <= dv[1],
+            string.Format(ci, "{0} faces selected {1}, feature {2}, dvol {3:F1} vs {4:F1} +- {5:F1} mm3 | {6}",
+                cand.Count, nsel, made ? "made" : "NOT made", d, dv[0], dv[1], Measure()));
     }
 
     static void Loop(ISketchManager sm, string spec)

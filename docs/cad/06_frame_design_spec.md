@@ -179,6 +179,23 @@ board and any off-board TB6612 now go aft, between the carriages (x −85…−4
   switch, Pi USB/HDMI as needed 🟡. SD card: open the canopy.
 - Uniform 1.8 mm wall; 1 mm fillets; vent slots over the Pi cooler, ≤ 2 mm wide.
 
+> Amendment (loop P6, 2026-10-31): canopy first cut built, `RB-PRT-004_canopy`
+> (generated, `tools/chassis.py`), ASA 1.8 shell, ~83 g, to E1 / Q18 (a):
+> - Body over the Pi stack: x −85 (flush with the plate's rear edge) to the bulkhead,
+>   |y| ≤ 53 (3.5 inboard of the belt), top z 93 (stack top 86). Plan corners r 20,
+>   top edges r 8.
+> - **Hood** behind the head: rises to the wall top; its ceiling (perpendicular to the
+>   15° wall) sits 0.1 over the two canopy lugs and takes the two front screws, so the
+>   canopy holds the lugs (S5c). Hood depth 15 behind the wall's back face covers the
+>   face board's back. Back edges r 8.
+> - Open at the front where the bulkhead closes it (|y| ≤ 47.3); side lips at |y| 47.3–53.
+> - **Skirt stops at z 30** (old: down to the plate): the motor mounts (top 26.5) and
+>   the carriages sit at the plate edge, and the tracks cover the sides below z 30.
+> - Rear apron to the plate between the carriages (|y| ≤ 26) with 2 insert bosses;
+>   rear screws come up from the belly (07 F9 amendment). Old: 2 plate rear posts.
+> - Not yet: crown, mic-disc seat, vents, USB-C / switch cut-outs, cell-retention ribs
+>   (S4), S7 / S5c with the real canopy.
+
 ## 7. Drivetrain parts
 
 **Motor mounts L/R:** keep the current L-bracket (`TT_Motor_Mount_L` + its mirror

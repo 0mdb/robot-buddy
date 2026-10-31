@@ -848,6 +848,7 @@ def rebuild_manifest(win: str) -> list[str]:
     reflex = cad + r"\library\reflex_board_envelope.SLDPRT"
     bulkhead = cad + r"\parts\RB-PRT-002_bulkhead.SLDPRT"
     deck = cad + r"\parts\RB-PRT-003_pi_deck.SLDPRT"  # P4
+    canopy = cad + r"\parts\RB-PRT-004_canopy.SLDPRT"  # P6
     car_l = cad + r"\parts\RB-PRT-030_carriage_L.SLDPRT"  # P5
     car_r = cad + r"\parts\RB-PRT-031_carriage_R.SLDPRT"
     sprocket = cad + r"\parts\RB-PRT-020_sprocket.SLDPRT"  # 08, outrigger variant (P2o)
@@ -890,6 +891,7 @@ def rebuild_manifest(win: str) -> list[str]:
         *envelope_lines(pi, face, reflex),
         *bulkhead_lines(bulkhead),
         *deck_lines(deck),
+        *canopy_lines(canopy),
         *carriage_lines(car_l, mirror=False),
         *carriage_lines(car_r, mirror=True),
         *mount_v2_lines(mount_r, mirror=False),
@@ -908,6 +910,7 @@ def rebuild_manifest(win: str) -> list[str]:
         f"comp|reflex|{reflex}|{row(ROT_I, REFLEX_AT)}",
         f"comp|bulkhead|{bulkhead}|{row(ROT_I, (0, 0, 0))}",
         f"comp|pi_deck|{deck}|{row(ROT_I, (0, 0, DECK_Z + DECK_T))}",
+        f"comp|canopy|{canopy}|{row(ROT_I, (0, 0, 0))}",
         f"comp|carriage_L|{car_l}|{row(ROT_I, (dt.belt_fit()['x_fit'], 0, 0))}",
         f"comp|carriage_R|{car_r}|{row(ROT_I, (dt.belt_fit()['x_fit'], 0, 0))}",
         f"comp|sprocket_L|{sprocket}|{row(*wheel_at(dt.X_DRIVE, +1))}",
@@ -927,6 +930,8 @@ def rebuild_manifest(win: str) -> list[str]:
         f"close|{plate}",
         f"shot|{bulkhead}|{win}\\shots\\bulkhead",
         f"close|{bulkhead}",
+        f"shot|{canopy}|{win}\\shots\\canopy",
+        f"close|{canopy}",
         # printed parts -> STL in chassis coordinates (T1); meshcheck reads these
         *[
             f"stl|{p}|{cad}\\exports\\gen\\{n}.stl"
@@ -934,6 +939,7 @@ def rebuild_manifest(win: str) -> list[str]:
                 (plate, "RB-PRT-001_base_plate"),
                 (bulkhead, "RB-PRT-002_bulkhead"),
                 (deck, "RB-PRT-003_pi_deck"),
+                (canopy, "RB-PRT-004_canopy"),
                 (car_l, "RB-PRT-030_carriage_L"),
                 (car_r, "RB-PRT-031_carriage_R"),
                 (mount_r, "RB-PRT-010_motor_mount_R"),
@@ -1791,6 +1797,225 @@ def wheel_at(x: float, side: int) -> tuple[list[float], tuple[float, float, floa
     return (ROT_WHEEL_L if side > 0 else ROT_WHEEL_R), (x, side * y_out, dt.Z_AXLE)
 
 
+# ------------------------------------------------------------- canopy (06 §6, P6)
+# First cut to E1 / Q18 (a) "pebble": one ASA shell, CAN_T wall, open at the bottom.
+# Side profile (XZ) extruded |y| <= CAN_HW: the body over the Pi stack (top CAN_TOP) and
+# a "hood" behind the bulkhead's head that rises to the wall top, so its ceiling bears on
+# the two canopy lugs (S5c: the canopy holds them). The hood's front follows the wall's
+# back face; there the canopy is open (the bulkhead closes it), leaving side lips at
+# |y| > BH_W / 2. The skirt stops at CAN_Z0, above the motor mounts (top 26.5) and the
+# carriages; the tracks cover the sides below it (belt inner edge |y| 56.5, 3.5 mm off).
+# At the rear an apron reaches the plate between the carriages with 2 insert bosses:
+# M3 buttons go up through the plate from the belly (hidden, E1 §3; F9 amended).
+CAN_T = 1.8  # 06 §6 / 07: ASA shell
+CAN_HW = 53.0  # 3.5 inboard of the belt's inner edge (< 5 mm: no finger gap)
+CAN_Z0 = 30.0  # skirt bottom: 3.5 over the mount tops
+CAN_TOP = 93.0  # 06 §3: Pi stack top 86 + 5.2 clearance + wall
+CAN_X0 = -PLATE_L / 2  # rear face flush with the plate's rear edge
+CAN_HOOD_D = (
+    15.0  # hood depth behind the wall's back face (face board 10.6 + lugs 8.2 + room)
+)
+CAN_R = (
+    20.0,
+    8.0,
+    8.0,
+)  # rear plan corners (= plate R20), hood edges, top edges (E1 8)
+CAN_WIN_HW = BH_W / 2 + 0.3  # front opening: the bulkhead's width + 0.3 per side
+CAN_APRON_HW = 26.0  # rear apron, inside the carriages (|y| >= 28)
+CAN_BOSS = (
+    -80.4,
+    12.0,
+    12.0,
+)  # rear insert bosses: x, |y|, height (clear of the deck at x -75)
+CAN_LUG_HOLE = 3.9  # vertical hole through the 15° hood ceiling: 3.4 + 1.8 tan 15
+CAN_LUG_GAP = 0.1  # ceiling over the lug tops (touching on the 15° tilt read as 2 x 0.1 mm3 interference, tick 47); the screws close it
+
+
+def _pre2ch(xp: float, zp: float) -> tuple[float, float]:
+    """Bulkhead pre-tilt (x, z) -> chassis (x, z): the same 15° back tilt as the wall."""
+    c, s = math.cos(math.radians(BH_TILT)), math.sin(math.radians(BH_TILT))
+    dx = xp - BH_PIVOT[0]
+    return (BH_PIVOT[0] + c * dx - s * zp, s * dx + c * zp)
+
+
+def canopy_profile() -> list[tuple[float, float]]:
+    """Outer side profile A..F (clockwise in XZ): rear bottom, rear top, hood back foot,
+    hood back top, hood front top (on the wall's back-face plane), front bottom."""
+    top_pre = (
+        BH_H + CAN_LUG_GAP + CAN_T
+    )  # hood ceiling just over the wall top / lug tops (z_pre BH_H)
+    xd, zd = _pre2ch(BH_PIVOT[0] - CAN_HOOD_D, top_pre)
+    xe, ze = _pre2ch(BH_PIVOT[0], top_pre)
+    xf = BH_PIVOT[0] - CAN_Z0 * math.tan(math.radians(BH_TILT))
+    return [
+        (CAN_X0, CAN_Z0),
+        (CAN_X0, CAN_TOP),
+        (xd, CAN_TOP),
+        (xd, zd),
+        (xe, ze),
+        (xf, CAN_Z0),
+    ]
+
+
+def _poly_area(p: list[tuple[float, float]]) -> float:
+    return abs(
+        sum(
+            p[i][0] * p[(i + 1) % len(p)][1] - p[(i + 1) % len(p)][0] * p[i][1]
+            for i in range(len(p))
+        )
+        / 2
+    )
+
+
+def _inset_profile(p: list[tuple[float, float]], t: float) -> list[tuple[float, float]]:
+    """Every edge but the open bottom (F -> A) moved inward by t (clockwise: inward is
+    the right-hand normal); the shell's cavity in side view."""
+    n = len(p)
+    lines = []  # (point, direction) per edge i: p[i] -> p[i+1], bottom left as is
+    for i in range(n):
+        (x0, z0), (x1, z1) = p[i], p[(i + 1) % n]
+        dx, dz = x1 - x0, z1 - z0
+        ln = math.hypot(dx, dz)
+        off = 0.0 if i == n - 1 else t
+        nx, nz = dz / ln, -dx / ln
+        lines.append(((x0 + off * nx, z0 + off * nz), (dx, dz)))
+
+    def meet(a, b):
+        (px, pz), (dx, dz) = a
+        (qx, qz), (ex, ez) = b
+        den = dx * ez - dz * ex
+        u = ((qx - px) * ez - (qz - pz) * ex) / den
+        return (px + u * dx, pz + u * dz)
+
+    return [meet(lines[i - 1], lines[i]) for i in range(n)]
+
+
+def _round_area(alpha_deg: float, r: float) -> float:
+    """Cross-section a convex round of radius r removes from an edge of interior angle alpha."""
+    a = math.radians(alpha_deg)
+    return r * r * (1 / math.tan(a / 2) - (math.pi - a) / 2)
+
+
+def canopy_outer_volume(p, hw: float, rr: float, rh: float, rt: float) -> dict:
+    """Solid (unshelled) canopy volume and each round's share, analytic (Pappus on the
+    plan-corner arcs; vertex blends ignored, ~r³ each)."""
+    a, b, c, d, e, _ = p
+    q90 = _round_area(90.0, 1.0)
+    # hood back-top edge D: the back face runs down from D, the ceiling up-forward at
+    # BH_TILT, so the solid's interior angle there is 90 + 15 = 105° (tick 47: not 75)
+    alpha_d = 90.0 + math.degrees(math.atan2(e[1] - d[1], e[0] - d[0]))
+    dv = {
+        "rear": -2 * q90 * rr * rr * (b[1] - a[1]),
+        "hood": -(
+            2 * q90 * rh * rh * (d[1] - c[1])
+            + _round_area(alpha_d, rh) * 2 * hw
+            + 2 * q90 * rh * rh * math.dist(d, e)
+        ),
+    }
+    cbar = rt * (10 - 3 * math.pi) / (3 * (4 - math.pi))  # centroid of the round's cut
+    straight = (2 * hw - 2 * rr) + 2 * ((c[0] + rh) - (a[0] + rr))
+    dv["top"] = -(q90 * rt * rt * straight + q90 * rt * rt * math.pi * (rr - cbar))
+    return {"base": _poly_area(p) * 2 * hw, **dv, "alpha_d": alpha_d}
+
+
+def canopy_features() -> dict:
+    p = canopy_profile()
+    rr, rh, rt = CAN_R
+    out = canopy_outer_volume(p, CAN_HW, rr, rh, rt)
+    pin = _inset_profile(p, CAN_T)
+    inn = canopy_outer_volume(pin, CAN_HW - CAN_T, rr - CAN_T, rh - CAN_T, rt - CAN_T)
+    v_out = out["base"] + out["rear"] + out["hood"] + out["top"]
+    v_in = inn["base"] + inn["rear"] + inn["hood"] + inn["top"]
+    # front opening: the 1.8 front wall at |y| <= CAN_WIN_HW, from the skirt (z_pre at
+    # mid-wall) up to the hood ceiling's underside (z_pre BH_H)
+    xm = BH_PIVOT[0] - CAN_T / 2
+    s, c_ = math.sin(math.radians(BH_TILT)), math.cos(math.radians(BH_TILT))
+    zp0 = (CAN_Z0 - s * (xm - BH_PIVOT[0])) / c_
+    win = CAN_T * 2 * CAN_WIN_HW * (BH_H + CAN_LUG_GAP - zp0)
+    # lug holes: lug axis on the wall's (tilted) z, at mid-ceiling
+    lug_x = BH_XF - BH_T - INS_BOSS / 2 + 1.0  # = bulkhead_features()' lug_x
+    hx, hz = _pre2ch(lug_x, BH_H + CAN_LUG_GAP + CAN_T / 2)
+    holes = 2 * math.pi * (CAN_LUG_HOLE / 2) ** 2 * CAN_T / c_
+    # rear apron + bosses (the boss's slice inside the apron counted once)
+    apron = CAN_T * 2 * CAN_APRON_HW * CAN_Z0
+    bx, by, bh = CAN_BOSS
+    r = INS_BOSS / 2
+    dd = bx - (CAN_X0 + CAN_T)
+    seg = r * r * math.acos(dd / r) - dd * math.sqrt(r * r - dd * dd)
+    boss = 2 * (math.pi * r * r - seg) * bh
+    pockets = 2 * math.pi * (INS_HOLE / 2) ** 2 * INS_DEPTH
+    return {
+        "p": p,
+        "pin": pin,
+        "out": out,
+        "inn": inn,
+        "v_out": v_out,
+        "v_in": v_in,
+        "win": win,
+        "win_zp0": zp0,
+        "lug_hole": (hx, hz),
+        "holes": holes,
+        "apron": apron,
+        "boss": boss,
+        "pockets": pockets,
+        "vol": v_out - v_in - win - holes + apron + boss - pockets,
+    }
+
+
+def canopy_lines(path: str) -> list[str]:
+    f = canopy_features()
+    p = f["p"]
+    a, b, c, d, e, fp = p
+    rr, rh, rt = CAN_R
+    hw = CAN_HW
+    o = f["out"]
+
+    def prismy(poly, y0, y1, kind):  # Top plane: sketch (x, -z), extrude +Y
+        pts = [f"{x:.4f} {-z:.4f}" for x, z in poly]
+        return (
+            f"prof|{y0} {y1}|M "
+            + pts[0]
+            + "".join(" L " + q for q in pts[1:])
+            + f"|{kind}|top"
+        )
+
+    def tol(v, k=0.2):
+        return f"{v:.1f} {abs(v) * k + 5:.1f}"
+
+    # front opening: a slab round the front wall in the wall's own frame
+    x0p, x1p = BH_PIVOT[0] - CAN_T - 0.5, BH_PIVOT[0] + 0.5
+    zw = BH_H + CAN_LUG_GAP
+    win = [_pre2ch(x0p, 20.0), _pre2ch(x0p, zw), _pre2ch(x1p, zw), _pre2ch(x1p, 20.0)]
+    hx, _ = f["lug_hole"]
+    bx, by, bh = CAN_BOSS
+    zlo, zhi = e[1] - 12.0, e[1] + 6.0
+    lines = [
+        f"part|{path}",
+        prismy(p, -hw, hw, "boss"),
+        # plan corners at the rear (vertical edges)
+        f"fillet|{rr}|z|{a[0] - 0.1} {-hw - 0.1} {a[1]} {a[0] + 0.1} {hw + 0.1} {b[1]}|2|{tol(o['rear'], 0.05)}",
+        # hood: back corners (vertical), back-top edge, ceiling side edges
+        f"fillet|{rh}|any|{c[0] - 0.1} {-hw - 0.1} {c[1] + 0.1} {c[0] + 0.6 * (e[0] - c[0]):.3f} {hw + 0.1} {e[1] + 0.1}|5|{tol(o['hood'])}",
+        # body top: rear edge, plan arcs and side edges; not the concave edge at the hood
+        f"filletface|{rt}|z:1|{b[1]}|{a[0]} {-hw} {c[0]} {hw}|1|{tol(o['top'])}|skip:{c[0] - 0.5} {-hw - 1} {b[1] - 0.5} {c[0] + rh + 0.5} {hw + 1} {b[1] + 0.5}",
+        f"shell|{CAN_T}|z:-1|{CAN_Z0}|{a[0] - 1} {-hw - 1} {fp[0] + 1} {hw + 1}|1|{-f['v_in']:.1f} {0.04 * (f['v_out'] - f['v_in']):.1f}",
+        prismy(win, -CAN_WIN_HW, CAN_WIN_HW, "cut"),
+        *[
+            f"cyl|z|{hx:.4f} {sg * BH_LUG_Y}|{zlo:.3f} {zhi:.3f}|{CAN_LUG_HOLE / 2}|cut"
+            for sg in (-1, 1)
+        ],
+        f"box|{CAN_X0} {CAN_X0 + CAN_T}|{-CAN_APRON_HW} {CAN_APRON_HW}|0 {CAN_Z0}",
+        *[f"cyl|z|{bx} {sg * by}|0 {bh}|{INS_BOSS / 2}|boss" for sg in (-1, 1)],
+        *[
+            f"cyl|z|{bx} {sg * by}|-0.1 {INS_DEPTH}|{INS_HOLE / 2}|cut"
+            for sg in (-1, 1)
+        ],
+        f"expect|vol {f['vol']:.1f} {f['vol'] * 0.03:.1f}|box {CAN_X0} {fp[0]:.2f} {-hw} {hw} 0 {e[1]:.2f} 0.5",
+        "save",
+    ]
+    return lines
+
+
 # ------------------------------------------------------------------- runner
 def compile_engine(tool: str) -> str:
     shutil.copyfile(
@@ -1817,11 +2042,12 @@ def compile_engine(tool: str) -> str:
 
 # T3: printed parts and their material (07 / Bambu TDS, g/cm³). Envelopes (motor, Pi
 # stack, boards, belt stand-ins) and analysis-only parts are left out.
-RHO = {"PET-CF": 1.29, "TPU": 1.22}
+RHO = {"PET-CF": 1.29, "TPU": 1.22, "ASA": 1.07}
 PART_MATERIAL = {
     "RB-PRT-001": "PET-CF",
     "RB-PRT-002": "PET-CF",
     "RB-PRT-003": "PET-CF",
+    "RB-PRT-004": "ASA",  # canopy (06 §6, P6)
     "RB-PRT-030": "PET-CF",
     "RB-PRT-031": "PET-CF",
     "RB-PRT-010": "PET-CF",
