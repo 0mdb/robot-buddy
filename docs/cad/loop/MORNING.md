@@ -72,6 +72,8 @@ _Pass 1 starting (2026-10-30 17:05). Rewritten every tick._
 
 **Wheel rims (S1c):** sprocket and idler outboard rims rounded r 1.0 (also kinder to the belt edge).
 
-**Next:** D1, S1b2, S1a3, then P2o / P6 (plate + FEA for the new track), then P2 motor mount v2 (outboard axle support, Q4 default), P3 plate stiffening.
+**Battery (S4):** safe in the frame as built (tool-only access, 10 g shock covered). The canopy (P6) now carries three battery requirements: keep the cells captive, route a stepped-on load to the frame (new FEA case S7), nothing sharp near the cells (`docs/cad/loop/S4_battery.md`).
+
+**Next:** D1, S1b2, S1a3, then P6 (plate + FEA for the new track), then P2 motor mount v2 (outboard axle support, Q4 default), P3 plate stiffening.
 
 **Open questions:** Q4–Q12 in `QUESTIONS.md`, each with a default the loop is using.

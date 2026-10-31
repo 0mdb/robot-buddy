@@ -246,3 +246,8 @@ Newest at the bottom. One entry per tick.
 - Full rebuild (ran past the 10-minute command limit; finished in the background): 0 interferences, printed parts 371.1 g.
 - Accessible sharp edges per wheel 213 → 41 mm (hub bore edge left). drivetrain.py's meshes now differ from the printed parts by the round; the SW export is the print file.
 - Next: rotate: D1 (mount fillets) or a quick doc (S3/S4).
+
+## tick 35 · S4 battery access and drop path · accepted (doc) · 2026-10-31 05:40
+- The 2 × 18650 sit in the UPS HAT at the stack top (z ≤ 80) under ~13 mm of canopy clearance. Access is tool-only (A2's 2.0-key canopy screws); charging via cut-outs.
+- Gaps, all on the canopy: cells can pop from their clips in a tumble; a stepped-on canopy has no defined load path; puncture clearance. → P6 requirements + a new FEA case S7 (300 N heel pad, < 10 mm, SF ≥ 3). Cell choice note (name-brand, protected, matched).
+- `docs/cad/loop/S4_battery.md`. No CAD change. Next: SW: D1, or S1a3.
