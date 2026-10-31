@@ -218,10 +218,12 @@ DECK_POSTS = [(30.0, -8.0), (30.0, 8.0), (-70.0, -20.0), (-70.0, 20.0)]
 REFLEX_STANDOFF = 5.0
 WIRE_SLOT = (
     35.0,
-    55.0,
+    53.0,
     0.0,
     3.0,
-)  # forward wire slot x0 x1 y r (between the mount feet)
+)  # forward wire slot x0 x1 y r (between the mount feet). D5b: x1 55 -> 53: at 55 its end
+# (x 58) came within 0.12-0.24 mm of the knee counterbore (61, 2.4) r 3.25, the plate's
+# min wall in meshcheck since tick 5
 
 # W3: long ribs through the insert-boss centres (|y| 21.5; at 25 their edge ran 0.1 mm
 # past the bosses' and no fillet would take the sliver); the y 0 rib stops before the wire
@@ -388,17 +390,12 @@ def plate_features() -> list[tuple[str, tuple, float, float]]:
     for sgn in (-1, 1):
         ys = sorted((sgn * BELL_POCKET[1][0], sgn * BELL_POCKET[1][1]))
         cut.append(("cut", ("rect", *BELL_POCKET[0], *ys), -BELL_POCKET[2], 0.0))
-    # bulkhead foot: screws up from below (counterbored), locating-tab slots
+    # bulkhead foot: screws up from below, locating-tab slots. D5b: no counterbores here:
+    # at x 81.5 an r 3.25 counterbore reached x 84.75, a 0.25 mm wall at the plate front
+    # (and the foot is too narrow to move the screw line back, D4). Low-head M3 (DIN 7984,
+    # 2 mm head) sits on the belly instead.
     for y in BULK_HOLES_Y:
         cut.append(("all", ("circle", BULK_X, y, CLR_M3 / 2), 0, 0))
-        cut.append(
-            (
-                "cut",
-                ("circle", BULK_X, y, CBORE_M3 / 2),
-                -PLATE_T,
-                -PLATE_T + CBORE_DEPTH,
-            )
-        )
     kx, ky = BH_KNEE_HOLE
     cut.append(("all", ("circle", kx, ky, CLR_M3 / 2), 0, 0))
     cut.append(
@@ -552,9 +549,10 @@ def plate_lines(plate: str) -> list[str]:
         (f"{a0 - RAIL_L / 2 - 3} 26 {a1 + RAIL_L / 2 + 3} 46", 2 * g_len + c_len),
         (f"{a0 - RAIL_L / 2 - 3} -46 {a1 + RAIL_L / 2 + 3} -26", 2 * g_len + c_len),
         (f"{WIRE_SLOT[0] - 5} -5 {BH_KNEE_HOLE[0] + 5} 8", w_len + cb),
-        # the bulkhead counterbores (x 81.5, r 3.25) reach x 84.75: they break into the
-        # outline (0.25 mm wall, meshcheck's 0.24 min wall) so they aren't loops here: D5b
-        (f"{BULK_X - 5} -26 {hx} 26", t_len),
+        # tab slots only: the bulkhead screw holes (no counterbores since D5b) keep a square
+        # edge for the screw heads to seat on
+        (f"{BULK_X - 5} 4 {hx} 18", t_len / 2),
+        (f"{BULK_X - 5} -18 {hx} -4", t_len / 2),
     ]
     for box, length in groups:
         dvl = (1 - math.pi / 4) * PLATE_EDGE_R**2 * length

@@ -78,6 +78,8 @@ _Pass 1 starting (2026-10-30 17:05). Rewritten every tick._
 
 **Motor-bell relief (P14, your request):** a 2 mm deep pocket in the plate under each motor's can/encoder, so the motor can't lever its bracket. −3.4 g; strength unchanged, but axle motion under tension +15 % (0.90 → 1.03 mm, Q17): a stiffening rib under each pocket is queued (W7).
 
+**Plate thin walls (D5b):** two near-zero walls fixed: the bulkhead counterbores at the front edge (now low-head screws, no counterbore) and the wire slot touching the knee counterbore. Plate min wall 0.23 → 0.8 mm (the designed floor under the insert pockets).
+
 **Drivetrain: reviewed by Ben, good to test-print** (sprocket + idler).
 
 **Service (R2):** battery swap ✓ (3 min). A motor swap takes ~10 min because its lead ends on the reflex board under the deck: add an inline connector per motor (R2b). **Before you order the reflex PCB: put its USB-C on the rear edge (x −40)**, the only edge you can reach with the deck on (R2c). Track swap: **fixed (R2a)**, the carriage clamp now threads into an insert in the carriage: one 2.5 key, no nut under the plate.

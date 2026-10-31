@@ -297,3 +297,8 @@ Newest at the bottom. One entry per tick.
 - Ben: the motors don't sit flat; the can/encoder end would bear on the plate and lever the bracket. Added a 2 mm deep relief under each (x −11…20, |y| 31…53, clear of the reflex standoff and 2 mm in from the edge), floor edge r 1.0.
 - Plate alone: each relief −1,364 mm³ (31 × 22 × 2), floor fillets +22.3 vs +22.75 mm³. Full rebuild 0 interferences; plate 111.3 g (−3.4 g).
 - S1m 9.03 MPa (=), inserts 0.900 → 1.033 mm (+15 %: thinner plate in the tension path); S1b 3.68 MPa. Accepted as Ben's fix; W7 queued to win the stiffness back.
+
+## tick 44 · D5b plate thin walls · accepted · 2026-10-31 10:00
+- Bulkhead-foot counterbores removed (0.25 mm wall at the front; the foot can't move back): low-head M3 on the belly; their holes excluded from the slot fillets so the heads seat on a square edge. 07 F1 amended.
+- meshcheck still said 0.23 mm: located with rays at (57.8, 1.2, −2…−3.4), the wire slot's end against the knee counterbore (I'd only checked they don't overlap in S1a4). WIRE_SLOT x1 55 → 53.
+- Min wall 0.23 → 0.8 mm (the designed floor under the insert pockets: noted on D5). S1m 8.99 MPa / 1.033 mm, S1b 3.49 MPa, 0 interferences, plate 111.5 g.
