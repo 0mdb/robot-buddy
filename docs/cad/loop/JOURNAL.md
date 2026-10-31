@@ -334,3 +334,10 @@ Newest at the bottom. One entry per tick.
 - Ben: relax S8 to **150 N, SF ≥ 2 on XY UTS** (300 N = no-break). Top 97: PC 1.70 mm / 25.3 MPa (SF 2.4), **ASA SF 1.45 → canopy = PC (M4 closed)**. Ben: top 97 → **95** (rib bottoms 3.2 over the stack, limit 1.7 mm; ribs may touch the HAT at 300 N). 95: 1.82 mm → keels to z 73: **1.706 mm** (Ben: accept, no hair-splitting), top 25.7 MPa SF 2.4, hood ceiling 28.9 SF 2.15.
 - Canopy 83.2 g ASA → **109.6 g PC**. Rebuild 0 interferences.
 - Next: P6d openings / P6e edges / P6f crown / P6g internal fillets (Ben), then the track frame.
+
+## tick 50 · P6g canopy internal fillets (Ben), rib/keel roots · accepted · 2026-10-31 18:00
+- r 1.0 at every rib and keel root on the ceiling underside: one filletface over the 33 cell faces at z 93.2 (outer loops, 122 edges), skipping the tangent seams into the inner rounds (x −77, |y| 45) and the ceiling's front end at the hood (x 36.2). Engine: `skip:` now takes several `;`-separated boxes.
+- dvol +391.8 vs +400.9 mm³ (concave, (1 − π/4) r² × 1,868 mm); canopy 91,742 mm³ (109.8 g PC).
+- S8 (150 N heel, PC): 1.706 → **1.675 mm** (now under 1.7), top 25.7 → 24.4 MPa (SF 2.41 → 2.54), hood ceiling 28.9 → 29.0 (SF 2.14). Rebuild 0 interferences, printed 478.6 g.
+- Not done (P6g remainder): vertical rib-crossing corners, keel-to-rear-wall edges, the hood ceiling/lug zone (now the S8 peak).
+- Next: P6h S5c with the real canopy (rotation: strength), then P6e edges.

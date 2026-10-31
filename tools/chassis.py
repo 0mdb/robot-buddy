@@ -1830,6 +1830,9 @@ CAN_RIBS_X = (-62.0, -42.0, -22.0, -2.0, 18.0)  # ribs along y
 # S7 rev 2 (tick 49): ribs alone 19.5 -> 7.0 mm, still the top spanning 106 between the
 # side walls. Two lengthwise inner walls ("keels") just outside the Pi stack (|y| <= 28)
 # halve that span; down to z 75 (clear of the stack's sides by 2.7, of everything below).
+CAN_ROOT_R = (
+    1.0  # P6g (Ben): rib/keel roots, 07 fil_in (not 1.95/2.0: S8 fixes those cylinders)
+)
 CAN_KEEL = (
     31.5,
     CAN_T,
@@ -2011,6 +2014,15 @@ def canopy_features() -> dict:
         + 2 * kt * _poly_area(canopy_keel_profile())
         - rd_ * len(CAN_RIBS_X) * 2 * rt_ * kt  # y-ribs through the keels
     )
+    # P6g root rounds (concave: + (1 - pi/4) r² per mm), both sides of every rib/keel
+    # root on the ceiling between the crossings, x -77 .. 36.2, |y| <= 45
+    xa, xb = ribs[0][0], ribs[0][1]
+    ya = ribs[-1][3]
+    nxr, nyr = len(CAN_RIBS_Y), len(CAN_RIBS_X)
+    l_x = nxr * 2 * ((xb - xa) - nyr * rt_)  # x-ribs
+    l_y = nyr * 2 * (2 * ya - nxr * rt_ - 2 * kt)  # y-ribs
+    l_k = 2 * 2 * ((xb - xa) - nyr * rt_)  # keels
+    roots = (1 - math.pi / 4) * CAN_ROOT_R**2 * (l_x + l_y + l_k)
     return {
         "p": p,
         "pin": pin,
@@ -2026,7 +2038,8 @@ def canopy_features() -> dict:
         "boss": boss,
         "pockets": pockets,
         "ribs": rib_vol,
-        "vol": v_out - v_in - win - holes + apron + boss - pockets + rib_vol,
+        "roots": roots,
+        "vol": v_out - v_in - win - holes + apron + boss - pockets + rib_vol + roots,
     }
 
 
@@ -2037,6 +2050,14 @@ def canopy_lines(path: str) -> list[str]:
     rr, rh, rt = CAN_R
     hw = CAN_HW
     o = f["out"]
+    zc_in = CAN_TOP - CAN_T  # ceiling underside
+    xr_in = (
+        CAN_X0 + CAN_T + (CAN_R[2] - CAN_T)
+    )  # -77: tangent seam into the rear inner round
+    xb_in = canopy_profile()[2][0] + CAN_T  # 36.2: ceiling ends at the hood
+    yr_in = (
+        CAN_HW - CAN_T - (CAN_R[2] - CAN_T)
+    )  # 45: tangent seams into the side rounds
 
     def prismy(poly, y0, y1, kind):  # Top plane: sketch (x, -z), extrude +Y
         pts = [f"{x:.4f} {-z:.4f}" for x, z in poly]
@@ -2085,6 +2106,15 @@ def canopy_lines(path: str) -> list[str]:
             )
             for s in (-1, 1)
         ],
+        # P6g (Ben): r 1.0 at the rib and keel roots on the ceiling's underside (every cell
+        # face of the grid, outer loops). Not the tangent seams into the inner rounds
+        # (x -77, |y| 45) nor the ceiling's front end at the hood (x 36.2)
+        f"filletface|{CAN_ROOT_R}|z:-1|{zc_in:.3f}|{CAN_X0} {-CAN_HW} {xb_in + 1:.3f} {CAN_HW}|any"
+        f"|{f['roots']:.1f} {0.15 * f['roots']:.1f}"
+        f"|skip:{CAN_X0 - 1} {-CAN_HW - 1} {zc_in - 0.5:.3f} {xr_in + 0.4:.3f} {CAN_HW + 1} {zc_in + 0.5:.3f}"
+        f";{xb_in - 0.4:.3f} {-CAN_HW - 1} {zc_in - 0.5:.3f} {xb_in + 1:.3f} {CAN_HW + 1} {zc_in + 0.5:.3f}"
+        f";{CAN_X0 - 1} {yr_in - 0.4:.3f} {zc_in - 0.5:.3f} {xb_in + 1:.3f} {CAN_HW + 1} {zc_in + 0.5:.3f}"
+        f";{CAN_X0 - 1} {-CAN_HW - 1} {zc_in - 0.5:.3f} {xb_in + 1:.3f} {-yr_in + 0.4:.3f} {zc_in + 0.5:.3f}",
         f"box|{CAN_X0} {CAN_X0 + CAN_T}|{-CAN_APRON_HW} {CAN_APRON_HW}|0 {CAN_Z0}",
         *[f"cyl|z|{bx} {sg * by}|0 {bh}|{INS_BOSS / 2}|boss" for sg in (-1, 1)],
         *[

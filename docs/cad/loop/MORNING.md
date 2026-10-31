@@ -11,8 +11,8 @@
 | Motor mounts 010/011 | 14.0 g each | S2 **converged**, SF 5.3; stay bolted (your call) |
 | Sprocket 020 / idler 021 | 35.9 / 34.7 g | your review: good; outboard rims r 1 |
 | Carriages 030/031 | 12.7 g each | S6 SF 4.9; one-key track swap (clamp insert) |
-| **Canopy 004 (leg 2, new)** | **109.6 g PC** | pebble shell, top 95, 4 mm rib grid + 2 keels; heel test S8 (150 N, your relaxed criterion) 1.71 mm, SF 2.4; PC beat ASA (SF 2.4 vs 1.45). Not yet: openings, edges, crown, internal fillets, S5c with it (P6d–h). Renders: `shots/1-P6c/` |
-| **Printed total** | **478.2 g** | CoG (−0.1, 0.0, 27.9) |
+| **Canopy 004 (leg 2, new)** | **109.6 g PC** | pebble shell, top 95, 4 mm rib grid + 2 keels; heel test S8 (150 N, your relaxed criterion) 1.68 mm, SF 2.5 (inner roots rounded r 1, your ask); PC beat ASA (SF 2.4 vs 1.45). Not yet: openings, outer edges, crown, S5c with it (P6d/e/f/h). Renders: `shots/1-P6c/` |
+| **Printed total** | **478.6 g** | CoG (−0.1, 0.0, 27.9) |
 
 ## Biggest wins this leg
 - Motor mount from failing to **converged SF 5.3** (D7–D10, D1).

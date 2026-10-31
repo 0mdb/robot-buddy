@@ -486,12 +486,14 @@ class SwBuild
         if (f.Length > 7 && f[7].StartsWith("loops:")) { lb = Nums(f[7].Substring(6)); inner = true; }
         // "skip:x0 y0 z0 x1 y1 z1" (P6): leave out edges whose vertex midpoint is in the box
         // (e.g. a concave edge in the loop that another radius owns)
-        double[] skip = null;
-        if (f.Length > 7 && f[7].StartsWith("skip:")) skip = Nums(f[7].Substring(5));
+        var skips = new List<double[]>();  // P6g: several boxes, ';'-separated
+        if (f.Length > 7 && f[7].StartsWith("skip:"))
+            foreach (string sb in f[7].Substring(5).Split(';')) skips.Add(Nums(sb));
         double[] dv = Nums(f[6]);
         var picked = new List<IEdge>();
         var cand = new List<IFace2>();
         int faces = 0;
+        int nskip = 0;
         object[] bodies = (object[])((IPartDoc)doc).GetBodies2((int)swBodyType_e.swSolidBody, true);
         foreach (object bo in bodies)
             foreach (object fo in (object[])((IBody2)bo).GetFaces())
@@ -565,24 +567,24 @@ class SwBuild
                 }
                 foreach (object eo in (object[])lp.GetEdges())
                 {
-                    if (skip != null)
+                    if (skips.Count > 0)
                     {
                         object v0o = ((IEdge)eo).GetStartVertex(), v1o = ((IEdge)eo).GetEndVertex();
                         if (v0o != null && v1o != null)
                         {
                             double[] q0 = (double[])((IVertex)v0o).GetPoint(), q1 = (double[])((IVertex)v1o).GetPoint();
                             double mx = (q0[0] + q1[0]) * 500, my = (q0[1] + q1[1]) * 500, mz = (q0[2] + q1[2]) * 500;
-                            if (mx >= skip[0] && my >= skip[1] && mz >= skip[2] && mx <= skip[3] && my <= skip[4] && mz <= skip[5])
-                            {
-                                Console.WriteLine(string.Format(ci, "    skipped edge at ({0:F1}, {1:F1}, {2:F1})", mx, my, mz));
-                                continue;
-                            }
+                            bool hit = false;
+                            foreach (double[] skip in skips)
+                                if (mx >= skip[0] && my >= skip[1] && mz >= skip[2] && mx <= skip[3] && my <= skip[4] && mz <= skip[5]) hit = true;
+                            if (hit) { nskip++; continue; }
                         }
                     }
                     picked.Add((IEdge)eo);
                 }
             }
         }
+        if (nskip > 0) Console.WriteLine("    skipped " + nskip + " edges");
         string what = "filletface r" + f[1] + " nz " + f[2] + " z " + f[3];
         if (anyN ? faces < 1 : faces != want) { Check(what, false, "matched " + faces + " faces, expected " + f[5]); return; }
         double v0 = PartVolume();
