@@ -258,3 +258,8 @@ Newest at the bottom. One entry per tick.
 - r 2.2: the rebuild failed to save RB-PRT-010 (the killed swsim left it open), S2 reran on the old part, killed again. A close-documents manifest then hung: SLDWORKS at ~41 GB and no longer answering the probe. Not killing it (Ben starts SolidWorks; his own documents may be open).
 - Generator restored, change parked as a patch. sw: DOWN in STATE. Ben extended the stop to 12:00 (message ~06:20).
 - Next: doc / py items until SolidWorks is back; then rebuild the baseline, reapply D1, S2 pair.
+
+## tick 37 · R2 service tasks on paper · accepted (doc) · 2026-10-31 06:35
+- SolidWorks has exited (no SLDWORKS process; probe fails). sw: DOWN; doc/py items only.
+- Timed battery / track / motor / reflex-USB service against the geometry: `docs/cad/loop/R2_service.md`. Battery ✓; track needs two tools (blind nyloc under the plate) → R2a (insert in the carriage); motor ~8–10 min because its lead ends on the reflex board under the deck → R2b (inline connector); reflex USB reachable only if the connector faces the rear bay → R2c, a PCB layout note before the board is ordered.
+- No CAD change.
