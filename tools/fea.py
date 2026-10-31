@@ -43,7 +43,16 @@ PA6CF_COND = {
     "uts_z": 27.0e6,
     "uts_xy": 54.7e6,
 }
-MATERIALS = {"PET-CF": PETCF, "PA6CF_DRY": PA6CF_DRY, "PA6CF_COND": PA6CF_COND}
+# Canopy candidates (M4, 07 §2 rows): PC White 60100 favoured, ASA White 45100 the alternative.
+PC = {"E": 0.8 * 2110e6, "nu": 0.37, "rho": 1200.0, "uts_z": 56e6, "uts_xy": 62e6}
+ASA = {"E": 0.8 * 2450e6, "nu": 0.35, "rho": 1070.0, "uts_z": 31e6, "uts_xy": 37e6}
+MATERIALS = {
+    "PET-CF": PETCF,
+    "PA6CF_DRY": PA6CF_DRY,
+    "PA6CF_COND": PA6CF_COND,
+    "PC": PC,
+    "ASA": ASA,
+}
 SF = 3.0
 
 # 07 §3.4 loads. TBD: measure track tension with a spring scale at set-up.
@@ -284,7 +293,45 @@ def s1m() -> dict:
     }
 
 
+def s8() -> dict:
+    """Canopy pressed hard (S4 item 4): 150 N on a Ø30 heel pad (a child kneeling or
+    pushing down) in a rib cell of the flat top. Ben (tick 49) relaxed it from 300 N / SF 3:
+    a 1.8 shell held at 4 screws can't take a full heel at SF 3 (rev 3: 3.4 mm, 50.7 MPa).
+    Judged SF >= 2 on the XY UTS (the skin and ribs bend along the layers when printed
+    open side down); 300 N is reported by linear scaling as a no-break check (SF >= 1). Held only where it is held: the two lug screws (vertical Ø3.9 holes in the hood
+    ceiling), the two rear insert pockets and the apron/boss feet on the plate (z 0).
+    Limit: the inner ceiling is 5.2 mm over the Pi stack top (86), so < 2.2 mm keeps
+    3 mm off the cells (S4 assumed a stack top of 80 and 13 mm; corrected tick 49).
+    Top 97 -> 95 (Ben): rib bottoms 3.2 over the stack, so < 1.7 mm keeps 1.5 mm; at
+    300 N (x2) the ribs may touch the HAT top (accepted)."""
+    hx, hy, hr, hh = chassis.CAN_HEEL
+    top = chassis.CAN_TOP + hh
+    f = 150.0
+    return {
+        "name": "S8",
+        "title": "Canopy, 150 N heel on the top (300 N = x2, no-break)",
+        "part": r"\CAD\fea\FEA-canopy_S8.SLDPRT",
+        "lines": [
+            "discard_open",
+            f"fix cyl 0 0 1 {chassis.CAN_LUG_HOLE / 2} 0.05",
+            f"fix cyl 0 0 1 {chassis.INS_HOLE / 2} 0.05",
+            "fix plane 0 0 1 0",
+            f"load heel plane 0 0 1 {top}",
+            f"disp heel plane 0 0 1 {top}",
+            "probe top -86 -54 80 35 54 95",
+            "probe hood 30 -54 90 75 54 125",
+            "probe rear -86 -54 -1 -70 54 40",
+            "hotspots 5",
+            "mesh 1.0 0.05",
+            f"case heel heel:0,0,{-f}",
+        ],
+        "applied": (0, 0, -f),
+        "limit_disp_mm": 1.7,
+    }
+
+
 STUDIES = {
+    "S8": s8,
     "S1m": s1m,
     "S1d": s1d,
     "S6": s6,

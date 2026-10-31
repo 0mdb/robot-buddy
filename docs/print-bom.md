@@ -83,7 +83,7 @@ Datasheet numbers, the per-part verdicts and the FEA material model: `docs/cad/0
 | ESP32-face board mount | PET-CF | PETG | 0.6 hard / eng | TBD |
 | Camera mount | PET-CF | PETG | 0.6 hard / eng | CAD exists (`CameraMount1`) |
 | Face screen bezel / surround | **PLA** (or ASA) | — | 0.4 SS / textured | cosmetic; ILI9341 320×240 |
-| Top shell / canopy | **PC white (60100) favoured / ASA white (45100)**: S7 decides (2026-10-31; PC for layer strength + toughness, ASA stiffer; PC: dry first, enclosed) | PETG | 0.4 SS / eng | PLA for bolt-on accents only |
+| Top shell / canopy | **PC white (60100)** (2026-10-31, was ASA: the heel test S8 passes at SF 2.4 in PC, 1.45 in ASA; dry first, enclosed) | PETG | 0.4 SS / eng | PLA for bolt-on accents only |
 | Cosmetic accents (ears, antenna, badge) | PLA Glow / Wood / colors | — | 0.4 SS / textured | fun parts |
 | Vibration isolators / feet | TPU 85A | — | 0.6 hard / textured | low infill gyroid |
 | Cable strain reliefs / bumpers | TPU 85A | — | 0.6 hard / textured | |
@@ -95,7 +95,7 @@ Datasheet numbers, the per-part verdicts and the FEA material model: `docs/cad/0
   hole patterns / motor + Pi fit / clearances), then commit final in **PET-CF
   black**. Both in stock.
 - Confirm whether tank tracks are printed (TPU 85A) or a purchased belt.
-- Canopy: **PC white favoured, ASA white the alternative**; the S7 strength check decides (`07` §2 amendment). Face bezel: PLA or ASA, still open.
+- Canopy: **PC white** (`07` §2 amendment: S8 heel test, PC SF 2.4 vs ASA 1.45). ASA white is the fallback if PC won't print well. Face bezel: PLA or ASA, still open.
 - Camera isolator approach if vision needs it: TPU 85A grommets vs silicone ball
   dampers — test on the bench.
 - PAHT-CF / TPU ~70A remain add-if-needed only.

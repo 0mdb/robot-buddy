@@ -327,3 +327,10 @@ Newest at the bottom. One entry per tick.
 - Full rebuild 0 interferences. S1m 8.87 → 9.03 MPa (SF 3.88), inserts 1.032 mm (=); S1b 3.49 → 3.76 MPa (+7.7 %, the holes are 13 mm from the rear deck posts; SF 9.3), deck 0.126 mm.
 - Ben (~12:00): canopy material M4: PC White 60100 favoured, ASA White 45100 the alternative; S7 runs both (ribs under the top if needed). Mass roll-up now uses PC (ρ 1.20 🟡): canopy ~93 g, printed total ~461.6 g.
 - Next: P6c S7 (both materials) + S5c with the real canopy.
+
+## tick 49 · P6c canopy heel test (S8) + material · accepted (strength fix, Ben's calls) · 2026-10-31 17:00
+- Study: canopy alone held at its 4 screws, heel on a Ø30 pad (analysis copy `FEA-canopy_S8`; pad because split lines don't work). Found the S4 premise wrong: stack top is z 86, not 80, so the ceiling cleared it by 5.2 mm, not 13 (S4 corrected). 07's "S7" is the modes run, so the heel case is **S8** (07 amendment).
+- 300 N, bare 1.8 top: PC 19.5 mm / 78.5 MPa, ASA 17.1 / 78.0. Ben: top 93 → 97 for ribs. 4 mm rib grid (1.6 thick): PC 7.0 / 74. Keels |y| 31.5 to z 75: 3.6 / 83.7 (free ends) and a 2.4-thick `box` keel inside the canopy (exact in a fresh part; cause unknown) → keels as Top-plane profiles, tied into the rear wall, tapered at the front: 3.4 / 50.7 (SF 1.2 XY).
+- Ben: relax S8 to **150 N, SF ≥ 2 on XY UTS** (300 N = no-break). Top 97: PC 1.70 mm / 25.3 MPa (SF 2.4), **ASA SF 1.45 → canopy = PC (M4 closed)**. Ben: top 97 → **95** (rib bottoms 3.2 over the stack, limit 1.7 mm; ribs may touch the HAT at 300 N). 95: 1.82 mm → keels to z 73: **1.706 mm** (Ben: accept, no hair-splitting), top 25.7 MPa SF 2.4, hood ceiling 28.9 SF 2.15.
+- Canopy 83.2 g ASA → **109.6 g PC**. Rebuild 0 interferences.
+- Next: P6d openings / P6e edges / P6f crown / P6g internal fillets (Ben), then the track frame.

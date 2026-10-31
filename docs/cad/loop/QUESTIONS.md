@@ -4,6 +4,7 @@ The loop adds questions here and moves on. Answer inline (`**A:** …`); the nex
 
 ## Agreed 2026-10-31 (~12:00, Ben)
 - **M4 canopy material: PC White (60100) favoured, ASA White (45100) the alternative.** S7 runs both; PC if it bends < 10 mm and S5c still passes (ribs under the top if needed), otherwise ASA. Ben expects PC.
+  **Closed (tick 49): PC.** 150 N heel, ribbed canopy: PC SF 2.4 (along-layer), ASA SF 1.45.
 
 ## Answered 2026-10-31 (~10:40, Ben)
 - **Q17 plate deflection → (b) outboard track frame.** A frame inside each belt loop carries the belt tension between the sprocket's outboard 624 and the idler axle, so the plate no longer sees it. Folds into P2o; 06 §7 gets an amendment before the CAD diverges. The S1m deflection limit stays as written until the frame exists.

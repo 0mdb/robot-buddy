@@ -855,6 +855,7 @@ def rebuild_manifest(win: str) -> list[str]:
     bulkhead = cad + r"\parts\RB-PRT-002_bulkhead.SLDPRT"
     deck = cad + r"\parts\RB-PRT-003_pi_deck.SLDPRT"  # P4
     canopy = cad + r"\parts\RB-PRT-004_canopy.SLDPRT"  # P6
+    canopy_fea = cad + r"\fea\FEA-canopy_S8.SLDPRT"  # P6c heel study S8, analysis only
     car_l = cad + r"\parts\RB-PRT-030_carriage_L.SLDPRT"  # P5
     car_r = cad + r"\parts\RB-PRT-031_carriage_R.SLDPRT"
     sprocket = cad + r"\parts\RB-PRT-020_sprocket.SLDPRT"  # 08, outrigger variant (P2o)
@@ -930,6 +931,7 @@ def rebuild_manifest(win: str) -> list[str]:
         "asmsave",
         # T10: analysis-only part, plate + both mounts as one body (not printed)
         *fea_plate_mounts_lines(cad + r"\\fea\\FEA-plate_mounts.SLDPRT"),
+        *canopy_fea_lines(canopy_fea),
         f"shot|{asm}|{shots}",
         f"close|{asm}",
         f"shot|{plate}|{win}\\shots\\plate",
@@ -1813,10 +1815,26 @@ def wheel_at(x: float, side: int) -> tuple[list[float], tuple[float, float, floa
 # carriages; the tracks cover the sides below it (belt inner edge |y| 56.5, 3.5 mm off).
 # At the rear an apron reaches the plate between the carriages with 2 insert bosses:
 # M3 buttons go up through the plate from the belly (hidden, E1 §3; F9 amended).
-CAN_T = 1.8  # 06 §6 / 07: PC White 60100 favoured, ASA White 45100 the alternative (M4: S7 decides)
+CAN_T = (
+    1.8  # 06 §6 / 07: PC White 60100 (M4 closed tick 49: S8 heel PC SF 2.4, ASA 1.45)
+)
 CAN_HW = 53.0  # 3.5 inboard of the belt's inner edge (< 5 mm: no finger gap)
 CAN_Z0 = 30.0  # skirt bottom: 3.5 over the mount tops
-CAN_TOP = 93.0  # 06 §3: Pi stack top 86 + 5.2 clearance + wall
+CAN_TOP = 95.0  # Ben (tick 49): 93 -> 97 for a 4 mm rib grid; then 97 -> 95 with S8 relaxed to 150 N: rib bottoms 3.2 over the stack top (86)
+# S7 (tick 49): a bare 1.8 top sagged 19.5 mm / 78.5 MPa (PC) under the 300 N heel, the
+# 1.8 skin bending between the side walls. A rib grid under the flat top, inside the
+# inner rounds (x >= -77, |y| <= 45) up to the hood's back wall (x 36.2).
+CAN_RIB = (1.6, 4.0)  # thickness (4 x 0.4 nozzle), depth below the inner ceiling
+CAN_RIBS_Y = (-15.0, 0.0, 15.0)  # ribs along x (the keels replace the +-30 pair)
+CAN_RIBS_X = (-62.0, -42.0, -22.0, -2.0, 18.0)  # ribs along y
+# S7 rev 2 (tick 49): ribs alone 19.5 -> 7.0 mm, still the top spanning 106 between the
+# side walls. Two lengthwise inner walls ("keels") just outside the Pi stack (|y| <= 28)
+# halve that span; down to z 75 (clear of the stack's sides by 2.7, of everything below).
+CAN_KEEL = (
+    31.5,
+    CAN_T,
+    73.0,
+)  # |y| centre, thickness, bottom z (75 -> 73 with the top at 95: S8 1.82 mm, keep the 20.2 depth)
 CAN_X0 = -PLATE_L / 2  # rear face flush with the plate's rear edge
 CAN_HOOD_D = (
     15.0  # hood depth behind the wall's back face (face board 10.6 + lugs 8.2 + room)
@@ -1924,6 +1942,40 @@ def canopy_outer_volume(p, hw: float, rr: float, rh: float, rt: float) -> dict:
     return {"base": _poly_area(p) * 2 * hw, **dv, "alpha_d": alpha_d}
 
 
+def canopy_ribs() -> list[tuple[float, ...]]:
+    """Rib grid boxes (x0, x1, y0, y1, z0, z1) under the body's inner ceiling, inside its
+    inner rounds (r 6.2 at x -77 / |y| 45) and up to the hood's back wall."""
+    t, dep = CAN_RIB
+    zc = CAN_TOP - CAN_T
+    xa = CAN_X0 + CAN_T + (CAN_R[2] - CAN_T)  # -77
+    xb = canopy_profile()[2][0] + CAN_T  # hood back wall, inner face
+    ya = CAN_HW - CAN_T - (CAN_R[2] - CAN_T)  # 45
+    out = [(xa, xb, y - t / 2, y + t / 2, zc - dep, zc) for y in CAN_RIBS_Y]
+    out += [(x - t / 2, x + t / 2, -ya, ya, zc - dep, zc) for x in CAN_RIBS_X]
+    return out
+
+
+def canopy_keel_profile() -> list[tuple[float, float]]:
+    """Keel side profile (XZ). Rev 3 (tick 49): rev 2's keels (boxes x -77..36.2) ended
+    free at both ends and peaked there (83.7 MPa at x -77). Now tied into the rear wall
+    (x -83.2, chamfered inside the r 6.2 inner round, so no overlap) and tapered up into
+    the ceiling over the last 20 mm before the hood. Built as a Top-plane profile: the
+    same keel as a `box` came out 2.4 thick, not 1.8, inside the canopy (cause unknown)."""
+    _, _, kz = CAN_KEEL
+    zc = CAN_TOP - CAN_T
+    xr = CAN_X0 + CAN_T  # rear wall inner face
+    ri = CAN_R[2] - CAN_T  # inner top round
+    xb = canopy_profile()[2][0] + CAN_T  # hood back wall, inner face
+    return [
+        (xr, kz),
+        (xr, zc - ri),
+        (xr + ri, zc),
+        (xb, zc),
+        (xb, zc - CAN_RIB[1]),
+        (xb - 20.0, kz),
+    ]
+
+
 def canopy_features() -> dict:
     p = canopy_profile()
     rr, rh, rt = CAN_R
@@ -1950,6 +2002,15 @@ def canopy_features() -> dict:
     seg = r * r * math.acos(dd / r) - dd * math.sqrt(r * r - dd * dd)
     boss = 2 * (math.pi * r * r - seg) * bh
     pockets = 2 * math.pi * (INS_HOLE / 2) ** 2 * INS_DEPTH
+    ribs = canopy_ribs()
+    rt_, rd_ = CAN_RIB
+    ky, kt, kz = CAN_KEEL
+    rib_vol = (
+        sum((x1 - x0) * (y1 - y0) * (z1 - z0) for x0, x1, y0, y1, z0, z1 in ribs)
+        - rd_ * len(CAN_RIBS_X) * len(CAN_RIBS_Y) * rt_ * rt_  # rib crossings
+        + 2 * kt * _poly_area(canopy_keel_profile())
+        - rd_ * len(CAN_RIBS_X) * 2 * rt_ * kt  # y-ribs through the keels
+    )
     return {
         "p": p,
         "pin": pin,
@@ -1964,7 +2025,8 @@ def canopy_features() -> dict:
         "apron": apron,
         "boss": boss,
         "pockets": pockets,
-        "vol": v_out - v_in - win - holes + apron + boss - pockets,
+        "ribs": rib_vol,
+        "vol": v_out - v_in - win - holes + apron + boss - pockets + rib_vol,
     }
 
 
@@ -2010,6 +2072,19 @@ def canopy_lines(path: str) -> list[str]:
             f"cyl|z|{hx:.4f} {sg * BH_LUG_Y}|{zlo:.3f} {zhi:.3f}|{CAN_LUG_HOLE / 2}|cut"
             for sg in (-1, 1)
         ],
+        *[
+            f"box|{x0:.3f} {x1:.3f}|{y0:.3f} {y1:.3f}|{z0:.3f} {z1:.3f}"
+            for x0, x1, y0, y1, z0, z1 in canopy_ribs()
+        ],
+        *[
+            prismy(
+                canopy_keel_profile(),
+                s * CAN_KEEL[0] - CAN_KEEL[1] / 2,
+                s * CAN_KEEL[0] + CAN_KEEL[1] / 2,
+                "boss",
+            )
+            for s in (-1, 1)
+        ],
         f"box|{CAN_X0} {CAN_X0 + CAN_T}|{-CAN_APRON_HW} {CAN_APRON_HW}|0 {CAN_Z0}",
         *[f"cyl|z|{bx} {sg * by}|0 {bh}|{INS_BOSS / 2}|boss" for sg in (-1, 1)],
         *[
@@ -2020,6 +2095,32 @@ def canopy_lines(path: str) -> list[str]:
         "save",
     ]
     return lines
+
+
+# S8 (P6c, heel; was "S7" in BACKLOG): analysis-only copy of the canopy with a Ø30 x 0.5 heel pad on the flat top at
+# the middle of its unsupported span, so the study can load exactly that patch (split
+# lines don't work through the API, tick 12). Not printed.
+CAN_HEEL = (
+    -32.0,
+    7.5,
+    15.0,
+    0.5,
+)  # x, y, r, pad height: centred on a rib cell (-42..-22, 0..15)
+
+
+def canopy_fea_lines(path: str) -> list[str]:
+    body = canopy_lines(path)
+    assert body[-1] == "save" and body[-2].startswith("expect|vol ")
+    hx, hy, hr, hh = CAN_HEEL
+    pad = math.pi * hr * hr * hh
+    vol = canopy_features()["vol"] + pad
+    head, rest = body[-2].split("|box ")
+    return [
+        *body[:-2],
+        f"cyl|z|{hx} {hy}|{CAN_TOP} {CAN_TOP + hh}|{hr}|boss",
+        f"expect|vol {vol:.1f} {vol * 0.03:.1f}|box {rest}",
+        "save",
+    ]
 
 
 # ------------------------------------------------------------------- runner
@@ -2053,7 +2154,7 @@ PART_MATERIAL = {
     "RB-PRT-001": "PET-CF",
     "RB-PRT-002": "PET-CF",
     "RB-PRT-003": "PET-CF",
-    "RB-PRT-004": "PC",  # canopy (06 §6, P6): PC favoured, M4 decides on S7
+    "RB-PRT-004": "PC",  # canopy (06 §6, P6): PC white (M4, tick 49)
     "RB-PRT-030": "PET-CF",
     "RB-PRT-031": "PET-CF",
     "RB-PRT-010": "PET-CF",

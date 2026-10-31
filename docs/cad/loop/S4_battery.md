@@ -2,6 +2,8 @@
 
 **Cells:** 2 × 18650 Li-ion in the Waveshare UPS HAT (B), the top layer of the Pi stack: deck top z 27, stack top z 80 (53 mm stack + 6 mm standoffs, 06 §3), footprint x −64.5…22.5, |y| ≤ 28. Canopy inside top ~93 (06 §3), so **13 mm** over the cells.
 
+> Correction (tick 49): the stack top is **z 86** (deck 27 + standoffs 6 + stack 53; the Pi envelope agrees), not 80, so the canopy's inner ceiling cleared it by 5.2 mm, not 13. The canopy top went 93 → 97 for a 4 mm rib grid (rib bottoms 5.2 over the stack), and the heel test (now **S8**, 07 amendment) limits deflection to 2.2 mm at 150 N.
+
 ## Findings
 
 | # | Topic | Status | Requirement / action |

@@ -120,6 +120,8 @@ Run S1, S2 and S5 on the plate/mount/bulkhead **before** the first PET-CF print;
 the canopy. Fillets and ribs are added *after* the first S-run picks where they go (fpv250's
 "simulate first, then fillet, then print").
 
+> Amendment (loop P6c, 2026-10-31, Ben): **new S8 Heel on the canopy** (the loop's "S7" in BACKLOG/S4; renamed, 07's S7 is the modes run). Canopy alone, held at its 4 screws (lug holes, rear insert pockets, apron feet); **150 N on a Ø30 pad in a rib cell of the top; < 1.7 mm** (canopy top 95, Ben: the 4 mm rib bottoms sit 3.2 mm over the Pi stack top at z 86, so 1.5 mm stays clear; at 300 N the ribs may touch the HAT top, accepted); SF ≥ 2 on the XY UTS** (skin and ribs bend along the layers, printed open side down). 300 N (a full heel) is reported ×2 as a no-break check (SF ≥ 1). Old → new: 300 N / SF 3 / < 10 mm (S4's draft, which assumed 13 mm over the cells). Why: a 1.8 shell held at 4 screws reached only 3.4 mm / 50.7 MPa at 300 N after three revisions (rib grid, top 93 → 97, two keels); posts to the frame or a 2.4 skin were the alternatives. S8 at 150 N is stricter than S4's hand press (100 N on Ø40), which it supersedes for the canopy top.
+
 ## 4. Fasteners
 
 ### 4.1 Standards
@@ -199,7 +201,7 @@ before ordering (screw engagement ≥ 1.3 d, tip ≥ 0.5 mm short of the pocket 
 
 > Amendment (loop A2, 2026-10-31): F7 / F8 / F11 M3 × 6 → **× 8** (the 7.2 pockets take 6.4 of engagement; one length fewer). F4b jack screw M3 × 20 → **× 30**: the block-to-carriage gap runs 7–17 mm over the travel plus 10 mm through the block. F12 could go M3 too (P7). Bill and driver notes: `docs/cad/loop/A2_fasteners.md`.
 
-> Amendment (loop P6, 2026-10-31, Ben): canopy material **PC White (60100) favoured, ASA White (45100) the alternative; S7 decides (M4)**. PC: Z UTS 56 vs ~31 MPa and much tougher (a child's shell splits along a layer in a drop); ASA: 15–45 % stiffer and easier to print. S7 runs both on the same mesh: PC if it holds < 10 mm and S5c still passes, with ribs under the top (= S4's cell-retention ribs) if needed; otherwise ASA. The mass roll-up uses PC (ρ 1.20 🟡, TDS to check).
+> Amendment (loop P6c, 2026-10-31): **canopy material = PC White (60100)** (M4 closed; Ben favoured PC, S8 decided). Heel 150 N on the ribbed canopy (top 97): PC 25.3 MPa top / 1.70 mm → **SF 2.4** on XY UTS 62; ASA 25.5 MPa / 1.48 mm → SF 1.45 on XY 37, fails SF 2. PC: dry first, enclosed, engineering plate, brim as needed. ρ 1.20 g/cm³ in the mass roll-up 🟡 until checked against the TDS.
 
 > Amendment (loop P6, 2026-10-31): F9's two **rear** joints turn round: **M3 × 10 button head up from the belly through Ø3.4 plate holes at (−80.4, ±12) into M3 inserts in two Ø9.2 bosses on the canopy's rear apron** (pocket 7.2, 6 mm engaged), instead of inserts in plate rear posts with the head on the canopy. Why: E1 §3, no screw heads on the faces a child sees, and the plate keeps no posts. The two **front** joints are unchanged (M3 × 8 flanged button down through the hood ceiling into the bulkhead lugs); those heads sit on the hood top behind the head, visible from above (open point for E2).
 
