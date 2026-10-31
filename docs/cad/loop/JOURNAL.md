@@ -84,3 +84,10 @@ Newest at the bottom. One entry per tick.
 - S2 rerun (mount v2, unchanged geometry; same numbers as tick 6: 11.69 / 12.01 / 2.66 MPa) located the peak: the lower motor-insert pocket cylinder (x 14.5, z 4.75) and the root-chamfer face share the peak node; the through-pocket breaks out through the chamfer. Third: the upright's inboard face around the pocket (10.2). The gusset side face as a whole is 6.3.
 - So tick 7 filleted the wrong edges; the singularity is a pocket/chamfer knife edge. Added D7 to fix it.
 - Next: P12 (plate + FEA for the TPU track), then D7.
+
+## tick 10 · P12 plate + FEA for the TPU track · accepted (deliberate +4.6 g) · 2026-10-30 22:00
+- fea.py loads from drivetrain.py: axle force at the belt centre plane (|y| 74.5; S2 gear point y 14.1 in the mount frame), tight-side excess on the sprocket pitch radius 28.65 → AXLE_F 48.7 N (TRACK_T stays 20 N).
+- Step 1, current plate: S2 pull + torque 12.0 → 12.6 MPa, holes 0.038 → 0.040 mm (+5 %; the TPU belt plane is 19.5 off the gearbox face vs 16.8 in my kit model, so here the arm grows ~7 %, contrary to 08's "halves", which was relative to its own kit estimate). Hot spot unchanged (insert/chamfer knife edge, D7). S1a 17.76 → 17.63 MPa, UX 0.250 → 0.247.
+- Step 2, rear relief removed (REAR_RELIEF flag; plate 81,653 vs 81,686 mm³ voxel; 0 interferences): S1a peak 17.62 (singular), jack stops 12.56 → 11.91, UX 0.247 → 0.241, UZ 3.15 → 3.03; S1b 2.88 → 2.55 MPa.
+- Verdict: accepted with +4.6 g as a deliberate trade: modest stiffness gain, and the carriage can now reach the plate edge (P5: ~11 mm shorter idler-axle cantilever). Q10 note updated, 06 amended.
+- Next: rotate: D7 (mount insert/chamfer knife edge) or a T item; then P3 / P5.

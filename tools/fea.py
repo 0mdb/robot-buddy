@@ -31,7 +31,9 @@ SF = 3.0
 # 07 §3.4 loads. TBD: measure track tension with a spring scale at set-up.
 TRACK_T = 20.0  # N per run
 STALL_TORQUE = 0.25  # N*m, Yahboom 1:48 TT [assumption]
-GEAR_R = 54.34 / 2
+# P12: the drive wheel is the 08 sprocket; its pitch radius sets the tight-side excess.
+# TRACK_T stays 20 N until the set-up spring-scale reading (08 designs for 10 N).
+GEAR_R = chassis.dt.pitch_radius()
 AXLE_F = 2 * TRACK_T + STALL_TORQUE / (GEAR_R / 1000)  # both runs + tight-side excess
 STACK_MASS = 0.26  # kg: Pi 5 + NVMe + UPS HAT + 2 x 18650 [assumption]
 SHOCK_G = 10.0  # quasi-static bump/drop factor on the deck [assumption]
@@ -40,8 +42,8 @@ SHOCK_G = 10.0  # quasi-static bump/drop factor on the deck [assumption]
 def gear_centre() -> tuple[float, float, float]:
     """Drive-gear centre, left side, chassis frame: shaft station, gear plane, axle height."""
     x = chassis.mount_tx() - (chassis.MOUNT_HOLE[0] - chassis.MOT_SHAFT_X)
-    y = chassis.PLATE_W / 2 + chassis.GEAR_GAP + chassis.GEAR_W / 2
-    return x, y, chassis.MOUNT_HOLE[2]
+    y0, y1 = chassis.track_y()  # belt centre plane (08: |y| 74.5)
+    return x, (y0 + y1) / 2, chassis.MOUNT_HOLE[2]
 
 
 def s1a() -> dict:
@@ -103,7 +105,9 @@ def s2() -> dict:
     """
     hx, hy, hz = chassis.MOUNT_HOLE
     gx = hx - chassis.MOT_SHAFT_X
-    gy = hy + chassis.MOT_THICK + chassis.GEAR_GAP + chassis.GEAR_W / 2
+    gy = (
+        hy + chassis.MOT_THICK + chassis.dt.SIDE_GAP + chassis.dt.BELT_W / 2
+    )  # belt centre plane
     return {
         "name": "S2",
         "title": "Motor mount, track pull + stall torque",

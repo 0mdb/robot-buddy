@@ -180,6 +180,9 @@ RIB_T, RIB_H = 1.2, 3.6  # 07 §1: rib <= 3 x thickness tall
 # hangs ~6.3 inboard of the gear; the follower wheel (flange gap 45.2 + 2 mm flanges)
 # reaches |y| ~47 and sweeps the plate edge at the rear. The rear corners are relieved.
 TRACK_W, GEAR_W, GEAR_GAP = 44.2, 31.6, 1.0
+REAR_RELIEF = (
+    False  # P12: obsolete with the TPU track (belt inner edge |y| 56.5 > plate 55)
+)
 REAR_RELIEF_Y = 46.0  # plate half-width behind REAR_RELIEF_X
 REAR_RELIEF_X = (
     -27.0
@@ -342,9 +345,13 @@ def plate_features() -> list[tuple[str, tuple, float, float]]:
         )
         ys = sorted((sgn * JACK_BLOCK_Y[0], sgn * JACK_BLOCK_Y[1]))
         add.append(("add", ("rect", *JACK_BLOCK_X, *ys), *JACK_BLOCK_Z))
-        # rear-corner relief for the follower wheel and the track
-        ry0, ry1 = sorted((sgn * REAR_RELIEF_Y, sgn * (PLATE_W / 2 + 1)))
-        cut.append(("all", ("rect", -PLATE_L / 2 - 1, REAR_RELIEF_X, ry0, ry1), 0, 0))
+        # rear-corner relief: needed only for the kit track (it hung inboard of the gear);
+        # the 08 TPU belt and idler sit outboard of |y| 56.5 (P12)
+        if REAR_RELIEF:
+            ry0, ry1 = sorted((sgn * REAR_RELIEF_Y, sgn * (PLATE_W / 2 + 1)))
+            cut.append(
+                ("all", ("rect", -PLATE_L / 2 - 1, REAR_RELIEF_X, ry0, ry1), 0, 0)
+            )
     # bulkhead foot: screws up from below (counterbored), locating-tab slots
     for y in BULK_HOLES_Y:
         cut.append(("all", ("circle", BULK_X, y, CLR_M3 / 2), 0, 0))

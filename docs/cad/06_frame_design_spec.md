@@ -209,6 +209,14 @@ teardrop the horizontal motor-screw holes; ≥ 2 mm fillet at the inside corner.
 > shaft envelope now has its double-D flats (3.7). Interferences: 0. Track/drive-gear
 > numbers below (44.2, 31.6, Ø49.6) are the kit's and obsolete for new work.
 
+> Amendment (loop P12, 2026-10-30): **rear-corner relief removed** (plate back to 110 wide
+> its full length, 81,653 mm³ ≈ 105 g PET-CF solid, +4.6 g). It existed only because the
+> kit track hung inboard of its gear; the 08 belt and idler sit outboard of |y| 56.5. The
+> follower carriage may now reach the plate edge (|y| 55), shortening the idler-axle
+> cantilever by ~11 mm for P5. FEA loads now act at the belt centre plane (|y| 74.5) with
+> the sprocket's pitch radius 28.65 (`TRACK_T` still 20 N): S2 pull + torque 12.6 MPa
+> (singular, D7) / 0.040 mm; S1a 17.6 MPa (singular) / axle UX 0.241 mm; S1b 2.55 MPa.
+
 **Followers:** per `05_follower_spec.md` (carriage in plate slots, clamp from
 below, 624 bearing on a Ø4 shoulder bolt).
 

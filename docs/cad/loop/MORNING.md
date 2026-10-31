@@ -24,6 +24,8 @@ _Pass 1 starting (2026-10-30 17:05). Rewritten every tick._
 
 **Hot spots (T9):** FEA now says *where* each peak is. The motor mount's peak is a knife edge where the lower motor-screw insert hole breaks out through the root chamfer (fix queued as D7).
 
-**Next:** P12 (plate + FEA for the new track), then P2 motor mount v2 (outboard axle support, Q4 default), P3 plate stiffening.
+**P12 (done):** FEA loads now sit on the TPU belt's centre line; the plate is full width again at the rear (+4.6 g, slightly stiffer, and it gives the follower carriage room at the plate edge). The motor mount's lever arm grew ~7 % with the 36 mm belt, not halved.
+
+**Next:** D7 (motor-mount insert knife edge), P3 (plate + FEA for the new track), then P2 motor mount v2 (outboard axle support, Q4 default), P3 plate stiffening.
 
 **Open questions:** Q4–Q12 in `QUESTIONS.md`, each with a default the loop is using.
