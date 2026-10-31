@@ -172,6 +172,10 @@ ROT_X180 = [1, 0, 0, 0, -1, 0, 0, 0, -1]
 # ------------------------------------------------------ plate features (06 §4)
 # Inserts: Ruthex M3 x 5.7 placeholder geometry until the coupon (07 §4.2).
 INS_HOLE, INS_DEPTH, INS_BOSS = 4.0, 7.2, 9.2
+# D5 (tick 45): the plate's motor-mount pockets sit in an 8 mm stack (plate 4 + boss 4), so
+# 7.2 left a 0.8 mm floor a hot insert can push through; 6.7 = the 5.7 insert + 1.0 for the
+# displaced melt, floor 1.3 (>= the 1.2 wall rule)
+MOUNT_INS_DEPTH = 6.7
 CLR_M3, CBORE_M3, CBORE_DEPTH = 3.4, 6.5, 2.0
 UNDER_BOSS_Z = -8.0  # plate 4 + 4 mm under-boss for the motor-mount inserts (07 F2)
 RIB_T, RIB_H = 1.2, 3.6  # 07 §1: rib <= 3 x thickness tall
@@ -305,7 +309,7 @@ def plate_features() -> list[tuple[str, tuple, float, float]]:
     for x, y in mount_holes():
         r = min(INS_BOSS / 2, round(edge_room(x, y) - 0.04, 2))
         add.append(("add", ("circle", x, y, r), UNDER_BOSS_Z, -PLATE_T))
-        cut.append(("cut", ("circle", x, y, INS_HOLE / 2), -INS_DEPTH, 0.0))
+        cut.append(("cut", ("circle", x, y, INS_HOLE / 2), -MOUNT_INS_DEPTH, 0.0))
     # bottom ribs
     for y, (lx0, lx1) in LONG_RIBS:
         add.append(

@@ -302,3 +302,8 @@ Newest at the bottom. One entry per tick.
 - Bulkhead-foot counterbores removed (0.25 mm wall at the front; the foot can't move back): low-head M3 on the belly; their holes excluded from the slot fillets so the heads seat on a square edge. 07 F1 amended.
 - meshcheck still said 0.23 mm: located with rays at (57.8, 1.2, −2…−3.4), the wire slot's end against the knee counterbore (I'd only checked they don't overlap in S1a4). WIRE_SLOT x1 55 → 53.
 - Min wall 0.23 → 0.8 mm (the designed floor under the insert pockets: noted on D5). S1m 8.99 MPa / 1.033 mm, S1b 3.49 MPa, 0 interferences, plate 111.5 g.
+
+## tick 45 · D5 hole table + plate insert floors · accepted · 2026-10-31 10:30
+- Hole table vs DFM: `docs/cad/loop/D5_holes.md`. The plate's motor-mount insert pockets (7.2 in an 8 mm stack) left 0.8 mm floors → 6.7 deep, floor 1.3. 07 F2 amended.
+- Rebuild 0 interferences; S1m 8.71 MPa, inserts 1.032 mm (=). meshcheck min wall 0.86: located at the 0.95 mm webs between the guide slots and the clamp slot (thinned by S1a3's fillets) → D5c (spread the guide slots to |y| 30.5 / 41.5).
+- Slip: launched the rebuild with a bare `&` again (no notification); checked by timer.

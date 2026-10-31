@@ -180,6 +180,8 @@ before ordering (screw engagement ≥ 1.3 d, tip ≥ 0.5 mm short of the pocket 
 
 > Amendment (loop D5b, 2026-10-31): F1's three bulkhead-foot screws are **low-head M3 × 8 (DIN 7984) with no counterbore**: at x 81.5 an Ø6.5 counterbore left 0.25 mm to the plate's front edge. The knee screw (61, 2.4) keeps its counterbore.
 | F2 | Motor mount → plate | **M3 × 8** SHCS + ISO 7089 washer, down from the top | M3 inserts in plate under-bosses (plate 4 + boss 4) | foot **3.0** (measured) → 5.0 | **8** (4 per mount) |
+
+> Amendment (loop D5, 2026-10-31): F2's insert pockets in the plate under-bosses are **6.7 deep** (not 7.2): the plate + boss stack is 8 mm, so 7.2 left a 0.8 mm floor a hot insert could push through; 6.7 = insert 5.7 + 1.0 for melt, floor 1.3.
 | F3 | TT motor → mount v2 | **M3 × 28 SHCS** through the motor into **M3 inserts pressed through the 6 mm upright** from the motor face (amended tick 6: no nuts, which used to sit against the foot) | M3 inserts | motor 22.6 → 5.4 | 4 |
 | F4 | Follower axle + clamp | per `05_follower_spec.md`: Ø4 shoulder bolt (M3 thread) as the axle; clamp M3 × 16 SHCS + washer + nyloc from below | — | — | 2 + 2–4 |
 
