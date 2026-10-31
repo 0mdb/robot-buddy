@@ -190,6 +190,15 @@ with a wire window. **No root fillet between upright and foot yet**: add ≥ 2 m
 S2 study (07 §3) confirms the hot spot. **Print on its side** so the L's root isn't a layer line;
 teardrop the horizontal motor-screw holes; ≥ 2 mm fillet at the inside corner. PET-CF.
 
+> Amendment (loop P2, 2026-10-30): **motor mount v2 is generated** (`RB-PRT-010` right,
+> `RB-PRT-011` left = X-mirror placed at identity) in Ben's part frame, so the plate's 4-hole
+> pattern and placements carry over. Upright 3 → 6 mm, three inboard gussets between the
+> foot screws, a 3.6 mm root chamfer, end stop at the gearbox end (x −17.6, drawing), foot
+> trimmed under the motor. **Motor centre z 11.5 → 13.5 and hole pitch 18 → 17.5**
+> (drawing): clears the encoder/gearbox interferences with the plate and foot. Motor
+> screws go into inserts in the upright (F3). ≈ 14 g each (Ben's 7.8 g). S2: hole
+> deflection 0.437 → 0.039 mm; peaks 41 → 12–14 MPa, not converged (singular), see 07 §3.
+
 **Followers:** per `05_follower_spec.md` (carriage in plate slots, clamp from
 below, 624 bearing on a Ø4 shoulder bolt).
 

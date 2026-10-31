@@ -94,7 +94,7 @@ def s1b() -> dict:
 
 
 def s2() -> dict:
-    """Motor mount (TT_Motor_Mount_L, right side) in its own part frame.
+    """Motor mount v2 (RB-PRT-010, right side) in its own part frame (P2).
 
     The axle load acts at the drive-gear centre: shaft at part x -5.3, z 11.5; gear
     centre plane at part y = motor outer face (-28 + 22.6) + gap 1 + 31.6/2 = 11.4.
@@ -107,16 +107,17 @@ def s2() -> dict:
     return {
         "name": "S2",
         "title": "Motor mount, track pull + stall torque",
-        "part": r"\CAD\parts\TT_Motor_Mount_L.SLDPRT",
+        "part": r"\CAD\parts\RB-PRT-010_motor_mount_R.SLDPRT",
         "lines": [
+            "discard_open",
             "fix plane 0 0 1 0",  # foot underside on the plate
-            "fix cyl 0 0 1 1.75 0.05",  # 4 foot screw holes
-            f"remote axle {gx:.2f} {gy:.2f} {hz:.2f} cyl 0 1 0 1.5 0.05",
-            f"remote axle {gx:.2f} {gy:.2f} {hz:.2f} plane 0 1 0 {hy}",
-            "disp motorholes cyl 0 1 0 1.5 0.05",
-            "probe root -20 -32 -1 21 -27 5",  # upright-to-foot junction
-            "probe holes 10 -32 0 19 -27 23",
-            "probe gusset -21 -32 2 -16 -8 20",
+            f"fix cyl 0 0 1 {chassis.CLR_M3 / 2} 0.05",  # 4 foot screw holes
+            f"remote axle {gx:.2f} {gy:.2f} {hz:.2f} cyl 0 1 0 {chassis.INS_HOLE / 2} 0.05",  # motor-screw inserts
+            f"remote axle {gx:.2f} {gy:.2f} {hz:.2f} plane 0 1 0 {hy}",  # motor bears on the face
+            f"disp motorholes cyl 0 1 0 {chassis.INS_HOLE / 2} 0.05",
+            "probe root -22 -40 -1 21 -27 9",  # upright-to-foot junction, inboard chamfer
+            "probe holes 10 -35 0 19 -27 27",
+            "probe gusset -21 -35 2 -16 -8 23",
             "mesh 1.0 0.05",
             f"case pull axle:{AXLE_F:.2f},0,0",
             f"case pull_torque axle:{AXLE_F:.2f},0,0,0,{STALL_TORQUE},0",
@@ -234,6 +235,14 @@ def dialogs(answer: bool) -> list[str]:
     ]
 
 
+def kill_swsim(proc) -> None:
+    """Kill swsim.exe itself: killing the cmd.exe wrapper leaves it orphaned (tick 6)."""
+    subprocess.run(
+        ["taskkill.exe", "/IM", "swsim.exe", "/F"], capture_output=True, cwd="/mnt/c"
+    )
+    proc.kill()
+
+
 def run_watched(exe: str, man: str) -> str:
     """Run swsim while polling for blocking dialogs (BACKLOG T8). A solver dialog leaves
     SolidWorks idle and 'not responding' forever, so a plain blocking call would hang."""
@@ -255,17 +264,21 @@ def run_watched(exe: str, man: str) -> str:
     while proc.poll() is None:
         time.sleep(POLL_S)
         for ln in dialogs(answer=True):
+            # A window without buttons can't be a prompt waiting for an answer: SolidWorks
+            # keeps a notification template ("Title | Description | Button1 ...", no real
+            # buttons) open all the time (tick 6 false positive).
+            if ln.startswith("DIALOG") and ln.endswith("buttons=[]"):
+                continue
             print(f"  [watchdog {time.monotonic() - t0:5.0f} s] {ln}")
             if ln.startswith("DIALOG"):
                 hwnd = ln.split()[1]
                 seen[hwnd] = seen.get(hwnd, 0) + 1
-                if seen[hwnd] > UNKNOWN_DIALOG_POLLS:
-                    proc.kill()
-                    sys.exit(
-                        f"unknown dialog {hwnd} is blocking the solver: {ln}  (answer it by hand)"
+                if seen[hwnd] == UNKNOWN_DIALOG_POLLS + 1:  # warn once, keep waiting
+                    print(
+                        f"  [watchdog] WARNING unknown dialog {hwnd} still up: answer it by hand. {ln}"
                     )
         if time.monotonic() - t0 > MAX_RUN_S:
-            proc.kill()
+            kill_swsim(proc)
             sys.exit(f"swsim ran longer than {MAX_RUN_S} s")
     reader.join(timeout=10)
     return "".join(chunks).replace("\r", "")

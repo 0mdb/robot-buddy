@@ -55,7 +55,11 @@ MOT_ENC_W = (
 # --------------------------------------------------------- motor mount (measured)
 # TT_Motor_Mount_L.SLDPRT in its own frame (read 2026-10-30): foot Z 0..3, upright
 # wall Y -31..-28, motor holes along Y at X 14.5, Z 2.5 and 20.5 (18 apart).
-MOUNT_HOLE = (14.5, -28.0, 11.5)  # hole-pair midpoint on the motor-side face
+MOUNT_HOLE = (14.5, -28.0, 13.5)  # hole-pair midpoint on the motor-side face
+# > Amendment (loop P2, 2026-10-30): z 11.5 -> 13.5 and pitch 18 -> 17.5 (the drawing).
+# Ben's mount put the motor centre 11.5 up, so its 25 mm encoder and 22 mm gearbox hit
+# the plate and foot (323 / 197 mm³); 13.5 clears both and gives the lower insert 2.4 mm
+# of wall under it.
 MOUNT_FOOT_Y = (-47.0, -8.9)  # foot extent across the upright
 
 # Placement. The motor sits on the upright's +Y side with the shaft pointing +Y
@@ -574,8 +578,8 @@ def rebuild_manifest(win: str) -> list[str]:
     face = cad + r"\library\FNK0104_face_envelope.SLDPRT"
     reflex = cad + r"\library\reflex_board_envelope.SLDPRT"
     bulkhead = cad + r"\parts\RB-PRT-002_bulkhead.SLDPRT"
-    mount_r = cad + r"\parts\TT_Motor_Mount_L.SLDPRT"  # fits the right side
-    mount_l = cad + r"\parts\MirrorTT_Motor_Mount_L.SLDPRT"  # fits the left side
+    mount_r = cad + r"\parts\RB-PRT-010_motor_mount_R.SLDPRT"  # generated v2 (P2)
+    mount_l = cad + r"\parts\RB-PRT-011_motor_mount_L.SLDPRT"  # its X-mirror
     asm = cad + r"\assemblies\RB-ASM-101_chassis.SLDASM"
     shots = win + r"\shots\rebuild"
 
@@ -603,10 +607,12 @@ def rebuild_manifest(win: str) -> list[str]:
         "save",
         *envelope_lines(pi, face, reflex),
         *bulkhead_lines(bulkhead),
+        *mount_v2_lines(mount_r, mirror=False),
+        *mount_v2_lines(mount_l, mirror=True),
         f"asm|{asm}",
         f"comp|plate|{plate}|{row(ROT_I, (0, 0, 0))}|fix",
         f"comp|mount_R|{mount_r}|{row(ROT_Z180, (tx, -ty, 0))}",
-        f"comp|mount_L|{mount_l}|{row(ROT_Y180, (tx, ty, 0))}",
+        f"comp|mount_L|{mount_l}|{row(ROT_I, (tx, ty, 0))}",
         f"comp|motor_R|{motor}|{row(ROT_X180, mot_r_t)}",
         f"comp|motor_L|{motor}|{row(ROT_I, mot_l_t)}",
         f"comp|pi_stack|{pi}|{row(ROT_Z180, PI_AT)}",
@@ -627,8 +633,8 @@ def rebuild_manifest(win: str) -> list[str]:
             for p, n in (
                 (plate, "RB-PRT-001_base_plate"),
                 (bulkhead, "RB-PRT-002_bulkhead"),
-                (mount_r, "TT_Motor_Mount_L"),
-                (mount_l, "MirrorTT_Motor_Mount_L"),
+                (mount_r, "RB-PRT-010_motor_mount_R"),
+                (mount_l, "RB-PRT-011_motor_mount_L"),
             )
         ],
     ]
@@ -890,6 +896,19 @@ def _shape_mask3(s: tuple, P):
     if s[0] == "cylz":
         _, cx, cy, z0, z1, r = s
         return (z >= z0) & (z <= z1) & ((x - cx) ** 2 + (y - cy) ** 2 <= r * r)
+    if s[0] in ("prismz", "prismx"):  # polygon in (x, y) over z / in (y, z) over x
+        _, poly, a0, a1 = s
+        u, v, w = (x, y, z) if s[0] == "prismz" else (y, z, x)
+        inside = np.zeros(x.shape, dtype=bool)
+        for (ua, va), (ub, vb) in zip(poly, poly[1:] + poly[:1]):
+            crosses = (va > v) != (vb > v)
+            with np.errstate(divide="ignore", invalid="ignore"):
+                ui = ua + (v - va) * (ub - ua) / (vb - va)
+            inside ^= crosses & (u < ui)
+        return inside & (w >= a0) & (w <= a1)
+    if s[0] == "cyly":
+        _, cx, cz, y0, y1, r = s
+        return (y >= y0) & (y <= y1) & ((x - cx) ** 2 + (z - cz) ** 2 <= r * r)
     if s[0] == "prismy":  # polygon in (x, z), extruded over y0..y1; even-odd rule
         _, poly, y0, y1 = s
         inside = np.zeros(x.shape, dtype=bool)
@@ -981,6 +1000,175 @@ def face_on_bulkhead() -> tuple[list[float], tuple[float, float, float]]:
     x0 = BH_XF - BH_T - BH_STANDOFF_L - (FACE_BACK + FACE_PCB)
     p = _rotate_y([x0, BH_FACE_Y, BH_FACE_Z], -BH_TILT, BH_PIVOT)
     return matmul(rot_y(-BH_TILT), FACE_BASE), (float(p[0]), float(p[1]), float(p[2]))
+
+
+# ------------------------------------------------------- motor mount v2 (P2, fixes S2)
+# Generated replacement for Ben's imported L-bracket, in the SAME part frame (foot on
+# Z = 0, motor-side face at y = -28, motor holes along Y), so the plate holes and the
+# placements carry over. Right part = this frame (placed Rz180); left part = its X-mirror
+# (placed at identity), which is the mapping Ben's mirror part had.
+MM_T = 6.0  # upright 3 -> 6: 6.6 left the S2 peak unchanged (12.0 MPa), so it is local, not bending
+MM_FACE = MOUNT_HOLE[1]
+MM_X = (
+    MOUNT_HOLE[0] - MOT_GEAR_END,
+    20.0,
+)  # gearbox end (drawing) .. Ben's upright end
+MM_TOP = MOUNT_HOLE[2] + MOT_GEAR_W / 2 + 2.0  # 2 mm above the gearbox
+MM_FOOT_T = 3.0
+MM_STOP_T = 3.0  # end stop at the gearbox end (Ben's gusset)
+MM_GUSSETS = (
+    -18.2,
+    -3.9,
+    12.0,
+)  # inboard, between the foot screws (x -25.2, -11.2, 3.5)
+MM_GUSSET_T, MM_GUSSET_Y, MM_GUSSET_Z = 2.4, -45.5, 20.0
+MM_CHAMFER = 3.6  # root chamfer on the inboard side (stands in for a fillet until T7)
+MM_INS_DEPTH = MM_T  # M3 inserts through the upright, pressed from the motor face (F3)
+
+
+def mount_v2_features(mirror: bool) -> list[tuple]:
+    xa, xb = MM_X
+    yi = MM_FACE - MM_T  # inboard face of the upright
+    foot = [
+        (-30.4, -47.0),
+        (xb, -47.0),
+        (xb, yi),
+        (xa, yi),
+        (xa, -8.9),
+        (-19.9, -8.9),
+        (-30.4, -18.7),
+    ]
+    ops: list[tuple] = [
+        ("add", ("prismz", foot, 0.0, MM_FOOT_T)),
+        ("add", ("box", xa, xb, yi, MM_FACE, 0.0, MM_TOP)),
+        ("add", ("box", xa - MM_STOP_T, xa, yi, -8.9, 0.0, MM_TOP - 4.0)),
+    ]
+    tri = [(yi + 0.6, MM_FOOT_T), (yi + 0.6, MM_GUSSET_Z), (MM_GUSSET_Y, MM_FOOT_T)]
+    for gx in MM_GUSSETS:
+        ops.append(("add", ("prismx", tri, gx - MM_GUSSET_T / 2, gx + MM_GUSSET_T / 2)))
+    ch = [
+        (yi + 0.6, MM_FOOT_T),
+        (yi - MM_CHAMFER, MM_FOOT_T),
+        (yi + 0.6, MM_FOOT_T + MM_CHAMFER + 0.6),
+    ]
+    ops.append(("add", ("prismx", ch, xa, xb)))
+    hx, _, hz = MOUNT_HOLE
+    for dz in (-MOT_HOLE_PITCH / 2, MOT_HOLE_PITCH / 2):
+        ops.append(
+            (
+                "cut",
+                (
+                    "cyly",
+                    hx,
+                    hz + dz,
+                    MM_FACE - MM_INS_DEPTH - 0.1,
+                    MM_FACE + 0.1,
+                    INS_HOLE / 2,
+                ),
+            )
+        )
+    for x, y in [(-11.2, -38.9), (-25.2, -38.9), (3.5, -38.9), (-25.2, -23.0)]:
+        ops.append(("cut", ("cylz", x, y, -0.1, MM_FOOT_T + 0.1, CLR_M3 / 2)))
+    if not mirror:
+        return ops
+
+    def mx(sh: tuple) -> tuple:
+        k = sh[0]
+        if k == "box":
+            return ("box", -sh[2], -sh[1], *sh[3:])
+        if k == "prismz":
+            return ("prismz", [(-u, v) for u, v in sh[1]][::-1], sh[2], sh[3])
+        if k == "prismx":
+            return ("prismx", sh[1], -sh[3], -sh[2])
+        if k == "cyly":
+            return ("cyly", -sh[1], *sh[2:])
+        if k == "cylz":
+            return ("cylz", -sh[1], *sh[2:])
+        raise ValueError(k)
+
+    return [(op, mx(sh)) for op, sh in ops]
+
+
+def solid_volume_numeric(
+    ops: list[tuple], bounds, step: float = 0.2
+) -> tuple[float, list[float]]:
+    """Voxel volume + bbox of an add/cut feature list (no rotation), for any part."""
+    import numpy as np
+
+    (x0, x1), (y0, y1), (z0, z1) = bounds
+    xs = np.arange(x0 + step / 2, x1, step)
+    ys = np.arange(y0 + step / 2, y1, step)
+    X, Y = np.meshgrid(xs, ys, indexing="ij")
+    vol, lo, hi = 0.0, [1e9] * 3, [-1e9] * 3
+    for z in np.arange(z0 + step / 2, z1, step):
+        P = np.stack([X, Y, np.full_like(X, z)], axis=-1)
+        solid = np.zeros_like(X, dtype=bool)
+        for op, sh in ops:
+            m = _shape_mask3(sh, P)
+            solid = solid | m if op == "add" else solid & ~m
+        n = int(solid.sum())
+        if n:
+            vol += n * step**3
+            ix, iy = np.nonzero(solid)
+            lo = [min(lo[0], xs[ix].min()), min(lo[1], ys[iy].min()), min(lo[2], z)]
+            hi = [max(hi[0], xs[ix].max()), max(hi[1], ys[iy].max()), max(hi[2], z)]
+    return vol, [lo[0], hi[0], lo[1], hi[1], lo[2], hi[2]]
+
+
+def emit_ops(ops: list[tuple]) -> list[str]:
+    """Manifest lines for a no-rotation add/cut feature list (adds first, then cuts)."""
+    out = []
+    for want in ("add", "cut"):
+        for op, sh in ops:
+            if op != want:
+                continue
+            kind = "boss" if op == "add" else "cut"
+            k = sh[0]
+            if k == "box":
+                _, x0, x1, y0, y1, z0, z1 = sh
+                out.append(
+                    f"box|{x0} {x1}|{y0} {y1}|{z0} {z1}"
+                    if op == "add"
+                    else f"prof|{z0} {z1}|M {x0} {y0} L {x1} {y0} L {x1} {y1} L {x0} {y1}|cut"
+                )
+            elif k == "prismz":
+                pts = [f"{u:.4f} {v:.4f}" for u, v in sh[1]]
+                out.append(
+                    f"prof|{sh[2]} {sh[3]}|M "
+                    + pts[0]
+                    + "".join(" L " + q for q in pts[1:])
+                    + f"|{kind}|front"
+                )
+            elif k == "prismx":  # Right plane: sketch (-z, y)
+                pts = [f"{-v:.4f} {u:.4f}" for u, v in sh[1]]
+                out.append(
+                    f"prof|{sh[2]} {sh[3]}|M "
+                    + pts[0]
+                    + "".join(" L " + q for q in pts[1:])
+                    + f"|{kind}|right"
+                )
+            elif k == "cyly":
+                _, cx, cz, y0, y1, r = sh
+                out.append(f"cyl|y|{cx} {cz}|{y0} {y1}|{r}|{kind}")
+            elif k == "cylz":
+                _, cx, cy, z0, z1, r = sh
+                out.append(f"cyl|z|{cx} {cy}|{z0} {z1}|{r}|{kind}")
+            else:
+                raise ValueError(k)
+    return out
+
+
+def mount_v2_lines(path: str, mirror: bool) -> list[str]:
+    ops = mount_v2_features(mirror)
+    vol, bb = solid_volume_numeric(
+        ops, ((-36.0, 36.0), (-50.0, -5.0), (-1.0, MM_TOP + 1.0))
+    )
+    return [
+        f"part|{path}",
+        *emit_ops(ops),
+        f"expect|vol {vol:.1f} {vol * 0.01:.1f}|box {' '.join(f'{v:.2f}' for v in bb)} 0.35",
+        "save",
+    ]
 
 
 # ------------------------------------------------------------------- runner

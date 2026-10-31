@@ -53,3 +53,11 @@ Newest at the bottom. One entry per tick.
 - Check: plate 78,031 vs 78,070; bulkhead 33,885 vs 33,889; mounts 6,039.7 vs 6,039.3 mm³ (all ≤ 0.05 %).
 - meshcheck findings for D3 (as modelled, +Z up): plate 158 cm² overhang + a 0.07 mm min-wall sliver; bulkhead 23 cm²; mounts 0.6 / 8.8 cm².
 - Next: P2 motor mount v2 (outboard axle support, Q4 default).
+
+## tick 6 · P2 motor mount v2 · accepted (strength fix) · 2026-10-30 19:30
+- Q4's outboard support needs a stub shaft on the kit gear's outer face; hub unknown → split to P2o (blocked, measurement asked). Built (b): generated mount in Ben's part frame, 6 mm upright, 3 inboard gussets between the foot screws, root chamfer, end stop at x −17.6, foot trimmed under the motor, motor screws into upright inserts; motor raised z 11.5 → 13.5 at the drawing's 17.5 pitch.
+- Build: 10,839 vs 10,816 mm³ voxel (+0.2 %), both sides; **interferences 4 → 0**. ≈ 14 g each (+6.2 g).
+- S2 (49.2 N at the gear centre, now z 13.5): hole deflection 0.437 → 0.039 mm (half mesh 0.0390: converged). Peak 11.7 / 12.0 MPa (pull / pull+torque) → 13.7 / 14.1 at half mesh (+17.5 %), gusset region 6.3 → 8.3 (+33 %): singular at the insert-coupling edge and the unfilleted gusset roots. 6.6 mm upright left the peak unchanged (12.005) → kept 6.0.
+- Verdict: accepted as a strength fix on converged measures; SF ≥ 3 deferred to T7 (07 §3 amended: singular peaks are not used for SF). S1a 15.5 → 17.8 MPa / UX 0.25 because the axle is 2 mm higher: a deliberate trade, P3 owns it.
+- Tooling fix (T8 follow-up): the watchdog killed a run on SolidWorks' always-open notification template (no real buttons) and only killed cmd.exe, orphaning swsim. Now: windows without buttons are ignored; unknown dialogs warn and wait; the 3 h cap kills swsim.exe itself.
+- Next: T7 fillets (priority), then P3 plate stiffening.

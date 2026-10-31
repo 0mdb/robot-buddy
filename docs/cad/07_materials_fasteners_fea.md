@@ -60,6 +60,13 @@ DLLs beside the exe, SolidWorks started by hand, one COM client). Keep the fpv25
 - Pin each study to the part's STEP sha256; write results to CSV.
 - **Convergence:** halve the mesh-control size once; top-5 hot spots must move < 10 %.
 
+> Amendment (loop, 2026-10-30, tick 6): **singular peaks are not used for SF.** A peak
+> that rises > 10 % when the mesh is halved sits at a re-entrant corner or a load-coupling
+> edge (S1a pockets +20 %, S2 v2 insert/gusset roots +17.5 % / +33 %). Until parts carry
+> real fillets (backlog T7), a strength verdict uses converged quantities (deflection,
+> comparison against the previous geometry on the same mesh), and the SF ≥ 3 check is
+> re-run once T7 lands.
+
 ### 3.2 Material model
 
 Linear isotropic, per part material:
@@ -155,7 +162,7 @@ before ordering (screw engagement ≥ 1.3 d, tip ≥ 0.5 mm short of the pocket 
 |---|---|---|---|---|---:|
 | F1 | Plate → bulkhead foot | M3 × 8 SHCS, up from below | M3 inserts in bulkhead foot | plate 4 → 4.0 | 3 |
 | F2 | Motor mount → plate | **M3 × 8** SHCS + ISO 7089 washer, down from the top | M3 inserts in plate under-bosses (plate 4 + boss 4) | foot **3.0** (measured) → 5.0 | **8** (4 per mount) |
-| F3 | TT motor → mount | M3 × 30 SHCS + **ISO 7089 washers both sides** + DIN 985 nyloc (TT gearbox through-holes are Ø3; the upright is too thin for an insert) | through | through-bolt | 4 |
+| F3 | TT motor → mount v2 | **M3 × 28 SHCS** through the motor into **M3 inserts pressed through the 6 mm upright** from the motor face (amended tick 6: no nuts, which used to sit against the foot) | M3 inserts | motor 22.6 → 5.4 | 4 |
 | F4 | Follower axle + clamp | per `05_follower_spec.md`: Ø4 shoulder bolt (M3 thread) as the axle; clamp M3 × 16 SHCS + washer + nyloc from below | — | — | 2 + 2–4 |
 | **F4b** | **Follower tension jack** (new) | **M3 × 20 SHCS** in an M3 insert in a plate end-stop, tip bearing on the carriage (cup point: set screw ISO 4029 if preferred) | M3 insert, axis along X | screw sets tension; clamp only locks | 2 |
 | F5 | Pi deck → plate posts | M3 × 8 SHCS, down from the top (service with the canopy off) | M3 inserts at post tops | deck 3 → 5 | 4 |
