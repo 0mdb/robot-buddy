@@ -25,6 +25,11 @@
 //   asmsave
 //   shot|<doc>|<outprefix>                    iso/top/front/right BMPs
 //   close|<doc>                               close a document this run opened
+//   fillet|r|x|y|z|any|x0 y0 z0 x1 y1 z1|n|dvol tol
+//                                             constant-radius fillet on the LINEAR edges
+//                                             parallel to the axis whose midpoint is in the
+//                                             box; expects exactly n edges and a volume
+//                                             change of dvol +- tol (mm3, + = concave)
 //   stl|<doc.SLDPRT>|<out.stl>                binary STL, mm, fine, in the part's own
 //                                             coordinates (not shifted to positive space)
 //   rotbody|px py pz|y|deg                    rotate every solid body about the axis
@@ -108,6 +113,7 @@ class SwBuild
                 case "close": CloseByPath(f[1]); break;
                 case "rotbody": RotBody(f); break;
                 case "stl": Stl(f[1], f[2]); break;
+                case "fillet": Fillet(f); break;
                 default: Check("command " + f[0], false, "unknown"); break;
             }
             if (failures > 0 && f[0] != "expect") break;   // stop at the first broken step
@@ -389,6 +395,61 @@ class SwBuild
         bool ok = asmDoc.Extension.SaveAs(asmPath, (int)swSaveAsVersion_e.swSaveAsCurrentVersion,
             (int)swSaveAsOptions_e.swSaveAsOptions_Silent, null, ref e, ref w);
         Check("save " + Path.GetFileName(asmPath), ok, "err " + e + " warn " + w);
+    }
+
+    static double PartVolume()
+    {
+        IMassProperty mp = (IMassProperty)doc.Extension.CreateMassProperty();
+        return mp.Volume * 1e9;
+    }
+
+    static void Fillet(string[] f)
+    {
+        double r = double.Parse(f[1], ci);
+        string ax = f[2];
+        double[] b = Nums(f[3]);
+        int want = int.Parse(f[4], ci);
+        double[] dv = Nums(f[5]);
+        object[] bodies = (object[])((IPartDoc)doc).GetBodies2((int)swBodyType_e.swSolidBody, true);
+        var picked = new List<IEdge>();
+        foreach (object bo in bodies)
+            foreach (object eo in (object[])((IBody2)bo).GetEdges())
+            {
+                IEdge e = (IEdge)eo;
+                ICurve c = (ICurve)e.GetCurve();
+                if (c == null || !c.IsLine()) continue;
+                double[] p0 = (double[])((IVertex)e.GetStartVertex()).GetPoint();
+                double[] p1 = (double[])((IVertex)e.GetEndVertex()).GetPoint();
+                double dx = p1[0] - p0[0], dy = p1[1] - p0[1], dz = p1[2] - p0[2];
+                double len = Math.Sqrt(dx * dx + dy * dy + dz * dz);
+                if (len < 1e-9) continue;
+                if (ax != "any")
+                {
+                    double along = ax == "x" ? dx : ax == "y" ? dy : dz;
+                    if (Math.Abs(Math.Abs(along) / len - 1) > 1e-6) continue;
+                }
+                double mx = (p0[0] + p1[0]) * 500, my = (p0[1] + p1[1]) * 500, mz = (p0[2] + p1[2]) * 500;
+                if (mx < b[0] || my < b[1] || mz < b[2] || mx > b[3] || my > b[4] || mz > b[5]) continue;
+                picked.Add(e);
+            }
+        if (picked.Count != want)
+        { Check("fillet r" + f[1] + " " + ax + " box " + f[3], false, "selected " + picked.Count + " edges, expected " + want); return; }
+        double v0 = PartVolume();
+        doc.ClearSelection2(true);
+        int nsel = 0;
+        foreach (IEdge e in picked) if (((IEntity)e).Select2(true, 1)) nsel++;
+        IFeature fil = (IFeature)doc.FeatureManager.FeatureFillet3(
+            (int)swFeatureFilletOptions_e.swFeatureFilletUniformRadius, M(r), 0.0, 0.0,
+            (int)swFeatureFilletType_e.swFeatureFilletType_Simple,
+            (int)swFilletOverFlowType_e.swFilletOverFlowType_Default,
+            (int)swFeatureFilletProfileType_e.swFeatureFilletCircular,
+            null, null, null, null, null, null, null);
+        doc.ClearSelection2(true);
+        doc.EditRebuild3();
+        double d = PartVolume() - v0;
+        Check("fillet r" + f[1] + " " + ax + " box " + f[3], fil != null && Math.Abs(d - dv[0]) <= dv[1],
+            string.Format(ci, "{0} edges selected {1}, dvol {2:F2} vs {3:F2} +- {4:F2} mm3 | {5}",
+                picked.Count, nsel, d, dv[0], dv[1], Measure()));
     }
 
     static void Stl(string path, string outPath)

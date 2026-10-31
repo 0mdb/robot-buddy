@@ -18,6 +18,10 @@ _Pass 1 starting (2026-10-30 17:05). Rewritten every tick._
 
 **Motor mount v2 (accepted, P2):** generated, 6 mm upright with gussets, ~14 g each; deflection 11× better than the original and all assembly interferences gone (motor raised 2 mm). Stress peaks sit at sharp corners and won't settle until the parts have fillets (T7, now top priority). The outboard axle support waits on a drive-gear measurement.
 
-**Next:** T7 fillets, then P2 motor mount v2 (outboard axle support, Q4 default), P3 plate stiffening.
+**Fillets (T7):** the generator can now round chosen edges, with volume checks. Its first use on the motor mounts made the stress worse and was reverted; a hot-spot locator (T9) will aim the next ones.
+
+**Your steering (Q8):** printed TPU track system adopted; P11 brings it in next.
+
+**Next:** P11 TPU track system, then P2 motor mount v2 (outboard axle support, Q4 default), P3 plate stiffening.
 
 **Open questions:** Q4–Q12 in `QUESTIONS.md`, each with a default the loop is using.

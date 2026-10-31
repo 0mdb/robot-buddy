@@ -61,3 +61,11 @@ Newest at the bottom. One entry per tick.
 - Verdict: accepted as a strength fix on converged measures; SF ≥ 3 deferred to T7 (07 §3 amended: singular peaks are not used for SF). S1a 15.5 → 17.8 MPa / UX 0.25 because the axle is 2 mm higher: a deliberate trade, P3 owns it.
 - Tooling fix (T8 follow-up): the watchdog killed a run on SolidWorks' always-open notification template (no real buttons) and only killed cmd.exe, orphaning swsim. Now: windows without buttons are ignored; unknown dialogs warn and wait; the 3 h cap kills swsim.exe itself.
 - Next: T7 fillets (priority), then P3 plate stiffening.
+
+## tick 7 · T7 fillet command · tool accepted, application rejected · 2026-10-30 20:20
+- Hypothesis: edge selection by axis + midpoint box, constant-radius `FeatureFillet3`, checked by edge count and Δvolume = (1 − π/4)·r²·L; filleting the mount's gusset roots makes S2's gusset peak converge.
+- Tool: works. 12 vertical gusset-root edges at r 2 on both mounts, each Δ within 7 % of the analytic value, parts within 0.2 %; 0 interferences. The first try failed where an r 2 fillet ran into the insert pocket at x 14.5 (gusset at x 12); moved that gusset to 8.6.
+- Application: S2 got worse. Pull + torque peak 12.0 → 15.25 MPa at the same mesh (→ 18.0 at half mesh); gusset region 7.9 → 10.9 (+38 %, still not converged); hole deflection 0.038 → 0.043. Moving the gusset away from the insert took stiffness from where the motor load enters, and the gusset peak is not on the vertical roots. Reverted per PROMPT (patch kept); baseline rebuilt, BUILD OK, 0 interferences.
+- Lesson: aim fillets with data. Added T9 (hot-spot locator in swsim).
+- Steering arrived mid-tick (Ben): Q8 answered, printed TPU track system (08 spec, drivetrain-rnd e7d8659); P11/P12 added, P2o unblocked, P5 rescoped, Q14/Q15 added. Committed separately.
+- Next: P11 (adopt the TPU track system), Ben's stated next P item.
