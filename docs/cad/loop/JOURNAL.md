@@ -286,3 +286,9 @@ Newest at the bottom. One entry per tick.
 - Rounded r 1.0: guide + clamp slots both sides (−38.4 vs −38.7 mm³ each), knee counterbore (−4.40 vs −4.38). The wire slot, tab slots and bulkhead counterbores aren't loops of any z −4 face (debug print showed only the knee cbore in that region); dropped for now → S1a4.
 - Full rebuild 0 interferences, plate 114.8 g. S1m 8.64 → 8.69 MPa, inserts 0.900 mm (=); S1b 3.61 → 3.74 MPa, deck 0.126 mm. Plate accessible sharp edges 735 → 351 mm.
 - Next: rotate: S1b2 / D1b / R2b.
+
+## tick 42 · S1a4 wire + tab slot edges · accepted · 2026-10-31 08:40
+- SWB_DEBUG listing showed the loop filter computing bogus boxes for some lines (curve-param sampling); fixed to vertices + circle centre ± r. Wire slot and tab slots then rounded r 1.0 within 2 % of hand volumes.
+- The bulkhead counterbores still aren't z −4 loops because they break the plate outline: x 81.5 + 3.25 = 84.75 vs the front at 85, a 0.25 mm wall (tick 5's 0.24 min wall) → D5b.
+- Full rebuild 0 interferences; S1m 9.00 MPa (+3.6 %), inserts 0.900 mm; S1b 3.57 MPa. Plate accessible sharp edges 351 → 259 mm.
+- Ben (~08:15): add a 2 mm motor-bell depression in the plate under each motor's can/encoder (P14), next.

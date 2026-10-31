@@ -525,14 +525,28 @@ class SwBuild
                     double lu0 = 1e9, lv0 = 1e9, lu1 = -1e9, lv1 = -1e9;
                     foreach (object eo in (object[])lp.GetEdges())
                     {
-                        // sample along the curve: a full circle has no vertices
+                        // vertices where the edge has them; a full circle has none, so use its
+                        // centre and radius (curve-parameter sampling gave wrong points for some
+                        // lines, tick 42)
                         IEdge ed = (IEdge)eo;
-                        double[] cp = (double[])ed.GetCurveParams2();
-                        ICurve clv0 = (ICurve)ed.GetCurve();
-                        for (int k = 0; k <= 8; k++)
+                        var pts = new List<double[]>();
+                        foreach (object vo in new object[] { ed.GetStartVertex(), ed.GetEndVertex() })
+                            if (vo != null) pts.Add((double[])((IVertex)vo).GetPoint());
+                        ICurve crv = (ICurve)ed.GetCurve();
+                        if (crv != null && crv.IsCircle())
                         {
-                            double t = cp[6] + (cp[7] - cp[6]) * k / 8.0;
-                            double[] q = (double[])clv0.Evaluate2(t, 0);
+                            double[] cpar = (double[])crv.CircleParams;
+                            double rr = cpar[6];
+                            double[] cc = { cpar[0], cpar[1], cpar[2] };
+                            for (int k = 0; k < 3; k++)
+                                foreach (double sg in new double[] { -1, 1 })
+                                {
+                                    if (k == ax) continue;
+                                    double[] q = (double[])cc.Clone(); q[k] += sg * rr; pts.Add(q);
+                                }
+                        }
+                        foreach (double[] q in pts)
+                        {
                             lu0 = Math.Min(lu0, q[ua] * 1e3); lv0 = Math.Min(lv0, q[va] * 1e3);
                             lu1 = Math.Max(lu1, q[ua] * 1e3); lv1 = Math.Max(lv1, q[va] * 1e3);
                         }

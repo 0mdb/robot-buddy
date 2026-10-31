@@ -527,14 +527,16 @@ def plate_lines(plate: str) -> list[str]:
     a0, a1 = AXLE_X_MID - TRAVEL / 2, AXLE_X_MID + TRAVEL / 2
     g_len = 2 * (a1 + RAIL_L / 2 - (a0 - RAIL_L / 2)) + 2 * math.pi * GUIDE_W / 2
     c_len = 2 * (a1 - a0) + 2 * math.pi * CLR_M3 / 2
+    w_len = 2 * (WIRE_SLOT[1] - WIRE_SLOT[0]) + 2 * math.pi * WIRE_SLOT[3]
     cb = math.pi * CBORE_M3
+    t_len = 2 * 2 * (BULK_TAB[0] + BULK_TAB[1])
     groups = [
         (f"{a0 - RAIL_L / 2 - 3} 26 {a1 + RAIL_L / 2 + 3} 46", 2 * g_len + c_len),
         (f"{a0 - RAIL_L / 2 - 3} -46 {a1 + RAIL_L / 2 + 3} -26", 2 * g_len + c_len),
-        # the wire slot's loop isn't found on any z -4 face (tick 41, open): knee cbore only
-        (f"{BH_KNEE_HOLE[0] - 5} -5 {BH_KNEE_HOLE[0] + 5} 8", cb),
-        # the front tab slots and bulkhead counterbores aren't found as z -4 loops either
-        # (tick 41, open, with the wire slot): left sharp for now
+        (f"{WIRE_SLOT[0] - 5} -5 {BH_KNEE_HOLE[0] + 5} 8", w_len + cb),
+        # the bulkhead counterbores (x 81.5, r 3.25) reach x 84.75: they break into the
+        # outline (0.25 mm wall, meshcheck's 0.24 min wall) so they aren't loops here: D5b
+        (f"{BULK_X - 5} -26 {hx} 26", t_len),
     ]
     for box, length in groups:
         dvl = (1 - math.pi / 4) * PLATE_EDGE_R**2 * length
