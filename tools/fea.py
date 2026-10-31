@@ -136,6 +136,32 @@ def s1d() -> dict:
     }
 
 
+def s6() -> dict:
+    """Follower carriage (P5, left part): the belt pulls the idler toward the sprocket
+    (+X) at the belt centre plane, through the axle bore. Held where it is held in use:
+    the jack screw on the front face (x +10) and the clamp screw in its hole."""
+    f = AXLE_F  # as S2 (both runs + the tight-side excess); the idler sees ~2 x TRACK_T
+    yc = sum(chassis.track_y()) / 2
+    za = chassis.dt.Z_AXLE
+    return {
+        "name": "S6",
+        "title": "Follower carriage, belt tension at the idler axle",
+        "part": r"\CAD\parts\RB-PRT-030_carriage_L.SLDPRT",
+        "lines": [
+            "discard_open",
+            f"fix plane 1 0 0 {chassis.CAR_L / 2}",
+            f"fix cyl 0 0 1 {chassis.CLR_M3 / 2} 0.05",
+            f"remote axle 0 {yc:.2f} {za} cyl 0 1 0 {chassis.CAR_BORE / 2} 0.05",
+            f"disp bore cyl 0 1 0 {chassis.CAR_BORE / 2} 0.05",
+            "hotspots 5",
+            "mesh 1.0 0.05",
+            f"case tension axle:{f:.2f},0,0",
+        ],
+        "applied": (f, 0, 0),
+        "limit_disp_mm": 0.2,
+    }
+
+
 def s2() -> dict:
     """Motor mount v2 (RB-PRT-010, right side) in its own part frame (P2).
 
@@ -261,6 +287,7 @@ def s1m() -> dict:
 STUDIES = {
     "S1m": s1m,
     "S1d": s1d,
+    "S6": s6,
     "S1a": s1a,
     "S1b": s1b,
     "S2": s2,

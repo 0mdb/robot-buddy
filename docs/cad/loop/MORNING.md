@@ -48,6 +48,8 @@ _Pass 1 starting (2026-10-30 17:05). Rewritten every tick._
 
 **Motor mount (D10):** the lower insert pocket is now blind (in a small boss), so the root chamfer runs the full length. Mount drive test SF 3.6 → **5.3**, stiffer too; +0.1 g per mount. Two small sharp inside corners remain for the fillet pass (D1).
 
-**Next:** P5, S1a2, D1, then P2o (plate + FEA for the new track), then P2 motor mount v2 (outboard axle support, Q4 default), P3 plate stiffening.
+**Follower carriages (P5):** new parts RB-PRT-030/031, 12.3 g each: rails in the plate's guide slots, clamp, jack-screw pad, and a Ø15 journal boss that reaches into the idler (short unsupported axle). Fits clean; belt-tension test SF 5.1, 0.03 mm. Prints flat on its front face, no supports.
+
+**Next:** S1a2, D1, W2, then P2o / P6 (plate + FEA for the new track), then P2 motor mount v2 (outboard axle support, Q4 default), P3 plate stiffening.
 
 **Open questions:** Q4–Q12 in `QUESTIONS.md`, each with a default the loop is using.

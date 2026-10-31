@@ -747,6 +747,8 @@ def rebuild_manifest(win: str) -> list[str]:
     reflex = cad + r"\library\reflex_board_envelope.SLDPRT"
     bulkhead = cad + r"\parts\RB-PRT-002_bulkhead.SLDPRT"
     deck = cad + r"\parts\RB-PRT-003_pi_deck.SLDPRT"  # P4
+    car_l = cad + r"\parts\RB-PRT-030_carriage_L.SLDPRT"  # P5
+    car_r = cad + r"\parts\RB-PRT-031_carriage_R.SLDPRT"
     sprocket = cad + r"\parts\RB-PRT-020_sprocket.SLDPRT"  # 08, outrigger variant (P2o)
     idler = cad + r"\parts\RB-PRT-021_idler.SLDPRT"  # 08, 2 x 624
     belt_l = cad + r"\library\belt_envelope_L.SLDPRT"
@@ -787,6 +789,8 @@ def rebuild_manifest(win: str) -> list[str]:
         *envelope_lines(pi, face, reflex),
         *bulkhead_lines(bulkhead),
         *deck_lines(deck),
+        *carriage_lines(car_l, mirror=False),
+        *carriage_lines(car_r, mirror=True),
         *mount_v2_lines(mount_r, mirror=False),
         *mount_v2_lines(mount_l, mirror=True),
         *wheel_lines(sprocket, dt.sprocket_layers(True)),
@@ -803,6 +807,8 @@ def rebuild_manifest(win: str) -> list[str]:
         f"comp|reflex|{reflex}|{row(ROT_I, REFLEX_AT)}",
         f"comp|bulkhead|{bulkhead}|{row(ROT_I, (0, 0, 0))}",
         f"comp|pi_deck|{deck}|{row(ROT_I, (0, 0, DECK_Z + DECK_T))}",
+        f"comp|carriage_L|{car_l}|{row(ROT_I, (dt.belt_fit()['x_fit'], 0, 0))}",
+        f"comp|carriage_R|{car_r}|{row(ROT_I, (dt.belt_fit()['x_fit'], 0, 0))}",
         f"comp|sprocket_L|{sprocket}|{row(*wheel_at(dt.X_DRIVE, +1))}",
         f"comp|sprocket_R|{sprocket}|{row(*wheel_at(dt.X_DRIVE, -1))}",
         f"comp|idler_L|{idler}|{row(*wheel_at(dt.belt_fit()['x_fit'], +1))}",
@@ -827,6 +833,8 @@ def rebuild_manifest(win: str) -> list[str]:
                 (plate, "RB-PRT-001_base_plate"),
                 (bulkhead, "RB-PRT-002_bulkhead"),
                 (deck, "RB-PRT-003_pi_deck"),
+                (car_l, "RB-PRT-030_carriage_L"),
+                (car_r, "RB-PRT-031_carriage_R"),
                 (mount_r, "RB-PRT-010_motor_mount_R"),
                 (mount_l, "RB-PRT-011_motor_mount_L"),
                 (sprocket, "RB-PRT-020_sprocket"),
@@ -1428,6 +1436,118 @@ def fea_plate_mounts_lines(path: str) -> list[str]:
     ]
 
 
+# ------------------------------------------- follower carriage (05, 06 §7, 08; P5)
+# Part frame: chassis y and z, x measured from the idler axle (placed at the taut station
+# dt.belt_fit()["x_fit"]); left part, the right one is its Y-mirror. First cut: rails in
+# the plate's guide slots, clamp over the clamp slot, a pad for the jack screw, and a
+# pedestal at the plate edge carrying the Ø12 journal boss into the idler's open inboard
+# side (up to 0.5 mm short of its hub tube, 05 "support the overhang").
+CAR_L = RAIL_L  # 20, the rail length the plate slots were sized for
+CAR_FOOT_T = 4.0  # 05: clamp foot ~4
+CAR_FOOT_Y = (
+    28.0,
+    53.0,
+)  # inboard of the plate edge (55) with margin at the rear corner
+CAR_RAIL_W, CAR_RAIL_D = (
+    4.0,
+    3.6,
+)  # 4.0 in the 4.7 slots (0.35/side); stops 0.4 above the belly
+CAR_PED = (
+    10.0,
+    40.0,
+)  # pedestal half-length in x, inboard y (outboard = foot edge); the
+# first cut (6.0, 44.0) twisted at its root under the 26 mm-outboard axle load (S6 16.5 MPa)
+CAR_BOSS_R = (
+    7.5  # S6: Ø12 bent at its root (12.9 MPa); the idler's inboard opening is ~r 20
+)
+CAR_BORE = 4.1  # 05: slip for the Ø4 shoulder
+CAR_PAD = (
+    6.0,
+    (32.0, 41.0),
+    9.0,
+)  # jack pad: x from, y span, top z (screw at z 5, |y| 36.5)
+
+
+def idler_tube_inboard() -> float:
+    """|y| of the idler hub tube's inboard end (the boss stops 0.5 short of it)."""
+    tube_end = dt.BELT_W / 2 + dt.BRG_W
+    return track_y()[1] - tube_end
+
+
+def carriage_features(mirror: bool) -> list[tuple]:
+    hx = CAR_L / 2
+    y0, y1 = CAR_FOOT_Y
+    za = dt.Z_AXLE
+    boss_y1 = idler_tube_inboard() - 0.5
+    px, (pa, pb), pz = CAR_PAD
+    ops: list[tuple] = [
+        ("add", ("box", -hx, hx, y0, y1, 0.0, CAR_FOOT_T)),
+        *[
+            (
+                "add",
+                (
+                    "box",
+                    -hx,
+                    hx,
+                    gy - CAR_RAIL_W / 2,
+                    gy + CAR_RAIL_W / 2,
+                    -CAR_RAIL_D,
+                    0.0,
+                ),
+            )
+            for gy in GUIDE_Y
+        ],
+        # pedestal up to the boss top, so the boss leaves a clean vertical face at y1
+        (
+            "add",
+            (
+                "box",
+                -CAR_PED[0],
+                CAR_PED[0],
+                CAR_PED[1],
+                y1,
+                CAR_FOOT_T,
+                za + CAR_BOSS_R,
+            ),
+        ),
+        ("add", ("cyly", 0.0, za, CAR_PED[1], boss_y1, CAR_BOSS_R)),
+        ("add", ("box", px, hx, pa, pb, CAR_FOOT_T, pz)),
+        ("cut", ("cyly", 0.0, za, CAR_PED[1] - 0.1, boss_y1 + 0.1, CAR_BORE / 2)),
+        (
+            "cut",
+            ("cylz", 0.0, CLAMP_Y, -CAR_RAIL_D - 0.1, CAR_FOOT_T + 0.1, CLR_M3 / 2),
+        ),
+    ]
+    if not mirror:
+        return ops
+
+    def my(sh: tuple) -> tuple:
+        if sh[0] == "box":
+            _, a, b, c, d, e, f = sh
+            return ("box", a, b, -d, -c, e, f)
+        if sh[0] == "cyly":
+            _, cx, cz, c, d, r = sh
+            return ("cyly", cx, cz, -d, -c, r)
+        if sh[0] == "cylz":
+            _, cx, cy, e, f, r = sh
+            return ("cylz", cx, -cy, e, f, r)
+        raise ValueError(sh[0])
+
+    return [(op, my(sh)) for op, sh in ops]
+
+
+def carriage_lines(path: str, mirror: bool) -> list[str]:
+    ops = carriage_features(mirror)
+    yb = (-80.0, -20.0) if mirror else (20.0, 80.0)
+    vol, bb = solid_volume_numeric(ops, ((-12.0, 12.0), yb, (-5.0, 23.0)))
+    return [
+        f"part|{path}",
+        *emit_ops(ops),
+        f"expect|vol {vol:.1f} {vol * 0.01:.1f}|box {' '.join(f'{v:.2f}' for v in bb)} 0.35",
+        "save",
+    ]
+
+
 # ------------------------------------------------- printed TPU track system (08, P11)
 # drivetrain.py owns the drivetrain numbers and the wheel geometry (its layer stacks);
 # this only turns them into native SolidWorks parts and places them. Part frames
@@ -1548,6 +1668,8 @@ PART_MATERIAL = {
     "RB-PRT-001": "PET-CF",
     "RB-PRT-002": "PET-CF",
     "RB-PRT-003": "PET-CF",
+    "RB-PRT-030": "PET-CF",
+    "RB-PRT-031": "PET-CF",
     "RB-PRT-010": "PET-CF",
     "RB-PRT-011": "PET-CF",
     "RB-PRT-020": "PET-CF",

@@ -173,3 +173,10 @@ Newest at the bottom. One entry per tick.
 - S2 pull + torque: default 7.15 → 5.26 MPa, half mesh 9.67 → 6.63 MPa (SF 5.28); motor holes 0.0482 → 0.0417 mm.
 - Convergence still short: the root region 5.26 → 6.53 (+24 %, the boss/chamfer intersection), and the half-mesh max is now the end-stop step corner (x −17.6, z 22.5), untouched by D10. Both go to D1 (fillets). Accepted: every gate improves; SF taken on the half-mesh peak.
 - Next: rotate: P5 (carriages + idler mounting) or W/A/R items.
+
+## tick 23 · P5 follower carriages · accepted (new parts) · 2026-10-31 02:50
+- New `RB-PRT-030/031_carriage_L/R` from `carriage_features`: foot + rails in the existing guide slots, clamp hole, jack pad, pedestal at the plate edge, journal boss into the idler's open inboard side (to 0.5 short of the hub tube, |y| 69). Built both alone first (BUILD OK, 5,734 vs 5,736 mm³), then the full rebuild: 0 interferences.
+- New study S6 (left carriage, held at the jack face + clamp hole, 48.7 N at the belt centre via the bore). Three iterations inside the tick: 12 × 9 pedestal + Ø12 boss 16.5 MPa (twist at the pedestal root) → full-length pedestal 12.9 (boss root) → Ø15 boss + pedestal to the boss top 6.83 MPa (SF 5.1), bore 0.026 mm; equilibrium exact. Mass 7.4 → 12.3 g each.
+- One slip: launched the first rebuild with a bare `&` (no completion notice); it ran fine, checked by a timed wakeup.
+- Printed parts now 365.9 g, CoG (6.8, −0.1, 14.0).
+- Next: rotate: S1a2 / W2 / R1; the carriage joins D1 (fillets) and the edge audit.
