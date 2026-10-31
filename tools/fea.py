@@ -180,7 +180,49 @@ def s5(canopy: bool = False) -> dict:
     }
 
 
-STUDIES = {"S1a": s1a, "S1b": s1b, "S2": s2, "S5": s5, "S5c": lambda: s5(canopy=True)}
+def s1m() -> dict:
+    """S1a on the multi-body part (T10): plate + both mount v2 bodies merged (bonded).
+    The axle load enters each mount through its motor face + motor inserts (as S2), so
+    the feet bear on the plate over their footprint; held at the jack-screw bores."""
+    gx, gy, gz = gear_centre()
+    f = AXLE_F
+    face = chassis.MOUNT_HOLE[1] + chassis.mount_ty()  # |y| of the motor faces: -28 + 60.4 = 32.4
+    ins = chassis.INS_HOLE / 2
+    lines = ["discard_open", "fix cyl 1 0 0 2.0 0.05"]
+    for name, sgn in (("left", 1), ("right", -1)):
+        y0, y1 = sorted((sgn * (face - 7.5), sgn * (face + 0.5)))
+        lines += [
+            f"remote {name} {gx:.2f} {sgn * gy:.2f} {gz:.2f} cyl 0 1 0 {ins} 0.05 box 25 {y0} 0 80 {y1} 27",
+            f"remote {name} {gx:.2f} {sgn * gy:.2f} {gz:.2f} plane 0 1 0 {sgn * face:.3f}",
+        ]
+    lines += [
+        f"disp inserts cyl 0 1 0 {ins} 0.05",
+        "probe pockets 38 -60 -9 82 60 1",
+        "probe jackstops -40 -45 -1 -26 45 11",
+        "probe midplate -20 -50 -9 35 50 1",
+        "probe mounts 25 -52 0 80 52 27",
+        "hotspots 5",
+        "mesh 1.5 0.08",
+        f"case tension left:{-f:.2f},0,0 right:{-f:.2f},0,0",
+    ]
+    return {
+        "name": "S1m",
+        "title": "Plate + mounts (bonded), track tension at the axles",
+        "part": r"\CAD\fea\FEA-plate_mounts.SLDPRT",
+        "lines": lines,
+        "applied": (-2 * f, 0, 0),
+        "limit_disp_mm": 0.2,
+    }
+
+
+STUDIES = {
+    "S1m": s1m,
+    "S1a": s1a,
+    "S1b": s1b,
+    "S2": s2,
+    "S5": s5,
+    "S5c": lambda: s5(canopy=True),
+}
 
 
 def compile_sim(tool: str) -> str:

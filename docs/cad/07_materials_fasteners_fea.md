@@ -91,6 +91,7 @@ face, audio, misc ~150 g → **m ≈ 1.0 kg**, W ≈ 10 N.
 | Case | Part(s) | Load | Restraint | Pass |
 |---|---|---|---|---|
 | **S1 Track tension** | Plate + motor mounts + follower carriages | T per track, both sides: 20 N [assumption, measure with a spring scale at set-up], at the shaft / axle | Inertia relief, or fix the far end | Shaft/axle deflection **< 0.2 mm**; F4b jack end-stop ≤ Z / 3 |
+| **S1m Track tension, plate + mounts bonded** (T10) | Plate with both mount v2 bodies merged (`CAD/fea/FEA-plate_mounts`) | as S1, remote at each belt centre, into each mount's motor face + inserts | Jack-screw bores | Axle (insert) displacement **< 0.2 mm**; ≤ Z / 3. Supersedes S1a for verdicts (S1a's pocket coupling over-reads stress, under-reads bending) |
 | **S2 Drive torque** | Motor mount upright | Stall torque reaction 0.25 N·m [assumption, Yahboom 1:48 TT] + S1 | Mount foot at the 2 M3 | Upright root ≤ Z allowable / 3 |
 | **S3 Pick-up by the canopy** | Canopy + its 4 inserts | 3 W = 30 N through the canopy (the whole robot hangs from it) | Hand grip region on canopy sides | Insert pull-out ratio ≥ 3 (§4.3); canopy ≤ Z / 3 |
 | **S4 Hand press on top** | Canopy | 100 N on a Ø40 patch on the top centre | Canopy screw bosses | Deflection < 3 mm (clearance to the stack); stress ≤ UTS / 2 |

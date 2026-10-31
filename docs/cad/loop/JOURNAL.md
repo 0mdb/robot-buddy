@@ -106,3 +106,10 @@ Newest at the bottom. One entry per tick.
 - Reverted per PROMPT (patch kept), baseline rebuilt: BUILD OK, 0 interferences. No CAD change committed.
 - Better route: T10, a multi-body S1a (plate + both mount bodies bonded), which needs no split lines and models the foot bearing directly.
 - Next: rotate (not D/P twice more): T10, then P3 geometry with hotspots.
+
+## tick 13 · T10 multi-body S1a (S1m) · accepted · 2026-10-30 23:55
+- Plate + both mount v2 bodies merged into one PET-CF body (= bonded) in an analysis-only part, `CAD/fea/FEA-plate_mounts.SLDPRT`: 103,386 vs 103,229 mm³ (plate + 2 × mount, +0.15 %). No InsertPart3 needed.
+- S1m: remote axle load (48.7 N per side at the belt centre) into each mount's motor face + two inserts; held at the jack bores; 403 k nodes; equilibrium exact. Caught a sign bug in a dry run first: the left load selected the right mount's face.
+- Results: the pocket artefact is gone (plate top 11.3 MPa vs S1a's 17.6); peak 13.3 / 12.6 MPa on the jack-stop blocks' root faces (fixture-adjacent, unfilleted); motor inserts UX −0.16…−0.91 mm, UZ +1.13…+1.27 mm. The mounts' eccentric moment bends the plate between mounts and jack stops, 4× what pocket-coupled S1a showed.
+- 07 gets S1m as the verdict study for P3. Evidence points to P3 (a): rails at axle height from the mount feet to the jack stops.
+- Next: P3 (a) side rails, judged on S1m.

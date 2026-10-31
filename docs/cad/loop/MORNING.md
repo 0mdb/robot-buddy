@@ -28,6 +28,8 @@ _Pass 1 starting (2026-10-30 17:05). Rewritten every tick._
 
 **Motor mount stress, converged (D7):** with the knife edge removed, S2 converges for the first time: 11.95 MPa at the finest mesh, SF 2.93 (2 % short of 3). The last notch is the same insert hole nicking a gusset root (D8).
 
-**Next:** D8, P3 (plate + FEA for the new track), then P2 motor mount v2 (outboard axle support, Q4 default), P3 plate stiffening.
+**Plate test made realistic (T10):** the plate is now analysed with the motor mounts bonded on. The fake pocket peak is gone; the real issue is bending: under 20 N track tension the motor axles move ~0.9 mm back and 1.2 mm up relative to the rear followers (target 0.2). Rails along the sides at axle height (P3) are the fix this points to.
+
+**Next:** P3 rails, D8 (plate + FEA for the new track), then P2 motor mount v2 (outboard axle support, Q4 default), P3 plate stiffening.
 
 **Open questions:** Q4–Q12 in `QUESTIONS.md`, each with a default the loop is using.

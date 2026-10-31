@@ -663,6 +663,8 @@ def rebuild_manifest(win: str) -> list[str]:
         f"comp|face|{face}|{row(*face_on_bulkhead())}",
         "interfere",
         "asmsave",
+        # T10: analysis-only part, plate + both mounts as one body (not printed)
+        *fea_plate_mounts_lines(cad + r"\\fea\\FEA-plate_mounts.SLDPRT"),
         f"shot|{asm}|{shots}",
         f"close|{asm}",
         f"shot|{plate}|{win}\\shots\\plate",
@@ -1214,6 +1216,68 @@ def mount_v2_lines(path: str, mirror: bool) -> list[str]:
         f"part|{path}",
         *emit_ops(ops),
         f"expect|vol {vol:.1f} {vol * 0.01:.1f}|box {' '.join(f'{v:.2f}' for v in bb)} 0.35",
+        "save",
+    ]
+
+
+# ------------------------------------------------- FEA part: plate + both mounts (T10)
+# Plate and mounts are all PET-CF, so merging them into ONE body is exactly Simulation's
+# bonded contact: the feet bear on the plate over their whole footprint instead of the
+# axle load entering through the plate's insert pockets (S1a's coupling artefact).
+
+
+def mount_ops_chassis(side: int) -> list[tuple]:
+    """mount_v2_features (right part frame) mapped to chassis: x' = tx - x and
+    y' = side * (y + ty) (right = Rz180 of the part, left = its X-mirror at identity)."""
+    tx, ty = mount_tx(), mount_ty()
+
+    def X(x: float) -> float:
+        return tx - x
+
+    def Y(y: float) -> float:
+        return side * (y + ty)
+
+    def span(a: float, b: float, f) -> tuple[float, float]:
+        u, v = f(a), f(b)
+        return (min(u, v), max(u, v))
+
+    out = []
+    for op, sh in mount_v2_features(False):
+        k = sh[0]
+        if k == "box":
+            _, x0, x1, y0, y1, z0, z1 = sh
+            out.append((op, ("box", *span(x0, x1, X), *span(y0, y1, Y), z0, z1)))
+        elif k == "prismz":
+            out.append((op, ("prismz", [(X(x), Y(y)) for x, y in sh[1]], sh[2], sh[3])))
+        elif k == "prismx":
+            out.append(
+                (op, ("prismx", [(Y(y), z) for y, z in sh[1]], *span(sh[2], sh[3], X)))
+            )
+        elif k == "cyly":
+            _, cx, cz, y0, y1, r = sh
+            out.append((op, ("cyly", X(cx), cz, *span(y0, y1, Y), r)))
+        elif k == "cylz":
+            _, cx, cy, z0, z1, r = sh
+            out.append((op, ("cylz", X(cx), Y(cy), z0, z1, r)))
+        else:
+            raise ValueError(k)
+    return out
+
+
+def fea_plate_mounts_lines(path: str) -> list[str]:
+    plate = plate_lines(path)
+    assert plate[-2].startswith("expect|vol ") and plate[-1] == "save"
+    v_plate = float(plate[-2].split("|")[1].split()[1])
+    v_mount, _ = solid_volume_numeric(
+        mount_v2_features(False), ((-36.0, 36.0), (-50.0, -5.0), (-1.0, MM_TOP + 1.0))
+    )
+    vol = v_plate + 2 * v_mount
+    hx, hy = PLATE_L / 2, PLATE_W / 2
+    return [
+        *plate[:-2],
+        *emit_ops(mount_ops_chassis(+1)),
+        *emit_ops(mount_ops_chassis(-1)),
+        f"expect|vol {vol:.1f} {vol * 0.006:.1f}|box {-hx} {hx} {-hy} {hy} {UNDER_BOSS_Z} {max(DECK_Z, MM_TOP)} 0.01",
         "save",
     ]
 
