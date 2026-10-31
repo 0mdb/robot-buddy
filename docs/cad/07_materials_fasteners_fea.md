@@ -180,6 +180,8 @@ before ordering (screw engagement ≥ 1.3 d, tip ≥ 0.5 mm short of the pocket 
 | F2 | Motor mount → plate | **M3 × 8** SHCS + ISO 7089 washer, down from the top | M3 inserts in plate under-bosses (plate 4 + boss 4) | foot **3.0** (measured) → 5.0 | **8** (4 per mount) |
 | F3 | TT motor → mount v2 | **M3 × 28 SHCS** through the motor into **M3 inserts pressed through the 6 mm upright** from the motor face (amended tick 6: no nuts, which used to sit against the foot) | M3 inserts | motor 22.6 → 5.4 | 4 |
 | F4 | Follower axle + clamp | per `05_follower_spec.md`: Ø4 shoulder bolt (M3 thread) as the axle; clamp M3 × 16 SHCS + washer + nyloc from below | — | — | 2 + 2–4 |
+
+> Amendment (loop R2a, 2026-10-31): the carriage clamp is an **M3 × 12 SHCS up from under the plate into an M3 insert in a boss on the carriage foot** (05's option), not M3 × 16 + nyloc: the nut sat blind under the plate and made a track swap a two-tool job (R2, `docs/cad/loop/R2_service.md`).
 | **F4b** | **Follower tension jack** (new) | ~~M3 × 20~~ **M3 × 30 SHCS** (A2) in an M3 insert in a plate end-stop, tip bearing on the carriage (cup point: set screw ISO 4029 if preferred) | M3 insert, axis along X | screw sets tension; clamp only locks | 2 |
 | F5 | Pi deck → plate posts | M3 × 8 SHCS, down from the top (service with the canopy off) | M3 inserts at post tops | deck 3 → 5 | 4 |
 | F6 | Pi stack → deck | M2.5 × 6 SHCS, up through the deck | the existing **6 mm brass standoffs** | deck 3 → 3 | 4 |

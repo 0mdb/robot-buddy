@@ -150,7 +150,7 @@ def s6() -> dict:
         "lines": [
             "discard_open",
             f"fix plane 1 0 0 {chassis.CAR_L / 2}",
-            f"fix cyl 0 0 1 {chassis.CLR_M3 / 2} 0.05",
+            f"fix cyl 0 0 1 {chassis.INS_HOLE / 2} 0.05",  # the clamp insert (R2a)
             f"remote axle 0 {yc:.2f} {za} cyl 0 1 0 {chassis.CAR_BORE / 2} 0.05",
             f"disp bore cyl 0 1 0 {chassis.CAR_BORE / 2} 0.05",
             "hotspots 5",

@@ -1539,6 +1539,7 @@ CAR_BOSS_R = (
     7.5  # S6: Ø12 bent at its root (12.9 MPa); the idler's inboard opening is ~r 20
 )
 CAR_BORE = 4.1  # 05: slip for the Ø4 shoulder
+CAR_CLAMP_BOSS_Z = 10.0  # R2a: top of the clamp-insert boss (insert 2.8 .. 10)
 CAR_PAD = (
     6.0,
     (32.0, 41.0),
@@ -1591,9 +1592,31 @@ def carriage_features(mirror: bool) -> list[tuple]:
         ("add", ("cyly", 0.0, za, CAR_PED[1], boss_y1, CAR_BOSS_R)),
         ("add", ("box", px, hx, pa, pb, CAR_FOOT_T, pz)),
         ("cut", ("cyly", 0.0, za, CAR_PED[1] - 0.1, boss_y1 + 0.1, CAR_BORE / 2)),
+        # R2a: the clamp screw comes up from under the plate (through the clamp slot) into
+        # an M3 insert pressed from the top of a boss, so a track swap needs one key and no
+        # blind nyloc under the plate (05 option); clearance below the insert
+        ("add", ("cylz", 0.0, CLAMP_Y, CAR_FOOT_T, CAR_CLAMP_BOSS_Z, INS_BOSS / 2)),
         (
             "cut",
-            ("cylz", 0.0, CLAMP_Y, -CAR_RAIL_D - 0.1, CAR_FOOT_T + 0.1, CLR_M3 / 2),
+            (
+                "cylz",
+                0.0,
+                CLAMP_Y,
+                CAR_CLAMP_BOSS_Z - INS_DEPTH,
+                CAR_CLAMP_BOSS_Z + 0.1,
+                INS_HOLE / 2,
+            ),
+        ),
+        (
+            "cut",
+            (
+                "cylz",
+                0.0,
+                CLAMP_Y,
+                -CAR_RAIL_D - 0.1,
+                CAR_CLAMP_BOSS_Z - INS_DEPTH + 0.1,
+                CLR_M3 / 2,
+            ),
         ),
     ]
     if not mirror:

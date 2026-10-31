@@ -274,3 +274,9 @@ Newest at the bottom. One entry per tick.
 - SolidWorks back (Ben restarted it). Rebuilt the baseline with D1 reapplied from the patch: BUILD OK, 0 interferences, mounts +6.23 mm³ (fillet exactly as predicted).
 - S2 now selects 2 motor-hole faces (the r 2.2 fillet isn't mistaken for an insert). Pull + torque: default 6.42 MPa, half mesh 6.63 MPa: +3.2 %, converged for the first time. SF 5.28 (= D10's half-mesh value, now trustworthy); holes 0.0416 mm (=). The end-stop spot left the top 5; the peak sits on the boss/chamfer face.
 - Next: rotate: S1a3 / S1b2 / R2a.
+
+## tick 40 · R2a carriage clamp into an insert · accepted (serviceability) · 2026-10-31 07:50
+- Clamp screw from below through the plate's clamp slot into an M3 insert in a Ø9.2 boss on the carriage foot (insert z 2.8–10). Two slips on the way: a str-replace that missed a ruff-wrapped line (the build ran the old part; caught by the unchanged volume), and a comment placed before a list comma in fea.py (it joined two manifest lines; caught by the dry run).
+- Carriages alone: 9,872.5 vs 9,878.2 mm³; full rebuild 0 interferences; 12.7 g each.
+- S6 (fixture moved to the insert pocket): 6.83 → 7.58 MPa (SF 4.6), peak on the boss top beside the fixture; bore 0.026 → 0.0235 mm. Accepted as a serviceability trade (track swap: one 2.5 key). 07 F4 amended (M3 × 12 into the insert).
+- Next: rotate: S1b2 / S1a3 / D1b / R2b.
