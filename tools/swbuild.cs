@@ -25,6 +25,8 @@
 //   asmsave
 //   shot|<doc>|<outprefix>                    iso/top/front/right BMPs
 //   close|<doc>                               close a document this run opened
+//   rotbody|px py pz|y|deg                    rotate every solid body about the axis
+//                                             through (px,py,pz) parallel to Y (Move/Copy Body)
 // Ends with "BUILD OK" or "BUILD FAILED n".
 using System;
 using System.Collections.Generic;
@@ -102,6 +104,7 @@ class SwBuild
                 case "asmsave": SaveAsm(); break;
                 case "shot": Shot(f[1], f[2]); break;
                 case "close": CloseByPath(f[1]); break;
+                case "rotbody": RotBody(f); break;
                 default: Check("command " + f[0], false, "unknown"); break;
             }
             if (failures > 0 && f[0] != "expect") break;   // stop at the first broken step
@@ -205,7 +208,10 @@ class SwBuild
     {
         double[] z = Nums(f[1]);
         string[] t = f[2].Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
-        if (!Sketch("front")) return;
+        // optional 5th field: sketch plane. Coordinates are SKETCH coordinates:
+        // front (x, y) -> extrude +Z; right (-z, y) -> extrude +X (measured mapping)
+        string plane = f.Length > 4 ? f[4] : "front";
+        if (!Sketch(plane)) return;
         ISketchManager sm = doc.SketchManager;
         double px = 0, py = 0, sx = 0, sy = 0; int i = 0, segs = 0;
         while (i < t.Length)
@@ -230,7 +236,7 @@ class SwBuild
             sm.CreateLine(M(px), M(py), 0, M(sx), M(sy), 0);
         CloseSketch();
         bool cut = f.Length > 3 && (f[3] == "cut" || f[3] == "all");
-        After("prof " + segs + " segs z " + f[1] + (cut ? " " + f[3] : ""),
+        After("prof " + plane + " " + segs + " segs span " + f[1] + (cut ? " " + f[3] : ""),
               Extrude(z[0], z[1], cut, f.Length > 3 && f[3] == "all"));
     }
 
@@ -380,6 +386,26 @@ class SwBuild
         bool ok = asmDoc.Extension.SaveAs(asmPath, (int)swSaveAsVersion_e.swSaveAsCurrentVersion,
             (int)swSaveAsOptions_e.swSaveAsOptions_Silent, null, ref e, ref w);
         Check("save " + Path.GetFileName(asmPath), ok, "err " + e + " warn " + w);
+    }
+
+    static void RotBody(string[] f)
+    {
+        double[] p = Nums(f[1]);
+        if (f[2] != "y") { Check("rotbody axis " + f[2], false, "only y is implemented"); return; }
+        double rad = double.Parse(f[3], ci) * Math.PI / 180.0;
+        doc.ClearSelection2(true);
+        ISelectionMgr smgr = (ISelectionMgr)doc.SelectionManager;
+        object[] bodies = (object[])((IPartDoc)doc).GetBodies2((int)swBodyType_e.swSolidBody, true);
+        foreach (object o in bodies)
+        {
+            SelectData sd = (SelectData)smgr.CreateSelectData();
+            sd.Mark = 1;
+            ((IBody2)o).Select2(true, sd);
+        }
+        IFeature feat = (IFeature)doc.FeatureManager.InsertMoveCopyBody2(0, 0, 0, 0,
+            M(p[0]), M(p[1]), M(p[2]), 0, rad, 0, false, 1);
+        doc.ClearSelection2(true);
+        After("rotbody about y through (" + f[1] + ") by " + f[3] + " deg", feat);
     }
 
     static void CloseByPath(string path)

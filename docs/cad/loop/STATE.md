@@ -1,9 +1,9 @@
 # CAD loop state
 
 pass: 1
-tick: 1
+tick: 2
 sw: up (SLDWORKS 32.3.1)
-current: none (T2 done)
+current: none (P1 rev 1 rejected → P1b)
 hypothesis: —
 baseline_commit: d8179d2 (cad)
 stop_after: 2026-10-31 07:00   (Q11 default)
