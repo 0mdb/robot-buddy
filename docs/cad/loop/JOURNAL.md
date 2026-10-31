@@ -146,3 +146,10 @@ Newest at the bottom. One entry per tick.
 - Finding: no generated part has a fillet yet. Accessible sharp edges: plate 4.5 m, bulkhead 1.6 m, sprocket / idler 0.21 m each, mounts 0 (0.8 m covered).
 - Split the fixes into S1a (plate), S1b (bulkhead), S1c (wheels via drivetrain.py). No geometry change this tick.
 - Next: rotate: D9 (mount root corner), then S1a.
+
+## tick 19 · D9 stub root chamfer · rejected · 2026-10-31 00:35
+- Hypothesis: chamfering the bare root corner x 17.5–20 (past the insert pocket) removes S2's singular half-mesh peak (9.67).
+- Result: worse. S2 default 7.15 → 9.54 MPa, half mesh 9.67 → 10.61 (+11 %, still singular); holes 0.0482 → 0.0457 mm. The peak moved onto the 2.5 mm stub's own top edge and end faces.
+- Reverted (patch kept), baseline rebuilt: BUILD OK, 0 interferences, mount 10,785.1 mm³ = D8.
+- Lesson: short chamfer segments add corners. The pocket has to stop crossing the root first → D10 (blind pocket in a local boss, then a full-length chamfer or fillet).
+- Next: rotate off D: S1a or P4.

@@ -1,0 +1,14 @@
+diff --git a/tools/chassis.py b/tools/chassis.py
+index 9b865f5..eb2a43b 100644
+--- a/tools/chassis.py
++++ b/tools/chassis.py
+@@ -1117,6 +1117,9 @@ def mount_v2_features(mirror: bool) -> list[tuple]:
+     # the upright; where the two crossed they left a knife edge (S2's unconverged peak, T9)
+     ch_x1 = MOUNT_HOLE[0] - INS_HOLE / 2 - 1.0
+     ops.append(("add", ("prismx", ch, xa, ch_x1)))
++    # D9: the same chamfer resumes 1 mm past the pocket, to the upright end (the corner
++    # there was S2's singular half-mesh peak after D8)
++    ops.append(("add", ("prismx", ch, MOUNT_HOLE[0] + INS_HOLE / 2 + 1.0, xb)))
+     hx, _, hz = MOUNT_HOLE
+     for dz in (-MOT_HOLE_PITCH / 2, MOT_HOLE_PITCH / 2):
+         ops.append(

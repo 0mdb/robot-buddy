@@ -40,6 +40,8 @@ _Pass 1 starting (2026-10-30 17:05). Rewritten every tick._
 
 **Kid safety (S1):** an edge audit tool now lists every sharp edge a child can reach (`docs/cad/loop/S1_edge_audit.md`). Nothing is rounded yet: plate 4.5 m, bulkhead 1.6 m, wheels 0.2 m each. Fixes are queued per part (S1a–c).
 
-**Next:** D9, S1a, then P2o / P4 (plate + FEA for the new track), then P2 motor mount v2 (outboard axle support, Q4 default), P3 plate stiffening.
+*(D9, a short chamfer at the mount root, was tried and rejected: it added corners. D10 queues the proper fix.)*
+
+**Next:** S1a / P4, D10, then P2o (plate + FEA for the new track), then P2 motor mount v2 (outboard axle support, Q4 default), P3 plate stiffening.
 
 **Open questions:** Q4–Q12 in `QUESTIONS.md`, each with a default the loop is using.
