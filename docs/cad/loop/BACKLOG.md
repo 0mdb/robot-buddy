@@ -69,7 +69,11 @@ Rules the loop enforces from here on (ASTM F963 / EN 71-1 / IEC 62115 as design 
 - Small parts: the 31.7 mm cylinder is an under-3 rule (not binding at 6–12), but younger siblings exist: anything that can come off without a tool stays screw-captive
 - Battery (2× 18650 in the UPS HAT): enclosure needs a tool to open, vented, no crush path in a drop
 - No accessible surface over ~48 °C (Pi 5 lid, motor cans)
-- [ ] S1 `[sw]` accessible-edge audit: list every exterior edge without a fillet/chamfer per part → fix in generators
+- [x] S1 `[sw]` accessible-edge audit: list every exterior edge without a fillet/chamfer per part → fix in generators
+  **Done tick 18:** `tools/edgeaudit.py` (meshcheck's > 30° convex-edge test + a per-part accessibility rule, canopy fitted) → `docs/cad/loop/S1_edge_audit.md`. No generated part has any fillet yet. Accessible sharp edges: plate 4.5 m (belly ribs + perimeter), bulkhead 1.6 m (sides, window rim, foot front), sprocket/idler 0.21 m each (outboard rim); mounts covered (0.8 m, for D1).
+- [ ] S1a `[sw]` plate edges: r 1.0 on the outline's top + bottom perimeter; rib bottoms rounded (2.4 ribs r 1.0, 1.2 ribs full round r 0.6); boss rims r 0.6. Via the `fillet` engine command (selection box per edge set); `expect` volume from the fillet's analytic removal (r²(1 − π/4) × length). Rerun edgeaudit + S1m
+- [ ] S1b `[sw]` bulkhead edges: r 1.0 on the outer side edges, the window rim and the foot front; rerun edgeaudit + S5c
+- [ ] S1c `[py]` `[sw]` wheels: r 1.0 on the outboard rim (a rounded ring in drivetrain.py's layer stack, so the meshes and the SW parts stay identical)
 - [ ] S2 `[sw]` pinch-point audit around the track path, drive sprockets and follower slots; propose track skirts/guards
 - [ ] S3 `[doc]` small-parts / removable-parts inventory (what comes off without a tool?)
 - [ ] S4 `[doc]` battery access + drop path review against the Pi-stack envelope

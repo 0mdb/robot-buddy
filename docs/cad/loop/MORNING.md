@@ -38,6 +38,8 @@ _Pass 1 starting (2026-10-30 17:05). Rewritten every tick._
 
 **Materials (M1):** every study now runs in PA6-CF too (`docs/cad/fea/m1_materials.md`). Dry PA6-CF beats PET-CF everywhere (9 % lighter, 1.8× stiffer); after it soaks up room humidity it is about half as stiff as PET-CF, so the plate and bulkhead stay PET-CF unless you keep PA6 parts dry.
 
-**Next:** S1 edge audit, D9, then P2o / P4 (plate + FEA for the new track), then P2 motor mount v2 (outboard axle support, Q4 default), P3 plate stiffening.
+**Kid safety (S1):** an edge audit tool now lists every sharp edge a child can reach (`docs/cad/loop/S1_edge_audit.md`). Nothing is rounded yet: plate 4.5 m, bulkhead 1.6 m, wheels 0.2 m each. Fixes are queued per part (S1a–c).
+
+**Next:** D9, S1a, then P2o / P4 (plate + FEA for the new track), then P2 motor mount v2 (outboard axle support, Q4 default), P3 plate stiffening.
 
 **Open questions:** Q4–Q12 in `QUESTIONS.md`, each with a default the loop is using.

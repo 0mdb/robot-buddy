@@ -140,3 +140,9 @@ Newest at the bottom. One entry per tick.
 - Table in `docs/cad/fea/m1_materials.md`: dry PA6-CF −9 % mass, δ ×0.55, SF ×1.54 on everything; conditioned PA6-CF δ ×1.89 (S1m 1.83 mm, S5c 0.502 vs 0.5) and SF 2.79 on the S1m / S2 peaks (S2 converged: 3.78).
 - No part changes material: that is M2 (doc, needs the moisture call).
 - Next: rotate: S1 edge audit (kid safety), then D9.
+
+## tick 18 · S1 accessible-edge audit · accepted · 2026-10-31 02:50
+- New `tools/edgeaudit.py`: meshcheck's sharp-edge test (convex, > 30°) on the generated STLs, filtered per part by where a hand reaches with the canopy on (plate perimeter + belly; bulkhead face side + outer sides; wheel outboard faces; mounts covered). Output: `docs/cad/loop/S1_edge_audit.md`.
+- Finding: no generated part has a fillet yet. Accessible sharp edges: plate 4.5 m, bulkhead 1.6 m, sprocket / idler 0.21 m each, mounts 0 (0.8 m covered).
+- Split the fixes into S1a (plate), S1b (bulkhead), S1c (wheels via drivetrain.py). No geometry change this tick.
+- Next: rotate: D9 (mount root corner), then S1a.
