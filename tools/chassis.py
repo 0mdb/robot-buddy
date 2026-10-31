@@ -431,6 +431,18 @@ def plate_volume_numeric(step: float = 0.1) -> float:
     return vol
 
 
+PLATE_EDGE_R = 1.0  # S1a: accessible edges r >= 1.0 (BACKLOG kid-safety)
+
+
+def plate_perimeter() -> float:
+    """Outline length: straight front/rear/sides, two 45° front chamfers, two rear arcs."""
+    c, r = FRONT_CHAMFER, REAR_RADIUS
+    front = PLATE_W - 2 * c
+    rear = PLATE_W - 2 * r
+    sides = 2 * (PLATE_L - c - r)
+    return front + rear + sides + 2 * c * math.sqrt(2) + 2 * (math.pi / 2) * r
+
+
 def plate_lines(plate: str) -> list[str]:
     lines = [f"part|{plate}"]
     for op, s, z0, z1 in plate_features():
@@ -447,6 +459,15 @@ def plate_lines(plate: str) -> list[str]:
         lines.append(f"cyl|x|{sgn * JACK_Y} {JACK_Z}|all|{INS_HOLE / 2}|cut")
     hx, hy = PLATE_L / 2, PLATE_W / 2
     vol = plate_volume_numeric()
+    # S1a (kid safety): round the outline's top and bottom edges, the edges every hand
+    # grabs. The outer loop of the top (z 0) and bottom (z -4) faces is the outline; a
+    # convex 90° round removes (1 - pi/4) r² per mm of edge.
+    dv = (1 - math.pi / 4) * PLATE_EDGE_R**2 * plate_perimeter()
+    for nz, z in ((1, 0.0), (-1, -PLATE_T)):
+        lines.append(
+            f"filletface|{PLATE_EDGE_R}|{nz}|{z}|{-hx} {-hy} {hx} {hy}|max|{-dv:.2f} {0.1 * dv:.2f}"
+        )
+        vol -= dv
     lines += [
         f"expect|vol {vol:.1f} {vol * 0.004:.1f}|box {-hx} {hx} {-hy} {hy} {UNDER_BOSS_Z} {DECK_Z} 0.01",
         "save",

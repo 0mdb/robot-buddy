@@ -11,6 +11,17 @@ Tool: `uv run --project tools --extra cad python tools/edgeaudit.py --md docs/ca
 | RB-PRT-020_sprocket | outboard face | 3592 | 213 | 26 @ (11, -25, 0); 32 @ (8, 26, 0); 17 @ (-6, -27, 0); 29 @ (-27, -1, 0); 26 @ (27, -6, 0); 17 @ (-12, 25, 0) |
 | RB-PRT-021_idler | outboard face | 3632 | 213 | 26 @ (11, -25, 0); 20 @ (8, 26, 0); 15 @ (-4, -27, 0); 17 @ (-6, 27, 0); 29 @ (-27, 1, 0); 26 @ (27, 6, 0) |
 
+## After S1a (tick 21: plate outline top + bottom r 1.0)
+
+| Part | Accessible zone | Sharp edges total (mm) | Accessible (mm) | Biggest accessible clusters (length @ x, y, z) |
+|---|---|---|---|---|
+| RB-PRT-001_base_plate | plate perimeter + belly | 4677 | 3466 | 296 @ (-4, -48, -8); 296 @ (-4, 46, -8); 261 @ (13, -35, -8); 261 @ (13, 35, -8); 78 @ (0, -26, -8); 78 @ (0, -1, -8) |
+| RB-PRT-002_bulkhead | face side + outer sides | 3674 | 1647 | 126 @ (62, -47, 60); 126 @ (62, 47, 60); 344 @ (78, 23, 27); 74 @ (85, 0, 9); 58 @ (66, -47, 73); 58 @ (66, 47, 73) |
+| RB-PRT-010_motor_mount_R | covered (motor, sprocket, canopy) | 805 | 0 | — |
+| RB-PRT-011_motor_mount_L | covered (motor, sprocket, canopy) | 805 | 0 | — |
+| RB-PRT-020_sprocket | outboard face | 3592 | 213 | 26 @ (11, -25, 0); 32 @ (8, 26, 0); 17 @ (-6, -27, 0); 29 @ (-27, -1, 0); 26 @ (27, -6, 0); 17 @ (-12, 25, 0) |
+| RB-PRT-021_idler | outboard face | 3632 | 213 | 26 @ (11, -25, 0); 20 @ (8, 26, 0); 15 @ (-4, -27, 0); 17 @ (-6, 27, 0); 29 @ (-27, 1, 0); 26 @ (27, 6, 0) |
+
 ## Reading
 - **No generated part has a single fillet yet** (the engine has `fillet` since T7, used nowhere in production). So "sharp" ≈ every edge, and the accessible column is the real to-do list.
 - **Plate (4.5 m accessible):** the belly is the bulk: every rib bottom edge (load ribs at |y| 36.5 / 47: 426 + 261 mm per side) plus the 1.2 ribs and the boss rims, then the outline's top and bottom perimeter edges. The 1.2 mm ribs can't take r 1.0 per edge; give them a full round (r 0.6) or make them 2.4 and round. The belly faces the floor but is handled every time the robot is picked up.

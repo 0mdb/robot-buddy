@@ -160,3 +160,9 @@ Newest at the bottom. One entry per tick.
 - Full rebuild: 0 interferences; printed parts 341.3 g, CoG (11.4, −0.1, 14.4).
 - S1d (new): deck held at the post holes, 25.5 N via the M2.5 holes: 6.30 MPa (SF 5.6), Pi holes 0.10 mm (limit 0.5); equilibrium exact.
 - Next: rotate: S1a (plate edges) or W/A items; D10 after.
+
+## tick 21 · S1a plate outline edges r 1.0 · accepted · 2026-10-31 01:30
+- `fillet` only takes straight edges by axis/box; the outline has arcs. New engine command `filletface|r|nz|z|box|n|dvol tol`: outer loop of each matching planar face. The belly (z −4) is 11 faces (the rib grid makes closed cells), so `n = max` keeps the largest.
+- Tested the plate alone first (P4's lesson): top −111.50 vs −111.46 mm³, then the bottom; plate 86,547 → 86,325 mm³ (−0.2 g). One miss on the way: my string replace skipped a ruff-wrapped line (the manifest still said `1`); fixed with sed on the line.
+- Full rebuild: 0 interferences. S1m peak 9.68 → 8.88 MPa (SF 3.94), inserts 0.968 → 0.970 mm; S1b 2.51 → 2.38 MPa. Edge audit: plate accessible sharp edges 4,506 → 3,466 mm (−1,040 = 2 × the 519 mm outline).
+- Next: S1a2 (rib bottoms + boss rims) later; rotate now: D10 or P5.

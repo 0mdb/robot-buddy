@@ -118,6 +118,7 @@ class SwBuild
                 case "rotbody": RotBody(f); break;
                 case "stl": Stl(f[1], f[2]); break;
                 case "fillet": Fillet(f); break;
+                case "filletface": FilletFace(f); break;
                 case "ring": Ring(f); break;
                 default: Check("command " + f[0], false, "unknown"); break;
             }
@@ -460,6 +461,75 @@ class SwBuild
         Check("fillet r" + f[1] + " " + ax + " box " + f[3], fil != null && Math.Abs(d - dv[0]) <= dv[1],
             string.Format(ci, "{0} edges selected {1}, dvol {2:F2} vs {3:F2} +- {4:F2} mm3 | {5}",
                 picked.Count, nsel, d, dv[0], dv[1], Measure()));
+    }
+
+    // filletface|r|nz|z|x0 y0 x1 y1|n|dvol tol  (S1a): fillet every edge of the OUTER loop
+    // of each planar face with normal (0,0,nz) lying in the plane z whose centre is inside
+    // the XY box; n = faces expected, or "max" for only the largest one. A plate's top /
+    // bottom face outer loop is its outline.
+    static void FilletFace(string[] f)
+    {
+        double r = double.Parse(f[1], ci), nz = double.Parse(f[2], ci), z = double.Parse(f[3], ci);
+        double[] b = Nums(f[4]);
+        bool largest = f[5] == "max";  // keep only the face with the largest box (the rib
+        int want = largest ? 1 : int.Parse(f[5], ci);  // grid splits a belly into cells)
+        double[] dv = Nums(f[6]);
+        var picked = new List<IEdge>();
+        var cand = new List<IFace2>();
+        int faces = 0;
+        object[] bodies = (object[])((IPartDoc)doc).GetBodies2((int)swBodyType_e.swSolidBody, true);
+        foreach (object bo in bodies)
+            foreach (object fo in (object[])((IBody2)bo).GetFaces())
+            {
+                IFace2 fc = (IFace2)fo;
+                if (!((ISurface)fc.GetSurface()).IsPlane()) continue;
+                double[] n = (double[])fc.Normal;
+                if (Math.Abs(n[2] - nz) > 1e-6) continue;
+                double[] bx = (double[])fc.GetBox();
+                if (Math.Abs(bx[2] * 1e3 - z) > 1e-3 || Math.Abs(bx[5] * 1e3 - z) > 1e-3) continue;
+                double cx = (bx[0] + bx[3]) * 500, cy = (bx[1] + bx[4]) * 500;
+                if (cx < b[0] || cy < b[1] || cx > b[2] || cy > b[3]) continue;
+                cand.Add(fc);
+            }
+        if (largest && cand.Count > 1)
+        {
+            IFace2 best = null; double ba = -1;
+            foreach (IFace2 fc in cand)
+            {
+                double[] bx = (double[])fc.GetBox();
+                double a = (bx[3] - bx[0]) * (bx[4] - bx[1]);
+                if (a > ba) { ba = a; best = fc; }
+            }
+            cand = new List<IFace2> { best };
+        }
+        foreach (IFace2 fc in cand)
+        {
+            faces++;
+            foreach (object lo in (object[])fc.GetLoops())
+            {
+                ILoop2 lp = (ILoop2)lo;
+                if (!lp.IsOuter()) continue;
+                foreach (object eo in (object[])lp.GetEdges()) picked.Add((IEdge)eo);
+            }
+        }
+        string what = "filletface r" + f[1] + " nz " + f[2] + " z " + f[3];
+        if (faces != want) { Check(what, false, "matched " + faces + " faces, expected " + want); return; }
+        double v0 = PartVolume();
+        doc.ClearSelection2(true);
+        int nsel = 0;
+        foreach (IEdge e in picked) if (((IEntity)e).Select2(true, 1)) nsel++;
+        IFeature fil = (IFeature)doc.FeatureManager.FeatureFillet3(
+            (int)swFeatureFilletOptions_e.swFeatureFilletUniformRadius, M(r), 0.0, 0.0,
+            (int)swFeatureFilletType_e.swFeatureFilletType_Simple,
+            (int)swFilletOverFlowType_e.swFilletOverFlowType_Default,
+            (int)swFeatureFilletProfileType_e.swFeatureFilletCircular,
+            null, null, null, null, null, null, null);
+        doc.ClearSelection2(true);
+        doc.EditRebuild3();
+        double d = PartVolume() - v0;
+        Check(what, fil != null && Math.Abs(d - dv[0]) <= dv[1],
+            string.Format(ci, "{0} faces, {1} edges selected {2}, dvol {3:F2} vs {4:F2} +- {5:F2} mm3 | {6}",
+                faces, picked.Count, nsel, d, dv[0], dv[1], Measure()));
     }
 
     static void Loop(ISketchManager sm, string spec)
