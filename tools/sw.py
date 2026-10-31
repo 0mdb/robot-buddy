@@ -31,7 +31,19 @@ CAD = os.path.join(REPO, "CAD")
 CSC = r"C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
 SWAPI = "/mnt/c/Program Files/SOLIDWORKS Corp/SOLIDWORKS/api/redist"
 DLLS = ("SolidWorks.Interop.sldworks.dll", "SolidWorks.Interop.swconst.dll")
-EXCLUDE = ("~$*", "*.~*", "*.SLDBAK", "Backup/", "SOLIDWORKS Backup*/", "desktop.ini")
+EXCLUDE = (
+    "~$*",
+    "*.~*",
+    "*.SLDBAK",
+    "Backup/",
+    "SOLIDWORKS Backup*/",
+    "desktop.ini",
+    # Simulation results written next to studied parts (tools/fea.py): never pull them
+    "*.CWR",
+    "*.gsz",
+    "*.LOG",
+    "PerformanceLog.txt",
+)
 
 
 def winpath(p: str) -> str:

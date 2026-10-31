@@ -143,6 +143,31 @@ board and any off-board TB6612 now go aft, between the carriages (x −85…−4
 - Rear face: cable tie points; face board USB/UART exit routed down to level 0.
 - Uniform 2.4 mm walls, ribbed; fillet every internal corner ≥ 1 mm (PET-CF is notch-sensitive).
 
+> Amendment (loop, 2026-10-30): bulkhead rev 1 built (P1). As built, `RB-PRT-002_bulkhead`
+> (generated, `tools/chassis.py`), ~41 g PET-CF:
+> - 94 wide × 126 tall (pre-tilt) × 3.0 wall, tilted 15° back about its back-bottom edge;
+>   front face at x 85 at plate level. Side flanges 1.8 × 4.3, horizontal rib at z 50.
+>   Wall 2.4 → **3.0**: the face inserts need a 1.3 mm skin in front of a 6.0 pocket.
+> - Lower band: HC-SR04 holes Ø16.6 at y −35/−9, z 26 with 6 mm sleeves; speaker grille,
+>   6 slots × 2.0 mm inside Ø34 at y +24, z 26. Sonar and speaker sit **side by side**: a
+>   40 mm speaker under a 50 mm-tall face would push the head to ~150 mm.
+> - Face board **behind** a 59.6 × 45.2 window (active area + 1 mm), LCD stack bearing on
+>   the wall's back face, 4 × Ø7 × 4.3 standoffs with Ø4.0 × 6.0 insert pockets, so
+>   F11 is **M3 × 5** (not × 6).
+> - Camera lens hole Ø9 at z 113 (Q6 default); camera bosses 🟡 until the module is chosen.
+> - Canopy lugs: 2 × Ø9.2 at y ±38 on the top back, insert pockets from the top (F9).
+> - Foot: 59 × 6.5 × 9 block at x 78.5…85 with 2 tabs into the plate slots and 3 × M3
+>   insert pockets from below (F1). The pocket's rear wall is only 1.0 mm (D4).
+> - 🟡 for review: the sonar and speaker also tilt 15° up with the wall (sonar should
+>   probably look level); head height ~122 above the plate vs the ~93 canopy over the stack.
+> - **Rev 2 (P1b, tick 4):** one central knee gusset (2.4 thick at y 1.2…3.6, from the
+>   wall's back face down to x 56, top at z 44: the only slot clear of the sonar sleeves
+>   and speaker, and below the face board) with a 10 × 9.2 × 9 tail pad bolted down
+>   through a new plate hole at (61, 2.4) (M3 up into an insert, counterbored). ≈ 43.7 g.
+> - S5 standalone (foot only) still fails: 39.1 MPa / 8.0 mm. **With the canopy holding
+>   the two lugs (S5c) it passes: 7.0 MPa / 0.27 mm.** The canopy (P6) must therefore
+>   hold the lugs at least that stiffly. Q13 asks Ben which S5 restraint is the criterion.
+
 ## 6. Canopy (piece 3)
 
 - ASA white: heat-stable over the Pi 5 (PLA softens around 55–60 °C) and tougher when dropped. PLA only for bolt-on accents.

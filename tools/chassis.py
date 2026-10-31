@@ -337,6 +337,16 @@ def plate_features() -> list[tuple[str, tuple, float, float]]:
                 -PLATE_T + CBORE_DEPTH,
             )
         )
+    kx, ky = BH_KNEE_HOLE
+    cut.append(("all", ("circle", kx, ky, CLR_M3 / 2), 0, 0))
+    cut.append(
+        (
+            "cut",
+            ("circle", kx, ky, CBORE_M3 / 2),
+            -PLATE_T - RIB_H,
+            -PLATE_T + CBORE_DEPTH,
+        )
+    )
     tw, th = BULK_TAB
     for sgn in (-1, 1):
         cy = sgn * BULK_TAB_Y
@@ -552,8 +562,6 @@ REFLEX_AT = (
     -3.5,
     5.0,
 )  # between the motors, x -40..25; 0.7 clear of the encoders
-FACE_AT = (72.0, 0.0, 68.0)  # on the bulkhead, screen facing +X, tilted 15° back
-FACE_TILT = 15.0
 # board X (short side) -> chassis Z, board Y (MIC end) -> chassis -Y, board Z (screen) -> chassis X
 FACE_BASE = [0, 0, 1, 0, -1, 0, 1, 0, 0]
 
@@ -565,6 +573,7 @@ def rebuild_manifest(win: str) -> list[str]:
     pi = cad + r"\library\Pi5_stack_envelope.SLDPRT"
     face = cad + r"\library\FNK0104_face_envelope.SLDPRT"
     reflex = cad + r"\library\reflex_board_envelope.SLDPRT"
+    bulkhead = cad + r"\parts\RB-PRT-002_bulkhead.SLDPRT"
     mount_r = cad + r"\parts\TT_Motor_Mount_L.SLDPRT"  # fits the right side
     mount_l = cad + r"\parts\MirrorTT_Motor_Mount_L.SLDPRT"  # fits the left side
     asm = cad + r"\assemblies\RB-ASM-101_chassis.SLDASM"
@@ -593,6 +602,7 @@ def rebuild_manifest(win: str) -> list[str]:
         f"{MOT_THICK + MOT_SHAFT_LEN} {-MOT_ENC_W / 2} {MOT_ENC_W / 2} 0.05",
         "save",
         *envelope_lines(pi, face, reflex),
+        *bulkhead_lines(bulkhead),
         f"asm|{asm}",
         f"comp|plate|{plate}|{row(ROT_I, (0, 0, 0))}|fix",
         f"comp|mount_R|{mount_r}|{row(ROT_Z180, (tx, -ty, 0))}",
@@ -601,13 +611,16 @@ def rebuild_manifest(win: str) -> list[str]:
         f"comp|motor_L|{motor}|{row(ROT_I, mot_l_t)}",
         f"comp|pi_stack|{pi}|{row(ROT_Z180, PI_AT)}",
         f"comp|reflex|{reflex}|{row(ROT_I, REFLEX_AT)}",
-        f"comp|face|{face}|{row(matmul(rot_y(-FACE_TILT), FACE_BASE), FACE_AT)}",
+        f"comp|bulkhead|{bulkhead}|{row(ROT_I, (0, 0, 0))}",
+        f"comp|face|{face}|{row(*face_on_bulkhead())}",
         "interfere",
         "asmsave",
         f"shot|{asm}|{shots}",
         f"close|{asm}",
         f"shot|{plate}|{win}\\shots\\plate",
         f"close|{plate}",
+        f"shot|{bulkhead}|{win}\\shots\\bulkhead",
+        f"close|{bulkhead}",
     ]
     return lines
 
@@ -633,6 +646,331 @@ def envelope_lines(pi: str, face: str, reflex: str) -> list[str]:
         f"{REFLEX_Z[0]} {REFLEX_Z[1]} 0.01",
         "save",
     ]
+
+
+# ------------------------------------------------------- front bulkhead (06 §5, P1)
+# Built VERTICAL in chassis coordinates (wall front face at x = BH_XF, thickness BH_T,
+# so the wall spans x BH_XF - BH_T .. BH_XF), then tilted BH_TILT back about its
+# back-bottom edge (BH_PIVOT); the foot and tabs go on afterwards, in the chassis frame.
+# Layout on the wall (y across, z up, pre-tilt): sonar + speaker side by side in the
+# lower band, face board behind a window, camera lens above (Q6 default). The face
+# board sits BEHIND the wall: its LCD stack bears on the wall's back face, the window
+# shows the active area, M3 x 5 screws go through the PCB into inserts in 4.3 standoffs.
+BH_XF, BH_T, BH_W, BH_H, BH_TILT = 85.0, 3.0, 94.0, 126.0, 15.0
+BH_PIVOT = (BH_XF - BH_T, 0.0, 0.0)
+BH_FACE_Z = 77.0  # face-board centre height (pre-tilt)
+FACE_AA = (43.2, 57.6)  # active area (board X, board Y)
+FACE_AA_CY = (FACE_H / 2 - 11.12) - FACE_AA[
+    1
+] / 2  # AA centre along board Y (MIC end +)
+BH_FACE_Y = FACE_AA_CY  # board centre y so the window (and the AA) is centred: board Y -> chassis -y
+BH_STANDOFF_R, BH_STANDOFF_L = (
+    3.5,
+    FACE_FRONT,
+)  # LCD stack thickness: LCD bears on the wall
+BH_FACE_POCKET = (
+    6.0  # M3 x 5 screw: PCB 1.6 + 3.4 engaged < 5.7 insert, no bottom relief needed
+)
+BH_SONAR_Y, BH_SONAR_Z, BH_SONAR_PITCH, BH_SONAR_R = (
+    -22.0,
+    26.0,
+    26.0,
+    8.3,
+)  # HC-SR04 Ø16
+BH_SLEEVE_R, BH_SLEEVE_L = 9.8, 6.0
+BH_SPK = (
+    24.0,
+    26.0,
+    17.0,
+)  # speaker centre y, z and grille radius (CE40P-8, cone ~Ø34)
+BH_SLOT_W, BH_SLOT_DZ = (
+    2.0,
+    (-10.0, -6.0, -2.0, 2.0, 6.0, 10.0),
+)  # grille slots <= 2 mm (audio §4.3)
+BH_CAM = (
+    0.0,
+    113.0,
+    4.5,
+)  # lens hole y, z, r (Pi Camera Module 3, Q6 default) 🟡 no bosses yet
+BH_LUG_Y, BH_LUG_Z = 38.0, (112.0, BH_H)  # canopy screw lugs (F9) behind the wall top
+BH_FLANGE = (
+    FACE_FRONT,
+    1.8,
+)  # side flanges: depth = standoff length, so the face PCB edge clears them
+BH_RIB_Z = 50.0  # horizontal rib between the lower band and the face
+BH_FOOT = (
+    (78.5, BH_XF),
+    (-29.5, 29.5),
+    (0.0, 9.0),
+)  # chassis box; x >= 78.5 clears the mount feet
+BH_TAB = (4.0, 9.8, 3.6)  # into the 4.6 x 10.4 plate slots (0.3/side)
+# Knee gusset (P1b): the only clear slot behind the lower band is between the sonar
+# sleeves (y <= 0.8) and the speaker (y >= 4); it stays below the face board (z <= 44).
+# Its tail pad is bolted down through the plate (M3 up into an insert, like F1).
+BH_KNEE_Y = (1.2, 3.6)  # 2.4 thick
+BH_KNEE_TOP = 44.0  # top of the gusset, chassis z
+BH_KNEE_TAIL = 56.0  # rear end on the plate (the wire slot ends at x 55)
+BH_KNEE_PAD = ((56.0, 66.0), (-2.2, 7.0), (0.0, 9.0))
+BH_KNEE_HOLE = (61.0, 2.4)
+
+
+def _rotate_y(p, deg: float, pivot):
+    """Rotate points p (N x 3) about the axis through `pivot` parallel to Y."""
+    import numpy as np
+
+    c, s_ = math.cos(math.radians(deg)), math.sin(math.radians(deg))
+    q = np.asarray(p, float) - pivot
+    x, z = q[..., 0], q[..., 2]
+    out = np.stack([c * x + s_ * z, q[..., 1], -s_ * x + c * z], axis=-1)
+    return out + pivot
+
+
+def bulkhead_features() -> tuple[list[tuple], list[tuple]]:
+    """(pre, post): pre-tilt features (wall frame = chassis, vertical wall) and
+    post-tilt features (chassis frame). Each: (op, shape) with op 'add' | 'cut'.
+    Shapes: ('box', x0, x1, y0, y1, z0, z1), ('cylx', y, z, x0, x1, r), ('cylz', x, y, z0, z1, r)."""
+    x0, x1 = BH_XF - BH_T, BH_XF
+    hw = BH_W / 2
+    pre: list[tuple] = [("add", ("box", x0, x1, -hw, hw, 0.0, BH_H))]
+    fd, ft = BH_FLANGE
+    for sgn in (-1, 1):  # side flanges
+        ys = sorted((sgn * hw, sgn * (hw - ft)))
+        pre.append(("add", ("box", x0 - fd, x0, *ys, 0.0, BH_H)))
+    pre.append(
+        (
+            "add",
+            (
+                "box",
+                x0 - 4.0,
+                x0,
+                -(hw - ft),
+                hw - ft,
+                BH_RIB_Z - RIB_T / 2,
+                BH_RIB_Z + RIB_T / 2,
+            ),
+        )
+    )
+    # face standoffs on the back face, at the board's holes (board X -> z, board Y -> -y)
+    face_holes = [(BH_FACE_Y - by, BH_FACE_Z + bx) for bx, by in corners(*FACE_HOLES)]
+    for y, z in face_holes:
+        pre.append(("add", ("cylx", y, z, x0 - BH_STANDOFF_L, x0 + 0.5, BH_STANDOFF_R)))
+    # sonar sleeves
+    sonar = [(BH_SONAR_Y + d * BH_SONAR_PITCH / 2, BH_SONAR_Z) for d in (-1, 1)]
+    for y, z in sonar:
+        pre.append(("add", ("cylx", y, z, x0 - BH_SLEEVE_L, x0 + 0.5, BH_SLEEVE_R)))
+    # canopy lugs (vertical before the tilt)
+    lug_x = x0 - INS_BOSS / 2 + 1.0
+    for sgn in (-1, 1):
+        pre.append(("add", ("cylz", lug_x, sgn * BH_LUG_Y, *BH_LUG_Z, INS_BOSS / 2)))
+    # cuts
+    aw, ah = FACE_AA[1] + 2.0, FACE_AA[0] + 2.0  # window: AA + 1 mm all round
+    pre.append(
+        (
+            "cut",
+            (
+                "box",
+                x0 - 0.1,
+                x1 + 0.1,
+                -aw / 2,
+                aw / 2,
+                BH_FACE_Z - ah / 2,
+                BH_FACE_Z + ah / 2,
+            ),
+        )
+    )
+    for y, z in face_holes:
+        pre.append(
+            (
+                "cut",
+                (
+                    "cylx",
+                    y,
+                    z,
+                    x0 - BH_STANDOFF_L,
+                    x0 - BH_STANDOFF_L + BH_FACE_POCKET,
+                    INS_HOLE / 2,
+                ),
+            )
+        )
+    for y, z in sonar:
+        pre.append(
+            ("cut", ("cylx", y, z, x0 - BH_SLEEVE_L - 0.1, x1 + 0.1, BH_SONAR_R))
+        )
+    sy, sz, sr = BH_SPK
+    for dz in BH_SLOT_DZ:
+        far = abs(dz) + BH_SLOT_W / 2
+        half = math.sqrt(sr * sr - far * far)
+        pre.append(
+            (
+                "cut",
+                (
+                    "box",
+                    x0 - 0.1,
+                    x1 + 0.1,
+                    sy - half,
+                    sy + half,
+                    sz + dz - BH_SLOT_W / 2,
+                    sz + dz + BH_SLOT_W / 2,
+                ),
+            )
+        )
+    cy, cz, cr = BH_CAM
+    pre.append(("cut", ("cylx", cy, cz, x0 - 0.1, x1 + 0.1, cr)))
+    for sgn in (-1, 1):
+        pre.append(
+            (
+                "cut",
+                (
+                    "cylz",
+                    lug_x,
+                    sgn * BH_LUG_Y,
+                    BH_LUG_Z[1] - INS_DEPTH,
+                    BH_LUG_Z[1] + 0.1,
+                    INS_HOLE / 2,
+                ),
+            )
+        )
+    # post-tilt, chassis frame: foot, tabs, foot insert pockets (F1)
+    (fx0, fx1), (fy0, fy1), (fz0, fz1) = BH_FOOT
+    post: list[tuple] = [("add", ("box", fx0, fx1, fy0, fy1, fz0, fz1))]
+    tw, th, td = BH_TAB
+    for sgn in (-1, 1):
+        cyy = sgn * BULK_TAB_Y
+        post.append(
+            (
+                "add",
+                (
+                    "box",
+                    BULK_X - tw / 2,
+                    BULK_X + tw / 2,
+                    cyy - th / 2,
+                    cyy + th / 2,
+                    -td,
+                    0.0,
+                ),
+            )
+        )
+    # knee gusset: a triangle in XZ from the tail to the wall's back face (0.6 overlap)
+    lean = math.tan(math.radians(BH_TILT))
+    back0 = BH_PIVOT[0] + 0.6  # back face at z = 0, plus overlap into the wall
+    knee = [
+        (BH_KNEE_TAIL, 0.0),
+        (back0, 0.0),
+        (back0 - BH_KNEE_TOP * lean, BH_KNEE_TOP),
+    ]
+    post.append(("add", ("prismy", knee, *BH_KNEE_Y)))
+    (px0, px1), (py0, py1), (pz0, pz1) = BH_KNEE_PAD
+    post.append(("add", ("box", px0, px1, py0, py1, pz0, pz1)))
+    for y in BULK_HOLES_Y:
+        post.append(("cut", ("cylz", BULK_X, y, -0.1, INS_DEPTH, INS_HOLE / 2)))
+    post.append(("cut", ("cylz", *BH_KNEE_HOLE, -0.1, INS_DEPTH, INS_HOLE / 2)))
+    return pre, post
+
+
+def _shape_mask3(s: tuple, P):
+    import numpy as np
+
+    x, y, z = P[..., 0], P[..., 1], P[..., 2]
+    if s[0] == "box":
+        _, x0, x1, y0, y1, z0, z1 = s
+        return (x >= x0) & (x <= x1) & (y >= y0) & (y <= y1) & (z >= z0) & (z <= z1)
+    if s[0] == "cylx":
+        _, cy, cz, x0, x1, r = s
+        return (x >= x0) & (x <= x1) & ((y - cy) ** 2 + (z - cz) ** 2 <= r * r)
+    if s[0] == "cylz":
+        _, cx, cy, z0, z1, r = s
+        return (z >= z0) & (z <= z1) & ((x - cx) ** 2 + (y - cy) ** 2 <= r * r)
+    if s[0] == "prismy":  # polygon in (x, z), extruded over y0..y1; even-odd rule
+        _, poly, y0, y1 = s
+        inside = np.zeros(x.shape, dtype=bool)
+        for (xa, za), (xb, zb) in zip(poly, poly[1:] + poly[:1]):
+            crosses = (za > z) != (zb > z)
+            with np.errstate(divide="ignore", invalid="ignore"):
+                xi = xa + (z - za) * (xb - xa) / (zb - za)
+            inside ^= crosses & (x < xi)
+        return inside & (y >= y0) & (y <= y1)
+    raise ValueError(s)
+
+
+def bulkhead_volume_numeric(step: float = 0.2) -> tuple[float, list[float]]:
+    """Independent volume and bounding box: voxel integration of the feature list,
+    with pre-tilt features tested at inverse-rotated points."""
+    import numpy as np
+
+    pre, post = bulkhead_features()
+    xs = np.arange(40.0 + step / 2, 90.0, step)
+    ys = np.arange(-BH_W / 2 - 1 + step / 2, BH_W / 2 + 1, step)
+    zs = np.arange(-5.0 + step / 2, BH_H + 2, step)
+    X, Y = np.meshgrid(xs, ys, indexing="ij")
+    vol, lo, hi = 0.0, [1e9] * 3, [-1e9] * 3
+    for z in zs:
+        P = np.stack([X, Y, np.full_like(X, z)], axis=-1)
+        Q = _rotate_y(P, BH_TILT, BH_PIVOT)  # inverse of the -TILT rotation
+        solid = np.zeros_like(X, dtype=bool)
+        for op, sh in pre:
+            m = _shape_mask3(sh, Q)
+            solid = solid | m if op == "add" else solid & ~m
+        for op, sh in post:
+            m = _shape_mask3(sh, P)
+            solid = solid | m if op == "add" else solid & ~m
+        n = int(solid.sum())
+        if n:
+            vol += n * step**3
+            ix, iy = np.nonzero(solid)
+            lo = [min(lo[0], xs[ix].min()), min(lo[1], ys[iy].min()), min(lo[2], z)]
+            hi = [max(hi[0], xs[ix].max()), max(hi[1], ys[iy].max()), max(hi[2], z)]
+    return vol, [lo[0], hi[0], lo[1], hi[1], lo[2], hi[2]]
+
+
+def _right_rect(y0: float, y1: float, z0: float, z1: float) -> str:
+    """Rectangle in Right-plane sketch coordinates (sketch x = -z, sketch y = y)."""
+    return f"M {-z0} {y0} L {-z0} {y1} L {-z1} {y1} L {-z1} {y0}"
+
+
+def bulkhead_lines(path: str) -> list[str]:
+    pre, post = bulkhead_features()
+
+    def emit(op: str, sh: tuple) -> str:
+        kind = "boss" if op == "add" else "cut"
+        if sh[0] == "box":
+            _, x0, x1, y0, y1, z0, z1 = sh
+            return f"prof|{x0} {x1}|{_right_rect(y0, y1, z0, z1)}|{kind}|right"
+        if sh[0] == "cylx":
+            _, cy, cz, x0, x1, r = sh
+            return f"cyl|x|{cy} {cz}|{x0} {x1}|{r}|{kind}"
+        if sh[0] == "prismy":  # Top plane: sketch (x, -z), extrude +Y
+            _, poly, y0, y1 = sh
+            pts = [f"{x:.4f} {-z:.4f}" for x, z in poly]
+            segs = "M " + pts[0] + "".join(" L " + p for p in pts[1:])
+            return f"prof|{y0} {y1}|{segs}|{kind}|top"
+        _, cx, cy, z0, z1, r = sh
+        return f"cyl|z|{cx} {cy}|{z0} {z1}|{r}|{kind}"
+
+    lines = [f"part|{path}"]
+    lines += [emit(op, sh) for op, sh in pre if op == "add"]
+    lines += [emit(op, sh) for op, sh in pre if op == "cut"]
+    lines.append(f"rotbody|{BH_PIVOT[0]} {BH_PIVOT[1]} {BH_PIVOT[2]}|y|{-BH_TILT}")
+    for op, sh in post:
+        if sh[0] == "box" and op == "add":
+            _, x0, x1, y0, y1, z0, z1 = sh
+            lines.append(f"box|{x0} {x1}|{y0} {y1}|{z0} {z1}")
+        else:
+            lines.append(emit(op, sh))
+    vol, bb = bulkhead_volume_numeric()
+    lines += [
+        f"expect|vol {vol:.1f} {vol * 0.01:.1f}|box {' '.join(f'{v:.2f}' for v in bb)} 0.35",
+        "save",
+    ]
+    return lines
+
+
+def face_on_bulkhead() -> tuple[list[float], tuple[float, float, float]]:
+    """Face-board envelope placement from the bulkhead: its PCB front face bears on the
+    standoff tips, so the board-frame origin (back plane) sits FACE_BACK + FACE_PCB
+    behind them; then the same tilt as the wall."""
+    x0 = BH_XF - BH_T - BH_STANDOFF_L - (FACE_BACK + FACE_PCB)
+    p = _rotate_y([x0, BH_FACE_Y, BH_FACE_Z], -BH_TILT, BH_PIVOT)
+    return matmul(rot_y(-BH_TILT), FACE_BASE), (float(p[0]), float(p[1]), float(p[2]))
 
 
 # ------------------------------------------------------------------- runner

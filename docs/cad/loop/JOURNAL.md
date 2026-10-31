@@ -37,3 +37,10 @@ Newest at the bottom. One entry per tick.
 - Controls: two real MessageBoxes titled "Simulation": the KB-text one was answered No (its return value says No), the other was reported only (closed afterwards with Cancel by WM_CLOSE).
 - Regression: S1b through the watchdog = 2.612 MPa, equilibrium exact, identical to baseline.
 - Next: P1b braced bulkhead (rotation: P after T).
+
+## tick 4 · P1b braced bulkhead · accepted (Q13 default) · 2026-10-30 19:10
+- Re-applied the rev 1 patch; behind the lower band only y 1.2…3.6 is free (sonar sleeves to y 0.8, speaker from y 4), and the face board sits above z ~47 → one central 2.4 mm knee gusset (tail x 56, top z 44) with a 10 × 9.2 × 9 pad, M3 up through a new counterbored plate hole at (61, 2.4).
+- Build: bulkhead 33,889 vs 34,003 mm³ voxel (−0.34 %), plate 78,070 vs 78,104 (−0.04 %); 4 baseline interferences. ≈ 43.7 g bulkhead.
+- FEA (watchdog answered the excessive-displacement prompt live at 41 s): S5 standalone screen 39.1 MPa / 8.0 mm (rev 1 45.9 / 15.5), bezel 29.1 / 6.8 → still FAIL; **S5c canopy lugs held: screen 7.0 MPa / 0.27 mm, bezel 3.2 / 0.12 → PASS**. S1a 15.5 (baseline 15.8); S1b 2.61 → 2.88 MPa (+10.1 %, the knee bolt hole; SF 12, deliberate).
+- Q13 asks Ben which S5 restraint counts; default = canopy fitted (07 amended). P6 now carries the lug-stiffness requirement.
+- Next: rotate to T (T1 STL export or T3 mass/CoG), then P2 motor mount v2.

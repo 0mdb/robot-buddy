@@ -13,6 +13,7 @@ Loads marked TBD are assumptions until measured (track tension, motor torque).
 from __future__ import annotations
 
 import argparse
+import math
 import csv
 import os
 import shutil
@@ -126,7 +127,54 @@ def s2() -> dict:
     }
 
 
-STUDIES = {"S1a": s1a, "S1b": s1b, "S2": s2}
+def s5(canopy: bool = False) -> dict:
+    """Bulkhead: a child pokes the screen (load through the face board into its four
+    standoff inserts) or pushes the bezel (load on the front face). 50 N into the robot,
+    along the tilted wall's normal. Held at the foot underside and its insert pockets."""
+    t = math.radians(chassis.BH_TILT)
+    n = (
+        math.cos(t),
+        0.0,
+        math.sin(t),
+    )  # front-face normal after the tilt (forward, up)
+    piv = chassis.BH_PIVOT
+    front = chassis._rotate_y([chassis.BH_XF, 0.0, 0.0], -chassis.BH_TILT, piv)
+    d = sum(a * b for a, b in zip(n, front))
+    scr = chassis._rotate_y(
+        [chassis.BH_XF - chassis.BH_T, 0.0, chassis.BH_FACE_Z], -chassis.BH_TILT, piv
+    )
+    f = 50.0
+    F = tuple(-f * c for c in n)
+    ax = f"{n[0]:.9f} 0 {n[2]:.9f}"
+    # with the canopy on, its screws hold the two lugs (pre-tilt axis z -> tilted)
+    lug_ax = f"{-math.sin(t):.9f} 0 {math.cos(t):.9f}"
+    extra = [f"fix cyl {lug_ax} 2.0 0.05"] if canopy else []
+    return {
+        "name": "S5c" if canopy else "S5",
+        "title": "Bulkhead, 50 N poke"
+        + (", canopy lugs held" if canopy else ", standalone"),
+        "part": r"\CAD\parts\RB-PRT-002_bulkhead.SLDPRT",
+        "lines": [
+            "discard_open",
+            "fix plane 0 0 1 0",  # foot underside on the plate
+            "fix cyl 0 0 1 2.0 0.05",  # foot + knee-pad insert pockets (F1)
+            *extra,
+            f"remote screen {scr[0]:.3f} {scr[1]:.3f} {scr[2]:.3f} cyl {ax} 2.0 0.05",
+            f"load bezel plane {n[0]:.9f} 0 {n[2]:.9f} {d:.4f}",
+            f"disp standoffs cyl {ax} 2.0 0.05",
+            f"disp bezel plane {n[0]:.9f} 0 {n[2]:.9f} {d:.4f}",
+            "probe foot 76 -48 -4 86 48 12",
+            "probe window 40 -32 40 86 32 110",
+            "mesh 2.0 0.1",
+            f"case screen screen:{F[0]:.3f},{F[1]:.3f},{F[2]:.3f}",
+            f"case bezel bezel:{F[0]:.3f},{F[1]:.3f},{F[2]:.3f}",
+        ],
+        "applied": F,
+        "limit_disp_mm": 0.5,
+    }
+
+
+STUDIES = {"S1a": s1a, "S1b": s1b, "S2": s2, "S5": s5, "S5c": lambda: s5(canopy=True)}
 
 
 def compile_sim(tool: str) -> str:

@@ -88,6 +88,8 @@ face, audio, misc ~150 g → **m ≈ 1.0 kg**, W ≈ 10 N.
 | **S3 Pick-up by the canopy** | Canopy + its 4 inserts | 3 W = 30 N through the canopy (the whole robot hangs from it) | Hand grip region on canopy sides | Insert pull-out ratio ≥ 3 (§4.3); canopy ≤ Z / 3 |
 | **S4 Hand press on top** | Canopy | 100 N on a Ø40 patch on the top centre | Canopy screw bosses | Deflection < 3 mm (clearance to the stack); stress ≤ UTS / 2 |
 | **S5 Poke the screen** | Bulkhead | 50 N normal to the face TFT bezel | Bulkhead foot screws | Deflection < 0.5 mm; ≤ Z / 3 |
+
+> Amendment (loop, 2026-10-30): S5 is judged with the canopy fitted (lugs held, study S5c) per the Q13 default; standalone is reported only. Standalone rev 2: 39.1 MPa / 8.0 mm; S5c: 7.0 MPa / 0.27 mm. Old → new restraint: foot screws → foot screws + canopy lugs. Why: the screen can't be reached with the canopy off.
 | **S6 Drop** | Whole assembly | 0.75 m table drop, as 20 g quasi-static on each heavy mass (stack, motors) in turn [assumption] | Contact face fixed | Comparative: find the weakest joint; nothing above Z UTS. Confirm with a physical drop of the PETG prototype |
 | **S7 Modes** | Plate + deck + stack | Free-free | — | First mode clear of motor/gear excitation (report; no hard target yet) |
 

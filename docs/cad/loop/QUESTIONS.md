@@ -21,6 +21,8 @@ The loop adds questions here and moves on. Answer inline (`**A:** …`); the nex
 - **Q11 Loop stop time.** **Default: 2026-10-31 07:00.**
 - **Q12 Carry handle?** Kids will pick it up by the face or the tracks unless there's something better to grab. A recessed grip in the canopy's rear or top is cheap now and hard to add later. **Default: the loop proposes one in E1 with a render; nothing is built until you choose.**
 
+- **Q13 Which restraint does the bulkhead poke test (S5) use?** 07 §3.4 holds the bulkhead only at its foot screws. A 122 mm wall on a 6.5 mm-deep foot can't meet 0.5 mm that way, even with a knee gusset (39 MPa / 8 mm). The canopy screws to the bulkhead's top lugs and a child can't reach the screen without the canopy on; with the lugs held it passes easily (7 MPa / 0.27 mm). **Default: S5 is judged with the canopy fitted (S5c); the standalone number is reported, and the canopy design (P6) must hold the lugs at least that stiffly.** Alternative: require standalone too, which needs a deeper base or side cheeks over the motors (heavier, crowds the front).
+
 ## Measurements wanted (not questions; each replaces a 🟡 assumption)
 - Track tension at set-up (spring scale). Every S1 and S2 number scales with it (fea.py `TRACK_T` = 20 N).
 - TT gearbox width across the screw holes, and the encoder housing's size (the 323 / 197 mm³ envelope overlaps).

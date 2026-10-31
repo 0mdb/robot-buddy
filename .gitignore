@@ -59,3 +59,9 @@ CAD/library/vendor/**/*.[Ss][Tt][Ee][Pp]
 CAD/library/vendor/**/*.[Ss][Tt][Ll]
 CAD/library/vendor/RaspberryPi5/RENDERS/
 CAD/library/vendor/RaspberryPi5/Photo/
+
+# SolidWorks Simulation results written next to studied parts (tools/fea.py)
+CAD/**/*.CWR
+CAD/**/*.gsz
+CAD/**/*.LOG
+CAD/**/PerformanceLog.txt
