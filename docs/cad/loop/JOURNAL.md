@@ -78,3 +78,9 @@ Newest at the bottom. One entry per tick.
 - Interference: 4 × 15.4 mm³ = the round Ø5.4 shaft envelope vs the D-bore flats (segment beyond 1.95 × 8 mm engagement = 15.4 exactly). Gave the envelope its 3.7 double-D → 0 interferences.
 - 05 and 06 §7 amended (kit → 08). FEA unchanged this tick (P12 re-runs S1a/S1b/S2 with the new geometry; TRACK_T stays 20 N).
 - Next: rotate to T (T9 hot-spot locator), then P12.
+
+## tick 9 · T9 hot-spot locator · accepted · 2026-10-30 21:25
+- `hotspots n` in swsim.cs: one GetStressForEntities call per face (a batched call pools nodes), rank, print the top n with surface type, centre, normal/axis, bbox. Opt-in per study (S2 has it).
+- S2 rerun (mount v2, unchanged geometry; same numbers as tick 6: 11.69 / 12.01 / 2.66 MPa) located the peak: the lower motor-insert pocket cylinder (x 14.5, z 4.75) and the root-chamfer face share the peak node; the through-pocket breaks out through the chamfer. Third: the upright's inboard face around the pocket (10.2). The gusset side face as a whole is 6.3.
+- So tick 7 filleted the wrong edges; the singularity is a pocket/chamfer knife edge. Added D7 to fix it.
+- Next: P12 (plate + FEA for the TPU track), then D7.

@@ -115,6 +115,7 @@ def s2() -> dict:
             f"remote axle {gx:.2f} {gy:.2f} {hz:.2f} cyl 0 1 0 {chassis.INS_HOLE / 2} 0.05",  # motor-screw inserts
             f"remote axle {gx:.2f} {gy:.2f} {hz:.2f} plane 0 1 0 {hy}",  # motor bears on the face
             f"disp motorholes cyl 0 1 0 {chassis.INS_HOLE / 2} 0.05",
+            "hotspots 5",  # T9: where the peaks are
             "probe root -22 -40 -1 21 -27 9",  # upright-to-foot junction, inboard chamfer
             "probe holes 10 -35 0 19 -27 27",
             "probe gusset -21 -35 2 -16 -8 23",

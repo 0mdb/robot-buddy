@@ -22,6 +22,8 @@ _Pass 1 starting (2026-10-30 17:05). Rewritten every tick._
 
 **TPU track system (P11, done):** sprocket and idler are native SolidWorks parts generated from drivetrain.py's own geometry (volumes match to 0.1 mm³), placed with belt envelopes; the assembly has 0 interferences. Renders: `shots/1-P11/`.
 
-**Next:** T9 hot-spot locator, P12 (plate + FEA for the new track), then P2 motor mount v2 (outboard axle support, Q4 default), P3 plate stiffening.
+**Hot spots (T9):** FEA now says *where* each peak is. The motor mount's peak is a knife edge where the lower motor-screw insert hole breaks out through the root chamfer (fix queued as D7).
+
+**Next:** P12 (plate + FEA for the new track), then P2 motor mount v2 (outboard axle support, Q4 default), P3 plate stiffening.
 
 **Open questions:** Q4–Q12 in `QUESTIONS.md`, each with a default the loop is using.

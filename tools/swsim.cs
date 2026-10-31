@@ -20,6 +20,8 @@
 //   mesh     <size> <tol>
 //   case     <name> <id>:fx,fy,fz[,mx,my,mz] ...        loads not listed carry ~zero
 //   discard_open                                        GENERATED parts only: quit an open copy first
+//   hotspots <n>                                        per case, rank every face by its max VON
+//                                                       and print the top n (type, centre, normal/axis)
 // <sel>: cyl <ax> <ay> <az> <r> <tol> [box x0 y0 z0 x1 y1 z1]      cylinders || a, radius r
 //        plane <nx> <ny> <nz> <d> [box ...]                        planes || n at n.p = d
 // The box tests the face's bounding-box CENTRE. Ends with "SIM OK" or "SIM FAILED".
@@ -35,6 +37,7 @@ using SolidWorks.Interop.cosworks;
 
 static class SwSim
 {
+    static int hotN;
     static readonly CultureInfo ci = CultureInfo.InvariantCulture;
     static double D(string s) { return double.Parse(s, ci); }
     static void Log(string fmt, params object[] a) { Console.WriteLine(string.Format(ci, fmt, a)); Console.Out.Flush(); }
@@ -85,6 +88,35 @@ static class SwSim
         return r.ToArray();
     }
 
+    // Where is the stress? One GetStressForEntities call per face (a batched call pools the
+    // nodes, so it can't say which face holds the peak), then the top hotN faces.
+    static void HotSpots(CWResults res, List<IFace2> faces, string caseName, StringBuilder report)
+    {
+        var ranked = new List<KeyValuePair<double, IFace2>>();
+        int e;
+        foreach (IFace2 f in faces)
+        {
+            double m = MaxPair((object[])res.GetStressForEntities(9, 0, null, new object[] { f }, 0, out e));
+            if (!double.IsNaN(m) && !double.IsInfinity(m)) ranked.Add(new KeyValuePair<double, IFace2>(m, f));
+        }
+        ranked.Sort((a, b) => b.Key.CompareTo(a.Key));
+        for (int k = 0; k < Math.Min(hotN, ranked.Count); k++)
+        {
+            IFace2 f = ranked[k].Value;
+            double[] b = (double[])f.GetBox();
+            double cx = (b[0] + b[3]) * 500, cy = (b[1] + b[4]) * 500, cz = (b[2] + b[5]) * 500;
+            ISurface su = (ISurface)f.GetSurface();
+            string what;
+            if (su.IsPlane()) { double[] p = (double[])su.PlaneParams; what = string.Format(ci, "plane n=({0:F2},{1:F2},{2:F2})", p[0], p[1], p[2]); }
+            else if (su.IsCylinder()) { double[] c = (double[])su.CylinderParams; what = string.Format(ci, "cyl r={0:F2} axis=({1:F2},{2:F2},{3:F2})", c[6] * 1000, c[3], c[4], c[5]); }
+            else what = "other";
+            string line = string.Format(ci, "{0:F3} MPa  centre ({1:F1}, {2:F1}, {3:F1})  {4}  box X[{5:F1},{6:F1}] Y[{7:F1},{8:F1}] Z[{9:F1},{10:F1}]",
+                ranked[k].Key / 1e6, cx, cy, cz, what, b[0] * 1e3, b[3] * 1e3, b[1] * 1e3, b[4] * 1e3, b[2] * 1e3, b[5] * 1e3);
+            Log("  hot {0}: {1}", k + 1, line);
+            report.AppendFormat(ci, "{0},hot{1},\"{2}\",MPa\n", caseName, k + 1, line);
+        }
+    }
+
     static double MaxPair(object[] arr)   // [node, value, node, value, ...] -> max value
     {
         double m = double.NegativeInfinity;
@@ -111,6 +143,7 @@ static class SwSim
         string partPath = null, outDir = null; string[] mat = null;
         double meshSize = 2.0, meshTol = 0.1;
         bool discardOpen = false;   // only for GENERATED parts: throw away an open copy first
+        hotN = 0;
         var fixes = new List<string[]>(); var loads = new List<string[]>(); var remotes = new List<string[]>();
         var disps = new List<string[]>(); var probes = new List<string[]>(); var cases = new List<string[]>();
         foreach (string[] t in lines)
@@ -127,6 +160,7 @@ static class SwSim
                 case "mesh": meshSize = D(t[1]); meshTol = D(t[2]); break;
                 case "case": cases.Add(t); break;
                 case "discard_open": discardOpen = true; break;
+                case "hotspots": hotN = int.Parse(t[1]); break;
                 default: throw new Exception("unknown manifest line " + t[0]);
             }
         Directory.CreateDirectory(outDir);
@@ -296,6 +330,7 @@ static class SwSim
                 report.AppendFormat(ci, "{0},reaction,{1:F3} {2:F3} {3:F3},N\n", t[1], rx, ry, rz);
             }
             else Log("  reaction: unexpected array length {0}", rf == null ? -1 : rf.Length);
+            if (hotN > 0) HotSpots(res, faces, t[1], report);
             foreach (var kv in probeFaces)
             {
                 double pm = double.NegativeInfinity;
