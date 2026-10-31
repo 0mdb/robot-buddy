@@ -47,6 +47,21 @@ Use the standard features, driven from **global variables**
 carriages ~60 g → **~250 g per robot**, enough for one remake. Buy a second spool before the
 final print run. ASA canopy ~150–200 g of 1 kg.
 
+> Amendment (loop M2, 2026-10-31): **material per part, pass 1.** From `docs/cad/fea/m1_materials.md` rescaled to the current stresses (S1m 8.64, S2 6.63, S1d 8.93, S5c 7.52, S6 6.83 MPa) with conditioned PA6-CF (E 2.0 GPa, Z UTS 27 🟡):
+>
+> | Part | Material | Why |
+> |---|---|---|
+> | Plate RB-PRT-001 | **PET-CF** | stiffness rules: wet PA6 would move the axles 1.7 mm (S1m; PET-CF 0.90, Q17) |
+> | Bulkhead RB-PRT-002 | **PET-CF** | wet PA6 puts S5c's bezel at 0.50 mm, on its limit |
+> | Pi deck RB-PRT-003 | **PET-CF** | wet PA6 SF 3.0 on S1d, no margin |
+> | Motor mounts RB-PRT-010/011 | **PET-CF** (PA6-CF the fallback if one cracks in drop tests) | wet PA6 passes (SF 4.1, 0.08 mm), but the motor screws clamp through it: PA6 creeps and loses preload when wet (fpv250's clamp lesson), and it sits next to the motor can |
+> | Carriages RB-PRT-030/031 | **PET-CF** | held by the jack-screw preload and the clamp: creep again |
+> | Sprocket / idler RB-PRT-020/021 | **PET-CF** (08) | the D-bore and the 624 seats need dimensional stability; PA6 swells 0.035–0.07 mm/side |
+> | Canopy | PC or ASA (M4 open) | toughness and heat over the Pi; no CF on handled faces |
+> | Future impact parts (bumpers, track guards) | PA6-CF candidates | toughness, no clamped joints |
+>
+> One structural filament this pass: one spool, one calibrated profile. PA6-CF stays on the table where a part is hit rather than clamped.
+
 ## 3. FEA plan (SolidWorks Simulation, as in fpv250)
 
 ### 3.1 Tooling

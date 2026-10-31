@@ -68,6 +68,8 @@ _Pass 1 starting (2026-10-30 17:05). Rewritten every tick._
 
 **Bulkhead edges (S1b):** both outer sides rounded r 1.0; poke test unchanged (SF 4.7). The face side (window rim, narrow grille slots) is next (S1b2).
 
+**Materials (M2):** every structural part is PET-CF this pass (one spool, one profile). PA6-CF lost on stiffness and on creep in screw-clamped joints; it's kept for future bumpers/guards. Table in 07 §2.
+
 **Next:** D1, S1b2, S1a3, then P2o / P6 (plate + FEA for the new track), then P2 motor mount v2 (outboard axle support, Q4 default), P3 plate stiffening.
 
 **Open questions:** Q4–Q12 in `QUESTIONS.md`, each with a default the loop is using.

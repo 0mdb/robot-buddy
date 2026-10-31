@@ -235,3 +235,8 @@ Newest at the bottom. One entry per tick.
 - Bulkhead alone: −56.9 / −56.8 vs −57.2 mm³. Full rebuild 0 interferences. S5c 7.01 → 7.52 MPa (+7 %, SF 4.7), bezel 0.266 mm unchanged; 43.6 g. Accessible sharp edges 1,647 → 1,113 mm.
 - Left: the face side (window rim, grille slots too narrow for r 1, foot front) → S1b2.
 - Next: rotate: D1 or a doc item (S3 small parts / S4 battery).
+
+## tick 33 · M2 material per part · accepted (doc) · 2026-10-31 05:20
+- Rescaled M1 to today's stresses: conditioned PA6-CF now passes SF 3 on S1m (3.1), S2 (4.1), S6 (4.0), S1d (3.0, no margin) but deflects ×1.9: plate axles 1.7 mm, S5c bezel 0.50 (on the limit).
+- Decision (07 §2 amended): all structural parts PET-CF this pass. Plate / bulkhead / deck on stiffness; mounts and carriages because their screws clamp through them (wet PA6 creeps, fpv250); wheels for bore stability. PA6-CF reserved for impact parts and as the mounts' fallback. Canopy PC/ASA stays M4.
+- No CAD change. Next: SW: D1 or S1b2 / S1a3.
