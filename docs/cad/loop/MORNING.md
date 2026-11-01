@@ -8,12 +8,12 @@ SolidWorks hung at ~01:36 MST during a rebuild; you restarted it ~04:00 and the 
 | Part | Mass | Status |
 |---|---|---|
 | Plate 001 | 110.9 g | S1m SF 3.95; **S1 passes on your Q20 rule** (drive increment ~0.09 mm vs 0.2 with the track frame); canopy slots + rear screw holes |
-| Bulkhead 002 | 43.5 g | S5c SF 4.6 / 0.27 mm (lugs held); face openings + top front edge r 1 (ticks 59, 63) |
+| Bulkhead 002 | 43.5 g | S5c SF 4.6 / 0.27 mm (lugs held); face openings + top front edge r 1 (ticks 59, 63); side cheeks close the front-corner finger slot 9.5 → 4.5 mm (Q22, tick 65) |
 | **Canopy 004 (new)** | **~114 g PC white** | pebble shell, top 95, 4 mm rib grid + 2 keels, inner roots r 1, outer rim + hood edge r 1; heel S8 (150 N, your rule) 1.68 mm SF 2.5; side tongues into plate slots brace the bulkhead (S5k 0.75 mm) |
 | **Track frames 040/041 (new)** | 8.2 g each | outboard bars, sprocket 624 ↔ idler axle; width ~200 |
 | **Belts 050/051 (new, native)** | 58.4 g each TPU | installed shape, lugs in the pockets |
 | Pi deck 003, mounts 010/011, sprocket/idler 020/021, carriages 030/031 | unchanged | as leg 1 |
-| **Printed total** | **615.3 g** | incl. belts (117 g); CoG (−0.7, 0.0, 24.8) |
+| **Printed total** | **616.5 g** | incl. belts (117 g); CoG (−0.7, 0.0, 24.8) |
 
 ## What leg 2 did, biggest first
 1. **Canopy from nothing to a strength-checked part** (P6, Q19): PC over ASA on the heel test (SF 2.4 vs 1.45); the bare shell failed badly (19.5 mm), then a rib grid + keels + your top 93 → 97 → 95. S5k showed it couldn't hold the bulkhead (it swung on its apron), so the side tongues were added: 340 mm → 0.75 mm.

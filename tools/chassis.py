@@ -1111,6 +1111,11 @@ def bulkhead_features() -> tuple[list[tuple], list[tuple]]:
     lug_x = x0 - INS_BOSS / 2 + 1.0
     for sgn in (-1, 1):
         pre.append(("add", ("cylz", lug_x, sgn * BH_LUG_Y, *BH_LUG_Z, INS_BOSS / 2)))
+    # S2a side cheeks (pre-tilt: the wall's thickness, beyond its sides)
+    cw, ch = BH_CHEEK
+    for sgn in (-1, 1):
+        ys_ = sorted((sgn * hw, sgn * (hw + cw)))
+        pre.append(("add", ("box", x0, x1, *ys_, 0.0, ch)))
     # cuts
     aw, ah = FACE_AA[1] + 2.0, FACE_AA[0] + 2.0  # window: AA + 1 mm all round
     pre.append(
@@ -1261,7 +1266,8 @@ def bulkhead_volume_numeric(step: float = 0.2) -> tuple[float, list[float]]:
 
     pre, post = bulkhead_features()
     xs = np.arange(40.0 + step / 2, 90.0, step)
-    ys = np.arange(-BH_W / 2 - 1 + step / 2, BH_W / 2 + 1, step)
+    yh = BH_W / 2 + BH_CHEEK[0] + 1  # S2a: the cheeks reach |y| BH_W / 2 + 5
+    ys = np.arange(-yh + step / 2, yh, step)
     zs = np.arange(-5.0 + step / 2, BH_H + 2, step)
     X, Y = np.meshgrid(xs, ys, indexing="ij")
     vol, lo, hi = 0.0, [1e9] * 3, [-1e9] * 3
@@ -1290,6 +1296,11 @@ def _right_rect(y0: float, y1: float, z0: float, z1: float) -> str:
 
 
 BH_SIDE_EDGE = 266.6  # S1b: edge length round one outer side face (STL, tick 32)
+# S2a (Q22 F1, tick 65): side cheeks close the 9.5 mm finger slot between the wall's sides
+# (|y| 47) and the belts (56.5) at the front corners: the wall (its 3 mm, not the flange,
+# which would reach the motor mounts at x 77.8) continued sideways to |y| 52 from the bottom
+# to z 30 (pre-tilt height 31.1). Leaves 4.5 to the belt.
+BH_CHEEK = (5.0, 31.1)
 
 
 def bulkhead_lines(path: str) -> list[str]:
@@ -1352,12 +1363,22 @@ def bulkhead_lines(path: str) -> list[str]:
     # outer loops are the wall's side edges, front, back, top and foot. Edge length per
     # side, all convex, measured from the generated STL (tick 32): 266.6 mm
     ys = BH_W / 2
-    dvs = (1 - math.pi / 4) * PLATE_EDGE_R**2 * BH_SIDE_EDGE
+    # S2a: the cheek covers the side face's front + bottom edge over its height (convex,
+    # out) and adds two concave edges where it meets the side (in): net 266.6 - 2 x 34.1
+    cw, ch = BH_CHEEK
+    q = (1 - math.pi / 4) * PLATE_EDGE_R**2
+    cov = ch + BH_T
+    dvs = q * (BH_SIDE_EDGE - 2 * cov)
+    dvc = q * 2 * (ch + BH_T)  # cheek outer face: its whole outline, convex
     for sgn in (1, -1):
         lines.append(
-            f"filletface|{PLATE_EDGE_R}|y:{sgn}|{sgn * ys:.2f}|30 -10 100 130|1|{-dvs:.2f} {0.15 * dvs:.2f}"
+            f"filletface|{PLATE_EDGE_R}|y:{sgn}|{sgn * ys:.2f}|30 -10 100 130|1|{-dvs:.2f} {0.2 * dvs:.2f}"
         )
         vol -= dvs
+        lines.append(
+            f"filletface|{PLATE_EDGE_R}|y:{sgn}|{sgn * (ys + cw):.2f}|30 -10 100 130|1|{-dvc:.2f} {0.2 * dvc:.2f}"
+        )
+        vol -= dvc
     lines += [
         f"expect|vol {vol:.1f} {vol * 0.01:.1f}|box {' '.join(f'{v:.2f}' for v in bb)} 0.35",
         "save",

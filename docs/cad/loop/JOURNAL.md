@@ -408,3 +408,8 @@ Newest at the bottom. One entry per tick.
 
 ## tick 64 · S2 pinch-point audit (track path) · accepted (doc) · 2026-11-01 04:30 MST
 - `S2_pinch.md`: plate/canopy/bar gaps to the belt 1.5 / 3.5 / 1.0 ✓. **F1** 9.5 mm slot at each front corner (bulkhead side |y| 47 ↔ belt 56.5, z 0…30) ❌. **F2** 16 mm loop window above/below the frame bar reaches the lug ↔ pocket nips ⚠️. Q22: cheeks for F1 (default, next), side plates for F2 (waits for Ben: it changes the look).
+
+## tick 65 · S2a bulkhead side cheeks (Q22 F1) · accepted (kid safety) · 2026-11-01 04:45 MST
+- The wall (3 mm, not the flange: the mounts reach x 77.8) continued sideways |y| 47 → 52 from the bottom to z 30 (pre-tilt 31.1): the front-corner finger slot 9.5 → **4.5 mm**. Side-face rounds now take 7 edges (two concave cheek junctions), the cheek outlines r 1.0: −42.8 / −14.3 mm³ per side vs −42.6 / −14.6.
+- Slip: bulkhead_volume_numeric's grid stopped at |y| 47.9 (missed the cheeks: −682 mm³, box 4.1 mm off) → widened; then 34,663 vs 34,728.
+- Rebuild 0 interferences, printed 616.5 g; S5c 7.48 MPa (SF 4.7), bezel 0.27 mm (=).
