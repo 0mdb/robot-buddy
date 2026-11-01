@@ -1324,6 +1324,12 @@ def bulkhead_lines(path: str) -> list[str]:
     lines.append(
         f"filletface|{PLATE_EDGE_R}|x:1|{BH_XF}|-50 -5 50 130|1|{-dvf:.2f} {0.15 * dvf:.2f}|loops:-45 10 10 125"
     )
+    # S1b3 (tick 63): r 1.0 on the wall's top front edge (x BH_XF, z BH_H, along y), the
+    # top of the "head", also pre-tilt. Between the side flanges' ends (|y| BH_W / 2)
+    dvt = (1 - math.pi / 4) * PLATE_EDGE_R**2 * BH_W
+    lines.append(
+        f"fillet|{PLATE_EDGE_R}|y|{BH_XF - 0.2} {-BH_W / 2 - 0.1} {BH_H - 0.2} {BH_XF + 0.2} {BH_W / 2 + 0.1} {BH_H + 0.2}|1|{-dvt:.2f} {0.2 * dvt:.2f}"
+    )
     lines.append(f"rotbody|{BH_PIVOT[0]} {BH_PIVOT[1]} {BH_PIVOT[2]}|y|{-BH_TILT}")
     for op, sh in post:
         if sh[0] == "box" and op == "add":
@@ -1341,6 +1347,7 @@ def bulkhead_lines(path: str) -> list[str]:
             + 2 * math.pi * BH_CAM[2]
         )
     )  # S1b2 front-face opening rounds
+    vol -= (1 - math.pi / 4) * PLATE_EDGE_R**2 * BH_W  # S1b3 top front edge
     # S1b (kid safety): r 1.0 round the two outer side faces (|y| 47, normals +-y): their
     # outer loops are the wall's side edges, front, back, top and foot. Edge length per
     # side, all convex, measured from the generated STL (tick 32): 266.6 mm

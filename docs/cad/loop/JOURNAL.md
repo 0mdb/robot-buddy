@@ -404,3 +404,4 @@ Newest at the bottom. One entry per tick.
 ## tick 63 · S1b3 bulkhead top front edge r 1.0 · PENDING (SolidWorks hung) · 2026-11-01 01:40 MST
 - r 1.0 on the wall's top front edge pre-tilt (`fillet` on the line at x 85, z 126): alone −20.17 vs −20.17 mm³, the side rounds then take 5 edges each (they blend), part 33,730.7 vs 33,795.1.
 - The full rebuild hung: SLDWORKS "not responding" with an unsaved Part544 open, ~15 GB; the rebuild's 30 min timeout killed only the Python wrapper (empty log), leaving swbuild.exe attached; S5c then started and waits on it. Nothing killed (lesson: don't kill mid-run; restart is Ben's). sw: DOWN. Generator change left uncommitted, documented in STATE.
+- **Resumed 04:00 MST** (Ben restarted SolidWorks). The orphan swsim exited by itself; clean rebuild: S1b3 −20.17 vs −20.17 mm³, 0 interferences, printed 615.3 g; S5c 7.50 MPa (SF 4.7) / bezel 0.27 mm (=). **S1b3 accepted.**

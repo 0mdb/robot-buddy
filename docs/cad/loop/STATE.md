@@ -2,8 +2,8 @@
 
 pass: 1, leg 2 (leg 1 ended 2026-10-31 ~11:10 at tick 46)
 tick: 63
-sw: DOWN (2026-11-01 ~01:36 MST: SLDWORKS not responding mid-rebuild, unsaved 'Part544 *' open; swbuild.exe 38040 + swsim.exe 50852 (S5c) waiting on it; nothing killed; restart is Ben's)
-current: S1b3 PENDING (bulkhead top front edge r 1.0: built alone OK, -20.17 vs -20.17 mm3; the full rebuild hung SolidWorks, S5c not run). tools/chassis.py has the uncommitted change; after a restart: rebuild, S5c, then commit or restore
+sw: up (Ben restarted SolidWorks 2026-11-01 ~04:00 MST after the 01:36 hang)
+current: none (tick 63 S1b3 accepted after the restart)
 hypothesis: —
 baseline_commit: d8179d2 (cad)
 stop_after: 2026-11-01 07:00 (Ben, leg 2: "until 7am tomorrow or completed")
