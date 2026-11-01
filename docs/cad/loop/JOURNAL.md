@@ -341,3 +341,8 @@ Newest at the bottom. One entry per tick.
 - S8 (150 N heel, PC): 1.706 → **1.675 mm** (now under 1.7), top 25.7 → 24.4 MPa (SF 2.41 → 2.54), hood ceiling 28.9 → 29.0 (SF 2.14). Rebuild 0 interferences, printed 478.6 g.
 - Not done (P6g remainder): vertical rib-crossing corners, keel-to-rear-wall edges, the hood ceiling/lug zone (now the S8 peak).
 - Next: P6h S5c with the real canopy (rotation: strength), then P6e edges.
+
+## tick 51 · P6h does the canopy hold the bulkhead lugs? · finding (no geometry change) · 2026-10-31 18:35
+- New study **S5k**: canopy alone (PC), held at its rear insert pockets + apron/boss feet, the full 50 N poke (S5 direction) into the two lug screw holes (upper bound).
+- Result: lug holes move ~340 mm (linear; i.e. a mechanism), 208 MPa at the rear apron. The canopy's only tie to the frame is the rear apron, a 1.8 wall loaded face-on; the side walls (stiff in their own plane) stop at z 30 and never reach the plate. **S5c's premise (lugs fixed) does not hold** → the bulkhead is effectively at S5 standalone (8.0 mm / 39 MPa vs 0.5 mm). Q19 to Ben.
+- Next: per Q19.

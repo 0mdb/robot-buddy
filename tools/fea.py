@@ -330,7 +330,38 @@ def s8() -> dict:
     }
 
 
+def s5k() -> dict:
+    """P6h: does the canopy hold the bulkhead's lugs as stiffly as S5c assumes (fixed)?
+    Canopy alone (PC), held at its rear: insert pockets (r 2.0, tight tol so the r 1.95
+    lug holes stay free) and the apron/boss feet on the plate. The whole 50 N poke goes
+    into the two lug-hole screws along the poke direction (upper bound: the bulkhead's
+    foot takes most of it in reality). Lug-hole motion <= 0.2 mm keeps S5c's bezel
+    (0.27 mm with fixed lugs) inside its 0.5 mm."""
+    t = math.radians(chassis.BH_TILT)
+    f = 50.0
+    F = (-f * math.cos(t), 0.0, -f * math.sin(t))
+    return {
+        "name": "S5k",
+        "title": "Canopy at the bulkhead lugs, 50 N poke reaction",
+        "part": r"\CAD\parts\RB-PRT-004_canopy.SLDPRT",
+        "lines": [
+            "discard_open",
+            f"fix cyl 0 0 1 {chassis.INS_HOLE / 2} 0.02",
+            "fix plane 0 0 1 0",
+            f"load lugs cyl 0 0 1 {chassis.CAN_LUG_HOLE / 2} 0.02",
+            f"disp lugs cyl 0 0 1 {chassis.CAN_LUG_HOLE / 2} 0.02",
+            "probe hood 30 -54 90 75 54 125",
+            "hotspots 3",
+            "mesh 1.5 0.08",
+            f"case poke lugs:{F[0]:.3f},{F[1]:.3f},{F[2]:.3f}",
+        ],
+        "applied": F,
+        "limit_disp_mm": 0.2,
+    }
+
+
 STUDIES = {
+    "S5k": s5k,
     "S8": s8,
     "S1m": s1m,
     "S1d": s1d,
