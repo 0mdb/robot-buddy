@@ -2236,8 +2236,41 @@ def canopy_features() -> dict:
         - pockets
         + rib_vol
         + roots
-        + tabs,
+        + tabs
+        - canopy_vents()[1],
     }
+
+
+# P6d (tick 71): vents on the REAR wall (flat for |y| <= 33, z <= 87). Not the sides: the
+# belt runs 3.5 mm outside them and throws grit; not the top: the Pi's heat would cross the
+# cells (S4 #6) and the mic disc sits there. A low field at the Pi's port end (intake under
+# the HAT) and a high one over the HAT PCB (exhaust, faces the buzzer): E1 slot motif,
+# 2 mm wide (06 §5 <= 2 mm) on a 4 mm pitch, vertical so the tops bridge only 2 mm.
+CAN_VENT_W, CAN_VENT_PITCH, CAN_VENT_HY = (
+    2.0,
+    4.0,
+    24.0,
+)  # |y| of the outer slot centres
+CAN_VENT_Z = ((36.0, 48.0), (70.0, 84.0))  # slot extents (ends r 1)
+
+
+def canopy_vents() -> tuple[list[str], float]:
+    """One Right-plane sketch of closed stadiums (sketch u = -z, v = y, both arcs
+    clockwise), cut through the rear wall; and the volume removed."""
+    r = CAN_VENT_W / 2
+    n = int(round(2 * CAN_VENT_HY / CAN_VENT_PITCH)) + 1
+    ys = [-CAN_VENT_HY + i * CAN_VENT_PITCH for i in range(n)]
+    loops = []
+    for z0, z1 in CAN_VENT_Z:
+        ulo, uhi = -(z0 + r), -(z1 - r)
+        for yc in ys:
+            loops.append(
+                f"M {ulo:g} {yc - r:g} L {uhi:g} {yc - r:g} a {uhi:g} {yc:g} {uhi:g} {yc + r:g} "
+                f"L {ulo:g} {yc + r:g} a {ulo:g} {yc:g} {ulo:g} {yc - r:g}"
+            )
+    area = sum((z1 - z0 - 2 * r) * 2 * r + math.pi * r * r for z0, z1 in CAN_VENT_Z) * n
+    line = f"prof|{CAN_X0 - 0.2} {CAN_X0 + CAN_T + 0.2}|{' '.join(loops)}|cut|right"
+    return [line], area * CAN_T
 
 
 def canopy_lines(path: str) -> list[str]:
@@ -2330,6 +2363,7 @@ def canopy_lines(path: str) -> list[str]:
         f"filletface|{CAN_EDGE_R}|z:-1|{CAN_Z0}|{CAN_X0 - 1} {-hw - 1} {fp[0] + 1} {hw + 1}|any"
         f"|{-f['rim']:.2f} {0.25 * f['rim']:.2f}|skip:"
         + ";".join(canopy_rim_round()[1]),
+        *canopy_vents()[0],
         f"expect|vol {f['vol']:.1f} {f['vol'] * 0.03:.1f}|box {CAN_X0} {fp[0]:.2f} {-hw} {hw} {-CAN_TAB[2]} {e[1]:.2f} 0.5",
         "save",
     ]
