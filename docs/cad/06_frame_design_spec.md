@@ -238,6 +238,33 @@ teardrop the horizontal motor-screw holes; ≥ 2 mm fillet at the inside corner.
 > the sprocket's pitch radius 28.65 (`TRACK_T` still 20 N): S2 pull + torque 12.6 MPa
 > (singular, D7) / 0.040 mm; S1a 17.6 MPa (singular) / axle UX 0.241 mm; S1b 2.55 MPa.
 
+> Amendment (loop P2o, 2026-10-31, Q17 (b) Ben): **outboard track frame, one per side**
+> (`RB-PRT-040` L / `041` R, PET-CF), so belt tension closes through a stiff bar between
+> the two axles instead of bending the plate (S1m: axle motion 1.03 mm vs 0.2). Old → new:
+> each axle carried only from inboard (TT shaft in the gearbox; idler shoulder axle
+> cantilevered from the carriage journal) → **both axles also carried outboard**.
+> - **Outer bar** at |y| 93.5…97 (1.0 off the wheels' outboard faces at 92.5), axle
+>   height z 13.5, ~16 tall, from the idler axle (x −57.3 ± 5 travel) to the sprocket axle
+>   (x 52.7). At the sprocket end a Ø4 shoulder bolt goes through the bar into the
+>   sprocket's outboard 624 (08 `sprocket_outrigger`). At the idler end the bar has an x-slot
+>   over the idler's Ø4 shoulder axle; its outboard thread takes an M3 nyloc that
+>   clamps the bar after tensioning.
+> - **Two legs** inward through the belt loop's open window (x −30…25 between the
+>   wheels, z −10…37 between the runs' lug tips, the lug row only at |y| 70…79 above/below
+>   that band) to the plate. Rear leg at x ≈ −22…−14 (belly between the carriage slots,
+>   which end at x −45, and the motor's can end at x −10); front leg at x ≈ 14…22 onto the
+>   belly outboard of the |y| 47 load rib. Each leg foot bolts up into plate inserts
+>   (under-boss, as F2). The legs are where P13's road wheels hang (x −19.7 / +20.6, z −8.4).
+> - **Tensioning order:** set the belt with the carriage jack screw (05, unchanged), then
+>   tighten the idler-end nyloc. The bar then carries the tension axially (stiff), and the
+>   plate/mount path only sees what the inboard halves share.
+> - **Width:** overall 185 → **~194** (2 × 4.5 for the bars). 08 §6's 185 is superseded here.
+> - **Kid safety:** the bars cover the wheels' outboard faces (no reachable spokes or
+>   pockets). The bar sits 1.0 mm off the rotating wheel face, below the 5 mm finger rule. All
+>   edges r 1; the bar's outer face takes the E1 r 3 on its ends.
+> - **FEA:** new study **S9** (frame + plate + mounts bonded; S1m's loads), judged on
+>   S1m's 0.2 mm at the axles. Est. ~14 g per side.
+
 **Followers:** per `05_follower_spec.md` (carriage in plate slots, clamp from
 below, 624 bearing on a Ø4 shoulder bolt).
 
