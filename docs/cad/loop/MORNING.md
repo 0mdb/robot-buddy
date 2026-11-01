@@ -13,10 +13,11 @@ Order (Ben): P13 road wheels → P7/P8 → canopy P6d/f/e → T4 slicing → P10
    **M3 × 10**. **S6 7.57 → 6.50 MPa (SF 5.4)**, carriage 12.3 → 11.4 g.
 3. **Tread → `belt_bars_stagger`** (your call): 1.5 mm bars split at the centre, halves
    staggered half a pitch, spacing jittered ±15 %; 57.2 g. 08 amended.
-4. Backlog: **M6** PA6-CF wheel coupons (Fiberon PA6-CF20 in stock); **M3** insert ladder
+4. **Road wheels (P13b, tick 69):** `RB-PRT-022_road_disc` 3.4 g × 8 placed on both axles per side, 0 interferences. Hangers next.
+5. Backlog: **M6** PA6-CF wheel coupons (Fiberon PA6-CF20 in stock); **M3** insert ladder
    ported from fpv250 (its PA6-CF result is M2 Ø3.4 × 5.5; buddy is M3).
 
-Printed total **635.5 g** (incl. belts 117 g), CoG (−0.5, 0.0, 23.7). Review-pass studies from
+Printed total **662.7 g** (incl. belts 117 g, road discs 27 g), CoG (−0.4, 0.0, 22.4). Review-pass studies from
 leg 2 stand except S6 (now 6.50).
 
 ## Open, for you
@@ -31,5 +32,5 @@ leg 2 stand except S6 (now 6.50).
 624 seats, 684, band slice) in PET-CF **and PA6-CF** (M6). See `docs/cad/belt_print.md`.
 
 ## Next
-P13b road-wheel discs (native, 2 per axle) → P13c hangers → P13d load case + pinch re-check
+P13c hangers (axle in the side plate + an inboard hanger) → P13d load case + pinch re-check
 (the side plate's bottom edge vs the now-lower bottom run).

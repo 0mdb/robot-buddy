@@ -433,3 +433,9 @@ Newest at the bottom. One entry per tick.
 - Carriage 12.3 → 11.4 g; printed 638.1 → 635.5 g. Shots `shots/1-P13a/`.
 - Ben, mid-tick: tread → **`belt_bars_stagger`** (new: 1.5 bars split + staggered + jittered, 57.2 g; 08 amended); M6 PA6-CF wheel coupons (Fiberon PA6-CF20 in stock, print-bom); M3 insert ladder ported from fpv250 (its PA6-CF sizing is M2: Ø3.4 × 5.5; buddy is M3, needs the insert's knurl OD).
 - Next: P13b road-wheel discs native + placement. Note for P13d: the side plate's bottom edge (z −10) now sits ~3.4 over the bottom-run lug tips (was 2.4) and the ground line dropped to ~−21.4.
+
+## tick 69 · P13b road-wheel discs native + placed · accepted · 2026-11-01 11:55 MST
+- `drivetrain.road_wheel_layers()` (road_wheel() now meshes it) → native `RB-PRT-022_road_disc` through `wheel_lines` (684 crush-rib pocket on the bed face, r 3.7 shoulder, Ø18 × 12.9, bed rim r 1): 2,628.7 vs 2,628.2 mm³, **3.4 g** PET-CF (M6: PA6-CF candidate).
+- 8 placed (2 per axle at road1 x −19.72 / road2 x +20.55, z −8.40 from `dt.wheels()`): bed faces flush with the belt edges |y| 56.5 / 92.5, 0.6 off the lug row. Axle envelope (library, interference only): Ø4 over the belt width + Ø7 spacer inner race to inner race (lug tips 1.5 off it).
+- Full rebuild **0 interferences**; printed 635.5 → **662.7 g** (+27.2, new parts), CoG z 23.7 → 22.4. Shots `shots/1-P13b/`.
+- For P13c: the outer disc's face is 1.0 from the side plate (|y| 93.5): no room for a nyloc there. Carry each road axle in the side plate (Ø4 bore + a boss outboard, like the sprocket dowel) and in an inboard hanger off the plate edge / belly, so the axle is supported both sides.

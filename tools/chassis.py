@@ -867,6 +867,8 @@ def rebuild_manifest(win: str) -> list[str]:
     car_r = cad + r"\parts\RB-PRT-031_carriage_R.SLDPRT"
     sprocket = cad + r"\parts\RB-PRT-020_sprocket.SLDPRT"  # 08, outrigger variant (P2o)
     idler = cad + r"\parts\RB-PRT-021_idler.SLDPRT"  # 08, 2 x 624
+    road = cad + r"\parts\RB-PRT-022_road_disc.SLDPRT"  # 08 rev 1, 684, x 8 (P13b)
+    road_axle = cad + r"\library\road_axle_envelope.SLDPRT"
     # T11: the installed belt, native, replaces the stadium envelopes for fit checks
     belt_l = cad + r"\parts\RB-PRT-050_belt_L.SLDPRT"
     belt_r = cad + r"\parts\RB-PRT-051_belt_R.SLDPRT"
@@ -915,6 +917,8 @@ def rebuild_manifest(win: str) -> list[str]:
         *mount_v2_lines(mount_l, mirror=True),
         *wheel_lines(sprocket, dt.sprocket_layers(True)),
         *wheel_lines(idler, dt.idler_layers(2)),
+        *wheel_lines(road, dt.road_wheel_layers()),
+        *road_axle_lines(road_axle),
         *belt_native_lines(belt_l, +1),
         *belt_native_lines(belt_r, -1),
         f"asm|{asm}",
@@ -938,6 +942,17 @@ def rebuild_manifest(win: str) -> list[str]:
                 ("sprocket", sprocket, dt.X_DRIVE, dt.Z_AXLE),
                 ("idler", idler, dt.belt_fit()["x_fit"], idler_z()),
             )
+            for sd, s in (("L", +1), ("R", -1))
+        ],
+        *[
+            f"comp|road{i + 1}{'i' if ib else 'o'}_{sd}|{road}|{row(*road_disc_at(x, z, s, ib))}"
+            for i, (x, z) in enumerate(road_axles())
+            for sd, s in (("L", +1), ("R", -1))
+            for ib in (True, False)
+        ],
+        *[
+            f"comp|raxle{i + 1}_{sd}|{road_axle}|{row(ROT_I, (x, s * track_y()[0] if s > 0 else -track_y()[1], z))}"
+            for i, (x, z) in enumerate(road_axles())
             for sd, s in (("L", +1), ("R", -1))
         ],
         f"comp|belt_L|{belt_l}|{row(ROT_I, (0, 0, 0))}",
@@ -972,6 +987,7 @@ def rebuild_manifest(win: str) -> list[str]:
                 (mount_l, "RB-PRT-011_motor_mount_L"),
                 (sprocket, "RB-PRT-020_sprocket"),
                 (idler, "RB-PRT-021_idler"),
+                (road, "RB-PRT-022_road_disc"),
             )
         ],
     ]
@@ -1809,7 +1825,7 @@ def wheel_lines(path: str, layers: list) -> list[str]:
         f"part|{path}",
         *ring_lines(layers),
         f"filletface|{PLATE_EDGE_R}|-1|0.0|{-r - 1} {-r - 1} {r + 1} {r + 1}|1|{-dvr:.2f} {0.1 * dvr:.2f}",
-        f"expect|vol {vol:.1f} {vol * 0.003:.1f}|box {-r:.3f} {r:.3f} {-r:.3f} {r:.3f} 0 {dt.BELT_W} 0.05",
+        f"expect|vol {vol:.1f} {vol * 0.003:.1f}|box {-r:.3f} {r:.3f} {-r:.3f} {r:.3f} 0 {layers[-1][1]:g} 0.05",
         "save",
     ]
 
@@ -1861,6 +1877,41 @@ def wheel_at(
     if phase:
         r = matmul(rot_y(-phase), r)
     return r, (x, side * y_out, z)
+
+
+# road wheels (08 rev 1 §4b, P13b): two discs per axle straddle the lug row, each with its
+# 684 pocket (bed face) flush with a belt edge; axles at drivetrain.wheels() road1/road2.
+def road_axles() -> list[tuple[float, float]]:
+    return [(w[1], w[2]) for w in dt.wheels() if w[0].startswith("road")]
+
+
+def road_disc_at(
+    x: float, z: float, side: int, inboard: bool
+) -> tuple[list[float], tuple[float, float, float]]:
+    """Disc part -> chassis: bed face on the belt's outer (or inner) edge, facing out."""
+    y_in, y_out = track_y()
+    if inboard:  # bed face on the inner belt edge, the disc grows outboard
+        return (ROT_WHEEL_R if side > 0 else ROT_WHEEL_L), (x, side * y_in, z)
+    return (ROT_WHEEL_L if side > 0 else ROT_WHEEL_R), (x, side * y_out, z)
+
+
+RW_SPACER_R = 3.5  # Ø7 spacer between the 684 inner races, under the lugs (tips 5 off)
+
+
+def road_axle_lines(path: str) -> list[str]:
+    """Envelope (interference only): Ø4 shoulder over the belt width + the Ø7 spacer
+    from inner race to inner race (through the discs' r 3.7 shoulder holes). Part
+    frame: axis Y, y 0 = the belt's inner edge. Hanger-side axle ends come with P13c."""
+    bw, bd = dt.BELT_W, dt.RW_BRG_W
+    v = math.pi * (4.0 * bw + (RW_SPACER_R**2 - 4.0) * (bw - 2 * bd - 0.1))
+    r = RW_SPACER_R
+    return [
+        f"part|{path}",
+        f"cyl|y|0 0|0 {bw}|2.0|boss",
+        f"cyl|y|0 0|{bd + 0.05} {bw - bd - 0.05}|{r}|boss",
+        f"expect|vol {v:.1f} {v * 0.005:.1f}|box {-r} {r} 0 {bw} {-r} {r} 0.05",
+        "save",
+    ]
 
 
 # ------------------------------------------------------------- canopy (06 §6, P6)
@@ -2625,6 +2676,7 @@ PART_MATERIAL = {
     "RB-PRT-011": "PET-CF",
     "RB-PRT-020": "PET-CF",
     "RB-PRT-021": "PET-CF",
+    "RB-PRT-022": "PET-CF",  # road-wheel disc x 8 (P13b; PA6-CF candidate, M6)
 }
 
 

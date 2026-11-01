@@ -529,16 +529,23 @@ def belt(
     }
 
 
-def road_wheel(interf: float = 0.10, m: int = 360) -> np.ndarray:
+def road_wheel_w() -> float:
+    """Disc width: from the belt edge to CLR off the lug row."""
+    return (BELT_W - LUG_W) / 2 - CLR
+
+
+def road_wheel_layers(interf: float = 0.10, m: int = 360) -> list:
     """One road-wheel disc (two per axle, one each side of the lug row). Bed face =
-    the 684 pocket side; the Ø4 shoulder axle runs under the lugs between the discs."""
-    w = (BELT_W - LUG_W) / 2 - CLR
-    return mesh(
-        [
-            (0.0, RW_BRG_W, [(crush(RW_BRG_D / 2, m, interf), circle(RW_R, m))]),
-            (RW_BRG_W, w, [(circle(RW_SHOULDER_R, m), circle(RW_R, m))]),
-        ]
-    )
+    the 684 pocket side, flush with the belt edge; the Ø4 shoulder axle runs under the
+    lugs between the discs."""
+    return [
+        (0.0, RW_BRG_W, [(crush(RW_BRG_D / 2, m, interf), circle(RW_R, m))]),
+        (RW_BRG_W, road_wheel_w(), [(circle(RW_SHOULDER_R, m), circle(RW_R, m))]),
+    ]
+
+
+def road_wheel(interf: float = 0.10, m: int = 360) -> np.ndarray:
+    return mesh(road_wheel_layers(interf, m))
 
 
 def coupons() -> dict[str, np.ndarray]:
