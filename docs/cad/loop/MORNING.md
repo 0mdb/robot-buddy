@@ -28,6 +28,10 @@
 3. **Treads:** native belt part, wrap-fit/stretch check, print package + test pieces.
 4. **Polish:** bulkhead face edges, fillets, motor-lead connectors.
 
+## Treads (leg 2)
+- Belt fit check `drivetrain.py check-wrap`: lugs bind past 1.71 % stretch (Q21), strain 2.4 %, smooth rolling.
+- Print package: `docs/cad/belt_print.md` (strip + 6-lug test pieces first, then the belt with the measured shrink).
+
 ## Before you print anything
 - PCB: put the reflex USB-C on the board's **rear edge** (TODO updated).
 - Coupons first (D6): insert ladder, TT bore, 624 seats.

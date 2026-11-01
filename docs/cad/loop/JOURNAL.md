@@ -372,3 +372,8 @@ Newest at the bottom. One entry per tick.
 - New command: lug ↔ pocket side clearance over the 9 engaged lugs per 180° wrap vs belt stretch (both profiles as their rounded trapezoids, the lug rigid in mm on the wheel, pattern best-centred), base bending strain (ring R0 63.7 → wheel 28.65 / straight), tooth tops vs running surface.
 - Results: side clearance 0.684 mm at 0 %; +0.48 / +0.28 / +0.08 at 0.5 / 1 / 1.5 %; **−0.12 mm at 2 % (end lugs bind)**: zero clearance at **1.71 %** stretch. Tip to pocket floor 0.60. Strain 2.40 % wraps / 1.96 % runs (limit 5 % 🟡, TPU 85A). Teeth 0.6 below the rim discs: smooth rolling.
 - Finding: the jack screw can take up more creep (belt_fit creep allowance 3.85 %) than the pockets tolerate (1.71 %). Fix = wider pockets (CLR 0.6 → ~0.75 gives ~2.1 %), but the sprocket/idler are Ben-reviewed → Q21. The strip/creep bench test (08 §7) decides how much stretch is real.
+
+## tick 57 · T13 belt print package · accepted (tooling/doc; slicing waits on T4) · 2026-10-31 22:30
+- drivetrain.py: `test_pieces()` (belt_strip150 150 × 2.5 × 36; belt_lug6 straight 6-lug length, convex prisms that the slicer merges: there's no boolean engine in tools/.venv), `belt_scaled()` + `build --shrink <pct>` (ring diameter only). All meshes closed; bounds checked with trimesh.
+- `docs/cad/belt_print.md`: upright, walls only, seam on the lug inner faces, 85A first, external spool, PEI; shrink from the strip; the T12 1.5 % stretch watch.
+- Not done: sliced .3mf (T4, Bambu CLI not ported yet).

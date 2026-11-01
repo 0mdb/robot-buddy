@@ -624,6 +624,80 @@ def preview(path: str) -> None:
     fig.savefig(path, dpi=130)
 
 
+def _prism(poly: list[tuple[float, float]], z0: float, z1: float) -> np.ndarray:
+    """Closed triangle mesh of a CONVEX polygon (CCW) extruded z0..z1 (fan caps)."""
+    p = np.asarray(poly, float)
+    n = len(p)
+    lo = np.c_[p, np.full(n, z0)]
+    hi = np.c_[p, np.full(n, z1)]
+    tris = []
+    for i in range(1, n - 1):
+        tris.append([lo[0], lo[i + 1], lo[i]])
+        tris.append([hi[0], hi[i], hi[i + 1]])
+    for i in range(n):
+        j = (i + 1) % n
+        tris.append([lo[i], lo[j], hi[j]])
+        tris.append([lo[i], hi[j], hi[i]])
+    return np.array(tris)
+
+
+def test_pieces() -> dict[str, np.ndarray]:
+    """T13 (08 §7): bench pieces printed like the belt (upright: belt width = Z).
+
+    - strip: 150 x T_BASE x BELT_W plain band for the hang/creep test (1 kg, 24 h).
+    - lug6: a straight 6-lug length of belt (bars outside, lugs in the centre band), to
+      wrap by hand round coupon_band_slice and stall-test on a TT. Convex prisms that
+      overlap by 0.05: the slicer merges them (no boolean engine here). Lug end
+      chamfers left out (as T11).
+    """
+    out = {
+        "belt_strip150": _prism(
+            [(0, 0), (150, 0), (150, T_BASE), (0, T_BASE)], 0, BELT_W
+        )
+    }
+    n, end = 6, 5.0
+    length = n * PITCH + 2 * end
+    shells = [_prism([(0, 0), (length, 0), (length, T_BASE), (0, T_BASE)], 0, BELT_W)]
+    z0, z1 = (BELT_W - LUG_W) / 2, (BELT_W + LUG_W) / 2
+    for k in range(n):
+        c = end + PITCH * (k + 0.5)
+        # lug on the inner face (y < 0), bar on the outer face (y > T_BASE)
+        shells.append(
+            _prism(
+                [
+                    (c - LUG_L / 2, 0.05),
+                    (c - LUG_TIP_L / 2, -LUG_H),
+                    (c + LUG_TIP_L / 2, -LUG_H),
+                    (c + LUG_L / 2, 0.05),
+                ][::-1],
+                z0,
+                z1,
+            )
+        )
+        shells.append(
+            _prism(
+                [
+                    (c - GROUSER_L / 2 - 0.5, T_BASE - 0.05),
+                    (c + GROUSER_L / 2 + 0.5, T_BASE - 0.05),
+                    (c + GROUSER_L / 2 - 0.5, T_BASE + GROUSER_H),
+                    (c - GROUSER_L / 2 + 0.5, T_BASE + GROUSER_H),
+                ],
+                0,
+                BELT_W,
+            )
+        )
+    out["belt_lug6"] = np.concatenate(shells)
+    return out
+
+
+def belt_scaled(shrink_pct: float) -> np.ndarray:
+    """The ring belt with its diameter grown by shrink_pct (TPU contracts along the
+    length; width = Z untouched). 0 until the strip test measures it."""
+    t, _ = belt()
+    f = 1 + shrink_pct / 100
+    return t * np.array([f, f, 1.0])
+
+
 def build(out: str) -> None:
     os.makedirs(out, exist_ok=True)
     parts = {
@@ -635,11 +709,12 @@ def build(out: str) -> None:
     bt, info = belt()
     parts["belt"] = bt
     parts.update(coupons())
+    parts.update(test_pieces())  # T13
     print(f"{'part':24s} {'tris':>7s}  closed  vol cm³  mass g")
     bad = False
     for name, t in parts.items():
         ok, vol = check(t)
-        rho = RHO_TPU if name == "belt" else RHO_PETCF
+        rho = RHO_TPU if name.startswith("belt") else RHO_PETCF
         print(
             f"{name:24s} {len(t):7d}  {'yes' if ok else 'NO ':6s} {vol / 1000:7.2f}  {vol / 1000 * rho:6.1f}"
         )
@@ -728,9 +803,21 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("cmd", choices=["report", "build", "check-wrap"])
     ap.add_argument("-o", "--out", default="CAD/exports/rnd/drivetrain")
+    ap.add_argument(
+        "--shrink", type=float, default=0.0, help="T13: belt ring growth, %%"
+    )
     a = ap.parse_args()
     if a.cmd == "check-wrap":
         check_wrap()
+    elif a.cmd == "build" and a.shrink:
+        build(a.out)
+        name = f"belt_shrink{a.shrink:g}"
+        write_stl(
+            os.path.join(a.out, f"{name}.stl"),
+            belt_scaled(a.shrink),
+            f"robot-buddy {name}",
+        )
+        print(f"{name}.stl: ring grown {a.shrink:g} % in diameter")
     else:
         report() if a.cmd == "report" else build(a.out)
 
