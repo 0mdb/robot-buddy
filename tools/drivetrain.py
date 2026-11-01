@@ -10,7 +10,8 @@ Spec and rationale: docs/cad/08_tpu_track_rnd.md.
 
 Concept (centre-lug "positive drive", as on rubber tracks of compact track
 loaders): a TPU belt with one row of inward drive/guide lugs on the centre line
-and tread bars outside. Sprocket and idler are the same toothed wheel: two
+and a tread outside (staggered pads; bars and smooth as variants). Two road
+wheels per side carry the bottom run; the sprocket rides RAISE off the floor. Sprocket and idler are the same toothed wheel: two
 running discs carry the belt, a centre band with pockets takes the lugs, and the
 pocket walls guide the belt sideways, so no flanges. The sprocket's hub is a
 D-bore on the TT shaft; the idler's hub is two 624 bearings on the Ø4 shoulder
@@ -51,6 +52,27 @@ TOOTH_DROP = 0.6  # tooth tops sit this far below R_RUN so the discs carry the b
 RIM_T = 2.4  # rim wall under the running discs (4 perimeters at 0.6)
 BAND_WALL = 2.4  # wall under the pocket floors
 
+# outside of the belt (08 §5): pads = mostly-smooth contact, shallow cross grooves,
+# split at the centre line with the halves staggered, groove spacing jittered so the
+# tread doesn't sing at one pitch. "bars" (GROUSER_*) is the control, "smooth" the other.
+TREAD = "bars_stagger"  # Ben 2026-11-01: lugged (carpet), staggered halves (quieter)
+PAD_H = 1.0  # pad height over the base
+GROOVE_L = 3.0  # groove length along the belt
+PAD_JITTER = 0.15  # ± fraction of the groove spacing, fixed seed
+SPLIT_W = 1.0  # centre split between the staggered halves
+EDGE_CH = 1.2  # 45° chamfer on both outer belt edges (bed side prints, fingers)
+
+# suspension (08 §4b): the idler sits RAISE below the TT shaft so the sprocket rides
+# clear of the floor (approach ramp, ride height); two road wheels per side carry the
+# bottom run, ROCKER below the idler line so pivot turns load them, not the idler.
+RAISE = 3.0
+ROCKER = 0.5
+RW_R = 9.0  # road wheel running radius: two discs straddle the lug row on one axle; lug tips
+# pass 5 mm off the axle, room for a Ø7 spacer between the discs
+RW_GAP = 2.5  # road wheel to sprocket running surfaces (inside the loop)
+RW_BRG_D, RW_BRG_W = 9.1, 4.0  # 684 (4 x 9 x 4) slip pocket
+RW_SHOULDER_R = 3.7  # bears on the 684 outer race only
+
 # chassis numbers this depends on (06 §4, 05; read-only here)
 X_DRIVE = 52.7  # TT shaft station
 X_IDLER = -60.0  # follower axle, mid travel (±5)
@@ -59,6 +81,7 @@ PLATE_HALF_W = 55.0
 SIDE_GAP = 1.5  # belt inner edge to the plate edge / gearbox face
 PLATE_X = (-85.0, 85.0)
 PLATE_UNDERSIDE_Z = -8.0  # lowest point under the plate (insert bosses, ribs)
+PLATE_T_UNDER = 4.0  # plate thickness: its flat underside is at z -4
 
 # hubs
 TT_SHAFT_D, TT_FLAT = 5.4, 3.7  # TT output: Ø5.4 double-D, 3.7 across flats
@@ -103,29 +126,79 @@ def pitch(n: int = N_TEETH) -> float:
 TRAVEL = 5.0  # follower travel either side of X_IDLER (06 §4: 10 mm)
 
 
+def tread_h(tread: str = TREAD) -> float:
+    return {"pads": PAD_H, "bars": GROUSER_H, "bars_stagger": GROUSER_H, "smooth": 0.0}[
+        tread
+    ]
+
+
+def wheels(x_idler: float = X_IDLER, r_run: float = R_RUN) -> list[tuple]:
+    """(name, x, z, running r) in belt order, counter-clockwise seen from the left:
+    bottom run rear → front, then over the top. Chassis frame (plate top = 0)."""
+    z_idl = Z_AXLE - RAISE
+    z_rw = z_idl - r_run - ROCKER + RW_R  # road wheel bottoms ROCKER under the idler's
+    dz = Z_AXLE - z_rw
+    x_rw2 = X_DRIVE - math.sqrt((r_run + RW_R + RW_GAP) ** 2 - dz**2)
+    x_rw1 = (X_IDLER + x_rw2) / 2  # fixed to the chassis, split the bottom span
+    return [
+        ("idler", x_idler, z_idl, r_run),
+        ("road1", x_rw1, z_rw, RW_R),
+        ("road2", x_rw2, z_rw, RW_R),
+        ("sprocket", X_DRIVE, Z_AXLE, r_run),
+    ]
+
+
+def belt_path(ws: list[tuple]) -> dict:
+    """Belt neutral axis round convex wheels in order: length, tangent points, wraps."""
+    c = [(w[1], w[2], w[3] + T_BASE / 2) for w in ws]
+    n = len(c)
+    phi_out, phi_in, segs = [0.0] * n, [0.0] * n, []
+    length = 0.0
+    for i in range(n):
+        (x1, z1, r1), (x2, z2, r2) = c[i], c[(i + 1) % n]
+        dl = math.hypot(x2 - x1, z2 - z1)
+        th = math.atan2(z2 - z1, x2 - x1)
+        phi = th - math.acos((r1 - r2) / dl)  # outward normal, right of travel
+        phi_out[i], phi_in[(i + 1) % n] = phi, phi
+        length += math.sqrt(dl**2 - (r1 - r2) ** 2)
+        segs.append(
+            (
+                (x1 + r1 * math.cos(phi), z1 + r1 * math.sin(phi)),
+                (x2 + r2 * math.cos(phi), z2 + r2 * math.sin(phi)),
+            )
+        )
+    wrap = [(phi_out[i] - phi_in[i]) % (2 * math.pi) for i in range(n)]
+    length += sum(c[i][2] * wrap[i] for i in range(n))
+    return {"length": length, "segs": segs, "wrap": wrap, "phi_in": phi_in}
+
+
+def _path_len(x_idler: float, r_run: float = R_RUN) -> float:
+    return belt_path(wheels(x_idler, r_run))["length"]
+
+
 def belt_fit(c_nom: float = X_DRIVE - X_IDLER, n: int = N_TEETH) -> dict:
     """Round the belt DOWN to whole lugs: a new belt fits forward of mid travel and
     leaves the rear travel for set-up tension and TPU creep."""
-    p, rpl = pitch(n), pitch_radius(n)
-    links = math.floor((2 * c_nom + 2 * math.pi * rpl) / p)
-    length = links * p
-    c_fit = (length - 2 * math.pi * rpl) / 2
-    x_fit = X_DRIVE - c_fit  # idler station with the belt just taut
-    creep = (
-        2 * (x_fit - (X_IDLER - TRAVEL)) / length
-    )  # length gain the rear travel absorbs
+    r_run = pitch_radius(n) - T_BASE / 2
+    links = math.floor(_path_len(X_DRIVE - c_nom, r_run) / PITCH)
+    length = links * PITCH
+    lo, hi = X_IDLER - 30.0, X_IDLER + 30.0  # path length falls as the idler moves fwd
+    for _ in range(60):
+        mid = (lo + hi) / 2
+        lo, hi = (mid, hi) if _path_len(mid, r_run) > length else (lo, mid)
+    x_fit = (lo + hi) / 2  # idler station with the belt just taut
     return {
         "links": links,
         "length": length,
-        "c_fit": c_fit,
+        "c_fit": X_DRIVE - x_fit,
         "x_fit": x_fit,
-        "install_slack": 2 * ((X_IDLER + TRAVEL) - x_fit),
-        "creep_pct": 100 * creep,
+        "install_slack": length - _path_len(X_IDLER + TRAVEL, r_run),
+        "creep_pct": 100 * (_path_len(X_IDLER - TRAVEL, r_run) / length - 1),
     }
 
 
-def outer_r() -> float:
-    return R_RUN + T_BASE + GROUSER_H
+def outer_r(tread: str = TREAD) -> float:
+    return R_RUN + T_BASE + tread_h(tread)
 
 
 # ------------------------------------------------------------ polar-stack mesher
@@ -367,16 +440,50 @@ def idler_layers(
     return _wheel(m, hub, (3.0, pocket))
 
 
-def belt(n: int = N_TEETH, steps: int = 8) -> tuple[np.ndarray, dict]:
-    """Belt as printed: an upright ring (Z = belt width), lugs inward, bars outward.
-    The lug ends get a 45° chamfer (LUG_CHAMFER) built from thin steps, so the
-    lower one prints as a 2 mm ledge."""
+def _tread_curves(tread: str, m: int, links: int, r_out: float) -> tuple:
+    """Outer curves (half A, half B) of the printed ring for a tread style."""
+    u = _u(m, links)
+    if tread == "smooth":
+        c = circle(r_out, m)
+        return c, c
+    if tread == "bars":  # full width, one per lug (rev 0)
+        c = r_out + GROUSER_H * _blend(
+            u, (GROUSER_L / 2 - 0.5) / r_out, (GROUSER_L / 2 + 0.5) / r_out
+        )
+        return c, c
+    th = np.linspace(0, 2 * np.pi, m, endpoint=False)
+    rng = np.random.default_rng(7)  # fixed: every build gives the same belt
+    k = np.arange(links) + rng.uniform(-PAD_JITTER, PAD_JITTER, links)
+    if tread == "bars_stagger":  # GROUSER bars, split + staggered + jittered (Ben)
+        a_in, a_out = (GROUSER_L / 2 - 0.5) / r_out, (GROUSER_L / 2 + 0.5) / r_out
+    else:  # pads: raised everywhere but the grooves
+        a_in, a_out = (GROOVE_L / 2 - 0.4) / r_out, (GROOVE_L / 2 + 0.4) / r_out
+
+    def half(shift: float) -> np.ndarray:
+        cen = 2 * np.pi * (k + shift) / links
+        d = np.abs(np.angle(np.exp(1j * (th[:, None] - cen[None, :])))).min(1)
+        if tread == "bars_stagger":
+            return r_out + GROUSER_H * _blend(d, a_in, a_out)
+        return r_out + PAD_H * (1 - _blend(d, a_in, a_out))
+
+    return half(0.0), half(0.5)  # B staggered by half a groove spacing
+
+
+def belt(
+    n: int = N_TEETH, steps: int = 8, tread: str = TREAD
+) -> tuple[np.ndarray, dict]:
+    """Belt as printed: an upright ring (Z = belt width), lugs inward, tread outward.
+    The lug ends get a 45° chamfer (LUG_CHAMFER) and the outer edges EDGE_CH, both
+    built from thin steps, so the ring prints without support."""
     fit = belt_fit(n=n)
     links, length = fit["links"], fit["length"]
     m = links * 24
     r_pl = length / (2 * math.pi)
     r_in, r_out = r_pl - T_BASE / 2, r_pl + T_BASE / 2
     u = _u(m, links)
+    out_a, out_b = _tread_curves(tread, m, links, r_out)
+    split = np.minimum(out_a, out_b) if tread in ("pads", "bars_stagger") else out_a
+    s0, s1 = (BELT_W - SPLIT_W) / 2, (BELT_W + SPLIT_W) / 2
 
     def lug(h: float) -> np.ndarray:
         if h <= 0:
@@ -385,23 +492,53 @@ def belt(n: int = N_TEETH, steps: int = 8) -> tuple[np.ndarray, dict]:
         half_tip = LUG_TIP_L / 2 / (r_in - LUG_H)
         return r_in - h * _blend(u, half_tip, half_root)
 
-    bars = r_out + GROUSER_H * _blend(
-        u, (GROUSER_L / 2 - 0.5) / r_out, (GROUSER_L / 2 + 0.5) / r_out
-    )
     l0, l1 = (BELT_W - LUG_W) / 2, (BELT_W + LUG_W) / 2
     full = LUG_H - LUG_CHAMFER
-    layers = [(0.0, l0, [(circle(r_in, m), bars)])]
-    dz = LUG_CHAMFER / steps
-    for i in range(steps):  # lower chamfer, ledge LUG_H - LUG_CHAMFER then 45°
-        layers.append(
-            (l0 + i * dz, l0 + (i + 1) * dz, [(lug(full + (i + 0.5) * dz), bars)])
-        )
-    layers.append((l0 + LUG_CHAMFER, l1 - LUG_CHAMFER, [(lug(LUG_H), bars)]))
-    for i in range(steps):
-        z = l1 - LUG_CHAMFER + i * dz
-        layers.append((z, z + dz, [(lug(LUG_H - (i + 0.5) * dz), bars)]))
-    layers.append((l1, BELT_W, [(circle(r_in, m), bars)]))
-    return mesh(layers), {**fit, "ring_od": 2 * (r_out + GROUSER_H)}
+    dz, de = LUG_CHAMFER / steps, EDGE_CH / steps
+    cuts = {0.0, BELT_W, l0, l1, s0, s1}
+    cuts |= {l0 + i * dz for i in range(steps)} | {l1 - i * dz for i in range(steps)}
+    cuts |= {i * de for i in range(steps)} | {BELT_W - i * de for i in range(steps)}
+    cuts = sorted(cuts)
+
+    def inner(zm: float) -> np.ndarray:
+        if l0 <= zm < l0 + LUG_CHAMFER:  # lower chamfer: ledge, then 45°
+            j = math.floor((zm - l0) / dz)
+            return lug(full + (j + 0.5) * dz)
+        if l1 - LUG_CHAMFER <= zm < l1:
+            j = math.floor((l1 - zm) / dz)
+            return lug(full + (j + 0.5) * dz)
+        return lug(LUG_H) if l0 <= zm < l1 else circle(r_in, m)
+
+    def outer(zm: float) -> np.ndarray:
+        base = split if s0 <= zm < s1 else (out_a if zm < s0 else out_b)
+        e = min(zm, BELT_W - zm)
+        if e < EDGE_CH:
+            j = math.floor(e / de)
+            return base - (EDGE_CH - (j + 0.5) * de)
+        return base
+
+    layers = [
+        (z0, z1, [(inner((z0 + z1) / 2), outer((z0 + z1) / 2))])
+        for z0, z1 in zip(cuts, cuts[1:])
+        if z1 - z0 > 1e-9
+    ]
+    return mesh(layers), {
+        **fit,
+        "ring_od": 2 * (r_out + tread_h(tread)),
+        "tread": tread,
+    }
+
+
+def road_wheel(interf: float = 0.10, m: int = 360) -> np.ndarray:
+    """One road-wheel disc (two per axle, one each side of the lug row). Bed face =
+    the 684 pocket side; the Ø4 shoulder axle runs under the lugs between the discs."""
+    w = (BELT_W - LUG_W) / 2 - CLR
+    return mesh(
+        [
+            (0.0, RW_BRG_W, [(crush(RW_BRG_D / 2, m, interf), circle(RW_R, m))]),
+            (RW_BRG_W, w, [(circle(RW_SHOULDER_R, m), circle(RW_R, m))]),
+        ]
+    )
 
 
 def coupons() -> dict[str, np.ndarray]:
@@ -425,6 +562,13 @@ def coupons() -> dict[str, np.ndarray]:
                 ),
             ]
         )
+    # 684 seat (road wheels): one rung, the disc itself is cheap enough to iterate
+    out["coupon_684_10"] = mesh(
+        [
+            (0.0, 1.5, [(circle(RW_SHOULDER_R, m), circle(RW_R, m))]),
+            (1.5, 1.5 + RW_BRG_W, [(crush(RW_BRG_D / 2, m, 0.10), circle(RW_R, m))]),
+        ]
+    )
     # lug/pocket slice: 6 mm of sprocket band on a TT bore, to test-mesh a belt coupon
     mm = N_TEETH * 48
     out["coupon_band_slice"] = mesh([(0.0, 6.0, [(dbore(mm), wheel_band(mm))])])
@@ -441,65 +585,136 @@ def _wheel_g() -> float:
     return _WG[0]
 
 
-def system(n: int = N_TEETH, w: float = BELT_W, extra_g: float = 0.0) -> dict:
+def climb_max(
+    r_front: float,
+    gap_front: float,
+    x_rear: float,
+    xc: float,
+    h: float,
+    wt: float,
+    mu: float,
+) -> float:
+    """Highest square step (mm) the front wheel can mount, quasi-static: edge force in
+    its friction cone, rear contact pushing within its own, both motors at stall.
+    Rigid parts, sharp edge: an upper bound to check on the step blocks (08 §7)."""
+    try:
+        from scipy.optimize import linprog
+    except ImportError:
+        return float("nan")
+    zc = r_front + gap_front  # sprocket centre over the floor
+    f_max = 2 * TT_STALL / (pitch_radius() / 1000)
+    best = 0.0
+    for hs in np.arange(0.5, zc, 0.5):
+        phi = math.acos(min(1.0, (zc - hs) / r_front)) if hs > gap_front else 0.0
+        n = (-math.sin(phi), math.cos(phi))
+        t = (math.cos(phi), math.sin(phi))
+        e = (X_DRIVE + r_front * math.sin(phi), hs)
+
+        def mom(p, f):
+            return (p[0] - xc) * f[1] - (p[1] - h) * f[0]
+
+        a_eq = [
+            [n[0], t[0], 0, 1],
+            [n[1], t[1], 1, 0],
+            [mom(e, n), mom(e, t), mom((x_rear, 0), (0, 1)), mom((x_rear, 0), (1, 0))],
+        ]
+        a_ub = [
+            [-mu, 1, 0, 0],
+            [0, 0, -mu, 1],
+            [0, 1, 0, 1],
+            [-1, 0, 0, 0],
+            [0, 0, -1, 0],
+        ]
+        r = linprog(
+            np.zeros(4),
+            A_ub=a_ub,
+            b_ub=[0, 0, f_max, 0, 0],
+            A_eq=a_eq,
+            b_eq=[0, wt, 0],
+            bounds=[(None, None)] * 4,
+        )
+        if r.status == 0:
+            best = float(hs)
+    return best
+
+
+def system(
+    n: int = N_TEETH, w: float = BELT_W, extra_g: float = 0.0, tread: str = TREAD
+) -> dict:
     rpl = pitch_radius(n)
     r_run = rpl - T_BASE / 2
-    r_o = r_run + T_BASE + GROUSER_H
-    z_ground = Z_AXLE - r_o
+    fit = belt_fit(n=n)
+    ws = wheels(fit["x_fit"], r_run)
+    path = belt_path(ws)
+    (_, x_i, z_i, _), (_, x_r1, z_r, _), (_, x_r2, _, _), _ = ws
+    th = tread_h(tread)
+    z_ground = z_r - RW_R - T_BASE - th  # road wheels carry it (ROCKER)
+    gap_front = (Z_AXLE - r_run) - (z_r - RW_R)  # sprocket's belt over the floor
     y_c = PLATE_HALF_W + SIDE_GAP + w / 2  # track centre line
     gauge = 2 * y_c
-    span = X_DRIVE - X_IDLER
     # masses
     items = dict(MASS_G)
-    belt_g = (
-        (2 * span + 2 * math.pi * rpl)
-        * w
-        * (T_BASE + 0.25 * (GROUSER_H + LUG_H))
-        / 1000
-        * RHO_TPU
-    )
+    belt_g = fit["length"] * w * (T_BASE + 0.25 * (th + LUG_H)) / 1000 * RHO_TPU
     wheel_g = _wheel_g() * (r_run / R_RUN) * (w / BELT_W)  # built idler, scaled
-    items["belts x2"] = (2 * belt_g, (X_DRIVE + X_IDLER) / 2, Z_AXLE)
-    items["wheels x4"] = (4 * wheel_g + extra_g, (X_DRIVE + X_IDLER) / 2, Z_AXLE)
+    rw_g = 4 * 2 * math.pi * RW_R**2 * ((w - LUG_W) / 2) / 1000 * RHO_PETCF * 0.85
+    x_mid = (X_DRIVE + x_i) / 2
+    items["belts x2"] = (2 * belt_g, x_mid, Z_AXLE - RAISE / 2)
+    items["wheels x4"] = (4 * wheel_g + extra_g, x_mid, Z_AXLE - RAISE / 2)
+    items["road wheels x8 discs"] = (rw_g, (x_r1 + x_r2) / 2, z_r)
     mtot = sum(v[0] for v in items.values())
     xc = sum(v[0] * v[1] for v in items.values()) / mtot
     zc = sum(v[0] * v[2] for v in items.values()) / mtot
     h = zc - z_ground
     wt = mtot / 1000 * G
-    # skid-steer pivot: resisting moment of lateral friction over contact length L
+    # skid-steer pivot: resisting moment of lateral friction over the loaded span;
+    # the rocker loads the two road wheels, the full span is the worst case
+    spans = {"rocker": x_r2 - x_r1, "full": x_r2 - x_i}
     res = {}
     for mu in (0.5, 0.9, 1.2):
-        for name, k in (("uniform", 4), ("2-point", 2)):
-            mres = mu * wt * (span / 1000) / k
-            tau = mres / (gauge / 1000) * (rpl / 1000)
-            res[f"mu{mu}_{name}"] = tau
+        for name, span in spans.items():
+            mres = mu * wt * (span / 1000) / 2
+            res[f"mu{mu}_{name}"] = mres / (gauge / 1000) * (rpl / 1000)
+    # bottom run: longest unsupported span, sag under half the weight per side
+    s_max = max(x_r1 - x_i, x_r2 - x_r1)
+    sag = (s_max / 2) * (wt / 2) / (2 * TENSION)
+    r_o = r_run + T_BASE + th
     front = max(PLATE_X[1], X_DRIVE + r_o)
-    rear = min(PLATE_X[0], X_IDLER - r_o)
+    rear = min(PLATE_X[0], x_i - r_o)
     half_w = y_c + w / 2
     sweep = max(math.hypot(x - xc, half_w) for x in (front, rear))
     return {
         "n": n,
         "w": w,
         "r_run": r_run,
-        "pitch": pitch(),
+        "pitch": PITCH,
+        "wheels": ws,
+        "path": path,
         "z_ground": z_ground,
         "clearance": PLATE_UNDERSIDE_Z - z_ground,
+        "clearance_flat": -PLATE_T_UNDER - z_ground,
+        "gap_front": gap_front,
         "gauge": gauge,
-        "span": span,
-        "L/B": span / gauge,
+        "spans": spans,
+        "L/B": spans["full"] / gauge,
         "width": 2 * half_w,
         "mass_g": mtot,
         "belt_g": belt_g,
         "cg_x": xc,
         "cg_z_plate": zc,
         "cg_h": h,
-        "cg_vs_mid": xc - (X_DRIVE + X_IDLER) / 2,
-        "brake_g": (X_DRIVE - xc) / h,
-        "accel_g": (xc - X_IDLER) / h,
+        "nod_g": (x_r2 - xc) / h,  # braking that rocks it onto the sprocket
+        "nod_deg": math.degrees(math.atan(gap_front / (X_DRIVE - x_r2))),
+        "accel_g": (xc - x_i) / h,
         "side_tip_deg": math.degrees(math.atan(y_c / h)),
         "pivot_tau": res,
+        "sag": sag,
+        "s_max": s_max,
         "sweep_r": sweep,
-        "fit": belt_fit(n=n),
+        "fit": fit,
+        "engaged": path["wrap"][3] / (2 * math.pi) * n,
+        "climb": {
+            mu: climb_max(r_o, gap_front, x_i, xc, h, wt, mu) for mu in (0.5, 0.9)
+        },
         "strain_pct": {
             k: tuple(100 * TENSION / (w * T_BASE * e) for e in v)
             for k, v in E_TPU.items()
@@ -510,52 +725,61 @@ def system(n: int = N_TEETH, w: float = BELT_W, extra_g: float = 0.0) -> dict:
 def report() -> None:
     s = system()
     f = s["fit"]
+    print("wheels (x, z above plate top, running Ø):")
+    for name, x, z, r in s["wheels"]:
+        print(f"  {name:9s} x {x:+6.1f}  z {z:+6.1f}  Ø{2 * r:.1f}")
     print(
-        f"belt: {f['links']} lugs x pitch {s['pitch']:.2f} = {f['length']:.1f} mm, "
-        f"centre distance at fit {f['c_fit']:.1f} (nominal {s['span']:.1f}, tensioner ±{TRAVEL:.0f})"
+        f"belt: {f['links']} lugs x {PITCH:.0f} = {f['length']:.0f} mm; "
+        f"idler taut at x {f['x_fit']:.1f} (travel {X_IDLER - TRAVEL:.0f}…"
+        f"{X_IDLER + TRAVEL:.0f}): install slack {f['install_slack']:.1f} mm, rear "
+        f"travel absorbs {f['creep_pct']:.1f} % stretch + creep"
     )
     print(
-        f"idler at fit x {f['x_fit']:.1f} (travel {X_IDLER - TRAVEL:.0f}…{X_IDLER + TRAVEL:.0f}): "
-        f"install slack {f['install_slack']:.1f} mm, rear travel absorbs {f['creep_pct']:.1f} % "
-        f"stretch + creep"
+        f"sprocket wrap {math.degrees(s['path']['wrap'][3]):.0f}° = {s['engaged']:.1f} lugs engaged"
     )
     print(
-        f"wheel: N={N_TEETH}, run Ø{2 * R_RUN:.1f}, outside of belt Ø{2 * outer_r():.1f}"
+        f"ground z {s['z_ground']:.1f}: clearance {s['clearance']:.1f} under the bosses, "
+        f"{s['clearance_flat']:.1f} under the flat plate; sprocket {s['gap_front']:.1f} "
+        f"off the floor"
     )
     print(
-        f"ground z {s['z_ground']:.1f}, clearance under plate {s['clearance']:.1f} mm"
+        f"track gauge {s['gauge']:.0f}, width {s['width']:.0f}; loaded span "
+        f"{s['spans']['rocker']:.0f} (rocker) / {s['spans']['full']:.0f} (full), "
+        f"L/B {s['L/B']:.2f}"
     )
     print(
-        f"track gauge {s['gauge']:.0f}, contact span {s['span']:.0f}, L/B {s['L/B']:.2f}, "
-        f"overall width {s['width']:.0f}"
+        f"mass ~{s['mass_g']:.0f} g (belts {2 * s['belt_g']:.0f} g); CG x "
+        f"{s['cg_x']:+.1f}, {s['cg_z_plate']:.1f} above plate, {s['cg_h']:.1f} above ground"
     )
     print(
-        f"mass ~{s['mass_g']:.0f} g (belts {2 * s['belt_g']:.0f} g); CG x {s['cg_x']:+.1f} "
-        f"({s['cg_vs_mid']:+.1f} vs contact mid, front wheels carry "
-        f"{100 * (s['cg_x'] - X_IDLER) / s['span']:.0f} %), z {s['cg_z_plate']:.1f} above plate, "
-        f"{s['cg_h']:.1f} above ground"
+        f"nod onto the sprocket above {s['nod_g']:.2f} g braking ({s['nod_deg']:.1f}° "
+        f"max); rear tip {s['accel_g']:.2f} g; side tip {s['side_tip_deg']:.0f}°"
     )
     print(
-        f"pitch-over limits: brake {s['brake_g']:.2f} g, accel {s['accel_g']:.2f} g; "
-        f"side tip {s['side_tip_deg']:.0f}°"
+        f"bottom run: longest free span {s['s_max']:.0f} mm, sag over a mid-span bump "
+        f"~{s['sag']:.1f} mm (vs {s['clearance']:.1f} clearance)"
     )
-    print(f"pivot sweep radius {s['sweep_r']:.0f} mm (Ø{2 * s['sweep_r']:.0f})")
+    print(
+        "step climb (upper bound): "
+        + ", ".join(f"μ{mu} {v:.0f} mm" for mu, v in s["climb"].items())
+    )
+    print(f"pivot sweep Ø{2 * s['sweep_r']:.0f}")
     for k, (hi, lo) in s["strain_pct"].items():
         print(
             f"belt strain at {TENSION:.0f} N, TPU {k}: {lo:.2f}–{hi:.2f} % "
-            f"(= {lo * 4:.1f}–{hi * 4:.1f} mm on 400)"
+            f"(= {lo * f['length'] / 100:.1f}–{hi * f['length'] / 100:.1f} mm)"
         )
     print("pivot torque per motor, N·m (TT stall ~%.2f):" % TT_STALL)
     for k, v in s["pivot_tau"].items():
         print(f"  {k:16s} {v:.3f}  ({100 * v / TT_STALL:.0f} % stall)")
-    print("\nsweep: N  W   Ørun  clear  width  L/B   sweepØ  τ(μ0.9,2pt)")
-    for n in (14, 16, 18):
-        for w in (30.0, 36.0, 44.0):
+    print("\nsweep: N  W   Ørun  clear  width  sweepØ  τ(μ0.9,rocker/full)")
+    for n in (16, 18, 20):
+        for w in (30.0, 36.0):
             t = system(n, w)
             print(
                 f"      {n:2d} {w:3.0f}  {2 * t['r_run']:5.1f} {t['clearance']:5.1f}  "
-                f"{t['width']:5.0f}  {t['L/B']:.2f}  {2 * t['sweep_r']:5.0f}   "
-                f"{t['pivot_tau']['mu0.9_2-point']:.3f}"
+                f"{t['width']:5.0f}  {2 * t['sweep_r']:5.0f}   "
+                f"{t['pivot_tau']['mu0.9_rocker']:.3f} / {t['pivot_tau']['mu0.9_full']:.3f}"
             )
 
 
@@ -567,21 +791,19 @@ def preview(path: str) -> None:
     import matplotlib.pyplot as plt
 
     s = system()
-    fig, ax = plt.subplots(
-        1, 2, figsize=(14, 5.5), gridspec_kw={"width_ratios": [2.2, 1]}
-    )
-    a = ax[0]
-    rpl = pitch_radius()
-    for x in (X_DRIVE, X_IDLER):
-        a.add_patch(plt.Circle((x, Z_AXLE), R_RUN, fill=False, lw=1.5))
-        a.add_patch(plt.Circle((x, Z_AXLE), rpl, fill=False, ls=":", lw=0.8))
-    for zz in (Z_AXLE + R_RUN, Z_AXLE - R_RUN):
-        a.plot(
-            [X_IDLER, X_DRIVE],
-            [zz + np.sign(zz - Z_AXLE) * T_BASE / 2] * 2,
-            "k",
-            lw=T_BASE * 2,
-        )
+    fig = plt.figure(figsize=(15, 8))
+    a = fig.add_subplot(2, 3, (1, 2))
+    for name, x, z, r in s["wheels"]:
+        a.add_patch(plt.Circle((x, z), r, fill=False, lw=1.5))
+        a.plot(x, z, "k+", ms=6)
+    for p, q in s["path"]["segs"]:
+        a.plot([p[0], q[0]], [p[1], q[1]], color="limegreen", lw=T_BASE * 2)
+    for (name, x, z, r), ph_in, wr in zip(
+        s["wheels"], s["path"]["phi_in"], s["path"]["wrap"]
+    ):
+        t = np.linspace(ph_in, ph_in + wr, 40)
+        rp = r + T_BASE / 2
+        a.plot(x + rp * np.cos(t), z + rp * np.sin(t), color="limegreen", lw=T_BASE * 2)
     a.plot([PLATE_X[0], PLATE_X[1]], [-2, -2], color="0.5", lw=8, solid_capstyle="butt")
     a.axhline(s["z_ground"], color="sienna", lw=1)
     a.plot(s["cg_x"], s["cg_z_plate"], "o", ms=12, mfc="gold", mec="k")
@@ -593,11 +815,11 @@ def preview(path: str) -> None:
     )
     a.set_aspect("equal")
     a.set_title(
-        f"Side: {s['fit']['links']}-lug belt, span {s['span']:.0f}, "
-        f"clearance {s['clearance']:.1f} mm"
+        f"Side: {s['fit']['links']}-lug belt, sprocket {s['gap_front']:.1f} up, "
+        f"clearance {s['clearance']:.1f} / {s['clearance_flat']:.1f} mm"
     )
     a.set_xlabel("x (mm, +fwd)")
-    b = ax[1]
+    b = fig.add_subplot(2, 3, 3)
     m = N_TEETH * 48
     th = np.linspace(0, 2 * np.pi, m, endpoint=False)
     for r, st in ((wheel_band(m), "-"), (circle(R_RUN, m), "--")):
@@ -619,9 +841,32 @@ def preview(path: str) -> None:
         )
     b.add_patch(plt.Circle((0, 0), R_RUN + T_BASE, fill=False, color="limegreen", lw=2))
     b.set_aspect("equal")
-    b.set_title(f"Wheel face: band pockets + lugs (clr {CLR})")
+    b.set_title(f"Wheel face: pockets + lugs (clr {CLR})")
+    # tread, unrolled outside face: 120 mm of each style, dark = contact
+    fit = s["fit"]
+    links = fit["links"]
+    mm = links * 24
+    r_out = fit["length"] / (2 * math.pi) + T_BASE / 2
+    xs = np.arange(mm) * fit["length"] / mm
+    sel = xs < 120
+    for i, tr in enumerate(("bars_stagger", "pads", "bars", "smooth")):
+        ax = fig.add_subplot(2, 4, 5 + i)
+        ca, cb = _tread_curves(tr, mm, links, r_out)
+        img = np.vstack([np.tile(ca[sel], (17, 1)), np.tile(cb[sel], (19, 1))]) - r_out
+        if tr in ("pads", "bars_stagger"):
+            img[17] = np.minimum(ca, cb)[sel] - r_out
+        ax.imshow(
+            img,
+            aspect="equal",
+            cmap="Greys",
+            vmin=0,
+            vmax=1.5,
+            extent=(0, 120, 0, BELT_W),
+        )
+        ax.set_title(f"tread '{tr}' (+{tread_h(tr):.1f} mm)")
+        ax.set_xlabel("along the belt (mm)")
     fig.tight_layout()
-    fig.savefig(path, dpi=130)
+    fig.savefig(path, dpi=120)
 
 
 def _prism(poly: list[tuple[float, float]], z0: float, z1: float) -> np.ndarray:
@@ -705,9 +950,11 @@ def build(out: str) -> None:
         "sprocket_plain": sprocket(False),
         "idler_2brg": idler(2),
         "idler_1brg": idler(1),
+        "road_wheel_disc": road_wheel(),
     }
-    bt, info = belt()
-    parts["belt"] = bt
+    info = {}
+    for tr in ("bars_stagger", "pads", "bars", "smooth"):
+        parts[f"belt_{tr}"], info[tr] = belt(tread=tr)
     parts.update(coupons())
     parts.update(test_pieces())  # T13
     print(f"{'part':24s} {'tris':>7s}  closed  vol cm³  mass g")
@@ -720,7 +967,8 @@ def build(out: str) -> None:
         )
         bad |= not ok or vol <= 0
         write_stl(os.path.join(out, f"{name}.stl"), t, f"robot-buddy {name}")
-    print(f"belt printed as a ring Ø{info['ring_od']:.0f} x {BELT_W:.0f} (bed 256)")
+    for tr, i in info.items():
+        print(f"belt_{tr}: ring Ø{i['ring_od']:.0f} x {BELT_W:.0f} (bed 256)")
     preview(os.path.join(out, "drivetrain_preview.png"))
     if bad:
         sys.exit("mesh check failed")

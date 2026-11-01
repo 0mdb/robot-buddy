@@ -9,7 +9,7 @@ From 07 §4 (F1–F13) plus what the loop built: the knee screw (P1b), carriages
 | M3 × 8 SHCS | F1 bulkhead foot (3) + knee (1), F2 mounts (8), F5 deck (4), **F7 reflex (4), F8 XVF (4), F11 face (4)** (were × 6) | 28 | 2.5 hex |
 | M3 × 8 ISO 7380-2 flanged button | F9 canopy | 4 | **2.0 hex** (see below) |
 | M3 × 10 SHCS | F10 mic disc through grommets | 3 | 2.5 |
-| M3 × 16 SHCS + washer + nyloc | F4 carriage clamps | 2 | 2.5 + 5.5 |
+| M3 × 10 SHCS + washer, up into an M3 insert (R2a; × 16 + nyloc before, × 12 until tick 68) | F4 carriage clamps | 2 | 2.5 |
 | **M3 × 30 SHCS** | F4b jack screws (were × 20) | 2 | 2.5 (ball-end, R1-F3) |
 | M3 × 28 SHCS | F3 motors | 4 | 2.5 |
 | Ø4 × 55 shoulder bolt (M3 thread) + nyloc | F4 idler axles | 2 | 2.5 + 5.5 |

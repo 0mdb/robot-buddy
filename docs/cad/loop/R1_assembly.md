@@ -15,7 +15,7 @@ Every joint in 06 §8 plus what the loop has built (deck, carriages, idlers), ch
 | 7 | **Deck → posts**: 4 × M3 down into the post inserts | M3, 2.5 hex | ❌ **rear pair (−48, ±20) is under the Pi board** (x −64.5…22.5, \|y\| ≤ 28): trapped once the stack is on. Front pair (30, ±8) is clear (board ends at 22.5) |
 | 8 | Sprockets onto the TT shafts, M2 end screw | M2, 1.5 hex | outboard face ✓ |
 | 9 | Carriages into the guide slots, clamp screw down to a nut under the plate (finger-loose) | M3 × 16 + nyloc | top + belly ✓ |
-| 10 | Idler axle: Ø4 shoulder bolt from outboard through the 2 × 624 into the boss bore; nyloc on the pedestal's inboard face (\|y\| 40, z 13.5) | 2.5 hex + 5.5 spanner | under the canopy, open from above ✓ |
+| 10 | Idler axle: Ø4 shoulder bolt from outboard through the 2 × 624 into the boss bore; nyloc on the pedestal's inboard face (\|y\| 40, z ~~13.5~~ **10.5**, 08 rev 1; the clamp insert below it is pressed from underneath since tick 68) | 2.5 hex + 5.5 spanner | under the canopy, open from above ✓ |
 | 11 | Belt on, tension with the jack screw, clamp | M3 jack screw, 2.5 hex | ⚠️ the head sits between the jack block (x −28) and the encoder housing (x −10 … 3.3, \|y\| 30.7–56.7, z 1–26): **18 mm** for a key along X at \|y\| 36.5. A straight driver can't reach; a ball-end L-key can |
 | 12 | Face board onto the bulkhead, cables, canopy (4 × M3) | 2.5 hex | P6 not designed yet; the 2 rear canopy bosses on the plate don't exist yet |
 

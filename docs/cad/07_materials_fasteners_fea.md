@@ -190,6 +190,8 @@ before ordering (screw engagement ≥ 1.3 d, tip ≥ 0.5 mm short of the pocket 
 | F4 | Follower axle + clamp | per `05_follower_spec.md`: Ø4 shoulder bolt (M3 thread) as the axle; clamp M3 × 16 SHCS + washer + nyloc from below | — | — | 2 + 2–4 |
 
 > Amendment (loop R2a, 2026-10-31): the carriage clamp is an **M3 × 12 SHCS up from under the plate into an M3 insert in a boss on the carriage foot** (05's option), not M3 × 16 + nyloc: the nut sat blind under the plate and made a track swap a two-tool job (R2, `docs/cad/loop/R2_service.md`).
+
+> Amendment (loop P13a, 2026-11-01): 08 rev 1 drops the idler axle 13.5 → **10.5**, which put the axle bolt's head (pedestal inboard face, Ø8, z 6.5–14.5) into the clamp-insert boss (z 4–10). The clamp insert is now **pressed up from the carriage foot's underside** into an open Ø9.2 boss (top z 6.0), and the clamp screw is **M3 × 12 → M3 × 10** (tip flush with the boss top; a 12 would reach into the bolt head). The clamp then pulls the insert's brass face onto the plate. S6 7.57 → 6.50 MPa.
 | **F4b** | **Follower tension jack** (new) | ~~M3 × 20~~ **M3 × 30 SHCS** (A2) in an M3 insert in a plate end-stop, tip bearing on the carriage (cup point: set screw ISO 4029 if preferred) | M3 insert, axis along X | screw sets tension; clamp only locks | 2 |
 | F5 | Pi deck → plate posts | M3 × 8 SHCS, down from the top (service with the canopy off) | M3 inserts at post tops | deck 3 → 5 | 4 |
 | F6 | Pi stack → deck | M2.5 × 6 SHCS, up through the deck | the existing **6 mm brass standoffs** | deck 3 → 3 | 4 |

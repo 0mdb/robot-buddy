@@ -151,7 +151,7 @@ def s6() -> dict:
     the jack screw on the front face (x +10) and the clamp screw in its hole."""
     f = AXLE_F  # as S2 (both runs + the tight-side excess); the idler sees ~2 x TRACK_T
     yc = sum(chassis.track_y()) / 2
-    za = chassis.dt.Z_AXLE
+    za = chassis.idler_z()  # 08 rev 1: 10.5
     return {
         "name": "S6",
         "title": "Follower carriage, belt tension at the idler axle",

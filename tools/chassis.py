@@ -932,10 +932,14 @@ def rebuild_manifest(win: str) -> list[str]:
         f"comp|trackframe_R|{tf_r}|{row(ROT_I, (0, 0, 0))}",
         f"comp|carriage_L|{car_l}|{row(ROT_I, (dt.belt_fit()['x_fit'], 0, 0))}",
         f"comp|carriage_R|{car_r}|{row(ROT_I, (dt.belt_fit()['x_fit'], 0, 0))}",
-        f"comp|sprocket_L|{sprocket}|{row(*wheel_at(dt.X_DRIVE, +1))}",
-        f"comp|sprocket_R|{sprocket}|{row(*wheel_at(dt.X_DRIVE, -1))}",
-        f"comp|idler_L|{idler}|{row(*wheel_at(dt.belt_fit()['x_fit'], +1))}",
-        f"comp|idler_R|{idler}|{row(*wheel_at(dt.belt_fit()['x_fit'], -1))}",
+        *[
+            f"comp|{n}_{sd}|{p}|{row(*wheel_at(x, s, z, wheel_phase(x, z)))}"
+            for n, p, x, z in (
+                ("sprocket", sprocket, dt.X_DRIVE, dt.Z_AXLE),
+                ("idler", idler, dt.belt_fit()["x_fit"], idler_z()),
+            )
+            for sd, s in (("L", +1), ("R", -1))
+        ],
         f"comp|belt_L|{belt_l}|{row(ROT_I, (0, 0, 0))}",
         f"comp|belt_R|{belt_r}|{row(ROT_I, (0, 0, 0))}",
         f"comp|face|{face}|{row(*face_on_bulkhead())}",
@@ -1661,7 +1665,9 @@ CAR_BOSS_R = (
     7.5  # S6: Ø12 bent at its root (12.9 MPa); the idler's inboard opening is ~r 20
 )
 CAR_BORE = 4.1  # 05: slip for the Ø4 shoulder
-CAR_CLAMP_BOSS_Z = 10.0  # R2a: top of the clamp-insert boss (insert 2.8 .. 10)
+CAR_CLAMP_BOSS_Z = (
+    6.0  # top of the open clamp-insert boss (insert 0 .. 5.7 from below, tick 68)
+)
 CAR_PAD = (
     6.0,
     (32.0, 41.0),
@@ -1678,7 +1684,7 @@ def idler_tube_inboard() -> float:
 def carriage_features(mirror: bool) -> list[tuple]:
     hx = CAR_L / 2
     y0, y1 = CAR_FOOT_Y
-    za = dt.Z_AXLE
+    za = idler_z()  # 08 rev 1: 10.5
     boss_y1 = idler_tube_inboard() - 0.5
     px, (pa, pb), pz = CAR_PAD
     ops: list[tuple] = [
@@ -1715,30 +1721,15 @@ def carriage_features(mirror: bool) -> list[tuple]:
         ("add", ("box", px, hx, pa, pb, CAR_FOOT_T, pz)),
         ("cut", ("cyly", 0.0, za, CAR_PED[1] - 0.1, boss_y1 + 0.1, CAR_BORE / 2)),
         # R2a: the clamp screw comes up from under the plate (through the clamp slot) into
-        # an M3 insert pressed from the top of a boss, so a track swap needs one key and no
-        # blind nyloc under the plate (05 option); clearance below the insert
+        # an M3 insert, so a track swap needs one key and no blind nyloc under the plate
+        # (05 option). Tick 68 (idler axle 13.5 -> 10.5): the insert is pressed UP from the
+        # foot's underside into a short open boss (top CAR_CLAMP_BOSS_Z 6.0), so the axle
+        # bolt's head on the pedestal face (Ø8, z 6.5-14.5) clears it, and the clamp pulls
+        # the insert's brass face onto the plate instead of the plastic over it
         ("add", ("cylz", 0.0, CLAMP_Y, CAR_FOOT_T, CAR_CLAMP_BOSS_Z, INS_BOSS / 2)),
         (
             "cut",
-            (
-                "cylz",
-                0.0,
-                CLAMP_Y,
-                CAR_CLAMP_BOSS_Z - INS_DEPTH,
-                CAR_CLAMP_BOSS_Z + 0.1,
-                INS_HOLE / 2,
-            ),
-        ),
-        (
-            "cut",
-            (
-                "cylz",
-                0.0,
-                CLAMP_Y,
-                -CAR_RAIL_D - 0.1,
-                CAR_CLAMP_BOSS_Z - INS_DEPTH + 0.1,
-                CLR_M3 / 2,
-            ),
+            ("cylz", 0.0, CLAMP_Y, -0.1, CAR_CLAMP_BOSS_Z + 0.1, INS_HOLE / 2),
         ),
     ]
     if not mirror:
@@ -1861,9 +1852,15 @@ ROT_WHEEL_L = [1, 0, 0, 0, 0, -1, 0, 1, 0]
 ROT_WHEEL_R = [1, 0, 0, 0, 0, 1, 0, -1, 0]
 
 
-def wheel_at(x: float, side: int) -> tuple[list[float], tuple[float, float, float]]:
+def wheel_at(
+    x: float, side: int, z: float = dt.Z_AXLE, phase: float = 0.0
+) -> tuple[list[float], tuple[float, float, float]]:
+    """Wheel part -> chassis at (x, z), turned `phase` degrees about its axle (x -> z)."""
     y_out = track_y()[1]
-    return (ROT_WHEEL_L if side > 0 else ROT_WHEEL_R), (x, side * y_out, dt.Z_AXLE)
+    r = ROT_WHEEL_L if side > 0 else ROT_WHEEL_R
+    if phase:
+        r = matmul(rot_y(-phase), r)
+    return r, (x, side * y_out, z)
 
 
 # ------------------------------------------------------------- canopy (06 §6, P6)
@@ -2316,31 +2313,105 @@ def canopy_fea_lines(path: str) -> list[str]:
 
 # ------------------------------------------------ installed belt, native (T11)
 # The 08 belt wrapped on its wheels (the as-printed ring is drivetrain.belt()): pitch line
-# = stadium round the sprocket and idler at the fit station, inner face R_RUN, base
-# T_BASE, grouser bars GROUSER_H outboard, trapezoid lugs LUG_H inward in the centre
+# = drivetrain.belt_path() round the 4 wheels of 08 rev 1 (idler, two road wheels,
+# sprocket) at the fit station, inner face R_RUN, base T_BASE, tread bars GROUSER_H
+# outboard (an envelope over the 1.0 pads), trapezoid lugs LUG_H inward in the centre
 # LUG_W band (2 mm end chamfers left out). Lug centres at pitch-line s = 5 + 10 k from the
-# sprocket's top tangent point, which puts them at 20 k° on both wheels = the pockets
-# (the straights are exactly 11 pitches). Replaces the stadium envelope for fit checks.
+# sprocket's top tangent point; the sprocket and idler are turned (wheel_phase) so their
+# pockets sit on the lugs. Replaces the stadium envelope for fit checks.
+def idler_z() -> float:
+    """Idler axle z (08 rev 1: RAISE below the TT shaft)."""
+    return next(w[2] for w in dt.wheels() if w[0] == "idler")
+
+
+def _belt_geom() -> list[tuple]:
+    """Path pieces from s = 0 (sprocket top tangent, going aft over the top run):
+    ("line", (x0, z0), (x1, z1), len) and ("arc", (cx, cz), r_pitch, phi0, wrap)."""
+    ws = dt.wheels(dt.belt_fit()["x_fit"])
+    bp = dt.belt_path(ws)
+    n = len(ws)
+    c = [(w[1], w[2], w[3] + dt.T_BASE / 2) for w in ws]
+    out = []
+    i = n - 1  # sprocket: leave it over the top run
+    for _ in range(n):
+        (p0, p1), j = bp["segs"][i], (i + 1) % n
+        out.append(("line", p0, p1, math.dist(p0, p1)))
+        out.append(("arc", (c[j][0], c[j][1]), c[j][2], bp["phi_in"][j], bp["wrap"][j]))
+        i = j
+    return out
+
+
 def _belt_path(s_: float, off: float) -> tuple[float, float]:
     """Chassis (x, z) at pitch-line arclength s_ (0 = sprocket top tangent, going aft
     over the top run), offset `off` outward from the pitch line."""
-    xd, xi, z = dt.X_DRIVE, dt.belt_fit()["x_fit"], dt.Z_AXLE
+    g = _belt_geom_cache()
+    s_ %= sum(p[3] if p[0] == "line" else p[2] * p[4] for p in g)
+    for p in g:
+        if p[0] == "line":
+            (x0, z0), (x1, z1), ln = p[1], p[2], p[3]
+            if s_ <= ln:
+                t = s_ / ln
+                nx, nz = (z1 - z0) / ln, -(x1 - x0) / ln  # right of travel = outward
+                return (x0 + t * (x1 - x0) + off * nx, z0 + t * (z1 - z0) + off * nz)
+            s_ -= ln
+        else:
+            (cx, cz), r, ph, wr = p[1], p[2], p[3], p[4]
+            if s_ <= r * wr:
+                th = ph + s_ / r
+                return (cx + (r + off) * math.cos(th), cz + (r + off) * math.sin(th))
+            s_ -= r * wr
+    raise AssertionError(s_)
+
+
+_BG: list = []
+
+
+def _belt_geom_cache() -> list[tuple]:
+    if not _BG:
+        _BG.extend(_belt_geom())
+    return _BG
+
+
+def _lug_clearance(x: float, z: float, deg: float) -> float:
+    """Worst radial gap (mm) from every lug near the wheel at (x, z) to its tooth band
+    (drivetrain.wheel_band, pockets at 0 mod 360/N in the chassis frame as wheel_at
+    places it), with the wheel turned `deg`. Radial, so a lower bound on the true gap."""
+    import numpy as np
+
+    key = (round(x, 6), round(z, 6))
+    if key not in _LUGS:
+        lug = np.array(_belt_loop("lugs"))
+        r = np.hypot(lug[:, 0] - x, lug[:, 1] - z)
+        sel = r < dt.R_RUN + 0.5
+        _LUGS[key] = (np.arctan2(lug[sel, 1] - z, lug[sel, 0] - x), r[sel])
+    a, r = _LUGS[key]
+    m = dt.N_TEETH * 48
+    band = np.asarray(dt.wheel_band(m)).ravel()
+    th = np.arange(m) * 2 * np.pi / m
+    br = np.interp((a - math.radians(deg)) % (2 * np.pi), th, band, period=2 * np.pi)
+    return float((r - br).min())
+
+
+_LUGS: dict = {}
+
+
+def wheel_phase(x: float, z: float) -> float:
+    """Degrees to turn a toothed wheel at (x, z) about its axle (chassis x -> z sense)
+    so its pockets sit on the lugs: start from the lugs on the wrap (the parts' pockets
+    read 0 mod 360/N in the chassis frame as wheel_at places them; tick 55), then take
+    the turn within +-1 deg that maximises the worst gap over every lug near the wheel,
+    including the ones still on a straight as they enter or leave (tick 68: the 6 deg
+    climb into the sprocket from road wheel 2 grazed the entering lug)."""
+    pitch_deg = 360.0 / dt.N_TEETH
+    links = dt.belt_fit()["links"]
     rp = dt.pitch_radius()
-    c = xd - xi
-    arc = math.pi * rp
-    s_ %= 2 * c + 2 * arc
-    if s_ < c:
-        return (xd - s_, z + rp + off)
-    s_ -= c
-    if s_ < arc:
-        th = math.pi / 2 + s_ / rp
-        return (xi + (rp + off) * math.cos(th), z + (rp + off) * math.sin(th))
-    s_ -= arc
-    if s_ < c:
-        return (xi + s_, z - rp - off)
-    s_ -= c
-    th = -math.pi / 2 + s_ / rp
-    return (xd + (rp + off) * math.cos(th), z + (rp + off) * math.sin(th))
+    for k in range(links):
+        px, pz = _belt_path(5.0 + 10.0 * k, 0.0)
+        if abs(math.hypot(px - x, pz - z) - rp) < 1e-6:
+            th0 = math.degrees(math.atan2(pz - z, px - x)) % pitch_deg
+            cands = [th0 + 0.02 * i for i in range(-50, 51)]
+            return max(cands, key=lambda d: _lug_clearance(x, z, d))
+    raise AssertionError((x, z))
 
 
 def _belt_loop(kind: str) -> list[tuple[float, float]]:
@@ -2434,6 +2505,7 @@ def trackframe_geom() -> dict:
     yw = track_y()[1]  # wheels' outboard faces
     y0, y1 = yw + TF_GAP, yw + TF_GAP + TF_T
     xs, xi, z = dt.X_DRIVE, dt.belt_fit()["x_fit"], dt.Z_AXLE
+    zi = idler_z()  # 08 rev 1: the idler axle (slot) sits RAISE below the sprocket's
     tr, sw = TF_SLOT
     xa = xi - tr  # rear centre of the stadium = rear end of the slot
     r = TF_H / 2
@@ -2448,7 +2520,16 @@ def trackframe_geom() -> dict:
         - math.pi * (TF_DOWEL / 2) ** 2 * (TF_T + bh)
         - slot * TF_T
     )
-    return {"y": (y0, y1), "xs": xs, "xi": xi, "xa": xa, "z": z, "r": r, "vol": vol}
+    return {
+        "y": (y0, y1),
+        "xs": xs,
+        "xi": xi,
+        "xa": xa,
+        "z": z,
+        "zi": zi,
+        "r": r,
+        "vol": vol,
+    }
 
 
 def trackframe_lines(path: str, side: int) -> list[str]:
@@ -2462,8 +2543,10 @@ def trackframe_lines(path: str, side: int) -> list[str]:
     def ys(a, b):  # mirror for the right side
         return (a, b) if s > 0 else (-b, -a)
 
+    zi = g["zi"]
+
     def stadium(xb, xf, rr):  # Top plane: sketch (x, -z), arcs CCW in sketch coords
-        return f"M {xf} {-z - rr} A {xf} {-z} {xf} {-z + rr} L {xb} {-z + rr} A {xb} {-z} {xb} {-z - rr}"
+        return f"M {xf} {-zi - rr} A {xf} {-zi} {xf} {-zi + rr} L {xb} {-zi + rr} A {xb} {-zi} {xb} {-zi - rr}"
 
     def plate():  # rounded rectangle x xa - r .. xs + r, z TF_PLATE_Z, corners TF_PLATE_R
         x0_, x1_ = xa - r, xs + r

@@ -50,6 +50,8 @@ What each material is for on this robot, and why.
 | PETG | Polymaker | White | 1 kg | Prototyping (high-speed formula) |
 | PLA Basic | Bambu | Pumpkin Orange (10301) | 1 kg | Cosmetic |
 | PLA Basic | Bambu | Hot Pink (10204) | 1 kg | Cosmetic |
+
+> Also on hand (Ben, 2026-11-01): **Fiberon PA6-CF20**, plenty (shared with fpv250; calibrated P2S presets there). Candidate for impact/wear parts (idler, road wheels) pending the M6 coupons; dry before printing, hardened nozzle.
 | PLA Glow | Bambu | Glow Green (15500) | 1 kg | Cosmetic accents (glows) |
 | PLA Wood | Bambu | Black Walnut (13107) | 1 kg | Cosmetic accents (wood look) |
 
