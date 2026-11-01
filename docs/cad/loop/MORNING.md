@@ -1,6 +1,6 @@
 # Morning summary: CAD loop leg 2 (ticks 47–67 + a review pass, 2026-10-31 11:00 → 2026-11-01 06:15 MST)
 
-SolidWorks hung at ~01:36 MST during a rebuild; you restarted it ~04:00 and the pending bulkhead top-edge round (S1b3) was re-verified and committed (S5c unchanged).
+SolidWorks hung at ~01:36 MST during a rebuild; you restarted it ~04:00 and the pending bulkhead top-edge round (S1b3) was re-verified and committed (S5c unchanged). **At 06:12 it went 'not responding' again** during the review re-run of the two canopy studies (canopy open, orphan swsim.exe; nothing killed). If it doesn't come back, close it and restart; nothing unsaved matters (every part is regenerated from the generators).
 
 **Nothing is print-ready yet** (your call). Drivetrain coupons/test pieces are ready to print (below).
 

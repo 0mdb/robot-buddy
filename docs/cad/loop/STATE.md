@@ -2,7 +2,7 @@
 
 pass: 1, leg 2 (leg 1 ended 2026-10-31 ~11:10 at tick 46)
 tick: 67 (leg 2 ended 2026-11-01 06:15 MST)
-sw: up (Ben restarted SolidWorks 2026-11-01 ~04:00 MST after the 01:36 hang)
+sw: UNCERTAIN (06:12 MST: SLDWORKS 'not responding' with the canopy open + an orphan swsim.exe from the review-pass S8/S5k run whose 40 min wrapper timed out; possibly still solving, possibly hung like 01:36; nothing killed. If it doesn't recover: close it, restart, and re-run `python3 tools/fea.py S8 S5k --material PC` with a longer timeout)
 current: none (leg 2 done; next leg: Ben's call; open: P6d openings (HAT ports), P6f crown, P6i, Q21, D1b with a convergence check, T4 slicing)
 hypothesis: —
 baseline_commit: d8179d2 (cad)
