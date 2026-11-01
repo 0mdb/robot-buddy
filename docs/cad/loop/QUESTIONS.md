@@ -57,11 +57,13 @@ The loop adds questions here and moves on. Answer inline (`**A:** …`); the nex
 
 - **Q22 Track pinch points (S2, tick 64, `docs/cad/loop/S2_pinch.md`).** F1: a 9.5 mm slot at each front corner beside the bulkhead (finger range, next to the sprocket). F2: a 16 mm window inside each belt loop lets a finger reach the lug ↔ pocket nips. Proposal: (a) bulkhead side cheeks for F1 (~3 g/side) + grow the frame bars into side plates for F2 (~12 g/side); (b) F1 only; (c) leave both. **A (Ben): (a)** cheeks + side plates.
 
+- **Q23 Reaching the UPS HAT's switch and charge jack (2026-11-01, `HAT_ports.md`).** The photos show no USB-C: the charge input is an **8.4 V barrel jack**, and the switch is a small slide switch, both on the stack's +Y edge **~22 mm inside** the canopy side wall. A cut-out alone won't reach them. Options: (a) **panel-mount barrel jack in the canopy side, wired to the HAT's 8.4V pads** (pads are there for it; no change to the HAT's circuit) + a **printed slider through the canopy side** that pushes the HAT's switch knob; (b) panel jack + a panel switch wired across the HAT switch's pins (solder work on the HAT); (c) open the canopy to charge / switch (2 screws; fails S4 "charge without opening"). **Default: (a)**. Kid-safe: slider gap < 5 mm or > 12 mm, jack recessed, r 1 edges.
+
 ## Measurements wanted (not questions; each replaces a 🟡 assumption)
 - **Drive gear hub** (for P2o, the outboard axle support): bore / D-flat, the outer face (is there a boss or recess), and whether a stub shaft or screw could be fixed on the outer side. Without it the loop can't design the outboard bearing.
 - Track tension at set-up (spring scale). Every S1 and S2 number scales with it (fea.py `TRACK_T` = 20 N).
 - TT gearbox width across the screw holes, and the encoder housing's size (the 323 / 197 mm³ envelope overlaps).
-- UPS HAT / NVMe adapter overhang beyond the Pi's 85 × 56, and where the HAT's USB-C and switch sit.
+- UPS HAT: plan positions from photos (`HAT_ports.md`, 2026-11-01). Still: HAT PCB underside height, buzzer projection + height, NVMe adapter overhang.
 - M2.5 / M3 insert stock: OD × length (07 §4.2).
 - Encoder TT motors: is there a connector on the encoder board (PH2.0 6P?) or a fixed lead? (R2b)
 - CE40P-8 frame size and mounting holes, once in hand; XVF3800 Flex boards (audio §7 step 7).
