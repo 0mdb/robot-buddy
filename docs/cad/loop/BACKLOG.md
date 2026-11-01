@@ -66,7 +66,7 @@ Baseline at loop start (commit on `cad`): plate rev 1, envelopes, Ben's imported
 - [ ] P6e `[sw]` canopy edges: skirt rim, front lips, apron and window edges r 0.9 (full round on 1.8) or r 1; hood front edge r 3 (E1); recess or hide the two hood-top screw heads (E1 §3)
   **Tick 61:** outer skirt rim r 1.0 done (12 edges, 0 interferences). **Tick 62:** hood front edge r 1.0 (r 3 needs a thicker ceiling there). Left: window lips, hood-top screw heads, rib/keel bottom edges.
 - [ ] P6f `[sw]` crown 2–3 mm over the body top (E1 §2: no flat > 60 × 60), and print orientation for the ceiling (D3: open side down needs ~133 cm² of support)
-- [ ] P7 `[sw]` **Speaker back box** (PETG, sealed ~30 cc, gasket land) for the CE40P-8; mounts to the bulkhead behind the grille (F12)
+- [ ] P7 `[sw]` `[blocked]` (Q25: the CE40P-8 hits the left motor mount; default (a) pre-boxed micro speaker) **Speaker back box** (PETG, sealed ~30 cc, gasket land) for the CE40P-8; mounts to the bulkhead behind the grille (F12)
 - [ ] P8 `[sw]` **Small TPU parts**: mic grommets ×3, speaker gasket, motor-lead strain relief
 - [ ] P9 `[sw]` `[blocked]` XVF3800 core-board mount aft between the carriages: needs the board's measured outline and holes (audio bench step 7)
 - [ ] P10 `[sw]` **Full assembly**: every part placed, interference clean (except the 🟡 motor-envelope overlaps), assembly mass + CoG, hero renders (E4)
@@ -80,7 +80,7 @@ Baseline at loop start (commit on `cad`): plate rev 1, envelopes, Ben's imported
     **Done tick 68:** 0 interferences (wheel_phase max-min over all near lugs); S6 22.95 MPa at first (axle head vs clamp boss) → clamp insert pressed from below, M3 × 10: **6.50 MPa**; carriage 11.4 g.
   - [x] P13b `[sw]` road-wheel disc native part (`dt.road_wheel()` layers, volume-checked) + placement (2 discs × 2 axles × 2 sides, Ø7 spacer, Ø4 axle envelope); interference
     **Done tick 69:** RB-PRT-022 3.4 g × 8, 0 interferences; next P13c: axle carried in the side plate (no nyloc room outboard) + inboard hanger.
-  - [ ] P13c `[sw]` hanger L/R (PET-CF, inside the loop, plate-edge inserts) + interference + 2.5 mm to the sprocket running surface
+  - [ ] P13c `[sw]` `[blocked]` (Q24: the plate-edge hanger doesn't fit; default (a) frame-carried) hanger L/R (PET-CF, inside the loop, plate-edge inserts) + interference + 2.5 mm to the sprocket running surface
   - [ ] P13d `[sw]` `[doc]` FEA load case (1/4 weight × 3 per axle), 07 §3.4 amendment, S2 pinch re-check: the side plate's bottom edge (z −10) vs the lower bottom run (lug tips ~ −13.4 now) and the road-wheel nips
 - Parked for after the bench tests in 08 §7 (Ben prints these, not the loop): TT shaft length + end screw, bore / 624 / 684 coupons, TPU 85A/95A strip creep, lug ratchet test, **tread A/B/C** (`belt_pads` default, `belt_bars`, `belt_smooth`), pivot current, mic noise, **step blocks 5–25 mm**. ~~A middle road wheel per side (08 §4) waits on the pivot-current result~~ (now P13: needed for clearance, not just turning)
 

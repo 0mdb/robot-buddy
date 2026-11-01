@@ -21,6 +21,8 @@ Printed total **662.7 g** (incl. belts 117 g, road discs 27 g), CoG (−0.4, 0.0
 leg 2 stand except S6 (now 6.50).
 
 ## Open, for you
+- **Q24 road-wheel axles:** the plate-edge hanger doesn't fit; default = the track frame carries them. P13c/d wait.
+- **Q25 speaker:** the CE40P-8 hits the left motor mount 8 mm behind the wall; default = a pre-boxed 8 Ω micro speaker. P7 waits.
 - **M3 inserts:** knurl OD + length of the M3 inserts in hand (sizes the ladder coupon).
 - **Q21 belt stretch:** lugs bind past 1.71 %; the strip-creep test decides (CLR 0.75 ready).
 - **P6i / E1:** S5c with the real canopy ≈ 0.7 mm vs 0.5 (you said accept); hood edge r 1 not r 3.
@@ -32,5 +34,4 @@ leg 2 stand except S6 (now 6.50).
 624 seats, 684, band slice) in PET-CF **and PA6-CF** (M6). See `docs/cad/belt_print.md`.
 
 ## Next
-P13c hangers (axle in the side plate + an inboard hanger) → P13d load case + pinch re-check
-(the side plate's bottom edge vs the now-lower bottom run).
+P6d canopy openings (vents, HAT jack/switch per Q23) → P6f/e → T4 slicing; P13c/d and P7 once Q24/Q25 are answered.
