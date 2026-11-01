@@ -61,4 +61,5 @@ The loop adds questions here and moves on. Answer inline (`**A:** …`); the nex
 - TT gearbox width across the screw holes, and the encoder housing's size (the 323 / 197 mm³ envelope overlaps).
 - UPS HAT / NVMe adapter overhang beyond the Pi's 85 × 56, and where the HAT's USB-C and switch sit.
 - M2.5 / M3 insert stock: OD × length (07 §4.2).
+- Encoder TT motors: is there a connector on the encoder board (PH2.0 6P?) or a fixed lead? (R2b)
 - CE40P-8 frame size and mounting holes, once in hand; XVF3800 Flex boards (audio §7 step 7).

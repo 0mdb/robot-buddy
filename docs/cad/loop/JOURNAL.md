@@ -377,3 +377,6 @@ Newest at the bottom. One entry per tick.
 - drivetrain.py: `test_pieces()` (belt_strip150 150 × 2.5 × 36; belt_lug6 straight 6-lug length, convex prisms that the slicer merges: there's no boolean engine in tools/.venv), `belt_scaled()` + `build --shrink <pct>` (ring diameter only). All meshes closed; bounds checked with trimesh.
 - `docs/cad/belt_print.md`: upright, walls only, seam on the lug inner faces, 85A first, external spool, PEI; shrink from the strip; the T12 1.5 % stretch watch.
 - Not done: sliced .3mf (T4, Bambu CLI not ported yet).
+
+## tick 58 · R2b motor-lead connector · accepted (doc) · 2026-10-31 22:40
+- The R2 note said "inline 2-pin": wrong. Reflex J1/J2 are JST-XH 6-pin (motor + encoder power + A/B). Fix: use the encoder TT motor's own socket if it has one (to check on the motors in hand), else an inline 6-pin XH pair near the mount. Motor swap ~4 min, no deck removal. R2_service.md, TODO, measurement list updated.
