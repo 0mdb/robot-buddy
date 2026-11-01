@@ -459,3 +459,8 @@ Newest at the bottom. One entry per tick.
 - `.3mf`: `--export-3mf` is joined to `--outputdir` (full path → "Unable to open the file …/C:\…"): bare name. The 3mf carries project_settings (walls 4, 40 % gyroid, 0.24, PET-CF 1.29, Engineering Plate) checked by unzip. No thumbnails (no OpenGL from the CLI).
 - **13 parts × qty: 623.1 g filament vs 544.2 g solid, 26.2 h.** Plate 127.0 g / 4 h 40 (perimeter tree support), bulkhead 44.2 / 1 h 36, sprocket 35.2, idler 34.0, discs 3.3 × 8, carriages 9.7 (0.85 of solid: the 40 % infill shows), **canopy 186.0 g / 9 h 29 on support vs 112.8 solid**: printed open side down the ceiling and hood sit on ~70 g of tree support. P6f decides its orientation with this.
 - G-code (113 MB) gitignored; 3mf (1 MB) + sliced.json committed. Nothing printed (Ben's eyes first; MORNING says not print-ready).
+
+## tick 73 · P6f canopy print orientation sliced · Q26 · 2026-11-01 15:15 MST
+- With T4: canopy (PC, 0.4, 4 walls / 40 % gyroid, tree auto) +z 186.0 g / 9 h 29; **+x (rear wall down) 149.2 g / 6 h 49**; −x 190.9 / 9 h 52; +y 191.2 / 10 h 32; −z 145.6 / 7 h 37 (hood top touches first, body top hangs 28 mm); no support 101.5 g / 3 h 28. `bridge_no_support` and `support_on_build_plate_only` change nothing (the floating rib/keel bottoms drag support under every cell).
+- meshcheck: +z 77 cm² bridges + 17 ledge/float; +x 14 bridges + 24 ledge/float (the cross ribs become 4 mm horizontal fins, the hood back wall a 106-wide ceiling).
+- +x turns the top's x-bending across the layers: S8 on PC Z UTS 56 → SF 2.23 (≥ 2, datasheet). Strength basis + finish → **Q26**, default (a) +x with 45° undersides on the cross ribs and a ramp under the hood back wall. 0 g, no geometry. Next: the crown (independent of Q26).

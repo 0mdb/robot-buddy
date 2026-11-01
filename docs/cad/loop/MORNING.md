@@ -28,6 +28,7 @@ Printed total **661.2 g** (incl. belts 117 g, road discs 27 g), CoG (−0.3, 0.0
 leg 2 stand except S6 (now 6.50).
 
 ## Open, for you
+- **Q26 canopy print orientation:** rear wall on the bed = 149 g / 6.8 h (vs 186 g / 9.5 h as modelled, 83 g of support inside); S8 still SF 2.23 on the datasheet Z strength. Default: rear wall down + 45° rib undersides.
 - **Q24 road-wheel axles:** the plate-edge hanger doesn't fit; default = the track frame carries them. P13c/d wait.
 - **Q25 speaker:** the CE40P-8 hits the left motor mount 8 mm behind the wall; default = a pre-boxed 8 Ω micro speaker. P7 waits.
 - **M3 inserts:** knurl OD + length of the M3 inserts in hand (sizes the ladder coupon).

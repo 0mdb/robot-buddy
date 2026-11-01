@@ -71,6 +71,19 @@ The loop adds questions here and moves on. Answer inline (`**A:** …`); the nex
   (c) A shallow Ø36–40 mylar speaker (≤ 7 mm deep) in the same seat with a thin printed back box: quietest option, fragile cone.
   **Blocked until you pick**; P7 and P8's speaker gasket wait on it.
 
+- **Q26 Canopy print orientation (P6f, tick 73).** Sliced headless (T4) in PC on the 0.4 nozzle, 4 walls / 40 % gyroid, tree support:
+
+  | up axis | filament | time | notes |
+  |---|--:|--:|---|
+  | +z as modelled (open side down) | 186 g | 9 h 29 | ~83 g of support fills the shell under the ceiling: the rib and keel bottoms float, and Orca supports the bridged cells too (`bridge_no_support` didn't help) |
+  | **+x (rear wall on the bed)** | **149 g** | **6 h 49** | top, sides and crown print as walls (smooth, layer rings around the body); support only under the cross ribs (4 mm horizontal fins) and the hood's back wall |
+  | −z (top on the bed) | 146 g | 7 h 37 | the hood top (z 123) touches first, so the body top hangs 28 mm in the air: poor |
+  | no support (part only) | 101.5 g | 3 h 28 | reference |
+
+  Strength: S8 was judged on XY UTS (open side down). With the rear wall on the bed, the top bends across the layers along x: on the PC datasheet Z UTS (56 vs 62 MPa) **S8 is SF 2.23 (≥ 2)**. Real PC layer adhesion is usually worse than the datasheet number: a coupon (a 3-point bend bar printed upright) would settle it.
+  Options: (a) **+x, rear wall on the bed** (recommended): +45° undersides on the 5 cross ribs and a 45° ramp under the hood back wall should take it to ~3.5–4.5 h with almost no support; nicer top finish; vents print on the bed face. (b) Keep +z: 9.5 h, ~80 g of support to pick out of the inside. (c) Split the canopy (top + skirt): more parts, a seam.
+  **Default (a)**; the 45° undersides wait on your pick. The crown (P6f) doesn't depend on it.
+
 ## Measurements wanted (not questions; each replaces a 🟡 assumption)
 - **Drive gear hub** (for P2o, the outboard axle support): bore / D-flat, the outer face (is there a boss or recess), and whether a stub shaft or screw could be fixed on the outer side. Without it the loop can't design the outboard bearing.
 - Track tension at set-up (spring scale). Every S1 and S2 number scales with it (fea.py `TRACK_T` = 20 N).

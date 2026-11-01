@@ -66,6 +66,7 @@ Baseline at loop start (commit on `cad`): plate rev 1, envelopes, Ben's imported
 - [ ] P6e `[sw]` canopy edges: skirt rim, front lips, apron and window edges r 0.9 (full round on 1.8) or r 1; hood front edge r 3 (E1); recess or hide the two hood-top screw heads (E1 §3)
   **Tick 61:** outer skirt rim r 1.0 done (12 edges, 0 interferences). **Tick 62:** hood front edge r 1.0 (r 3 needs a thicker ceiling there). Left: window lips, hood-top screw heads, rib/keel bottom edges.
 - [ ] P6f `[sw]` crown 2–3 mm over the body top (E1 §2: no flat > 60 × 60), and print orientation for the ceiling (D3: open side down needs ~133 cm² of support)
+  **Tick 73:** orientation sliced (Q26: +z 186 g / 9.5 h, +x rear-down 149 g / 6.8 h, part alone 101.5 g / 3.5 h); orientation part `[blocked]` on Q26 (default +x + 45° rib undersides). Crown still open.
 - [ ] P7 `[sw]` `[blocked]` (Q25: the CE40P-8 hits the left motor mount; default (a) pre-boxed micro speaker) **Speaker back box** (PETG, sealed ~30 cc, gasket land) for the CE40P-8; mounts to the bulkhead behind the grille (F12)
 - [ ] P8 `[sw]` **Small TPU parts**: mic grommets ×3, speaker gasket, motor-lead strain relief
 - [ ] P9 `[sw]` `[blocked]` XVF3800 core-board mount aft between the carriages: needs the board's measured outline and holes (audio bench step 7)
