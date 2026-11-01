@@ -417,3 +417,6 @@ Newest at the bottom. One entry per tick.
 ## tick 66 · S2b frame bars → side plates over the belt loop (Q22 F2) · accepted (kid safety) · 2026-11-01 05:00 MST
 - Each frame bar grew into a 2.4 PET-CF side plate (rounded rectangle x −69.3…59.7, z −10…38, r 8, outboard of the wheels at |y| 93.5–95.9) round both axles; the lug ↔ pocket nips are now behind it; gaps from its edges to the runs ~3–4 mm diagonally; 8 mm over the ground line. Dowel boss, slot unchanged.
 - 14,795.0 vs 14,795.0 mm³ each (19.1 g, was 8.2); rebuild 0 interferences; printed 638.3 g. Renders `shots/1-S2/`.
+
+## tick 67 · S2c side-plate outline r 1.0 · accepted (kid safety) · 2026-11-01 05:15 MST
+- r 1.0 round each side plate's outline on its outer face (8 edges: straights + the four r 8 corners): −72.72 vs −72.72 mm³ per side. Rebuild 0 interferences; printed 638.1 g. Slot and boss rims left (the boss sits under the dowel head / the slot under the nyloc).

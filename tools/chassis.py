@@ -2479,13 +2479,22 @@ def trackframe_lines(path: str, side: int) -> list[str]:
     ba, bb = ys(y1, y1 + bh)
     da, db = ys(y0 - 0.1, y1 + bh + 0.1)
     vol = g["vol"]
+    # S2c (tick 67): r 1.0 round the plate's outline on its OUTER face (the edge a hand
+    # meets); straight runs + the four r 8 corners (torus segments)
+    q = (1 - math.pi / 4) * 1.0**2
+    (zb, zt), pr = TF_PLATE_Z, TF_PLATE_R
+    w, h = (xs + r) - (xa - r), zt - zb
+    straight = 2 * (w - 2 * pr) + 2 * (h - 2 * pr)
+    corners = 4 * q * (pr - 0.2234) * math.pi / 2
+    dvo = q * straight + corners
     return [
         f"part|{path}",
         f"prof|{ya} {yb}|{plate()}|boss|top",
         f"cyl|y|{xs} {z}|{ba} {bb}|{br}|boss",
         f"cyl|y|{xs} {z}|{da} {db}|{TF_DOWEL / 2}|cut",
         f"prof|{ya - 0.1} {yb + 0.1}|{stadium(xi - tr, xi + tr, sw / 2)}|cut|top",
-        f"expect|vol {vol:.1f} {vol * 0.01:.1f}|box {xa - r:.2f} {xs + r:.2f} "
+        f"filletface|1.0|y:{s}|{s * y1:.2f}|{xa - r - 1} {zb - 1} {xs + r + 1} {zt + 1}|1|{-dvo:.2f} {0.15 * dvo:.2f}",
+        f"expect|vol {vol - dvo:.1f} {vol * 0.01:.1f}|box {xa - r:.2f} {xs + r:.2f} "
         f"{min(ya, ba):.2f} {max(yb, bb):.2f} {TF_PLATE_Z[0]:.2f} {TF_PLATE_Z[1]:.2f} 0.05",
         "save",
     ]
