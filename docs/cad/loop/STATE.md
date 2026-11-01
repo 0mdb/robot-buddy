@@ -1,9 +1,9 @@
 # CAD loop state
 
 pass: 1, leg 2 (leg 1 ended 2026-10-31 ~11:10 at tick 46)
-tick: 55
+tick: 56
 sw: up (restarted by Ben 2026-10-31 ~06:45)
-current: none (tick 55 T11 accepted; next T12 check-wrap [py])
+current: none (tick 56 T12 accepted, Q21 open; next T13 print package)
 hypothesis: —
 baseline_commit: d8179d2 (cad)
 stop_after: 2026-11-01 07:00 (Ben, leg 2: "until 7am tomorrow or completed")

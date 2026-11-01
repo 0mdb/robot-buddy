@@ -367,3 +367,8 @@ Newest at the bottom. One entry per tick.
 - Volume by shoelace 48,158 vs SolidWorks 48,157.7 mm³ (47,877.8 with the 0.02 gap); printed ring (drivetrain.belt) 47,657 (−1.05 %, the chamfers). Replaces the stadium envelopes in the assembly.
 - First rebuild: 816 × 0.0 mm³ belt/wheel (the inner face sits ON the rim; its chords dip ~0.001 inside) → modelled 0.02 off → **0 interferences**: lugs clear every pocket, the frame bars and the plate. Belts 58.4 g each TPU (now in the roll-up): printed 615.5 g.
 - Ben asked how the belts print: as an upright closed ring (Ø133 × 36, lugs in, bars out), flexed onto the wheels; T12 checks the strain and lug clearance.
+
+## tick 56 · T12 `drivetrain.py check-wrap` · accepted (tooling) + finding · 2026-10-31 22:15
+- New command: lug ↔ pocket side clearance over the 9 engaged lugs per 180° wrap vs belt stretch (both profiles as their rounded trapezoids, the lug rigid in mm on the wheel, pattern best-centred), base bending strain (ring R0 63.7 → wheel 28.65 / straight), tooth tops vs running surface.
+- Results: side clearance 0.684 mm at 0 %; +0.48 / +0.28 / +0.08 at 0.5 / 1 / 1.5 %; **−0.12 mm at 2 % (end lugs bind)**: zero clearance at **1.71 %** stretch. Tip to pocket floor 0.60. Strain 2.40 % wraps / 1.96 % runs (limit 5 % 🟡, TPU 85A). Teeth 0.6 below the rim discs: smooth rolling.
+- Finding: the jack screw can take up more creep (belt_fit creep allowance 3.85 %) than the pockets tolerate (1.71 %). Fix = wider pockets (CLR 0.6 → ~0.75 gives ~2.1 %), but the sprocket/idler are Ben-reviewed → Q21. The strip/creep bench test (08 §7) decides how much stretch is real.

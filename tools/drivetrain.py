@@ -348,7 +348,9 @@ def idler(bearings: int = 2, interf: float = 0.15, m: int = N_TEETH * 48) -> np.
     return mesh(idler_layers(bearings, interf, m))
 
 
-def idler_layers(bearings: int = 2, interf: float = 0.15, m: int = N_TEETH * 48) -> list:
+def idler_layers(
+    bearings: int = 2, interf: float = 0.15, m: int = N_TEETH * 48
+) -> list:
     """Idler: same rim as the sprocket, hub = 624 pocket(s) on the Ø4 shoulder axle.
     Bed face = outboard (axle head side). Two bearings span the tube so a single
     cantilevered bearing can't cock (05 tilt note); the carriage boss reaches into
@@ -649,12 +651,88 @@ def build(out: str) -> None:
         sys.exit("mesh check failed")
 
 
+def check_wrap(stretches=(0.0, 0.005, 0.01, 0.015, 0.02), strain_limit=0.05) -> dict:
+    """T12: the installed belt on the wheels.
+
+    - Lug <-> pocket side clearance over the wrap (180°: the 9 engaged lugs) at each belt
+      stretch: the belt pitch grows to PITCH (1 + e) while the pockets stay at PITCH, so
+      lug k sits (k - 4) PITCH e off its pocket with the pattern centred (best case).
+      Clearance at each radius = pocket half-width - lug half-width (both rounded
+      trapezoids: wheel_band and the belt's lug, the lug rigid in mm on the wheel).
+    - Base bending strain: printed as a ring (pitch radius R0), bent to the wheel pitch
+      radius on the wraps and straightened on the runs: (T_BASE / 2) |1/r - 1/R0|.
+    - Tooth tops below the running surface: the belt rides the rim discs (R_RUN), the band
+      teeth sit TOOTH_DROP lower (no chordal bump).
+    """
+    rp = pitch_radius()
+    r_top, r_bot = R_RUN - TOOTH_DROP, R_RUN - LUG_H - CLR
+    hp_top = (LUG_L / 2 + CLR) / R_RUN
+    hp_bot = (LUG_TIP_L / 2 + CLR) / r_bot
+    r_tip = R_RUN - LUG_H
+    hl_root, hl_tip = LUG_L / 2 / R_RUN, LUG_TIP_L / 2 / r_tip
+
+    def half_angle(r, r_full, r_zero, a_in, a_out):
+        """|u| where a cosine-blended trapezoid (depth from r_zero to r_full) passes r."""
+        f = np.clip((r_zero - r) / (r_zero - r_full), 0.0, 1.0)  # 1 at full depth
+        s_ = np.arccos(np.clip(2 * f - 1, -1, 1)) / np.pi
+        return a_in + s_ * (a_out - a_in)
+
+    rs = np.linspace(
+        r_tip, r_top, 200
+    )  # lug flanks live between its tip and the teeth tops
+    pocket = rs * half_angle(rs, r_bot, r_top, hp_bot, hp_top)
+    lug = rs * half_angle(rs, r_tip, R_RUN, hl_tip, hl_root)
+    side = float(np.min(pocket - lug))  # side clearance at zero shift, mm
+    engaged = N_TEETH // 2
+    rows = []
+    for e in stretches:
+        shift = (engaged - 1) / 2 * PITCH * e
+        rows.append(
+            {"stretch_pct": 100 * e, "worst_shift": shift, "clearance": side - shift}
+        )
+    r0 = belt_fit()["length"] / (2 * math.pi)
+    strain_wrap = T_BASE / 2 * abs(1 / rp - 1 / r0)
+    strain_run = T_BASE / 2 / r0
+    out = {
+        "side_clearance": side,
+        "tip_clearance": r_tip - r_bot,
+        "rows": rows,
+        "max_stretch_pct": 100 * side / ((engaged - 1) / 2 * PITCH),
+        "strain_wrap": strain_wrap,
+        "strain_run": strain_run,
+        "strain_ok": max(strain_wrap, strain_run) <= strain_limit,
+        "tooth_drop": TOOTH_DROP,
+    }
+    print(
+        f"T12 check-wrap: {engaged} lugs engaged per 180° wrap, pitch radius {rp:.2f}"
+    )
+    print(
+        f"  side clearance (no stretch) {side:.3f} mm, tip to pocket floor {out['tip_clearance']:.2f} mm"
+    )
+    for rw in rows:
+        ok = "ok" if rw["clearance"] >= 0 else "INTERFERES"
+        print(
+            f"  stretch {rw['stretch_pct']:4.1f} %: end lugs {rw['worst_shift']:.2f} mm off -> clearance {rw['clearance']:+.3f} mm  {ok}"
+        )
+    print(f"  stretch for zero clearance: {out['max_stretch_pct']:.2f} %")
+    print(
+        f"  base bending strain: wraps {100 * strain_wrap:.2f} %, runs {100 * strain_run:.2f} % (limit {100 * strain_limit:.0f} % 🟡)"
+    )
+    print(
+        f"  tooth tops {TOOTH_DROP} mm below the running surface (rim discs at R_RUN): smooth rolling"
+    )
+    return out
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("cmd", choices=["report", "build"])
+    ap.add_argument("cmd", choices=["report", "build", "check-wrap"])
     ap.add_argument("-o", "--out", default="CAD/exports/rnd/drivetrain")
     a = ap.parse_args()
-    report() if a.cmd == "report" else build(a.out)
+    if a.cmd == "check-wrap":
+        check_wrap()
+    else:
+        report() if a.cmd == "report" else build(a.out)
 
 
 if __name__ == "__main__":

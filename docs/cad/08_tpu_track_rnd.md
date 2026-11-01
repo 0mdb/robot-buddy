@@ -168,3 +168,5 @@ belt test piece.
   top run.
 - If 85A creeps too much: 95A belt, or a 95A carcass with 85A tread bars (two-material
   print; one external spool, so a filament swap at a layer).
+
+> Amendment (loop T12, 2026-10-31): `python3 tools/drivetrain.py check-wrap`. Side clearance lug ↔ pocket 0.68 mm unstretched; the end lugs of the 180° wrap bind past **1.71 %** belt stretch (−0.12 mm at 2 %). Base bending strain 2.40 % on the wraps, 1.96 % on the runs. The belt rides the rim discs with the teeth 0.6 below (no chordal bump). Stretch beyond ~1.5 % needs wider pockets (CLR 0.6 → 0.75) or a new belt: Q21; the §7 strip-creep test decides.

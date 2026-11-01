@@ -53,6 +53,8 @@ The loop adds questions here and moves on. Answer inline (`**A:** …`); the nex
 
 - **Q20 Axle motion with the track-frame bars (tick 54).** The bars halve the plate's share (S1m 1.03 → ~0.52 mm by statics) but don't reach 0.2. **A (Ben): judge the drive increment** (Q17 a, with the bars): ~0.09 mm vs 0.2, PASS; static ~0.52 reported. 07 amended.
 
+- **Q21 Belt stretch vs pocket clearance (T12, tick 56).** The end lugs of a wrap bind past **1.71 %** belt stretch (−0.12 mm at 2 %), while the jack screw can take up ~3.85 % creep. Options: (a) widen the pockets, CLR 0.6 → 0.75 (zero clearance at ~2.1 %; changes your reviewed sprocket/idler, cheap coupon re-check); (b) keep and let the 08 §7 strip-creep test decide (TPU lugs likely ride a 0.1 mm overlap); (c) re-tension rule: replace the belt past 1.5 % (≈ 6 mm extra jack travel). **Default: (b)**, with (a) ready if the creep test shows > 1.5 %.
+
 ## Measurements wanted (not questions; each replaces a 🟡 assumption)
 - **Drive gear hub** (for P2o, the outboard axle support): bore / D-flat, the outer face (is there a boss or recess), and whether a stub shaft or screw could be fixed on the outer side. Without it the loop can't design the outboard bearing.
 - Track tension at set-up (spring scale). Every S1 and S2 number scales with it (fea.py `TRACK_T` = 20 N).
