@@ -355,3 +355,8 @@ Newest at the bottom. One entry per tick.
 ## tick 53 · P2o-a outboard track frame spec (06 §7 amendment) · accepted (doc) · 2026-10-31 20:45
 - Concept per side: outer bar |y| 93.5–97 at axle height from the idler axle (slot + nyloc clamp after jack-screw tensioning) to the sprocket's outboard 624 (Ø4 shoulder bolt); two legs through the loop window (x −30…25, z −10…37 clear of the lug tips) to plate-belly inserts at x ≈ −22…−14 and 14…22; road wheels (P13) can hang from the legs. Width 185 → ~194. New study S9 judged on 0.2 mm at the axles. ~14 g/side.
 - Split into P2o-b (part + plate inserts + placement) and P2o-c (S9).
+
+## tick 54 · P2o-b outboard track frame bars L/R · accepted (Q17 b, first cut) · 2026-10-31 21:15
+- Legs dropped: a belly screw at the rear leg crosses the |y| 47 load rib or the canopy tongue slots, the front leg sits under the motor; and a bar pinned on two parallel axles is already a tie. Bar = 3.6 × 14 stadium at |y| 93.5–97.1 (1.0 off the wheel faces), x −69.3…59.7; sprocket end: steel Ø4 dowel through the bar + Ø10 × 3 boss, 5 mm into the 624; idler end: x-slot ±5 over the shoulder axle's M3 end, nyloc clamp. 06 §7 amended (overall width ~200).
+- Alone: 6,349.8 vs 6,349.8 mm³ each (8.2 g). Rebuild 0 interferences; printed 498.7 g.
+- S9 by statics, not FEA (one material per study; the steel shafts can't be modelled): each axle is a lever with the belt load between the inboard support and the bar, so with pinned ends each takes ~half → plate path ~half of S1m: **axle motion ~0.52 mm** (was 1.03; target 0.2), bar stretch ~0.03 mm. The TT shaft's two gearbox bearings make the inboard end partly moment-stiff, which can shift the split either way. Q20 to Ben.

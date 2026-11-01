@@ -1,9 +1,9 @@
 # CAD loop state
 
 pass: 1, leg 2 (leg 1 ended 2026-10-31 ~11:10 at tick 46)
-tick: 53
+tick: 54
 sw: up (restarted by Ben 2026-10-31 ~06:45)
-current: none (tick 53 P2o-a spec done; next P2o-b frame part)
+current: none (tick 54 P2o-b accepted; Q20 open; next: treads T11 while Q20 waits)
 hypothesis: —
 baseline_commit: d8179d2 (cad)
 stop_after: 2026-11-01 07:00 (Ben, leg 2: "until 7am tomorrow or completed")

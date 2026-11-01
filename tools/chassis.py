@@ -860,6 +860,8 @@ def rebuild_manifest(win: str) -> list[str]:
     bulkhead = cad + r"\parts\RB-PRT-002_bulkhead.SLDPRT"
     deck = cad + r"\parts\RB-PRT-003_pi_deck.SLDPRT"  # P4
     canopy = cad + r"\parts\RB-PRT-004_canopy.SLDPRT"  # P6
+    tf_l = cad + r"\parts\RB-PRT-040_trackframe_L.SLDPRT"  # P2o
+    tf_r = cad + r"\parts\RB-PRT-041_trackframe_R.SLDPRT"
     canopy_fea = cad + r"\fea\FEA-canopy_S8.SLDPRT"  # P6c heel study S8, analysis only
     car_l = cad + r"\parts\RB-PRT-030_carriage_L.SLDPRT"  # P5
     car_r = cad + r"\parts\RB-PRT-031_carriage_R.SLDPRT"
@@ -904,6 +906,8 @@ def rebuild_manifest(win: str) -> list[str]:
         *bulkhead_lines(bulkhead),
         *deck_lines(deck),
         *canopy_lines(canopy),
+        *trackframe_lines(tf_l, +1),
+        *trackframe_lines(tf_r, -1),
         *carriage_lines(car_l, mirror=False),
         *carriage_lines(car_r, mirror=True),
         *mount_v2_lines(mount_r, mirror=False),
@@ -923,6 +927,8 @@ def rebuild_manifest(win: str) -> list[str]:
         f"comp|bulkhead|{bulkhead}|{row(ROT_I, (0, 0, 0))}",
         f"comp|pi_deck|{deck}|{row(ROT_I, (0, 0, DECK_Z + DECK_T))}",
         f"comp|canopy|{canopy}|{row(ROT_I, (0, 0, 0))}",
+        f"comp|trackframe_L|{tf_l}|{row(ROT_I, (0, 0, 0))}",
+        f"comp|trackframe_R|{tf_r}|{row(ROT_I, (0, 0, 0))}",
         f"comp|carriage_L|{car_l}|{row(ROT_I, (dt.belt_fit()['x_fit'], 0, 0))}",
         f"comp|carriage_R|{car_r}|{row(ROT_I, (dt.belt_fit()['x_fit'], 0, 0))}",
         f"comp|sprocket_L|{sprocket}|{row(*wheel_at(dt.X_DRIVE, +1))}",
@@ -953,6 +959,8 @@ def rebuild_manifest(win: str) -> list[str]:
                 (bulkhead, "RB-PRT-002_bulkhead"),
                 (deck, "RB-PRT-003_pi_deck"),
                 (canopy, "RB-PRT-004_canopy"),
+                (tf_l, "RB-PRT-040_trackframe_L"),
+                (tf_r, "RB-PRT-041_trackframe_R"),
                 (car_l, "RB-PRT-030_carriage_L"),
                 (car_r, "RB-PRT-031_carriage_R"),
                 (mount_r, "RB-PRT-010_motor_mount_R"),
@@ -2189,6 +2197,68 @@ def canopy_fea_lines(path: str) -> list[str]:
     ]
 
 
+# --------------------------------------------- outboard track frame (P2o, Q17 b)
+# One bar per side, outboard of the wheels: a tie between the sprocket's outboard 624
+# (steel Ø4 dowel pressed through the bar + boss, 5 mm into the bearing) and the idler's
+# Ø4 shoulder axle (its M3 end through an x-slot, nyloc clamps the bar after the jack
+# screw sets the tension). Belt tension then closes through the bar instead of bending
+# the plate (S1m). Pinned on two parallel axles it needs no legs: the plate belly has no
+# room for them (the |y| 47 load rib, the canopy tongue slots, the motor), tick 54.
+TF_GAP, TF_T, TF_H = 1.0, 3.6, 14.0  # off the wheel faces, thickness, height (stadium)
+TF_SLOT = (dt.TRAVEL, 3.4)  # +- travel round the taut station, M3 clearance
+TF_BOSS = (5.0, 3.0)  # dowel boss r, height outboard
+TF_DOWEL = 3.95  # Ø4 h8 dowel press hole (07 press fits: tune on the coupon)
+
+
+def trackframe_geom() -> dict:
+    yw = track_y()[1]  # wheels' outboard faces
+    y0, y1 = yw + TF_GAP, yw + TF_GAP + TF_T
+    xs, xi, z = dt.X_DRIVE, dt.belt_fit()["x_fit"], dt.Z_AXLE
+    tr, sw = TF_SLOT
+    xa = xi - tr  # rear centre of the stadium = rear end of the slot
+    r = TF_H / 2
+    br, bh = TF_BOSS
+    area = (xs - xa) * TF_H + math.pi * r * r
+    slot = (2 * tr) * sw + math.pi * (sw / 2) ** 2
+    vol = (
+        area * TF_T
+        + math.pi * br * br * bh
+        - math.pi * (TF_DOWEL / 2) ** 2 * (TF_T + bh)
+        - slot * TF_T
+    )
+    return {"y": (y0, y1), "xs": xs, "xi": xi, "xa": xa, "z": z, "r": r, "vol": vol}
+
+
+def trackframe_lines(path: str, side: int) -> list[str]:
+    g = trackframe_geom()
+    y0, y1 = g["y"]
+    br, bh = TF_BOSS
+    xs, xi, xa, z, r = g["xs"], g["xi"], g["xa"], g["z"], g["r"]
+    tr, sw = TF_SLOT
+    s = 1 if side > 0 else -1
+
+    def ys(a, b):  # mirror for the right side
+        return (a, b) if s > 0 else (-b, -a)
+
+    def stadium(xb, xf, rr):  # Top plane: sketch (x, -z), arcs CCW in sketch coords
+        return f"M {xf} {-z - rr} A {xf} {-z} {xf} {-z + rr} L {xb} {-z + rr} A {xb} {-z} {xb} {-z - rr}"
+
+    ya, yb = ys(y0, y1)
+    ba, bb = ys(y1, y1 + bh)
+    da, db = ys(y0 - 0.1, y1 + bh + 0.1)
+    vol = g["vol"]
+    return [
+        f"part|{path}",
+        f"prof|{ya} {yb}|{stadium(xa, xs, r)}|boss|top",
+        f"cyl|y|{xs} {z}|{ba} {bb}|{br}|boss",
+        f"cyl|y|{xs} {z}|{da} {db}|{TF_DOWEL / 2}|cut",
+        f"prof|{ya - 0.1} {yb + 0.1}|{stadium(xi - tr, xi + tr, sw / 2)}|cut|top",
+        f"expect|vol {vol:.1f} {vol * 0.01:.1f}|box {xa - r:.2f} {xs + r:.2f} "
+        f"{min(ya, ba):.2f} {max(yb, bb):.2f} {z - r:.2f} {z + r:.2f} 0.05",
+        "save",
+    ]
+
+
 # ------------------------------------------------------------------- runner
 def compile_engine(tool: str) -> str:
     shutil.copyfile(
@@ -2222,6 +2292,8 @@ PART_MATERIAL = {
     "RB-PRT-003": "PET-CF",
     "RB-PRT-004": "PC",  # canopy (06 §6, P6): PC white (M4, tick 49)
     "RB-PRT-030": "PET-CF",
+    "RB-PRT-040": "PET-CF",  # track frames (P2o)
+    "RB-PRT-041": "PET-CF",
     "RB-PRT-031": "PET-CF",
     "RB-PRT-010": "PET-CF",
     "RB-PRT-011": "PET-CF",

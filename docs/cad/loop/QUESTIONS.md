@@ -51,6 +51,8 @@ The loop adds questions here and moves on. Answer inline (`**A:** …`); the nex
 
 - **Q19 Bulkhead poke (S5c) with the real canopy (tick 51).** S5k: the canopy can't hold the lugs (rear apron is a hinge; side walls don't reach the plate), so the bulkhead is back to S5 standalone (8 mm vs 0.5). **A (Ben): canopy side tabs.** Built tick 52 as tongues into plate slots (screw heads would hit the load rib): S5k 0.75 mm, S5c ≈ 0.7 mm vs 0.5 by hand; accepted, P6i open.
 
+- **Q20 Axle motion with the track-frame bars (tick 54).** The bars halve the plate's share (S1m 1.03 → ~0.52 mm by statics) but don't reach 0.2. Options in the session.
+
 ## Measurements wanted (not questions; each replaces a 🟡 assumption)
 - **Drive gear hub** (for P2o, the outboard axle support): bore / D-flat, the outer face (is there a boss or recess), and whether a stub shaft or screw could be fixed on the outer side. Without it the loop can't design the outboard bearing.
 - Track tension at set-up (spring scale). Every S1 and S2 number scales with it (fea.py `TRACK_T` = 20 N).

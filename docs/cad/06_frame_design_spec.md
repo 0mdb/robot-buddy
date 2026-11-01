@@ -264,6 +264,13 @@ teardrop the horizontal motor-screw holes; ≥ 2 mm fillet at the inside corner.
 >   edges r 1; the bar's outer face takes the E1 r 3 on its ends.
 > - **FEA:** new study **S9** (frame + plate + mounts bonded; S1m's loads), judged on
 >   S1m's 0.2 mm at the axles. Est. ~14 g per side.
+> - **Rev (tick 54): bar only, no legs.** Pinned on two parallel axles the bar is already
+>   a tie; the legs had no room (a belly screw at the rear leg crosses the |y| 47 load rib or
+>   the canopy tongue slots; the front leg sits under the motor). Sprocket end: a **steel
+>   Ø4 h8 dowel** pressed through the bar + a Ø10 × 3 outboard boss, 5 mm into the 624's
+>   inner race (a shoulder bolt can't work there: its nut would be inside the turning
+>   sprocket). Bar 3.6 × 14 stadium at |y| 93.5–97.1, ~8 g per side. Width: boss + idler
+>   nyloc reach |y| ~100–101 → **overall ~200** (not ~194).
 
 **Followers:** per `05_follower_spec.md` (carriage in plate slots, clamp from
 below, 624 bearing on a Ø4 shoulder bolt).
