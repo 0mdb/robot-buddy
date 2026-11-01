@@ -400,3 +400,7 @@ Newest at the bottom. One entry per tick.
 
 ## tick 62 · P6e hood front top edge r 1.0 · accepted (kid safety) · 2026-11-01 01:45
 - The hood's front top edge (E, along y, right behind the head) r 1.0: −19.8 vs −19.3 mm³. E1 asks r 3 here, but the ceiling over the window is 1.8 thick: r 1 is what fits (r 3 would need the hood ceiling thickened locally). Rebuild 0 interferences.
+
+## tick 63 · S1b3 bulkhead top front edge r 1.0 · PENDING (SolidWorks hung) · 2026-11-01 01:40 MST
+- r 1.0 on the wall's top front edge pre-tilt (`fillet` on the line at x 85, z 126): alone −20.17 vs −20.17 mm³, the side rounds then take 5 edges each (they blend), part 33,730.7 vs 33,795.1.
+- The full rebuild hung: SLDWORKS "not responding" with an unsaved Part544 open, ~15 GB; the rebuild's 30 min timeout killed only the Python wrapper (empty log), leaving swbuild.exe attached; S5c then started and waits on it. Nothing killed (lesson: don't kill mid-run; restart is Ben's). sw: DOWN. Generator change left uncommitted, documented in STATE.
