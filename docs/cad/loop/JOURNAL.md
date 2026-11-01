@@ -392,3 +392,8 @@ Newest at the bottom. One entry per tick.
 - Strength got worse: S1b 3.20 → **5.11 MPa** (midplate; posts 4.54), S1m 8.87 → **10.60** (jackstops, beside the reflex standoff at (−36, −26)). Both still pass SF (6.9 / 3.3), but > +10 % on a change meant to lower stress → **rejected**, generator restored, mirror rebuilt.
 - Learned: the plate's peaks there are mesh-sensitive (fillet faces change the mesh near the fixtures/standoffs) rather than set by the boss roots; a root fillet isn't a free win on the plate. If D1b comes back, check with a half-mesh run first (S2 pattern) to see whether either value is converged.
 - W7 closed as moot: P2o bars + Q20 increment criterion (~0.09 mm vs 0.2).
+
+## tick 61 · P6e canopy outer skirt rim r 1.0 · accepted (kid safety) · 2026-11-01 01:20
+- r 1.0 on the OUTER edge of the skirt's bottom rim (z 30): rear outside the apron, the r 20 corners, both sides, the front lips (75° wedge). Inner edge left square (both would eat the 1.8 wall). One filletface over the 4 rim faces, `skip:` boxes for the inner edges, inner arcs and the concave junctions with the tab webs / apron (16 edges skipped).
+- −67.7 vs −67.5 mm³; canopy 95,216 mm³. Rebuild 0 interferences, min wall 1.6. meshcheck sharp length only 4,158 → 4,133 mm (the inner rim edge stays; meshcheck may also count the r 1 round's STL facets): not chased.
+- Left in P6e: hood front edge r 3 (E1), window/lip edges, hood-top screw heads (E1 §3), rib/keel bottom edges.

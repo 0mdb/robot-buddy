@@ -1874,6 +1874,7 @@ CAN_TAB = (
     3.0,
     0.1,
 )  # web x, tongue x, tongue depth, slot clearance
+CAN_EDGE_R = 1.0  # P6e: outer skirt rim (kid-safety minimum, E1 1 mm family)
 CAN_ROOT_R = (
     1.0  # P6g (Ben): rib/keel roots, 07 fil_in (not 1.95/2.0: S8 fixes those cylinders)
 )
@@ -2023,6 +2024,55 @@ def canopy_keel_profile() -> list[tuple[float, float]]:
     ]
 
 
+def canopy_rim_round() -> tuple[float, list[str]]:
+    """P6e (tick 61): r 1.0 on the OUTER edge of the skirt's bottom rim (z CAN_Z0), the edge a
+    hand meets; the inner edge stays square (rounding both would eat the 1.8 wall). Returns
+    (volume removed, skip boxes): inner edges, inner corner arcs and the concave junctions
+    with the tab webs and the rear apron are left out by their midpoints."""
+    r = CAN_EDGE_R
+    q90 = _round_area(90.0, r)
+    z = CAN_Z0
+    hw, t = CAN_HW, CAN_T
+    rr = CAN_R[0]
+    (wx0, wx1), _, _, _ = CAN_TAB
+    xf = canopy_profile()[5][0]  # front bottom on the wall's back-face line
+    rear = 2 * ((hw - rr) - CAN_APRON_HW)
+    sides = 2 * ((wx0 - (CAN_X0 + rr)) + (xf - wx1))
+    cbar = r * (10 - 3 * math.pi) / (3 * (4 - math.pi))
+    arcs = 2 * q90 * (rr - cbar) * math.pi / 2
+    lips = 2 * (hw - CAN_WIN_HW)  # front-wall bottom edge beside the window (75° wedge)
+    vol = q90 * (rear + sides) + _round_area(75.0, r) * lips + arcs
+    zz = f"{z - 0.5} {z + 0.5}"
+
+    def box(x0, x1, y0, y1):
+        a, b = zz.split()
+        return f"{x0:.2f} {y0:.2f} {a} {x1:.2f} {y1:.2f} {b}"
+
+    yi = hw - t
+    ai = (CAN_X0 + rr + (CAN_X0 + t)) / 2  # inner arc chord midpoint, roughly
+    skips = [
+        box(-200, 200, yi - 0.4, yi + 0.4),
+        box(-200, 200, -yi - 0.4, -yi + 0.4),
+        box(CAN_X0 + t - 0.4, CAN_X0 + t + 0.4, -60, 60),
+    ]
+    # inner corner arcs: chord midpoint of the r (rr - t) arc centred (x0 + rr, +-(hw - rr))
+    cx, cy, ri = CAN_X0 + rr, hw - rr, rr - t
+    mx, my = cx - ri / 2, cy + ri / 2
+    skips += [
+        box(mx - 0.4, mx + 0.4, my - 0.4, my + 0.4),
+        box(mx - 0.4, mx + 0.4, -my - 0.4, -my + 0.4),
+    ]
+    for xw in (wx0, wx1):  # web junctions (concave)
+        skips += [box(xw - 0.4, xw + 0.4, -60, 60)]
+    skips += [box(CAN_X0 - 1, CAN_X0 + t + 1, CAN_APRON_HW - 0.4, CAN_APRON_HW + 0.4)]
+    skips += [box(CAN_X0 - 1, CAN_X0 + t + 1, -CAN_APRON_HW - 0.4, -CAN_APRON_HW + 0.4)]
+    # front-wall inner edge (back-face line minus t along the normal), beside the window
+    xfi = xf - t / math.cos(math.radians(BH_TILT))
+    skips += [box(xfi - 0.6, xfi + 0.6, -60, 60)]
+    del ai
+    return vol, skips
+
+
 def canopy_features() -> dict:
     p = canopy_profile()
     rr, rh, rt = CAN_R
@@ -2086,7 +2136,9 @@ def canopy_features() -> dict:
         "ribs": rib_vol,
         "roots": roots,
         "tabs": tabs,
-        "vol": v_out
+        "rim": canopy_rim_round()[0],
+        "vol": -canopy_rim_round()[0]
+        + v_out
         - v_in
         - win
         - holes
@@ -2185,6 +2237,9 @@ def canopy_lines(path: str) -> list[str]:
             f"cyl|z|{bx} {sg * by}|-0.1 {INS_DEPTH}|{INS_HOLE / 2}|cut"
             for sg in (-1, 1)
         ],
+        f"filletface|{CAN_EDGE_R}|z:-1|{CAN_Z0}|{CAN_X0 - 1} {-hw - 1} {fp[0] + 1} {hw + 1}|any"
+        f"|{-f['rim']:.2f} {0.25 * f['rim']:.2f}|skip:"
+        + ";".join(canopy_rim_round()[1]),
         f"expect|vol {f['vol']:.1f} {f['vol'] * 0.03:.1f}|box {CAN_X0} {fp[0]:.2f} {-hw} {hw} {-CAN_TAB[2]} {e[1]:.2f} 0.5",
         "save",
     ]
