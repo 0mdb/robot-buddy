@@ -2024,6 +2024,17 @@ def canopy_keel_profile() -> list[tuple[float, float]]:
     ]
 
 
+def canopy_hood_edge() -> tuple[float, str]:
+    """P6e (tick 62): r 1.0 on the hood's front top edge (E, along y), right behind the head.
+    E1 wants r 3 here but the ceiling is 1.8 thick over the window: r 1 is what fits.
+    Returns (volume removed, the fillet's pick box around the line)."""
+    e = canopy_profile()[4]
+    L = 2 * (CAN_HW - CAN_R[1])  # between the hood's r 8 side rounds
+    vol = _round_area(90.0, CAN_EDGE_R) * L
+    box = f"{e[0] - 0.3:.3f} {-CAN_HW:.3f} {e[1] - 0.3:.3f} {e[0] + 0.3:.3f} {CAN_HW:.3f} {e[1] + 0.3:.3f}"
+    return vol, box
+
+
 def canopy_rim_round() -> tuple[float, list[str]]:
     """P6e (tick 61): r 1.0 on the OUTER edge of the skirt's bottom rim (z CAN_Z0), the edge a
     hand meets; the inner edge stays square (rounding both would eat the 1.8 wall). Returns
@@ -2137,7 +2148,9 @@ def canopy_features() -> dict:
         "roots": roots,
         "tabs": tabs,
         "rim": canopy_rim_round()[0],
+        "hood_edge": canopy_hood_edge()[0],
         "vol": -canopy_rim_round()[0]
+        - canopy_hood_edge()[0]
         + v_out
         - v_in
         - win
@@ -2237,6 +2250,7 @@ def canopy_lines(path: str) -> list[str]:
             f"cyl|z|{bx} {sg * by}|-0.1 {INS_DEPTH}|{INS_HOLE / 2}|cut"
             for sg in (-1, 1)
         ],
+        f"fillet|{CAN_EDGE_R}|y|{canopy_hood_edge()[1]}|1|{-f['hood_edge']:.2f} {0.25 * f['hood_edge']:.2f}",
         f"filletface|{CAN_EDGE_R}|z:-1|{CAN_Z0}|{CAN_X0 - 1} {-hw - 1} {fp[0] + 1} {hw + 1}|any"
         f"|{-f['rim']:.2f} {0.25 * f['rim']:.2f}|skip:"
         + ";".join(canopy_rim_round()[1]),

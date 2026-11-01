@@ -397,3 +397,6 @@ Newest at the bottom. One entry per tick.
 - r 1.0 on the OUTER edge of the skirt's bottom rim (z 30): rear outside the apron, the r 20 corners, both sides, the front lips (75° wedge). Inner edge left square (both would eat the 1.8 wall). One filletface over the 4 rim faces, `skip:` boxes for the inner edges, inner arcs and the concave junctions with the tab webs / apron (16 edges skipped).
 - −67.7 vs −67.5 mm³; canopy 95,216 mm³. Rebuild 0 interferences, min wall 1.6. meshcheck sharp length only 4,158 → 4,133 mm (the inner rim edge stays; meshcheck may also count the r 1 round's STL facets): not chased.
 - Left in P6e: hood front edge r 3 (E1), window/lip edges, hood-top screw heads (E1 §3), rib/keel bottom edges.
+
+## tick 62 · P6e hood front top edge r 1.0 · accepted (kid safety) · 2026-11-01 01:45
+- The hood's front top edge (E, along y, right behind the head) r 1.0: −19.8 vs −19.3 mm³. E1 asks r 3 here, but the ceiling over the window is 1.8 thick: r 1 is what fits (r 3 would need the hood ceiling thickened locally). Rebuild 0 interferences.
