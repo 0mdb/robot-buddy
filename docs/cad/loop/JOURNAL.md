@@ -361,3 +361,9 @@ Newest at the bottom. One entry per tick.
 - Alone: 6,349.8 vs 6,349.8 mm³ each (8.2 g). Rebuild 0 interferences; printed 498.7 g.
 - S9 by statics, not FEA (one material per study; the steel shafts can't be modelled): each axle is a lever with the belt load between the inboard support and the bar, so with pinned ends each takes ~half → plate path ~half of S1m: **axle motion ~0.52 mm** (was 1.03; target 0.2), bar stretch ~0.03 mm. The TT shaft's two gearbox bearings make the inboard end partly moment-stiff, which can shift the split either way. Q20 to Ben.
 - Ben (Q20): judge the drive increment → 8.7 N/side → ~0.09 mm with the bars vs 0.2: **S1 passes**. 07 amended; Q17/Q20 closed.
+
+## tick 55 · T11 native installed belt · accepted (tooling/fit) · 2026-10-31 22:05
+- `RB-PRT-050/051_belt_L/R`: the 08 belt wrapped on the wheels (pitch-line stadium round the sprocket and the idler at x_fit), base T_BASE, grouser bars outboard, trapezoid lugs in the LUG_W band (end chamfers left out). Lug centres at s = 5 + 10 k from the sprocket top tangent = 20 k° on both wheels = the pockets (straights = 11 pitches exactly). Built as one outer boss + three inner cuts (plain / lugged / plain) from 800-point XZ polylines; ~1 min.
+- Volume by shoelace 48,158 vs SolidWorks 48,157.7 mm³ (47,877.8 with the 0.02 gap); printed ring (drivetrain.belt) 47,657 (−1.05 %, the chamfers). Replaces the stadium envelopes in the assembly.
+- First rebuild: 816 × 0.0 mm³ belt/wheel (the inner face sits ON the rim; its chords dip ~0.001 inside) → modelled 0.02 off → **0 interferences**: lugs clear every pocket, the frame bars and the plate. Belts 58.4 g each TPU (now in the roll-up): printed 615.5 g.
+- Ben asked how the belts print: as an upright closed ring (Ø133 × 36, lugs in, bars out), flexed onto the wheels; T12 checks the strain and lug clearance.

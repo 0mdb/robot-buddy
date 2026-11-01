@@ -867,8 +867,9 @@ def rebuild_manifest(win: str) -> list[str]:
     car_r = cad + r"\parts\RB-PRT-031_carriage_R.SLDPRT"
     sprocket = cad + r"\parts\RB-PRT-020_sprocket.SLDPRT"  # 08, outrigger variant (P2o)
     idler = cad + r"\parts\RB-PRT-021_idler.SLDPRT"  # 08, 2 x 624
-    belt_l = cad + r"\library\belt_envelope_L.SLDPRT"
-    belt_r = cad + r"\library\belt_envelope_R.SLDPRT"
+    # T11: the installed belt, native, replaces the stadium envelopes for fit checks
+    belt_l = cad + r"\parts\RB-PRT-050_belt_L.SLDPRT"
+    belt_r = cad + r"\parts\RB-PRT-051_belt_R.SLDPRT"
     mount_r = cad + r"\parts\RB-PRT-010_motor_mount_R.SLDPRT"  # generated v2 (P2)
     mount_l = cad + r"\parts\RB-PRT-011_motor_mount_L.SLDPRT"  # its X-mirror
     asm = cad + r"\assemblies\RB-ASM-101_chassis.SLDASM"
@@ -914,8 +915,8 @@ def rebuild_manifest(win: str) -> list[str]:
         *mount_v2_lines(mount_l, mirror=True),
         *wheel_lines(sprocket, dt.sprocket_layers(True)),
         *wheel_lines(idler, dt.idler_layers(2)),
-        *belt_envelope_lines(belt_l, +1),
-        *belt_envelope_lines(belt_r, -1),
+        *belt_native_lines(belt_l, +1),
+        *belt_native_lines(belt_r, -1),
         f"asm|{asm}",
         f"comp|plate|{plate}|{row(ROT_I, (0, 0, 0))}|fix",
         f"comp|mount_R|{mount_r}|{row(ROT_Z180, (tx, -ty, 0))}",
@@ -2197,6 +2198,100 @@ def canopy_fea_lines(path: str) -> list[str]:
     ]
 
 
+# ------------------------------------------------ installed belt, native (T11)
+# The 08 belt wrapped on its wheels (the as-printed ring is drivetrain.belt()): pitch line
+# = stadium round the sprocket and idler at the fit station, inner face R_RUN, base
+# T_BASE, grouser bars GROUSER_H outboard, trapezoid lugs LUG_H inward in the centre
+# LUG_W band (2 mm end chamfers left out). Lug centres at pitch-line s = 5 + 10 k from the
+# sprocket's top tangent point, which puts them at 20 k° on both wheels = the pockets
+# (the straights are exactly 11 pitches). Replaces the stadium envelope for fit checks.
+def _belt_path(s_: float, off: float) -> tuple[float, float]:
+    """Chassis (x, z) at pitch-line arclength s_ (0 = sprocket top tangent, going aft
+    over the top run), offset `off` outward from the pitch line."""
+    xd, xi, z = dt.X_DRIVE, dt.belt_fit()["x_fit"], dt.Z_AXLE
+    rp = dt.pitch_radius()
+    c = xd - xi
+    arc = math.pi * rp
+    s_ %= 2 * c + 2 * arc
+    if s_ < c:
+        return (xd - s_, z + rp + off)
+    s_ -= c
+    if s_ < arc:
+        th = math.pi / 2 + s_ / rp
+        return (xi + (rp + off) * math.cos(th), z + (rp + off) * math.sin(th))
+    s_ -= arc
+    if s_ < c:
+        return (xi + s_, z - rp - off)
+    s_ -= c
+    th = -math.pi / 2 + s_ / rp
+    return (xd + (rp + off) * math.cos(th), z + (rp + off) * math.sin(th))
+
+
+def _belt_loop(kind: str) -> list[tuple[float, float]]:
+    """'outer' (base + bars), 'inner' (plain), 'lugs' (inner with lugs) as XZ polylines."""
+    links = dt.belt_fit()["links"]
+    hb = dt.T_BASE / 2
+    # the inner face sits ON the wheel rims (R_RUN): its 0.5 mm chords dip ~0.001 inside
+    # them and read as 816 x 0.0 mm3 interferences (tick 55); model it 0.02 off instead
+    gap = 0.02
+    pts = []
+    for k in range(links):
+        s0 = 10.0 * k
+        ss = sorted(
+            set(
+                [s0 + 0.5 * i for i in range(20)]
+                + [s0 + 5 + d for d in (-2.5, -1.5, 1.5, 2.5, -2.0, -1.0, 1.0, 2.0)]
+            )
+        )
+        for s_ in ss:
+            u = abs(s_ - (s0 + 5))
+            if kind == "outer":  # bars: flat top |u| <= 1, ramp to 2
+                h = dt.GROUSER_H * min(1.0, max(0.0, (2.0 - u) / 1.0))
+                pts.append(_belt_path(s_, hb + h))
+            elif kind == "lugs":  # lug: tip |u| <= 1.5, root 2.5
+                h = dt.LUG_H * min(1.0, max(0.0, (2.5 - u) / 1.0))
+                pts.append(_belt_path(s_, -hb + gap - h))
+            else:
+                pts.append(_belt_path(s_, -hb + gap))
+    return pts
+
+
+def belt_native_lines(path: str, side: int) -> list[str]:
+    y0, y1 = track_y()
+    l0, l1 = y0 + (dt.BELT_W - dt.LUG_W) / 2, y0 + (dt.BELT_W + dt.LUG_W) / 2
+
+    def ys(a, b):
+        return (a, b) if side > 0 else (-b, -a)
+
+    def prof(poly, a, b, kind):
+        pts = [f"{x:.3f} {-z:.3f}" for x, z in poly]
+        return (
+            f"prof|{a:.3f} {b:.3f}|M "
+            + pts[0]
+            + "".join(" L " + q for q in pts[1:])
+            + f"|{kind}|top"
+        )
+
+    out, inn, lug = _belt_loop("outer"), _belt_loop("inner"), _belt_loop("lugs")
+    a_out, a_in, a_lug = _poly_area(out), _poly_area(inn), _poly_area(lug)
+    vol = a_out * dt.BELT_W - a_in * (dt.BELT_W - dt.LUG_W) - a_lug * dt.LUG_W
+    ya, yb = ys(y0, y1)
+    b1 = ys(y0 - 0.1, l0)
+    b2 = ys(l0, l1)
+    b3 = ys(l1, y1 + 0.1)
+    zs = [z for _, z in out]
+    xs = [x for x, _ in out]
+    return [
+        f"part|{path}",
+        prof(out, ya, yb, "boss"),
+        prof(inn, *b1, "cut"),
+        prof(lug, *b2, "cut"),
+        prof(inn, *b3, "cut"),
+        f"expect|vol {vol:.1f} {vol * 0.005:.1f}|box {min(xs):.2f} {max(xs):.2f} {ya} {yb} {min(zs):.2f} {max(zs):.2f} 0.1",
+        "save",
+    ]
+
+
 # --------------------------------------------- outboard track frame (P2o, Q17 b)
 # One bar per side, outboard of the wheels: a tie between the sprocket's outboard 624
 # (steel Ø4 dowel pressed through the bar + boss, 5 mm into the bearing) and the idler's
@@ -2293,6 +2388,8 @@ PART_MATERIAL = {
     "RB-PRT-004": "PC",  # canopy (06 §6, P6): PC white (M4, tick 49)
     "RB-PRT-030": "PET-CF",
     "RB-PRT-040": "PET-CF",  # track frames (P2o)
+    "RB-PRT-050": "TPU",  # installed belts (T11; the print is drivetrain.belt())
+    "RB-PRT-051": "TPU",
     "RB-PRT-041": "PET-CF",
     "RB-PRT-031": "PET-CF",
     "RB-PRT-010": "PET-CF",
