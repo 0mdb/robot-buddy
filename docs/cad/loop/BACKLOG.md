@@ -120,7 +120,10 @@ Rules the loop enforces from here on (ASTM F963 / EN 71-1 / IEC 62115 as design 
   **Done tick 63 (top front edge):** r 1.0 pre-tilt, the side rounds blend into it; S5c =. The foot front edge stays (it sits at the plate edge under the canopy lips).
 - [x] S1c `[py]` `[sw]` wheels: r 1.0 on the outboard rim (a rounded ring in drivetrain.py's layer stack, so the meshes and the SW parts stay identical)
   **Done tick 34:** r 1.0 on the outboard rim (bed-face outer circle, r 27.40) of sprocket and idler via `filletface` in `wheel_lines`: −36.6 vs −36.9 mm³ each. Done in the SW build, not in drivetrain.py's layer stack as planned, so drivetrain.py's own meshes now differ from the printed parts by that round (36.6 mm³); the CAD export is the print file. Accessible sharp edges 213 → 41 mm per wheel (the hub bore edge is left; it sits under the axle head / sprocket screw).
-- [ ] S2 `[sw]` pinch-point audit around the track path, drive sprockets and follower slots; propose track skirts/guards
+- [x] S2 `[sw]` pinch-point audit around the track path, drive sprockets and follower slots; propose track skirts/guards
+  **Done tick 64:** `S2_pinch.md`: F1 front-corner slot 9.5 mm ❌, F2 loop window 16 mm to the lug nips ⚠️ → Q22.
+- [ ] S2a `[sw]` F1: bulkhead side cheeks |y| 47 → 52, x 74…85, z 0…30 (Q22 default)
+- [ ] S2b `[sw]` `[blocked]` F2: frame bars → side plates over the loop window (Q22, changes the look)
 - [ ] S3 `[doc]` small-parts / removable-parts inventory (what comes off without a tool?)
 - [x] S4 `[doc]` battery access + drop path review against the Pi-stack envelope
   **Done tick 35:** `docs/cad/loop/S4_battery.md`. Access is tool-only (2.0-key canopy screws), charging through cut-outs. Three canopy requirements added to P6: cells captive (pad / ribs 1–2 mm over them), crush path to the frame with a new FEA case **S7** (300 N heel, < 10 mm, SF ≥ 3), nothing sharp within 5 mm of the cells.

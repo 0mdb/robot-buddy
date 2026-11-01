@@ -405,3 +405,6 @@ Newest at the bottom. One entry per tick.
 - r 1.0 on the wall's top front edge pre-tilt (`fillet` on the line at x 85, z 126): alone −20.17 vs −20.17 mm³, the side rounds then take 5 edges each (they blend), part 33,730.7 vs 33,795.1.
 - The full rebuild hung: SLDWORKS "not responding" with an unsaved Part544 open, ~15 GB; the rebuild's 30 min timeout killed only the Python wrapper (empty log), leaving swbuild.exe attached; S5c then started and waits on it. Nothing killed (lesson: don't kill mid-run; restart is Ben's). sw: DOWN. Generator change left uncommitted, documented in STATE.
 - **Resumed 04:00 MST** (Ben restarted SolidWorks). The orphan swsim exited by itself; clean rebuild: S1b3 −20.17 vs −20.17 mm³, 0 interferences, printed 615.3 g; S5c 7.50 MPa (SF 4.7) / bezel 0.27 mm (=). **S1b3 accepted.**
+
+## tick 64 · S2 pinch-point audit (track path) · accepted (doc) · 2026-11-01 04:30 MST
+- `S2_pinch.md`: plate/canopy/bar gaps to the belt 1.5 / 3.5 / 1.0 ✓. **F1** 9.5 mm slot at each front corner (bulkhead side |y| 47 ↔ belt 56.5, z 0…30) ❌. **F2** 16 mm loop window above/below the frame bar reaches the lug ↔ pocket nips ⚠️. Q22: cheeks for F1 (default, next), side plates for F2 (waits for Ben: it changes the look).
