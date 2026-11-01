@@ -425,6 +425,11 @@ def plate_features() -> list[tuple[str, tuple, float, float]]:
         )
     x0, x1, wy, wr = WIRE_SLOT
     cut.append(("all", ("slot", x0, wy, x1, wy, wr), 0, 0))
+    # Q19: slots for the canopy's side tongues (bearing in x; 0.1 clearance all round)
+    (_, _), (tx0, tx1), _, cl = CAN_TAB
+    for sgn in (-1, 1):
+        y0, y1 = sorted((sgn * (CAN_HW - CAN_T - cl), sgn * (CAN_HW + cl)))
+        cut.append(("all", ("rect", tx0 - cl, tx1 + cl, y0, y1), 0, 0))
     # P6b: the canopy's rear screws, M3 x 10 button up from the belly into the inserts in
     # its apron bosses (07 F9 amendment); square edge for the head, clear of the ribs
     for sgn in (-1, 1):
@@ -1830,6 +1835,17 @@ CAN_RIBS_X = (-62.0, -42.0, -22.0, -2.0, 18.0)  # ribs along y
 # S7 rev 2 (tick 49): ribs alone 19.5 -> 7.0 mm, still the top spanning 106 between the
 # side walls. Two lengthwise inner walls ("keels") just outside the Pi stack (|y| <= 28)
 # halve that span; down to z 75 (clear of the stack's sides by 2.7, of everything below).
+# Q19 (Ben, tick 51): S5k showed the canopy can't hold the bulkhead's lugs (its rear apron
+# hinges; the side walls stop at z 30). Each side wall now drops a web to the plate in the
+# free strip between the carriages (front <= x -45) and the motors (can end x -10), ending
+# in a tongue that sits in a plate slot: the side walls become shear panels. No screws.
+# Rev 2 (tick 52): webs 16 -> 30 long (S5k 0.91 mm with 16: they bent in their own plane)
+CAN_TAB = (
+    (-44.0, -14.0),
+    (-43.0, -15.0),
+    3.0,
+    0.1,
+)  # web x, tongue x, tongue depth, slot clearance
 CAN_ROOT_R = (
     1.0  # P6g (Ben): rib/keel roots, 07 fil_in (not 1.95/2.0: S8 fixes those cylinders)
 )
@@ -2023,6 +2039,8 @@ def canopy_features() -> dict:
     l_y = nyr * 2 * (2 * ya - nxr * rt_ - 2 * kt)  # y-ribs
     l_k = 2 * 2 * ((xb - xa) - nyr * rt_)  # keels
     roots = (1 - math.pi / 4) * CAN_ROOT_R**2 * (l_x + l_y + l_k)
+    (wx0, wx1), (tx0, tx1), td, _ = CAN_TAB
+    tabs = 2 * CAN_T * ((wx1 - wx0) * CAN_Z0 + (tx1 - tx0) * td)
     return {
         "p": p,
         "pin": pin,
@@ -2039,7 +2057,17 @@ def canopy_features() -> dict:
         "pockets": pockets,
         "ribs": rib_vol,
         "roots": roots,
-        "vol": v_out - v_in - win - holes + apron + boss - pockets + rib_vol + roots,
+        "tabs": tabs,
+        "vol": v_out
+        - v_in
+        - win
+        - holes
+        + apron
+        + boss
+        - pockets
+        + rib_vol
+        + roots
+        + tabs,
     }
 
 
@@ -2115,13 +2143,21 @@ def canopy_lines(path: str) -> list[str]:
         f";{xb_in - 0.4:.3f} {-CAN_HW - 1} {zc_in - 0.5:.3f} {xb_in + 1:.3f} {CAN_HW + 1} {zc_in + 0.5:.3f}"
         f";{CAN_X0 - 1} {yr_in - 0.4:.3f} {zc_in - 0.5:.3f} {xb_in + 1:.3f} {CAN_HW + 1} {zc_in + 0.5:.3f}"
         f";{CAN_X0 - 1} {-CAN_HW - 1} {zc_in - 0.5:.3f} {xb_in + 1:.3f} {-yr_in + 0.4:.3f} {zc_in + 0.5:.3f}",
+        *[
+            ln
+            for sg in (-1, 1)
+            for ln in (
+                f"box|{CAN_TAB[0][0]} {CAN_TAB[0][1]}|{min(sg * (CAN_HW - CAN_T), sg * CAN_HW)} {max(sg * (CAN_HW - CAN_T), sg * CAN_HW)}|0 {CAN_Z0}",
+                f"box|{CAN_TAB[1][0]} {CAN_TAB[1][1]}|{min(sg * (CAN_HW - CAN_T), sg * CAN_HW)} {max(sg * (CAN_HW - CAN_T), sg * CAN_HW)}|{-CAN_TAB[2]} 0",
+            )
+        ],
         f"box|{CAN_X0} {CAN_X0 + CAN_T}|{-CAN_APRON_HW} {CAN_APRON_HW}|0 {CAN_Z0}",
         *[f"cyl|z|{bx} {sg * by}|0 {bh}|{INS_BOSS / 2}|boss" for sg in (-1, 1)],
         *[
             f"cyl|z|{bx} {sg * by}|-0.1 {INS_DEPTH}|{INS_HOLE / 2}|cut"
             for sg in (-1, 1)
         ],
-        f"expect|vol {f['vol']:.1f} {f['vol'] * 0.03:.1f}|box {CAN_X0} {fp[0]:.2f} {-hw} {hw} 0 {e[1]:.2f} 0.5",
+        f"expect|vol {f['vol']:.1f} {f['vol'] * 0.03:.1f}|box {CAN_X0} {fp[0]:.2f} {-hw} {hw} {-CAN_TAB[2]} {e[1]:.2f} 0.5",
         "save",
     ]
     return lines

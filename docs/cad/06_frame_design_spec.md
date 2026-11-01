@@ -196,6 +196,9 @@ board and any off-board TB6612 now go aft, between the carriages (x −85…−4
 >   rear screws come up from the belly (07 F9 amendment). Old: 2 plate rear posts.
 > - Not yet: crown, mic-disc seat, vents, USB-C / switch cut-outs, cell-retention ribs
 >   (S4), S7 / S5c with the real canopy.
+> - Later in leg 2 (ticks 49–52): PC white; top 93 → **95** with a 4 mm rib grid and two
+>   keels (heel test S8, 07); inner roots r 1; **side tongues** (x −43…−15, 3 mm) into
+>   plate slots so the side walls brace the bulkhead's lugs (Q19).
 
 ## 7. Drivetrain parts
 

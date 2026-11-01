@@ -348,6 +348,9 @@ def s5k() -> dict:
             "discard_open",
             f"fix cyl 0 0 1 {chassis.INS_HOLE / 2} 0.02",
             "fix plane 0 0 1 0",
+            # Q19 tongues bear on their plate slots' ends (both ways, 0.1 lash ignored)
+            f"fix plane 1 0 0 {chassis.CAN_TAB[1][0]}",
+            f"fix plane 1 0 0 {chassis.CAN_TAB[1][1]}",
             f"load lugs cyl 0 0 1 {chassis.CAN_LUG_HOLE / 2} 0.02",
             f"disp lugs cyl 0 0 1 {chassis.CAN_LUG_HOLE / 2} 0.02",
             "probe hood 30 -54 90 75 54 125",

@@ -346,3 +346,8 @@ Newest at the bottom. One entry per tick.
 - New study **S5k**: canopy alone (PC), held at its rear insert pockets + apron/boss feet, the full 50 N poke (S5 direction) into the two lug screw holes (upper bound).
 - Result: lug holes move ~340 mm (linear; i.e. a mechanism), 208 MPa at the rear apron. The canopy's only tie to the frame is the rear apron, a 1.8 wall loaded face-on; the side walls (stiff in their own plane) stop at z 30 and never reach the plate. **S5c's premise (lugs fixed) does not hold** → the bulkhead is effectively at S5 standalone (8.0 mm / 39 MPa vs 0.5 mm). Q19 to Ben.
 - Next: per Q19.
+
+## tick 52 · Q19 canopy side tongues into plate slots (Ben) · accepted (strength fix, partial) · 2026-10-31 20:50
+- Each canopy side wall drops a 1.8 web to the plate in the free strip between the carriages (front <= x −45) and the motors (can end x −10), ending in a 3 mm tongue in a plate slot (0.1 clearance): the side walls become shear panels, no screws, canopy still lifts straight off. Screws from the belly were out: the heads would hit the |y| 47 load rib.
+- S5k (canopy alone, full 50 N poke into the lugs, upper bound; tongue ends held in x): ~340 mm (tick 51) → 16 mm webs 0.91 mm → **30 mm webs (x −44…−14) 0.75 mm**, 12.1 MPa (SF ~5). Remaining give: hood-ceiling junction and the side lips. Target 0.2: **not met**. By hand the real S5c bezel ≈ 0.27 + 0.7 × 0.64 ≈ 0.7 mm vs 0.5 (canopy takes ~90 % of the poke). Accepted per Ben ("no hair-splitting"); open item P6i.
+- Plate slots: S1m 8.98 → 8.87 MPa (SF 3.95), inserts 1.038 mm (=); S1b 3.20 MPa. Rebuild 0 interferences. Canopy 111.7 g, plate 111.3 g, printed 482.3 g. The `box` webs built exact (the tick-49 keel anomaly didn't recur).

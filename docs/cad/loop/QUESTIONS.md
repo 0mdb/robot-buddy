@@ -49,7 +49,7 @@ The loop adds questions here and moves on. Answer inline (`**A:** …`); the nex
 - **Q18 Design language (E1, tick 31):** `docs/cad/loop/E1_design_language.md`. One fillet family **1 / 3 / 8 mm** (1 = every accessible edge, 3 = handled edges and openings, 8 = the silhouette), a soft "pebble" canopy with a slight crown (no big flat white panels), no exposed screw heads on the faces a child sees, openings as one slot/hole pattern, face high and proud as the "head". Options: **(a) as proposed** · (b) crisper robot look (1 / 2 / 4, chamfers, flat panels) · (c) send a reference.
   **Default: (a)**; the loop designs the canopy (P6) and E2 to it, nothing is printed before you look.
 
-- **Q19 Bulkhead poke (S5c) with the real canopy (tick 51).** S5k: the canopy can't hold the lugs (rear apron is a hinge; side walls don't reach the plate), so the bulkhead is back to S5 standalone (8 mm vs 0.5). Options in the session; the loop waits for a pick before changing structure.
+- **Q19 Bulkhead poke (S5c) with the real canopy (tick 51).** S5k: the canopy can't hold the lugs (rear apron is a hinge; side walls don't reach the plate), so the bulkhead is back to S5 standalone (8 mm vs 0.5). **A (Ben): canopy side tabs.** Built tick 52 as tongues into plate slots (screw heads would hit the load rib): S5k 0.75 mm, S5c ≈ 0.7 mm vs 0.5 by hand; accepted, P6i open.
 
 ## Measurements wanted (not questions; each replaces a 🟡 assumption)
 - **Drive gear hub** (for P2o, the outboard axle support): bore / D-flat, the outer face (is there a boss or recess), and whether a stub shaft or screw could be fixed on the outer side. Without it the loop can't design the outboard bearing.
