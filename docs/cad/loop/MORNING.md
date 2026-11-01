@@ -33,8 +33,8 @@ SolidWorks hung at ~01:36 MST during a rebuild; you restarted it ~04:00 and the 
 | S2 | motor mount, pull + torque | 6.10 MPa | 5.7 | converged (leg 1) |
 | S6 | carriage | 7.57 MPa | 4.6 | |
 | S5c | bulkhead, lugs held | 7.48 MPa | 4.7 | 0.27 mm |
-| S8 | canopy heel 150 N (PC) | 24.4 MPa | 2.5 (XY) | 1.68 mm, tick 50 (the review re-run was still solving at 06:15) |
-| S5k | canopy at the lugs (PC) | 12.1 MPa | — | 0.75 mm, tick 52 |
+| S8 | canopy heel 150 N (PC) | 24.8 MPa | 2.5 (XY) | 1.61 mm (re-run 07:40 after the restart) |
+| S5k | canopy at the lugs (PC) | 9.5 MPa | — | 0.75 mm (re-run 07:40) |
 
 ## Open, for you
 - **Q21 belt stretch:** lugs bind past 1.71 % stretch; default = let the strip-creep test decide (pocket CLR 0.6 → 0.75 is the ready fix).

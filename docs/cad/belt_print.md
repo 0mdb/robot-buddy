@@ -21,6 +21,14 @@ Files: `python3 tools/drivetrain.py build -o CAD/exports/rnd/drivetrain [--shrin
   not the AMS (print-bom.md). Print slowly; tune on the strip first.
 - **Plate**: textured PEI (print-bom.md).
 
+## Orca setup (P2S, 0.6 hardened nozzle, 2026-11-01)
+
+Bambu's TPU 85A profile for the P2S is only for the **0.6 nozzle**. Select:
+- Printer: **Bambu Lab P2S 0.6 nozzle**
+- Filament: **Bambu TPU 85A @BBL P2S** (stock: 225 °C, 2.2 mm³/s cap), loaded on the **external spool**
+- Process: **robot-buddy belt TPU85A 0.6**, a user preset (`%APPDATA%\OrcaSlicer\user\default\process`) on top of *0.24mm Balanced Quality @BBL P2S 0.6 nozzle*, with 4 walls (0.62 lines ≈ the 2.5 base, no infill), 0 % sparse infill and a 5 mm outer brim.
+- Plate: textured PEI. Keep the strip standing (36 mm up).
+
 ## Shrink compensation
 
 TPU contracts along the printed length. Print `belt_strip150` and measure its length cold: shrink % =
