@@ -17,7 +17,11 @@ Order (Ben): P13 road wheels → P7/P8 → canopy P6d/f/e → T4 slicing → P10
 5. **Canopy rear-wall vents (P6d, tick 71):** 2 × 13 vertical slots (intake under the HAT,
    exhaust above it), canopy 114.2 → 112.8 g PC. S8 25.1 MPa / 1.63 mm (< 1.7), S5k lugs 0.77 mm:
    both within 2–3 % of before. Look: `shots/1-P6d/canopy_right.png`.
-6. Backlog: **M6** PA6-CF wheel coupons (Fiberon PA6-CF20 in stock); **M3** insert ladder
+6. **Headless slicing (T4, tick 72):** `just cad-slice` → `CAD/exports/print/<part>.3mf` (settings
+   inside: 4 walls, 40 % gyroid, Engineering Plate) + `sliced.json`. **13 parts 623 g filament, 26.2 h.**
+   The canopy printed open side down is 186 g / 9.5 h on tree support (113 g of part): P6f next.
+   Bambu's PC preset says density 1.04; overridden to 1.20.
+7. Backlog: **M6** PA6-CF wheel coupons (Fiberon PA6-CF20 in stock); **M3** insert ladder
    ported from fpv250 (its PA6-CF result is M2 Ø3.4 × 5.5; buddy is M3).
 
 Printed total **661.2 g** (incl. belts 117 g, road discs 27 g), CoG (−0.3, 0.0, 22.3). Review-pass studies from
@@ -37,4 +41,4 @@ leg 2 stand except S6 (now 6.50).
 624 seats, 684, band slice) in PET-CF **and PA6-CF** (M6). See `docs/cad/belt_print.md`.
 
 ## Next
-P6d rest (mic seat, jack/switch per Q23, cell ribs: need your numbers) → P6f/e → T4 slicing; P13c/d and P7 once Q24/Q25 are answered.
+P6f canopy crown + print orientation (with the slice numbers) → P6e → P10/E4; P6d rest needs your numbers → T4 slicing; P13c/d and P7 once Q24/Q25 are answered.

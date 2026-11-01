@@ -299,3 +299,7 @@ cad-pull *args:
 # Attach to the running SolidWorks and list open documents
 cad-probe:
     python3 {{project}}/tools/sw.py probe
+
+# Slice printed parts headless in OrcaSlicer: grams, time, .3mf per part (--only plate,canopy)
+cad-slice *args:
+    {{project}}/tools/.venv/bin/python {{project}}/tools/slice.py {{args}}

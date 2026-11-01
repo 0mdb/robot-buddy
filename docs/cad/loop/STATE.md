@@ -1,9 +1,9 @@
 # CAD loop state
 
 pass: 1, leg 3 (leg 2 ended 2026-11-01 06:15 at tick 67)
-tick: 71
+tick: 72
 sw: up (restarted by Ben ~06:40 MST; S8/S5k re-run clean)
-current: none (tick 71: P6d rear-wall vents accepted; P6d rest waits on mic disc dims / Q23 / HAT heights → next P6f)  [leg 3 order: P13 → P7/P8 → P6d/f/e → T4 → P10/E4 → polish]
+current: none (tick 72: T4 slicing done; next P6f canopy crown + print orientation, using the slice numbers)  [leg 3 order: P13 → P7/P8 → P6d/f/e → T4 → P10/E4 → polish]
 hypothesis: —
 baseline_commit: d8179d2 (cad)
 stop_after: none (Ben, leg 3, 2026-11-01: "until completed")
