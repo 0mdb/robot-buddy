@@ -29,6 +29,16 @@ Bambu's TPU 85A profile for the P2S is only for the **0.6 nozzle**. Select:
 - Process: **robot-buddy belt TPU85A 0.6**, a user preset (`%APPDATA%\OrcaSlicer\user\default\process`) on top of *0.24mm Balanced Quality @BBL P2S 0.6 nozzle*, with 4 walls (0.62 lines ≈ the 2.5 base, no infill), 0 % sparse infill and a 5 mm outer brim.
 - Plate: textured PEI. Keep the strip standing (36 mm up).
 
+**Strip print 1 (stock filament profile, 0.24 layers, classic walls): outer walls delaminated down
+the strip's edge.** The stock profile runs the part fan at 100 % (layer time ~40 s, well under its
+100 s full-fan threshold) plus the auxiliary fan at 70 %, at 225 °C: each layer lands on cold TPU.
+The classic wall generator also leaves an uneven seam between the two sides' walls in a 2.5 mm
+band. Revised presets (2026-11-01), for strip print 2:
+- Filament: **robot-buddy belt TPU85A hot** (user preset on *Bambu TPU 85A @BBL P2S*): 240 °C
+  (235 first layer, the grade's top), part fan 10–30 %, auxiliary fan off, flow 1.05, fan off for 3 layers.
+- Process: the same **robot-buddy belt TPU85A 0.6**, now 0.20 layers (more squish per line),
+  Arachne walls (even lines across the band, no centre seam), seam at the back.
+
 ## Shrink compensation
 
 TPU contracts along the printed length. Print `belt_strip150` and measure its length cold: shrink % =
@@ -36,8 +46,13 @@ TPU contracts along the printed length. Print `belt_strip150` and measure its le
 `belt_shrink<pct>.stl`. The fit target is a 400 mm pitch length (40 × 10), with the idler at
 x −57.3 ± 5 (08). The jack screw has 4.6 mm of install slack.
 
+**Measured (strip print 1, TPU 85A, 0.6 nozzle): 149.16 mm → 0.56 % shrink** (≈ 2.2 mm on the 400 mm
+belt, inside the jack slack, but compensated anyway): print the belts from `belt_shrink0.56.stl`.
+Re-measure on strip print 2 if the hotter settings move it by more than ~0.2 %.
+
 ## After printing, before fitting
 
 - Hang test (08 §7.3): 1 kg on the strip, length now and after 24 h. Past **1.5 %** total stretch the
   end lugs approach their pocket clearance (T12 `check-wrap`: zero clearance at 1.71 %, Q21).
+  **Strip print 1: stretch under 1 kg negligible (Ben, 2026-11-01): Q21 closed, pockets stay CLR 0.6.**
 - `python3 tools/drivetrain.py check-wrap` re-runs the fit check with the current numbers.
