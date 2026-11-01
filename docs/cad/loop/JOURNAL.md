@@ -386,3 +386,8 @@ Newest at the bottom. One entry per tick.
 - Found on the way: the bulkhead came out 250 mm³ under its prediction, all of it in the post-tilt foot `box` (+1,660 vs +1,819 last build vs **+1,873** when the same rectangle is drawn as `prof` lines). **`box` used CreateCornerRectangle, which misbuilds when the body already crosses the sketch plane** (the tilted wall at z 0); the tick-49 canopy keels (2.4 thick, not 1.8) were the same bug. Engine: `box` now draws four lines. Full rebuild: every other part identical, bulkhead 33,750.8 vs 33,815 (was 114–250 short), 0 interferences.
 - A Python STL occupancy diff (4M points) was stopped by the harness for low system memory while idle; not re-run (the prof-vs-box build answered it in one SolidWorks run).
 - S5c 7.55 MPa (SF 4.6) / bezel 0.27 mm (=).
+
+## tick 60 · D1b plate boss-root fillets · rejected · 2026-11-01 00:50
+- r 1.0 at the roots of the deck posts + reflex standoffs on the plate top (one filletface, loops box). 8 bosses: +51.6 vs +52.0 mm³ but 2 × 0.0 mm³ with the motor-mount feet (the front posts at (30, ±8) sit beside the feet) → 6 bosses: +38.6 vs +39.0, 0 interferences.
+- Strength got worse: S1b 3.20 → **5.11 MPa** (midplate; posts 4.54), S1m 8.87 → **10.60** (jackstops, beside the reflex standoff at (−36, −26)). Both still pass SF (6.9 / 3.3), but > +10 % on a change meant to lower stress → **rejected**, generator restored, mirror rebuilt.
+- Learned: the plate's peaks there are mesh-sensitive (fillet faces change the mesh near the fixtures/standoffs) rather than set by the boss roots; a root fillet isn't a free win on the plate. If D1b comes back, check with a half-mesh run first (S2 pattern) to see whether either value is converged.
