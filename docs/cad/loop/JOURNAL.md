@@ -420,3 +420,8 @@ Newest at the bottom. One entry per tick.
 
 ## tick 67 · S2c side-plate outline r 1.0 · accepted (kid safety) · 2026-11-01 05:15 MST
 - r 1.0 round each side plate's outline on its outer face (8 edges: straights + the four r 8 corners): −72.72 vs −72.72 mm³ per side. Rebuild 0 interferences; printed 638.1 g. Slot and boss rims left (the boss sits under the dowel head / the slot under the nyloc).
+
+## review pass · every study once on the final geometry · 2026-11-01 06:15 MST
+- PET-CF: S1m 9.97 MPa (SF 3.5; 8.87 at tick 52 with an unchanged plate: the jack-stop peak is mesh-sensitive, as tick 60 showed), S1b 3.20, S1d 8.93, S2 6.10 (pull + torque), S6 7.57, S5c 7.48. All pass.
+- PC (S8, S5k): the run passed its 40 min wrapper timeout while SolidWorks was still solving (responding); left to finish, nothing killed. MORNING uses ticks 50/52 for those.
+- Leg 2 ends here (stop_after 07:00): 21 ticks, the canopy / track frame / treads / polish list done except the measurement- and style-gated items (P6d, P6f, P6i, D1b others, Q21).

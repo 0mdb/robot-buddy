@@ -1,9 +1,9 @@
 # CAD loop state
 
 pass: 1, leg 2 (leg 1 ended 2026-10-31 ~11:10 at tick 46)
-tick: 67
+tick: 67 (leg 2 ended 2026-11-01 06:15 MST)
 sw: up (Ben restarted SolidWorks 2026-11-01 ~04:00 MST after the 01:36 hang)
-current: none (tick 67 S2c accepted)
+current: none (leg 2 done; next leg: Ben's call; open: P6d openings (HAT ports), P6f crown, P6i, Q21, D1b with a convergence check, T4 slicing)
 hypothesis: —
 baseline_commit: d8179d2 (cad)
 stop_after: 2026-11-01 07:00 (Ben, leg 2: "until 7am tomorrow or completed")
