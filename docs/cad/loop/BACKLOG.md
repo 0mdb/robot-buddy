@@ -124,7 +124,9 @@ Rules the loop enforces from here on (ASTM F963 / EN 71-1 / IEC 62115 as design 
   **Done tick 64:** `S2_pinch.md`: F1 front-corner slot 9.5 mm ❌, F2 loop window 16 mm to the lug nips ⚠️ → Q22.
 - [x] S2a `[sw]` F1: bulkhead side cheeks |y| 47 → 52, x 74…85, z 0…30 (Q22 default)
   **Done tick 65:** slot 9.5 → 4.5 mm, 0 interferences, S5c =.
-- [ ] S2b `[sw]` F2 (Ben: yes, Q22 a): frame bars → side plates over the loop window (Q22, changes the look)
+- [x] S2b `[sw]` F2 (Ben: yes, Q22 a): frame bars → side plates over the loop window (Q22, changes the look)
+  **Done tick 66:** side plates 19.1 g each, nips covered, 0 interferences. Edges still square: r 1 on the plate outline next (S2c).
+- [ ] S2c `[sw]` side-plate outline + slot edges r 1.0 (outer face), boss rim r 1
 - [ ] S3 `[doc]` small-parts / removable-parts inventory (what comes off without a tool?)
 - [x] S4 `[doc]` battery access + drop path review against the Pi-stack envelope
   **Done tick 35:** `docs/cad/loop/S4_battery.md`. Access is tool-only (2.0-key canopy screws), charging through cut-outs. Three canopy requirements added to P6: cells captive (pad / ribs 1–2 mm over them), crush path to the frame with a new FEA case **S7** (300 N heel, < 10 mm, SF ≥ 3), nothing sharp within 5 mm of the cells.

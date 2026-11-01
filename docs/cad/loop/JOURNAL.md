@@ -413,3 +413,7 @@ Newest at the bottom. One entry per tick.
 - The wall (3 mm, not the flange: the mounts reach x 77.8) continued sideways |y| 47 → 52 from the bottom to z 30 (pre-tilt 31.1): the front-corner finger slot 9.5 → **4.5 mm**. Side-face rounds now take 7 edges (two concave cheek junctions), the cheek outlines r 1.0: −42.8 / −14.3 mm³ per side vs −42.6 / −14.6.
 - Slip: bulkhead_volume_numeric's grid stopped at |y| 47.9 (missed the cheeks: −682 mm³, box 4.1 mm off) → widened; then 34,663 vs 34,728.
 - Rebuild 0 interferences, printed 616.5 g; S5c 7.48 MPa (SF 4.7), bezel 0.27 mm (=).
+
+## tick 66 · S2b frame bars → side plates over the belt loop (Q22 F2) · accepted (kid safety) · 2026-11-01 05:00 MST
+- Each frame bar grew into a 2.4 PET-CF side plate (rounded rectangle x −69.3…59.7, z −10…38, r 8, outboard of the wheels at |y| 93.5–95.9) round both axles; the lug ↔ pocket nips are now behind it; gaps from its edges to the runs ~3–4 mm diagonally; 8 mm over the ground line. Dowel boss, slot unchanged.
+- 14,795.0 vs 14,795.0 mm³ each (19.1 g, was 8.2); rebuild 0 interferences; printed 638.3 g. Renders `shots/1-S2/`.

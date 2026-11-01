@@ -2415,7 +2415,16 @@ def belt_native_lines(path: str, side: int) -> list[str]:
 # screw sets the tension). Belt tension then closes through the bar instead of bending
 # the plate (S1m). Pinned on two parallel axles it needs no legs: the plate belly has no
 # room for them (the |y| 47 load rib, the canopy tongue slots, the motor), tick 54.
-TF_GAP, TF_T, TF_H = 1.0, 3.6, 14.0  # off the wheel faces, thickness, height (stadium)
+TF_GAP, TF_T, TF_H = (
+    1.0,
+    2.4,
+    14.0,
+)  # off the wheel faces, thickness, height (bar stadium)
+# S2b (Q22 F2, tick 66): the bar grows into a SIDE PLATE over the belt loop's window, so a
+# finger can't reach the lug <-> pocket nips: rounded rectangle round both axles, z
+# TF_PLATE_Z (8 over the ground line, ~3-4 mm diagonally to the runs' lug tips), corners
+# r 8 (E1). 3.6 -> 2.4 thick (a 48-tall plate is far stiffer in tension than the bar).
+TF_PLATE_Z, TF_PLATE_R = (-10.0, 38.0), 8.0
 TF_SLOT = (dt.TRAVEL, 3.4)  # +- travel round the taut station, M3 clearance
 TF_BOSS = (5.0, 3.0)  # dowel boss r, height outboard
 TF_DOWEL = 3.95  # Ø4 h8 dowel press hole (07 press fits: tune on the coupon)
@@ -2429,7 +2438,9 @@ def trackframe_geom() -> dict:
     xa = xi - tr  # rear centre of the stadium = rear end of the slot
     r = TF_H / 2
     br, bh = TF_BOSS
-    area = (xs - xa) * TF_H + math.pi * r * r
+    pz0, pz1 = TF_PLATE_Z
+    pr = TF_PLATE_R
+    area = (xs - xa + 2 * r) * (pz1 - pz0) - (4 - math.pi) * pr * pr
     slot = (2 * tr) * sw + math.pi * (sw / 2) ** 2
     vol = (
         area * TF_T
@@ -2454,18 +2465,28 @@ def trackframe_lines(path: str, side: int) -> list[str]:
     def stadium(xb, xf, rr):  # Top plane: sketch (x, -z), arcs CCW in sketch coords
         return f"M {xf} {-z - rr} A {xf} {-z} {xf} {-z + rr} L {xb} {-z + rr} A {xb} {-z} {xb} {-z - rr}"
 
+    def plate():  # rounded rectangle x xa - r .. xs + r, z TF_PLATE_Z, corners TF_PLATE_R
+        x0_, x1_ = xa - r, xs + r
+        (zb, zt), q = TF_PLATE_Z, TF_PLATE_R
+        v0, v1 = -zt, -zb  # sketch v = -z: top is v0
+        return (
+            f"M {x0_ + q} {v0} L {x1_ - q} {v0} A {x1_ - q} {v0 + q} {x1_} {v0 + q} "
+            f"L {x1_} {v1 - q} A {x1_ - q} {v1 - q} {x1_ - q} {v1} L {x0_ + q} {v1} "
+            f"A {x0_ + q} {v1 - q} {x0_} {v1 - q} L {x0_} {v0 + q} A {x0_ + q} {v0 + q} {x0_ + q} {v0}"
+        )
+
     ya, yb = ys(y0, y1)
     ba, bb = ys(y1, y1 + bh)
     da, db = ys(y0 - 0.1, y1 + bh + 0.1)
     vol = g["vol"]
     return [
         f"part|{path}",
-        f"prof|{ya} {yb}|{stadium(xa, xs, r)}|boss|top",
+        f"prof|{ya} {yb}|{plate()}|boss|top",
         f"cyl|y|{xs} {z}|{ba} {bb}|{br}|boss",
         f"cyl|y|{xs} {z}|{da} {db}|{TF_DOWEL / 2}|cut",
         f"prof|{ya - 0.1} {yb + 0.1}|{stadium(xi - tr, xi + tr, sw / 2)}|cut|top",
         f"expect|vol {vol:.1f} {vol * 0.01:.1f}|box {xa - r:.2f} {xs + r:.2f} "
-        f"{min(ya, ba):.2f} {max(yb, bb):.2f} {z - r:.2f} {z + r:.2f} 0.05",
+        f"{min(ya, ba):.2f} {max(yb, bb):.2f} {TF_PLATE_Z[0]:.2f} {TF_PLATE_Z[1]:.2f} 0.05",
         "save",
     ]
 

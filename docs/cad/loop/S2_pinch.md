@@ -16,3 +16,7 @@ take a finger, > 12 mm doesn't trap one. Numbers from the generators (`chassis.p
 ## Fixes (proposed, Q22)
 - **F1:** close the slot to < 5: a bulkhead side cheek (2.4 PET-CF, |y| 47 → 52, x 74…85, z 0…30, part of the bulkhead) or the canopy lips continued down to the plate there. The cheek is simpler (one part, no new joint), ~3 g per side.
 - **F2:** grow each frame bar into a **side plate** covering the loop window (z −8 … 35 between the wheels, x −30 … 25), outboard of the wheels; the lug ↔ pocket nips are then behind it. ~+12 g per side, and the track looks "enclosed" (E1: tracks read as chassis). Keep ≥ 1 mm off the wheel faces.
+
+## Done
+- F1 (tick 65): bulkhead side cheeks, slot 9.5 → 4.5 mm.
+- F2 (tick 66): frame bars → side plates over the loop window (z −10…38); the nips are behind the plate.

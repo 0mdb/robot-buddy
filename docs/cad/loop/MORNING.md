@@ -10,18 +10,19 @@ SolidWorks hung at ~01:36 MST during a rebuild; you restarted it ~04:00 and the 
 | Plate 001 | 110.9 g | S1m SF 3.95; **S1 passes on your Q20 rule** (drive increment ~0.09 mm vs 0.2 with the track frame); canopy slots + rear screw holes |
 | Bulkhead 002 | 43.5 g | S5c SF 4.6 / 0.27 mm (lugs held); face openings + top front edge r 1 (ticks 59, 63); side cheeks close the front-corner finger slot 9.5 → 4.5 mm (Q22, tick 65) |
 | **Canopy 004 (new)** | **~114 g PC white** | pebble shell, top 95, 4 mm rib grid + 2 keels, inner roots r 1, outer rim + hood edge r 1; heel S8 (150 N, your rule) 1.68 mm SF 2.5; side tongues into plate slots brace the bulkhead (S5k 0.75 mm) |
-| **Track frames 040/041 (new)** | 8.2 g each | outboard bars, sprocket 624 ↔ idler axle; width ~200 |
+| **Track frames 040/041 (new)** | 19.1 g each | outboard side plates (Q22): tie the sprocket 624 to the idler axle and cover the lug ↔ pocket nips; width ~200; edges still square (S2c) |
 | **Belts 050/051 (new, native)** | 58.4 g each TPU | installed shape, lugs in the pockets |
 | Pi deck 003, mounts 010/011, sprocket/idler 020/021, carriages 030/031 | unchanged | as leg 1 |
-| **Printed total** | **616.5 g** | incl. belts (117 g); CoG (−0.7, 0.0, 24.8) |
+| **Printed total** | **638.3 g** | incl. belts (117 g); CoG (−0.7, 0.0, 24.8) |
 
 ## What leg 2 did, biggest first
 1. **Canopy from nothing to a strength-checked part** (P6, Q19): PC over ASA on the heel test (SF 2.4 vs 1.45); the bare shell failed badly (19.5 mm), then a rib grid + keels + your top 93 → 97 → 95. S5k showed it couldn't hold the bulkhead (it swung on its apron), so the side tongues were added: 340 mm → 0.75 mm.
 2. **Track frame** (Q17 b, P2o): bars only (legs had no room); the plate's axle path is halved; S1 judged on the drive increment (Q20) → pass.
 3. **Treads:** native belts (T11), `drivetrain.py check-wrap` (T12), print package `docs/cad/belt_print.md` with strip + 6-lug test pieces (T13).
 4. **Engine bug found and fixed:** `box` (CreateCornerRectangle) misbuilt over existing bodies. It explained the 2.4 mm canopy keels and a bulkhead foot built ~110–250 mm³ short since leg 1.
-5. Polish: bulkhead face openings r 1, canopy rim + hood edge r 1, motor leads corrected to 6-pin (R2b).
-6. Rejected: plate boss-root fillets (S1b +60 %, S1m +19 %: mesh-sensitive peaks).
+5. Kid safety (Q22): bulkhead side cheeks (front-corner slot 9.5 → 4.5 mm) and the frame bars grown into side plates over the lug nips (`shots/1-S2/`).
+6. Polish: bulkhead face openings r 1, canopy rim + hood edge r 1, motor leads corrected to 6-pin (R2b).
+7. Rejected: plate boss-root fillets (S1b +60 %, S1m +19 %: mesh-sensitive peaks).
 
 ## Open, for you
 - **Q21 belt stretch:** lugs bind past 1.71 % stretch; default = let the strip-creep test decide (pocket CLR 0.6 → 0.75 is the ready fix).

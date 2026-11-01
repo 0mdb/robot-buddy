@@ -271,6 +271,9 @@ teardrop the horizontal motor-screw holes; ≥ 2 mm fillet at the inside corner.
 >   inner race (a shoulder bolt can't work there: its nut would be inside the turning
 >   sprocket). Bar 3.6 × 14 stadium at |y| 93.5–97.1, ~8 g per side. Width: boss + idler
 >   nyloc reach |y| ~100–101 → **overall ~200** (not ~194).
+>   Rev (tick 66, Q22 F2): each bar is now a **side plate** (2.4 PET-CF, rounded rectangle
+>   x −69.3…59.7, z −10…38, r 8) over the belt loop's window, so the lug ↔ pocket nips are
+>   behind it (kid safety, `docs/cad/loop/S2_pinch.md`). 19.1 g per side.
 
 **Followers:** per `05_follower_spec.md` (carriage in plate slots, clamp from
 below, 624 bearing on a Ø4 shoulder bolt).
