@@ -194,7 +194,15 @@ class SwBuild
     {
         double[] x = Nums(f[1]), y = Nums(f[2]), z = Nums(f[3]);
         if (!Sketch("front")) return;
-        doc.SketchManager.CreateCornerRectangle(M(x[0]), M(y[0]), 0, M(x[1]), M(y[1]), 0);
+        // tick 59: four plain lines, not CreateCornerRectangle. Inside a part whose body
+        // crosses the sketch plane the rectangle tool came out wrong: the bulkhead foot
+        // lost 159 mm3 (114 in the old build) vs the same rectangle as `prof` lines, and the
+        // tick-49 canopy keels came out 2.4 thick instead of 1.8
+        ISketchManager sm = doc.SketchManager;
+        sm.CreateLine(M(x[0]), M(y[0]), 0, M(x[1]), M(y[0]), 0);
+        sm.CreateLine(M(x[1]), M(y[0]), 0, M(x[1]), M(y[1]), 0);
+        sm.CreateLine(M(x[1]), M(y[1]), 0, M(x[0]), M(y[1]), 0);
+        sm.CreateLine(M(x[0]), M(y[1]), 0, M(x[0]), M(y[0]), 0);
         CloseSketch();
         After("box " + f[1] + " | " + f[2] + " | " + f[3], Extrude(z[0], z[1], false, false));
     }

@@ -380,3 +380,9 @@ Newest at the bottom. One entry per tick.
 
 ## tick 58 · R2b motor-lead connector · accepted (doc) · 2026-10-31 22:40
 - The R2 note said "inline 2-pin": wrong. Reflex J1/J2 are JST-XH 6-pin (motor + encoder power + A/B). Fix: use the encoder TT motor's own socket if it has one (to check on the motors in hand), else an inline 6-pin XH pair near the mount. Motor swap ~4 min, no deck removal. R2_service.md, TODO, measurement list updated.
+
+## tick 59 · S1b2 bulkhead face-opening rounds + engine fix (`box`) · accepted · 2026-10-31 23:40
+- r 1.0 on the window rim, both sonar holes and the camera hole, applied BEFORE the 15° tilt while the front face is the plane x 85 (`filletface x:1`, loops with centre y <= 10; the 2 mm grille slots at y 24 left). −74.8 vs −73.4 mm³. The front perimeter waits (it meets the S1b side rounds).
+- Found on the way: the bulkhead came out 250 mm³ under its prediction, all of it in the post-tilt foot `box` (+1,660 vs +1,819 last build vs **+1,873** when the same rectangle is drawn as `prof` lines). **`box` used CreateCornerRectangle, which misbuilds when the body already crosses the sketch plane** (the tilted wall at z 0); the tick-49 canopy keels (2.4 thick, not 1.8) were the same bug. Engine: `box` now draws four lines. Full rebuild: every other part identical, bulkhead 33,750.8 vs 33,815 (was 114–250 short), 0 interferences.
+- A Python STL occupancy diff (4M points) was stopped by the harness for low system memory while idle; not re-run (the prof-vs-box build answered it in one SolidWorks run).
+- S5c 7.55 MPa (SF 4.6) / bezel 0.27 mm (=).

@@ -1314,6 +1314,16 @@ def bulkhead_lines(path: str) -> list[str]:
     lines = [f"part|{path}"]
     lines += [emit(op, sh) for op, sh in pre if op == "add"]
     lines += [emit(op, sh) for op, sh in pre if op == "cut"]
+    # S1b2 (tick 59): r 1.0 on the front face's openings, done BEFORE the tilt while the
+    # face is the plane x = BH_XF: the window rim, the two sonar holes and the camera hole
+    # (inner loops whose centre is at y <= 10; the speaker-grille slots at y 24 are 2 mm
+    # wide and would round right through)
+    aw, ah = FACE_AA[1] + 2.0, FACE_AA[0] + 2.0
+    face_len = 2 * (aw + ah) + 2 * math.pi * 2 * BH_SONAR_R + 2 * math.pi * BH_CAM[2]
+    dvf = (1 - math.pi / 4) * PLATE_EDGE_R**2 * face_len
+    lines.append(
+        f"filletface|{PLATE_EDGE_R}|x:1|{BH_XF}|-50 -5 50 130|1|{-dvf:.2f} {0.15 * dvf:.2f}|loops:-45 10 10 125"
+    )
     lines.append(f"rotbody|{BH_PIVOT[0]} {BH_PIVOT[1]} {BH_PIVOT[2]}|y|{-BH_TILT}")
     for op, sh in post:
         if sh[0] == "box" and op == "add":
@@ -1322,6 +1332,15 @@ def bulkhead_lines(path: str) -> list[str]:
         else:
             lines.append(emit(op, sh))
     vol, bb = bulkhead_volume_numeric()
+    vol -= (
+        (1 - math.pi / 4)
+        * PLATE_EDGE_R**2
+        * (
+            2 * (FACE_AA[1] + FACE_AA[0] + 4.0)
+            + 2 * math.pi * 2 * BH_SONAR_R
+            + 2 * math.pi * BH_CAM[2]
+        )
+    )  # S1b2 front-face opening rounds
     # S1b (kid safety): r 1.0 round the two outer side faces (|y| 47, normals +-y): their
     # outer loops are the wall's side edges, front, back, top and foot. Edge length per
     # side, all convex, measured from the generated STL (tick 32): 266.6 mm

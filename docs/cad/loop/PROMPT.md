@@ -105,4 +105,4 @@ Each tick ends with: `tick <n> · <item-id> · <verdict> · next in <s>`.
 - **Background jobs: use `run_in_background`**, never a bare `&` (no completion notice).
 - **String edits to generated Python**: ruff wraps long lines; a `str.replace` that misses must fail loudly (`assert old in s`), and check the expected volume changed.
 - **meshcheck's min wall finds real defects** (0.25 / 0.23 / 0.95 mm walls this leg); locate them with inward ray casts before guessing.
-
+- **Engine `box` misbuilt over existing bodies** (CreateCornerRectangle, fixed tick 59 to four lines): if a part's volume drifts from its prediction for no geometric reason, rebuild the suspect step as `prof` lines and compare.
