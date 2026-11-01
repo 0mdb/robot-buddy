@@ -12,7 +12,7 @@
 | Sprocket 020 / idler 021 | 35.9 / 34.7 g | your review: good; outboard rims r 1 |
 | Carriages 030/031 | 12.7 g each | S6 SF 4.9; one-key track swap (clamp insert) |
 | **Canopy 004 (leg 2, new)** | **111.7 g PC** | pebble shell, top 95, rib grid + keels, inner roots r 1; heel S8 1.68 mm SF 2.5; side tongues into plate slots (Q19) so it actually braces the bulkhead: S5k 0.75 mm, S5c ≈ 0.7 mm vs 0.5 (open, P6i). Not yet: openings, outer edges, crown. Renders: `shots/1-P6c/` |
-| **Track frames 040/041 (leg 2, new)** | 8.2 g each | outboard bars tying the sprocket's outboard 624 to the idler axle (Q17 b); halves the plate's axle motion by statics (~0.52 mm vs 0.2; Q20). Width ~200. |
+| **Track frames 040/041 (leg 2, new)** | 8.2 g each | outboard bars tying the sprocket's outboard 624 to the idler axle (Q17 b); halves the plate's axle motion; with your Q20 call (judge the drive increment) S1 passes: ~0.09 mm vs 0.2 (static ~0.52 reported). Width ~200. |
 | **Printed total** | **498.7 g** | CoG (−0.1, 0.0, 27.9) |
 
 ## Biggest wins this leg
