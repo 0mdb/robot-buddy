@@ -1460,6 +1460,15 @@ def bulkhead_lines(path: str) -> list[str]:
             f"filletface|{PLATE_EDGE_R}|y:{sgn}|{sgn * (ys + cw):.2f}|30 -10 100 130|1|{-dvc:.2f} {0.2 * dvc:.2f}"
         )
         vol -= dvc
+    # P-kid (tick 87): r 1.0 on the foot's exposed front: its top front edge (x BH_XF, z top,
+    # along y; the foot stands ~2.4 proud of the tilted wall there) and the two vertical
+    # front corners (|y| foot half-width). One feature; the bottom edge sits on the plate
+    (fx0, fx1), (fy0, fy1), (fz0, fz1) = BH_FOOT
+    dvft = q * ((fy1 - fy0) + 2 * (fz1 - fz0))
+    lines.append(
+        f"fillet|{PLATE_EDGE_R}|any|{fx1 - 0.1} {fy0 - 0.1} {(fz0 + fz1) / 2 - 0.1} {fx1 + 0.1} {fy1 + 0.1} {fz1 + 0.1}|3|{-dvft:.2f} {0.25 * dvft:.2f}"
+    )
+    vol -= dvft
     lines += [
         f"expect|vol {vol:.1f} {vol * 0.01:.1f}|box {' '.join(f'{v:.2f}' for v in bb)} 0.35",
         "save",
