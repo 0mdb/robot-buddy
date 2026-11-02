@@ -134,7 +134,20 @@ PARTS = {
         False,
         "inner face down (0 cm2 support)",
     ),
+    # T13 (tick 84): the belts and the 08 §7 test pieces, from drivetrain.py's exports
+    # (CAD/exports/rnd/drivetrain, SRC below). qty 0 = test piece, not in the robot total.
+    "belt_shrink0.56": ("TPU", "+z", 2, False, "upright ring, lugs in (belt_print.md); 0.56 % shrink"),
+    "belt_strip150": ("TPU", "+z", 0, False, "test: hang / creep strip, standing"),
+    "belt_lug6": ("TPU", "+z", 0, False, "test: 6-lug length, standing"),
+    "coupon_ttbore_10": ("PET-CF", "+z", 0, False, "test: TT D-bore 0.10/side"),
+    "coupon_624_10": ("PET-CF", "+z", 0, False, "test: 624 seat (M6: also --mat PA6-CF)"),
+    "coupon_624_15": ("PET-CF", "+z", 0, False, "test: 624 seat"),
+    "coupon_624_20": ("PET-CF", "+z", 0, False, "test: 624 seat"),
+    "coupon_684_10": ("PET-CF", "+z", 0, False, "test: 684 seat (M6: also --mat PA6-CF)"),
+    "coupon_band_slice": ("PET-CF", "+z", 0, False, "test: lug mesh on a TT"),
 }
+RND = os.path.join(REPO, "CAD", "exports", "rnd", "drivetrain")
+SRC = {k: RND for k in PARTS if not k.startswith("RB-PRT-")}  # drivetrain.py build output
 ALIAS = {
     "plate": "RB-PRT-001_base_plate",
     "bulkhead": "RB-PRT-002_bulkhead",
@@ -146,6 +159,9 @@ ALIAS = {
     "disc": "RB-PRT-022_road_disc",
     "carriages": "RB-PRT-030_carriage_L,RB-PRT-031_carriage_R",
     "frames": "RB-PRT-040_trackframe_L,RB-PRT-041_trackframe_R",
+    "belts": "belt_shrink0.56",
+    "tests": "belt_strip150,belt_lug6,coupon_ttbore_10,coupon_624_10,coupon_624_15,coupon_624_20,coupon_684_10,coupon_band_slice",
+    "m6": "coupon_624_10,coupon_624_15,coupon_624_20,coupon_684_10",
 }
 
 
@@ -222,7 +238,8 @@ def write_presets(
 
 # --------------------------------------------------------------------- geometry
 def oriented(stem: str, up: str) -> trimesh.Trimesh:
-    m = trimesh.load(os.path.join(GEN, stem + ".STL"))
+    src = SRC.get(stem)
+    m = trimesh.load(os.path.join(src, stem + ".stl") if src else os.path.join(GEN, stem + ".STL"))
     ax = {"x": 0, "y": 1, "z": 2}[up[1]]
     v = np.zeros(3)
     v[ax] = 1.0 if up[0] == "+" else -1.0

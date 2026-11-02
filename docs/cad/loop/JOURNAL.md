@@ -533,3 +533,9 @@ Newest at the bottom. One entry per tick.
 - `slice.py`: MATS "PA6-CF" = Ben's fpv250 calibrated user preset on the 0.4 hardened nozzle (not Bambu's PA6-CF profile, a different material), ρ 1.17; `--mat` slices a part in another material into `<part>@<mat>` files and records. Idler 28.5 g / 1 h 08 each, road disc 2.5 g / 13 min; G-code header: 290 °C, plate 50 °C, fan 0, flow 0.97, ρ 1.17, 0.4 nozzle.
 - print-bom: the slicer route + a 60 % 🟡 conditioned derate until the coupons say otherwise. 0 g, no geometry.
 - Note: SW rebuilds now take ~45 min (were ~25); SW has been up since 06:40 yesterday. A restart (Ben's) may bring that back.
+
+## tick 84 · T13 belt print package sliced headless · accepted (tool) · 2026-11-02 10:55 MST
+- `slice.py`: the drivetrain exports join PARTS (SRC → `CAD/exports/rnd/drivetrain`); qty 0 marks a test piece (out of the robot total). Aliases: `belts`, `tests`, `m6`.
+- Rebuilt the drivetrain exports (bars_stagger tread) and wrote `belt_shrink0.56.stl` (Ø133.6 × 36, the 0.56 % strip-1 shrink); `drivetrain.py build` then dies in its matplotlib preview (not in the venv), after the STLs.
+- Sliced (TPU = Ben's belt presets, 0.6; coupons PET-CF): **belt 59.9 g / 7 h 11 × 2**, strip 17.3 g / 1 h 55, lug6 10.4 g / 1 h 19, ttbore / 624 / 684 coupons 1.3–1.6 g / ~9 min, band slice 11.1 g / 28 min. No header mismatches. `.3mf` per piece in `CAD/exports/print/`.
+- Robot total with the belts: 623.1 + 119.8 = **742.9 g filament, 26.2 + 14.4 h** (the belts' 14.4 h; the coupons are separate). belt_print.md updated.

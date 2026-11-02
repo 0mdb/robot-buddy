@@ -163,5 +163,104 @@
   "support": false,
   "time": "37m 51s",
   "up": "-y"
+ },
+ "belt_lug6": {
+  "cad_g": 7.844111962106823,
+  "cm3": 8.51,
+  "grams": 10.38,
+  "mat": "TPU",
+  "mismatch": [],
+  "qty": 0,
+  "support": false,
+  "time": "1h 19m 17s",
+  "up": "+z"
+ },
+ "belt_shrink0.56": {
+  "cad_g": 57.86773410975632,
+  "cm3": 49.08,
+  "grams": 59.87,
+  "mat": "TPU",
+  "mismatch": [],
+  "qty": 2,
+  "support": false,
+  "time": "7h 10m 57s",
+  "up": "+z"
+ },
+ "belt_strip150": {
+  "cad_g": 16.47,
+  "cm3": 14.17,
+  "grams": 17.29,
+  "mat": "TPU",
+  "mismatch": [],
+  "qty": 0,
+  "support": false,
+  "time": "1h 54m 56s",
+  "up": "+z"
+ },
+ "coupon_624_10": {
+  "cad_g": 1.3761173949518926,
+  "cm3": 1.03,
+  "grams": 1.33,
+  "mat": "PET-CF",
+  "mismatch": [],
+  "qty": 0,
+  "support": false,
+  "time": "8m 55s",
+  "up": "+z"
+ },
+ "coupon_624_15": {
+  "cad_g": 1.3702021310095136,
+  "cm3": 1.03,
+  "grams": 1.33,
+  "mat": "PET-CF",
+  "mismatch": [],
+  "qty": 0,
+  "support": false,
+  "time": "8m 58s",
+  "up": "+z"
+ },
+ "coupon_624_20": {
+  "cad_g": 1.3642803134085548,
+  "cm3": 1.02,
+  "grams": 1.32,
+  "mat": "PET-CF",
+  "mismatch": [],
+  "qty": 0,
+  "support": false,
+  "time": "9m 2s",
+  "up": "+z"
+ },
+ "coupon_684_10": {
+  "cad_g": 1.387595653099365,
+  "cm3": 1.06,
+  "grams": 1.36,
+  "mat": "PET-CF",
+  "mismatch": [],
+  "qty": 0,
+  "support": false,
+  "time": "9m 6s",
+  "up": "+z"
+ },
+ "coupon_band_slice": {
+  "cad_g": 14.460971145384075,
+  "cm3": 8.62,
+  "grams": 11.12,
+  "mat": "PET-CF",
+  "mismatch": [],
+  "qty": 0,
+  "support": false,
+  "time": "27m 53s",
+  "up": "+z"
+ },
+ "coupon_ttbore_10": {
+  "cad_g": 1.6051498934947626,
+  "cm3": 1.2,
+  "grams": 1.55,
+  "mat": "PET-CF",
+  "mismatch": [],
+  "qty": 0,
+  "support": false,
+  "time": "9m 35s",
+  "up": "+z"
  }
 }

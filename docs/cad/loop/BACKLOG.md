@@ -12,6 +12,7 @@ Priority order for a pass: **P → T → M → S → W → D → A → R → E**
    - **T11 `[sw]`** native belt part from `drivetrain.belt()`'s layer stack (ring + lug + bar profiles; the engine's `ring` command), volume-checked against the mesh; replaces the belt envelope for fit checks.
    - **T12 `[py]`** `drivetrain.py check-wrap`: bend the printed profile onto the pitch circle, lug ↔ pocket clearance at 0 / 0.5 / 1 / 2 % stretch over the 9 engaged lugs, base bending strain, tooth tops below the running surface over the wrap.
    - **T13 `[py]`** print package: seam on the lug inner faces, walls-only base, shrink compensation on the 400 mm length, 85A / 95A profile; coupon + 6-lug test-piece + strip-test files (08 §7) sliced (T4).
+     **Done tick 84:** belts + test pieces + coupons in `slice.py` (SRC = drivetrain exports, qty 0 = test piece): belt 59.9 g / 7 h 11 each from `belt_shrink0.56`; aliases `belts`, `tests`, `m6`. (`drivetrain.py build` needs matplotlib for its preview: not in the tools venv; the STLs are written before it.)
 4. **Polish:** S1b2 (bulkhead face edges), D1b (internal fillets), R2b (motor-lead connectors), W7 (only if the track frame doesn't make it moot).
 
 ## Leg 3 order (Ben, 2026-11-01): finish the parts → print-ready. No clock: stop when this list is done and a review pass accepts no change. Rotation applies within it.

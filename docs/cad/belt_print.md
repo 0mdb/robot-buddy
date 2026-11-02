@@ -9,6 +9,13 @@ Files: `python3 tools/drivetrain.py build -o CAD/exports/rnd/drivetrain [--shrin
 | `belt_strip150.stl` | 150 × 2.5 × 36 plain band (08 §7.3 hang/creep test) | one per TPU grade |
 | `belt_lug6.stl` | straight 6-lug length (08 §7.4): wrap by hand round `coupon_band_slice`, stall-test on a TT | one per TPU grade |
 
+## Headless slicing (tick 84)
+
+`just cad-slice --only belts` → `CAD/exports/print/belt_shrink0.56.3mf` (your two belt presets, textured PEI, upright);
+`--only tests` → the strip, the 6-lug length and the bore/seat coupons (PET-CF; `--mat PA6-CF` for the M6 set).
+Sliced: **belt 59.9 g / 7 h 11 each (× 2)**, strip 17.3 g / 1 h 55, lug6 10.4 g / 1 h 19, coupons 1.3–1.6 g / ~9 min,
+band slice 11.1 g / 28 min. The STLs come from `drivetrain.py build -o CAD/exports/rnd/drivetrain` (+ `belt_shrink0.56.stl`).
+
 ## Orientation and settings (starting points 🟡, Bambu Studio by hand until T4 slices headless)
 
 - **Upright**, as exported: belt width = Z, so tension runs along the layers. No supports. The lug end
