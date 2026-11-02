@@ -32,7 +32,11 @@ Order (Ben): P13 road wheels → P7/P8 → canopy P6d/f/e → T4 slicing → P10
    re-rendered every rebuild. Start here for the look.
 10. **Part numbers (R3, ticks 78–79):** plate, canopy, deck, both track frames carry "RB-0xx r1" cut 0.6 deep on a
     hidden face (each checked by ray-casting the STL from the reading side). Speaker grille slots now round-ended (D2).
-11. Backlog: **M6** PA6-CF wheel coupons (Fiberon PA6-CF20 in stock); **M3** insert ladder
+11. **Overnight polish (ticks 80–83):** part numbers on both mounts; the S1b +16 % after the labels is mesh
+    noise at the jack block's square root (no-label A/B = 3.20); rounding that root (r 2) made S1m/S1a/S1b
+    worse (+33/+27/+15 %), **rejected**. **M6:** PA6-CF coupon set in 08 §7, `just cad-slice --mat PA6-CF`
+    uses your fpv250 preset (idler 28.5 g, road disc 2.5 g). SW rebuilds have slowed to ~45 min: a restart may help.
+12. Backlog: PA6-CF wheel coupons (Fiberon PA6-CF20 in stock); **M3** insert ladder
    ported from fpv250 (its PA6-CF result is M2 Ø3.4 × 5.5; buddy is M3).
 
 Printed total **663.1 g** (incl. belts 117 g, road discs 27 g), CoG (−0.3, 0.0, 22.6). Review-pass studies from

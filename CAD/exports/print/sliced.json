@@ -87,6 +87,17 @@
   "time": "1h 12m 54s",
   "up": "+z"
  },
+ "RB-PRT-021_idler@PA6-CF": {
+  "cad_g": 31.46680563324266,
+  "cm3": 24.34,
+  "grams": 28.48,
+  "mat": "PA6-CF",
+  "mismatch": [],
+  "qty": 2,
+  "support": false,
+  "time": "1h 8m 12s",
+  "up": "+z"
+ },
  "RB-PRT-022_road_disc": {
   "cad_g": 3.388266389845759,
   "cm3": 2.57,
@@ -96,6 +107,17 @@
   "qty": 8,
   "support": false,
   "time": "12m 47s",
+  "up": "+z"
+ },
+ "RB-PRT-022_road_disc@PA6-CF": {
+  "cad_g": 3.073078818697316,
+  "cm3": 2.16,
+  "grams": 2.53,
+  "mat": "PA6-CF",
+  "mismatch": [],
+  "qty": 8,
+  "support": false,
+  "time": "13m 1s",
   "up": "+z"
  },
  "RB-PRT-030_carriage_L": {

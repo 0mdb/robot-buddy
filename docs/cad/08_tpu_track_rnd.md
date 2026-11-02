@@ -182,6 +182,14 @@ than black.
 
 1. **TT measurements**: shaft length past the gearbox face, end-screw size, confirm 5.4 / 3.7.
 2. **Coupons** in PETG: TT bore ladder, 624 and 684 seats → `BORE_CLR`, crush interference.
+   > Amendment (loop M6, 2026-11-02, Ben: "add the PA6-CF coupons"): print `coupon_624_10/15/20`
+   > and `coupon_684_10` a second time in **Fiberon PA6-CF20** (dry 100 °C / 10 h; 0.4 hardened,
+   > the fpv250 preset: `just cad-slice --mat PA6-CF`), next to the PET-CF set as the control.
+   > Measure seat Ø and press-in feel twice: (a) straight off the dryer, (b) after 3–5 days in
+   > room air (PA6 takes up to 3.3 % water and swells). If the conditioned fit stays inside the
+   > crush-rib window, the idler and road discs go PA6-CF (tougher, wears better against the
+   > belt); the sprocket stays PET-CF (D-bore on the TT shaft, 0.10/side). Sliced as PA6-CF
+   > (tick 83): idler 28.5 g / 1 h 08 each (PET-CF 34.0 g), road disc 2.5 g / 13 min (3.3 g).
 3. **TPU strip test**, 85A and 95A: 36 × 2.5 × 150 printed like the belt, hang 1 kg; stretch
    now and after 24 h → replaces `E_TPU` and sets the back-off distance (§4c).
 4. **Lug mesh**: `coupon_band_slice` on a motor + a 6-lug belt arc; stall the TT: does a lug

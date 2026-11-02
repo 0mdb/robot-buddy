@@ -51,7 +51,7 @@ What each material is for on this robot, and why.
 | PLA Basic | Bambu | Pumpkin Orange (10301) | 1 kg | Cosmetic |
 | PLA Basic | Bambu | Hot Pink (10204) | 1 kg | Cosmetic |
 
-> Also on hand (Ben, 2026-11-01): **Fiberon PA6-CF20**, plenty (shared with fpv250; calibrated P2S presets there). Candidate for impact/wear parts (idler, road wheels) pending the M6 coupons; dry before printing, hardened nozzle.
+> Also on hand (Ben, 2026-11-01): **Fiberon PA6-CF20**, plenty (shared with fpv250; calibrated P2S presets there). Candidate for impact/wear parts (idler, road wheels) pending the M6 coupons; dry before printing, hardened nozzle. Slicer: `just cad-slice --mat PA6-CF` uses the fpv250 calibrated preset (0.4 hardened, 290 °C, bed ≤ 50 °C, fan off, flow 0.97, ρ 1.17). Strength derate when conditioned (moist): 60 % 🟡 until the M6 coupons say otherwise.
 | PLA Glow | Bambu | Glow Green (15500) | 1 kg | Cosmetic accents (glows) |
 | PLA Wood | Bambu | Black Walnut (13107) | 1 kg | Cosmetic accents (wood look) |
 

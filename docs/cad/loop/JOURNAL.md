@@ -527,3 +527,9 @@ Newest at the bottom. One entry per tick.
 - Results (PET-CF): **S1m 9.97 → 13.26 MPa (+33 %)**, **S1a 11.63 → 14.78 (+27 %)**, **S1b 3.71 → 4.28 (+15 %); half mesh 4.97 → 7.91**. Every peak moved to the vertex where the fillet's corner blend runs out onto the plate, (−40 / −26, ±29, 0), and it still climbs on refinement: the blend's toe is a sharper singularity than the square root was. Same outcome as tick 60's boss roots.
 - **Rejected**, generator restored (a comment records why), rebuild to put the mirror back. A rounded block with its own corner radius (r ≥ 3 on the vertical edges first, then the root) would be the next try, not tonight.
 - Tooling: the first rerun's 40 min build timeout killed the Python wrapper while swbuild kept going (SW was just slow: 25 → ~45 min a rebuild now); build timeout 60 min.
+
+## tick 83 · M6 PA6-CF coupons + slicer preset · accepted (doc + tool) · 2026-11-02 10:25 MST
+- Ben (2026-11-01): "yes add the PA6-CF coupons". 08 §7 amended: `coupon_624_10/15/20` + `coupon_684_10` again in Fiberon PA6-CF20 beside the PET-CF control, measured dry and after 3–5 days in room air; the decision rule (idler + road discs → PA6-CF if the conditioned fit holds; sprocket stays PET-CF).
+- `slice.py`: MATS "PA6-CF" = Ben's fpv250 calibrated user preset on the 0.4 hardened nozzle (not Bambu's PA6-CF profile, a different material), ρ 1.17; `--mat` slices a part in another material into `<part>@<mat>` files and records. Idler 28.5 g / 1 h 08 each, road disc 2.5 g / 13 min; G-code header: 290 °C, plate 50 °C, fan 0, flow 0.97, ρ 1.17, 0.4 nozzle.
+- print-bom: the slicer route + a 60 % 🟡 conditioned derate until the coupons say otherwise. 0 g, no geometry.
+- Note: SW rebuilds now take ~45 min (were ~25); SW has been up since 06:40 yesterday. A restart (Ben's) may bring that back.

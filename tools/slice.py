@@ -65,6 +65,16 @@ MATS = {
         "Engineering Plate",
         1.20,
     ),
+    # M6 (tick 83): Fiberon PA6-CF20, Ben's calibrated fpv250 preset on the 0.4 hardened
+    # nozzle (290 °C, bed <= 50, fan off, flow 0.97: ~/fpv250/fpv250/docs/print-calibration.md);
+    # not Bambu's PA6-CF profile, which is a different material
+    "PA6-CF": (
+        "Bambu Lab P2S 0.4 nozzle",
+        "0.20mm Standard @BBL P2S",
+        "fpv250 PA6-CF core_body filament",
+        "Engineering Plate",
+        1.17,
+    ),
     "TPU": (
         "Bambu Lab P2S 0.6 nozzle",
         "robot-buddy belt TPU85A 0.6",
@@ -275,15 +285,20 @@ def read_gcode(path: str) -> dict:
     }
 
 
-def slice_part(prof: Profiles, stem: str, threemf: bool) -> dict:
+def slice_part(prof: Profiles, stem: str, threemf: bool, mat_override: str = "") -> dict:
     mat, up, qty, support, note = PARTS[stem]
+    if mat_override:
+        mat = mat_override
     machine, process, filament, bed, rho = MATS[mat]
+    part = stem  # the STL it comes from
+    if mat_override:  # an A/B in another material: its own files and record
+        stem = f"{stem}@{mat}"
     d = os.path.join(STAGE, stem)
     os.makedirs(d, exist_ok=True)
     for fn in os.listdir(d):
         if fn.endswith((".gcode", ".3mf")):
             os.remove(os.path.join(d, fn))
-    mesh = oriented(stem, up)
+    mesh = oriented(part, up)
     stl = os.path.join(d, stem + ".stl")
     mesh.export(stl)
     presets = write_presets(prof, mat, support, d)
@@ -333,6 +348,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", default="")
     ap.add_argument("--no-3mf", action="store_true")
+    ap.add_argument("--mat", choices=list(MATS), default="", help="slice in another material (A/B)")
     a = ap.parse_args()
     keys = []
     for k in [x.strip() for x in a.only.split(",") if x.strip()] or list(PARTS):
@@ -340,7 +356,7 @@ def main() -> None:
     prof = Profiles()
     rows = []
     for k in keys:
-        r = slice_part(prof, k, not a.no_3mf)
+        r = slice_part(prof, k, not a.no_3mf, a.mat)
         rows.append(r)
         if "error" in r:
             print(f"{k:28s} {r['mat']:6s} {r['up']}  FAILED: {r['error']}", flush=True)
