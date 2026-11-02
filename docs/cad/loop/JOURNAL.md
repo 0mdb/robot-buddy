@@ -508,3 +508,11 @@ Newest at the bottom. One entry per tick.
 - Track frames on the plate's inner face (|y| 93.5, behind the belt), x ≈ −10..12, z 12..16: L "RB 040 r1" (mirror + 180° + reversed, as the canopy), R "RB 041 r1" (seen from its front: plain + 180° + reversed). −23.4 / −21.4 mm³. `trackframe_label(side)`.
 - All three ray-cast from the reading side (`raylabel.py` in the scratchpad: below / +y / −y modes) and read right. Rebuild **0 interferences**, printed 663.0 g.
 - R3 left: bulkhead (tilted faces), motor mounts, carriages, sprocket/idler/road discs (revolved: a flat hub face each), belts (TPU, from drivetrain.py).
+
+## tick 80 · R3 motor mounts + FEA re-check of every labelled part · accepted · 2026-11-02 05:45 MST
+- **Missed in ticks 78–79:** S1a/S1b load the real plate, S1d the deck, S5k the canopy, S2 the right mount, so the labels were in those meshes and I hadn't re-run them. Re-run now (S8 and S1m use FEA copies without labels):
+  - S1a 11.63 MPa (last recorded 17.6 singular, tick 13: S1a was superseded by S1m in tick 18); S1d 9.05 (8.93, +1 %); S5k 9.66 / lugs 0.764 (=); S2 6.36 (6.10, +4 %).
+  - **S1b 3.71 MPa vs 3.20 last recorded (tick 67 review), +16 %.** New `hotspots` + a `label` probe in S1a/S1b: the peak is at (−37.4, −30.8, 0) on the plate's TOP face by the jack block (a corner the journal already calls mesh-sensitive), the label region reads **1.42 MPa**. Not the label; the drift since tick 67 is open (SF > 9). Logged, not chased tonight.
+- Motor mounts: "RB-010 r1" / "RB-011 r1", 3 mm, foot underside, read from below. First placement cut through two screw holes: I'd taken the midpoint of the *range* of valid window centres, and the holes split the clear region. Fixed by taking the middle of the valid set itself (26 × 8 window, per-part STL scan): centres (−5.15 / 5.25, −32.4). SW renders from below confirm (`shots/1-R3/mount_*_underside.png`).
+- Lesson: STL ray-casts of 3 mm text show tessellation slivers; check small text in a SW render instead.
+- Rebuild **0 interferences**, printed 663.0 g. R3 left: bulkhead (tilted), carriages (no flat hidden face), wheels (only the outboard face is flat), belts.

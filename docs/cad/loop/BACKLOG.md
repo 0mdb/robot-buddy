@@ -175,6 +175,7 @@ Rules the loop enforces from here on (ASTM F963 / EN 71-1 / IEC 62115 as design 
 
 ## D: Stress risers, printability, DFM
 - [x] D1 (mount v2) `[sw]` **Done tick 39:** r 2.2 on the end stop's concave step (y −34…−28, z 22.5); not the vertical corner where the gearbox bears. +6.23 mm³ each. S2 pull + torque: default 6.42, half mesh 6.63 MPa (**+3.2 %: converged, the first converged S2**; SF 5.28), motor holes 0.0416 mm; the end-stop spot dropped out of the top 5. The peak is the boss/chamfer intersection, now a converged value. Lesson (tick 36): a fillet must not share a radius with a feature a study selects by shape (an r 2.0 fillet became a third "motor insert"). Other parts' internal corners: still open (D1b)
+- [ ] S1b-drift `[sw]` S1b 3.20 (tick 67) → 3.71 MPa (tick 80) at the plate top face by the jack block (−37.4, −30.8, 0); not the R3 label (1.42 there). Bisect against the tick-67 plate or check mesh convergence there (SF > 9, low priority)
 - [ ] D1b `[sw]` fillet every internal corner on a load path (bulkhead foot, carriage pedestal root, plate boss roots)
   **Tick 60, plate boss roots: rejected** (S1b +60 %, S1m +19 %, mesh-sensitive peaks; front posts collide with the mount feet). Next try: carriage pedestal root or bulkhead knee, with a half-mesh convergence check.
 - [x] D2 `[sw]` slot ends and wire slot: full-radius ends, no square ends
@@ -214,7 +215,7 @@ Rules the loop enforces from here on (ASTM F963 / EN 71-1 / IEC 62115 as design 
   **Done tick 58:** corrected to **6-pin** (reflex J1/J2 = JST-XH 6P: motor + encoder). Use the motor's own encoder-board socket if it has one; else an inline 6-pin XH pair near the mount. `R2_service.md`; check added to TODO measurements.
 - [x] R2c (tick 38: added to the PCB verify item in docs/TODO.md) `[doc]` reflex PCB: USB-C on the rear edge (x −40) facing the free bay under the deck: add to the PCB verify step in docs/TODO.md before ordering
 - [ ] R3 `[sw]` embossed part numbers + revision on hidden faces (0.6 deep, 0.4 nozzle only if needed)
-  **Tick 78:** `text` command; plate (belly) + canopy (inner skirt) labelled, checked by STL ray-cast. Tick 79: deck + both track frames. Left: bulkhead, mounts, carriages, wheels.
+  **Tick 78:** `text` command; plate (belly) + canopy (inner skirt) labelled, checked by STL ray-cast. Tick 79: deck + both track frames. Tick 80: both mounts (+ FEA re-check of labelled parts; S1b +16 % traced to a top-face corner, not the label: open). Left: bulkhead (tilted faces), carriages, wheels (no flat hidden face).
 - [ ] R4 `[sw]` self-locating features (pins/keys) so parts only go together one way
 - [ ] R5 `[doc]` spares list + which parts are consumables (tracks, followers)
 

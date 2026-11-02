@@ -91,6 +91,8 @@ def s1a() -> dict:
             "probe pockets 38 -60 -9 82 60 1",
             "probe jackstops -40 -45 -1 -26 45 11",
             "probe midplate -20 -50 -9 35 50 1",
+            "probe label -14 -10 -5 14 0 -3",  # R3 (tick 80): the belly part number
+            "hotspots 5",
             "mesh 2.0 0.1",
             f"case tension left:{-f:.2f},0,0 right:{-f:.2f},0,0",
         ],
@@ -114,6 +116,8 @@ def s1b() -> dict:
             f"disp deck plane 0 0 1 {chassis.DECK_Z}",
             "probe posts -77 -30 -1 37 30 25",
             "probe midplate -30 -50 -9 35 50 1",
+            "probe label -14 -10 -5 14 0 -3",  # R3 (tick 80): the belly part number
+            "hotspots 5",
             "mesh 2.0 0.1",
             f"case payload deck:0,0,{-f:.2f}",
         ],

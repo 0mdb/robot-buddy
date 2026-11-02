@@ -1634,6 +1634,10 @@ def mount_v2_lines(path: str, mirror: bool) -> list[str]:
         f"part|{path}",
         *emit_ops(ops),
         f"fillet|{MM_ROOT_R}|y|{xa - 0.1} {yi - 0.1} {zs - 0.1} {xa + 0.1} {MM_FACE + 0.1} {zs + 0.1}|1|{dvs:.2f} {0.15 * dvs:.2f}",
+        # R3 (tick 80): on the foot's underside (on the plate), 3 mm text read from below,
+        # centred (5.25 / -5.15, -32.4): the middle of a valid 26 x 8 clear window (STL scan
+        # per part; the first try at y -37.5 cut through the foot's screw holes)
+        f"text|front|{13.9 if mirror else 3.5} -33.9|-0.5 0.6|3|RB-{'011' if mirror else '010'} r1|mirror",
         f"expect|vol {vol:.1f} {vol * 0.01:.1f}|box {' '.join(f'{v:.2f}' for v in bb)} 0.35",
         "save",
     ]
