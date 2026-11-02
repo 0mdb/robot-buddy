@@ -693,6 +693,7 @@ def deck_lines(path: str) -> list[str]:
     return [
         f"part|{path}",
         *feature_lines(feats),
+        PART_LABELS["deck"],
         f"expect|vol {vol:.1f} {vol * 0.004:.1f}|box {DECK_X[0]} {DECK_TONGUE[0]} {-DECK_HW} {DECK_HW} {-DECK_T} 0 0.01",
         "save",
     ]
@@ -872,7 +873,20 @@ HERO_VIEWS = (
 PART_LABELS = {
     "plate": "text|front|11.5 -6.75|-4.5 -3.4|4|RB-001 r1|mirror",
     "canopy": f"text|top|-10 -40|50.9 51.8|4|{'RB 004 r1'[::-1]}|mirror|180",
+    # deck underside (faces the plate), clear cell x -15.5..15.5, y -21..-13.5 (STL scan)
+    "deck": "text|front|11.5 -19.35|-3.5 -2.4|4|RB-003 r1|mirror",
 }
+
+
+def trackframe_label(side: int) -> str:
+    """R3: on the frame plate's inner face (|y| 93.5, behind the belt), centred x 0, z 12..16
+    (clear: STL scan). Read from inside: the +y frame is seen from its back (mirror + 180° +
+    reversed, as the canopy), the -y frame from the front (plain + 180° + reversed); 180° is
+    per glyph, so the order needs reversing in both."""
+    y0 = trackframe_geom()["y"][0]
+    if side > 0:
+        return f"text|top|9 -12|{y0 - 0.3:.2f} {y0 + 0.6:.2f}|4|{'RB 040 r1'[::-1]}|mirror|180"
+    return f"text|top|-8.5 -12|{-y0 - 0.6:.2f} {-y0 + 0.3:.2f}|4|{'RB 041 r1'[::-1]}|plain|180"
 
 
 def rebuild_manifest(win: str) -> list[str]:
@@ -2849,6 +2863,7 @@ def trackframe_lines(path: str, side: int) -> list[str]:
         f"cyl|y|{xs} {z}|{da} {db}|{TF_DOWEL / 2}|cut",
         f"prof|{ya - 0.1} {yb + 0.1}|{stadium(xi - tr, xi + tr, sw / 2)}|cut|top",
         f"filletface|1.0|y:{s}|{s * y1:.2f}|{xa - r - 1} {zb - 1} {xs + r + 1} {zt + 1}|1|{-dvo:.2f} {0.15 * dvo:.2f}",
+        trackframe_label(side),
         f"expect|vol {vol - dvo:.1f} {vol * 0.01:.1f}|box {xa - r:.2f} {xs + r:.2f} "
         f"{min(ya, ba):.2f} {max(yb, bb):.2f} {TF_PLATE_Z[0]:.2f} {TF_PLATE_Z[1]:.2f} 0.05",
         "save",

@@ -214,7 +214,7 @@ Rules the loop enforces from here on (ASTM F963 / EN 71-1 / IEC 62115 as design 
   **Done tick 58:** corrected to **6-pin** (reflex J1/J2 = JST-XH 6P: motor + encoder). Use the motor's own encoder-board socket if it has one; else an inline 6-pin XH pair near the mount. `R2_service.md`; check added to TODO measurements.
 - [x] R2c (tick 38: added to the PCB verify item in docs/TODO.md) `[doc]` reflex PCB: USB-C on the rear edge (x −40) facing the free bay under the deck: add to the PCB verify step in docs/TODO.md before ordering
 - [ ] R3 `[sw]` embossed part numbers + revision on hidden faces (0.6 deep, 0.4 nozzle only if needed)
-  **Tick 78:** `text` command; plate (belly) + canopy (inner skirt) labelled, checked by STL ray-cast. Left: bulkhead, mounts, carriages, wheels, deck, track frames.
+  **Tick 78:** `text` command; plate (belly) + canopy (inner skirt) labelled, checked by STL ray-cast. Tick 79: deck + both track frames. Left: bulkhead, mounts, carriages, wheels.
 - [ ] R4 `[sw]` self-locating features (pins/keys) so parts only go together one way
 - [ ] R5 `[doc]` spares list + which parts are consumables (tracks, followers)
 

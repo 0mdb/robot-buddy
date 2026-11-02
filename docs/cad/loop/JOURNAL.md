@@ -502,3 +502,9 @@ Newest at the bottom. One entry per tick.
 - What SW does, found on test walls (all four mirror/angle combinations): **escapement turns each glyph in place, not the line**; "mirror" flips the whole line; seen from the far side a plane's text is the whole line turned 180° (Top plane, v = −z). So a label read from inside the canopy's +y skirt = mirror + 180° + the string reversed. The reversed string with a hyphen cut nothing (twice), so the canopy reads "RB 004 r1" (advance widths come out in typed order: it renders "RB 004r 1"; readable).
 - **Plate:** "RB-001 r1" on the belly cell x −11.5..11.5, y −8.5..−1 (clear area found by ray-scanning the plate STL), reads right from below, −22.3 mm³. **Canopy:** inner face of the +y skirt, x −30..−8, z 40..44, −23.4 mm³. FEA copies drop the labels.
 - Rebuild **0 interferences**, printed 663.1 g. Shots `shots/1-R3/` (ray-cast images). Left for R3: bulkhead (tilted faces: the foot underside is 6.5 wide, needs text along y), mounts, carriages, wheels, deck, track frames.
+
+## tick 79 · R3 part numbers on deck + track frames · accepted · 2026-11-02 03:55 MST
+- Pi deck "RB-003 r1" on the underside (faces the plate), x −11.5..11.5, y −21..−17 (clear cell by STL scan), mirror (read from below): −23.9 mm³.
+- Track frames on the plate's inner face (|y| 93.5, behind the belt), x ≈ −10..12, z 12..16: L "RB 040 r1" (mirror + 180° + reversed, as the canopy), R "RB 041 r1" (seen from its front: plain + 180° + reversed). −23.4 / −21.4 mm³. `trackframe_label(side)`.
+- All three ray-cast from the reading side (`raylabel.py` in the scratchpad: below / +y / −y modes) and read right. Rebuild **0 interferences**, printed 663.0 g.
+- R3 left: bulkhead (tilted faces), motor mounts, carriages, sprocket/idler/road discs (revolved: a flat hub face each), belts (TPU, from drivetrain.py).

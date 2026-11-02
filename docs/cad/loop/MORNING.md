@@ -30,7 +30,9 @@ Order (Ben): P13 road wheels → P7/P8 → canopy P6d/f/e → T4 slicing → P10
    hood's front edge); default = lugs 3 mm aft + counterbored collar.
 9. **Hero renders (E4, tick 76):** `shots/hero/` (three-quarter, face at a 5-year-old's eye height, rear, top),
    re-rendered every rebuild. Start here for the look.
-10. Backlog: **M6** PA6-CF wheel coupons (Fiberon PA6-CF20 in stock); **M3** insert ladder
+10. **Part numbers (R3, ticks 78–79):** plate, canopy, deck, both track frames carry "RB-0xx r1" cut 0.6 deep on a
+    hidden face (each checked by ray-casting the STL from the reading side). Speaker grille slots now round-ended (D2).
+11. Backlog: **M6** PA6-CF wheel coupons (Fiberon PA6-CF20 in stock); **M3** insert ladder
    ported from fpv250 (its PA6-CF result is M2 Ø3.4 × 5.5; buddy is M3).
 
 Printed total **663.1 g** (incl. belts 117 g, road discs 27 g), CoG (−0.3, 0.0, 22.6). Review-pass studies from
