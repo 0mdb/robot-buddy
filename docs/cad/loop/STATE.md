@@ -1,9 +1,9 @@
 # CAD loop state
 
 pass: 1, leg 3 (leg 2 ended 2026-11-01 06:15 at tick 67)
-tick: 80
+tick: 81
 sw: up (restarted by Ben ~06:40 MST; S8/S5k re-run clean)
-current: none (tick 80: R3 mounts + FEA re-check; next D1b / D6 / S1b-drift)  [leg 3 order: P13 → P7/P8 → P6d/f/e → T4 → P10/E4 → polish]
+current: none (tick 81: S1b drift = mesh noise at the jack-block root; next D1b jack-block root fillet with a half-mesh check)  [leg 3 order: P13 → P7/P8 → P6d/f/e → T4 → P10/E4 → polish]
 hypothesis: —
 baseline_commit: d8179d2 (cad)
 stop_after: none (Ben, leg 3, 2026-11-01: "until completed")

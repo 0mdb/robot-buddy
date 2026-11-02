@@ -547,11 +547,16 @@ def main() -> None:
         "--mesh-scale", type=float, default=1.0, help="0.5 = convergence run"
     )
     ap.add_argument("--material", choices=list(MATERIALS), default="PET-CF")
+    ap.add_argument(
+        "--part", help=r"run on another part (staging-relative, e.g. \CAD\fea\X.SLDPRT): A/B checks"
+    )
     a = ap.parse_args()
     tool = os.path.join(sw.staging(), "tools")
     exe = "" if a.dry_run else compile_sim(tool)
     for name in a.studies:
         st = STUDIES[name]()
+        if a.part:
+            st["part"] = a.part
         path = run_study(st, exe, a.dry_run, a.mesh_scale, a.material)
         if path:
             with open(path) as fh:

@@ -516,3 +516,8 @@ Newest at the bottom. One entry per tick.
 - Motor mounts: "RB-010 r1" / "RB-011 r1", 3 mm, foot underside, read from below. First placement cut through two screw holes: I'd taken the midpoint of the *range* of valid window centres, and the holes split the clear region. Fixed by taking the middle of the valid set itself (26 × 8 window, per-part STL scan): centres (−5.15 / 5.25, −32.4). SW renders from below confirm (`shots/1-R3/mount_*_underside.png`).
 - Lesson: STL ray-casts of 3 mm text show tessellation slivers; check small text in a SW render instead.
 - Rebuild **0 interferences**, printed 663.0 g. R3 left: bulkhead (tilted), carriages (no flat hidden face), wheels (only the outboard face is flat), belts.
+
+## tick 81 · S1b drift explained (A/B + half mesh) · accepted (doc + fea --part) · 2026-11-02 06:20 MST
+- `fea.py --part \CAD\fea\X.SLDPRT` runs a study on another part (A/B checks).
+- A: plate built without the R3 label (temporary FEA copy, deleted after): **S1b 3.199 MPa**, peak (−36.4, −30.8, 0), = the tick-67 value. B: labelled plate, half mesh: **4.97 MPa**, peak (−38.0, −31.0, 0.5) on the jack block's root face. Label probe 1.414 / 1.420 / 1.491 MPa (no label / full / half mesh): converged.
+- So the +16 % is mesh noise: the label re-meshes the plate and the S1b peak sits on the jack block's unfilleted root corner, which climbs on refinement (singular, 3.2 → 3.7 → 5.0). Not a real change; the label is accepted. The jack-block root joins D1b as a fillet candidate (it is S1b's and S1m's peak).

@@ -175,8 +175,10 @@ Rules the loop enforces from here on (ASTM F963 / EN 71-1 / IEC 62115 as design 
 
 ## D: Stress risers, printability, DFM
 - [x] D1 (mount v2) `[sw]` **Done tick 39:** r 2.2 on the end stop's concave step (y −34…−28, z 22.5); not the vertical corner where the gearbox bears. +6.23 mm³ each. S2 pull + torque: default 6.42, half mesh 6.63 MPa (**+3.2 %: converged, the first converged S2**; SF 5.28), motor holes 0.0416 mm; the end-stop spot dropped out of the top 5. The peak is the boss/chamfer intersection, now a converged value. Lesson (tick 36): a fillet must not share a radius with a feature a study selects by shape (an r 2.0 fillet became a third "motor insert"). Other parts' internal corners: still open (D1b)
-- [ ] S1b-drift `[sw]` S1b 3.20 (tick 67) → 3.71 MPa (tick 80) at the plate top face by the jack block (−37.4, −30.8, 0); not the R3 label (1.42 there). Bisect against the tick-67 plate or check mesh convergence there (SF > 9, low priority)
+- [x] S1b-drift `[sw]` S1b 3.20 (tick 67) → 3.71 MPa (tick 80) at the plate top face by the jack block
+  **Done tick 81:** no-label plate 3.199 (= tick 67), half mesh 4.97 at the jack-block root: singular corner + re-meshing. Label region converged (1.41–1.49). Jack-block root → D1b.
 - [ ] D1b `[sw]` fillet every internal corner on a load path (bulkhead foot, carriage pedestal root, plate boss roots)
+  **Tick 81:** the jack-block root corner (−38, ±31, 0) is S1b's (and S1m's) singular peak: candidate.
   **Tick 60, plate boss roots: rejected** (S1b +60 %, S1m +19 %, mesh-sensitive peaks; front posts collide with the mount feet). Next try: carriage pedestal root or bulkhead knee, with a half-mesh convergence check.
 - [x] D2 `[sw]` slot ends and wire slot: full-radius ends, no square ends
   **Done tick 77:** grille slots now full-radius (S5c =). Plate guide/clamp/wire slots and canopy vents already were. Left square by function: tab/tongue slots (mating rect fits), bell pockets (hidden).
