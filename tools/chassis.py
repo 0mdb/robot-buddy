@@ -1977,6 +1977,12 @@ CAN_BOSS = (
 )  # rear insert bosses: x, |y|, height (clear of the deck at x -75)
 CAN_LUG_HOLE = 3.9  # vertical hole through the 15° hood ceiling: 3.4 + 1.8 tan 15
 CAN_LUG_GAP = 0.1  # ceiling over the lug tops (touching on the 15° tilt read as 2 x 0.1 mm3 interference, tick 47); the screws close it
+# P6f (tick 74): crown along x over the body top (E1 §2: no flat panel > 60 x 60; white
+# shows layer lines on flats). An arc through the top's rear and hood ends (both at
+# CAN_TOP) rising CAN_CROWN in the middle; the shell keeps it on the ceiling (radius - t),
+# the ribs and keels follow it (tops CAN_RIB_SINK into the skin, bottoms flat as before).
+CAN_CROWN = 2.5
+CAN_RIB_SINK = 0.5
 
 
 def _pre2ch(xp: float, zp: float) -> tuple[float, float]:
@@ -1984,6 +1990,26 @@ def _pre2ch(xp: float, zp: float) -> tuple[float, float]:
     c, s = math.cos(math.radians(BH_TILT)), math.sin(math.radians(BH_TILT))
     dx = xp - BH_PIVOT[0]
     return (BH_PIVOT[0] + c * dx - s * zp, s * dx + c * zp)
+
+
+def canopy_crown() -> tuple[float, float, float]:
+    """(x centre, z centre, outer radius) of the crowned top's arc in XZ."""
+    x0, x1 = CAN_X0, canopy_profile()[2][0]
+    c, sg = x1 - x0, CAN_CROWN
+    r = (c * c / 4 + sg * sg) / (2 * sg)
+    return (x0 + x1) / 2, CAN_TOP + sg - r, r
+
+
+def can_top_z(x: float, inset: float = 0.0) -> float:
+    """Height of the crowned top at x: outer skin (inset 0), ceiling (inset CAN_T)."""
+    xc, zc, r = canopy_crown()
+    return zc + math.sqrt((r - inset) ** 2 - (x - xc) ** 2)
+
+
+def _crown_area(x0: float, x1: float, inset: float, zref: float, n: int = 400) -> float:
+    """Area between the arc (at inset) and the line z = zref over x0..x1 (midpoint rule)."""
+    h = (x1 - x0) / n
+    return sum(can_top_z(x0 + (i + 0.5) * h, inset) - zref for i in range(n)) * h
 
 
 def canopy_profile() -> list[tuple[float, float]]:
@@ -2071,11 +2097,68 @@ def canopy_ribs() -> list[tuple[float, ...]]:
     inner rounds (r 6.2 at x -77 / |y| 45) and up to the hood's back wall."""
     t, dep = CAN_RIB
     zc = CAN_TOP - CAN_T
-    xa = CAN_X0 + CAN_T + (CAN_R[2] - CAN_T)  # -77
+    xa = canopy_rear_seam()  # -77.45 (flat: -77)
     xb = canopy_profile()[2][0] + CAN_T  # hood back wall, inner face
     ya = CAN_HW - CAN_T - (CAN_R[2] - CAN_T)  # 45
+    # z1 = the flat ceiling's height; with the crown the tops follow the arc instead
+    # (canopy_rib_profile / can_top_z) and the bottoms too, CAN_RIB[1] under the ceiling
     out = [(xa, xb, y - t / 2, y + t / 2, zc - dep, zc) for y in CAN_RIBS_Y]
     out += [(x - t / 2, x + t / 2, -ya, ya, zc - dep, zc) for x in CAN_RIBS_X]
+    return out
+
+
+def canopy_rear_seam() -> float:
+    """x of the tangent seam between the crowned ceiling (inset CAN_T) and the rear inner
+    round. Flat: -77. Crowned the r 8 round's centre sits on the arc's R - 8 circle, so the
+    seam moves back to -77.45 (tick 74c: ribs ending at -77 left a 0.45 sliver of ceiling
+    behind their ends, and S8 peaked there: 38 / 83 MPa)."""
+    xc, _, R = canopy_crown()
+    xf = CAN_X0 + CAN_R[2]  # the round's centre x
+    return xc + (xf - xc) * (R - CAN_T) / (R - CAN_R[2])
+
+
+def _crown_top(x0: float, x1: float) -> list:
+    """Profile pieces from (x0, top) to (x1, top) along the ceiling arc sunk CAN_RIB_SINK
+    into the skin: a start point and one arc entry ("arc", xc, zc, x1, z1)."""
+    xc, zc, _ = canopy_crown()
+    ins = CAN_T - CAN_RIB_SINK
+    return [(x0, can_top_z(x0, ins)), ("arc", xc, zc, x1, can_top_z(x1, ins))]
+
+
+def canopy_cross_rib_profile(x0: float, x1: float) -> list:
+    """Side profile (XZ) of a cross rib x0..x1: top and bottom on the same arcs as the
+    lengthwise ribs (tick 74d: flat-bottomed boxes left a micron step at every crossing
+    and S8 peaked on it, 83.8 MPa at (-22.8, 15.8, 91.69))."""
+    xc, zc, _ = canopy_crown()
+    ib = CAN_T + CAN_RIB[1]
+    return [*_crown_top(x0, x1), (x1, can_top_z(x1, ib)), ("arc", xc, zc, x0, can_top_z(x0, ib))]
+
+
+def canopy_rib_profile() -> list:
+    """Side profile (XZ) of the lengthwise ribs: constant depth under the crowned ceiling
+    (tick 74b: flat bottoms made the middle 6.5 deep and moved S8's peak to the rear
+    ceiling panel, 38 MPa). Top sunk CAN_RIB_SINK into the skin, bottom the concentric arc."""
+    xa, xb = canopy_ribs()[0][:2]
+    xc, zc, _ = canopy_crown()
+    ib = CAN_T + CAN_RIB[1]
+    return [*_crown_top(xa, xb), (xb, can_top_z(xb, ib)), ("arc", xc, zc, xa, can_top_z(xa, ib))]
+
+
+def _profile_poly(prof: list, n: int = 60) -> list[tuple[float, float]]:
+    """Profile with its arcs sampled (for areas)."""
+    out: list[tuple[float, float]] = []
+    for q in prof:
+        if q[0] == "arc":
+            _, xc, zc, x1, z1 = q
+            x0, z0 = out[-1]
+            a0, a1 = math.atan2(z0 - zc, x0 - xc), math.atan2(z1 - zc, x1 - xc)
+            r = math.hypot(x0 - xc, z0 - zc)
+            out += [
+                (xc + r * math.cos(a0 + (a1 - a0) * k / n), zc + r * math.sin(a0 + (a1 - a0) * k / n))
+                for k in range(1, n + 1)
+            ]
+        else:
+            out.append(q)
     return out
 
 
@@ -2093,8 +2176,7 @@ def canopy_keel_profile() -> list[tuple[float, float]]:
     return [
         (xr, kz),
         (xr, zc - ri),
-        (xr + ri, zc),
-        (xb, zc),
+        *_crown_top(canopy_rear_seam(), xb),  # flat: xr + ri = -77
         (xb, zc - CAN_RIB[1]),
         (xb - 20.0, kz),
     ]
@@ -2168,6 +2250,13 @@ def canopy_features() -> dict:
     inn = canopy_outer_volume(pin, CAN_HW - CAN_T, rr - CAN_T, rh - CAN_T, rt - CAN_T)
     v_out = out["base"] + out["rear"] + out["hood"] + out["top"]
     v_in = inn["base"] + inn["rear"] + inn["hood"] + inn["top"]
+    # P6f crown: the segment over the chord, outside and (concentric, r - t) inside
+    crown_out = _crown_area(p[1][0], p[2][0], 0.0, CAN_TOP) * 2 * CAN_HW
+    crown_in = (
+        _crown_area(pin[1][0], pin[2][0], CAN_T, CAN_TOP - CAN_T) * 2 * (CAN_HW - CAN_T)
+    )
+    v_out += crown_out
+    v_in += crown_in
     # front opening: the 1.8 front wall at |y| <= CAN_WIN_HW, from the skirt (z_pre at
     # mid-wall) up to the hood ceiling's underside (z_pre BH_H)
     xm = BH_PIVOT[0] - CAN_T / 2
@@ -2189,11 +2278,22 @@ def canopy_features() -> dict:
     ribs = canopy_ribs()
     rt_, rd_ = CAN_RIB
     ky, kt, kz = CAN_KEEL
+    # below the (crowned) ceiling only: the CAN_RIB_SINK into the skin adds nothing
+    zb = ribs[0][4]
+    xa_, xb_, ya_ = ribs[0][0], ribs[0][1], ribs[-1][3]
+    dep = {x: rd_ for x in CAN_RIBS_X}  # cross-rib depth (constant since tick 74b)
+    nY = len(CAN_RIBS_Y)
     rib_vol = (
-        sum((x1 - x0) * (y1 - y0) * (z1 - z0) for x0, x1, y0, y1, z0, z1 in ribs)
-        - rd_ * len(CAN_RIBS_X) * len(CAN_RIBS_Y) * rt_ * rt_  # rib crossings
-        + 2 * kt * _poly_area(canopy_keel_profile())
-        - rd_ * len(CAN_RIBS_X) * 2 * rt_ * kt  # y-ribs through the keels
+        nY * rt_ * (_crown_area(xa_, xb_, CAN_T, zb - 9) - _crown_area(xa_, xb_, CAN_T + rd_, zb - 9))
+        + sum(rt_ * 2 * ya_ * d for d in dep.values())  # cross ribs
+        - sum(nY * rt_ * rt_ * d for d in dep.values())  # rib crossings
+        + 2
+        * kt
+        * (
+            _poly_area(_profile_poly(canopy_keel_profile()))
+            - CAN_RIB_SINK * (xb_ - xa_)
+        )
+        - sum(2 * rt_ * kt * d for d in dep.values())  # cross ribs through the keels
     )
     # P6g root rounds (concave: + (1 - pi/4) r² per mm), both sides of every rib/keel
     # root on the ceiling between the crossings, x -77 .. 36.2, |y| <= 45
@@ -2213,6 +2313,7 @@ def canopy_features() -> dict:
         "inn": inn,
         "v_out": v_out,
         "v_in": v_in,
+        "crown": (crown_out, crown_in),
         "win": win,
         "win_zp0": zp0,
         "lug_hole": (hx, hz),
@@ -2280,23 +2381,33 @@ def canopy_lines(path: str) -> list[str]:
     rr, rh, rt = CAN_R
     hw = CAN_HW
     o = f["out"]
-    zc_in = CAN_TOP - CAN_T  # ceiling underside
-    xr_in = (
-        CAN_X0 + CAN_T + (CAN_R[2] - CAN_T)
-    )  # -77: tangent seam into the rear inner round
+    zc_in = CAN_TOP - CAN_T  # ceiling underside at its ends (crowned: up to + CAN_CROWN)
+    xcr, zcr, rcr = canopy_crown()
+    zc_hi = zc_in + CAN_CROWN
+    xr_in = canopy_rear_seam()  # -77.45: tangent seam into the rear inner round
     xb_in = canopy_profile()[2][0] + CAN_T  # 36.2: ceiling ends at the hood
     yr_in = (
         CAN_HW - CAN_T - (CAN_R[2] - CAN_T)
     )  # 45: tangent seams into the side rounds
 
     def prismy(poly, y0, y1, kind):  # Top plane: sketch (x, -z), extrude +Y
-        pts = [f"{x:.4f} {-z:.4f}" for x, z in poly]
-        return (
-            f"prof|{y0} {y1}|M "
-            + pts[0]
-            + "".join(" L " + q for q in pts[1:])
-            + f"|{kind}|top"
-        )
+        # entries (x, z) or ("arc", xc, zc, x1, z1): a minor arc from the previous point;
+        # its sense is taken in sketch coordinates (z -> -z mirrors it)
+        x0, z0 = poly[0]
+        toks = [f"M {x0:.6f} {-z0:.6f}"]
+        px, pz = x0, z0
+        for q in poly[1:]:
+            if q[0] == "arc":
+                _, xc, zc, x1, z1 = q
+                cr = (px - xc) * (-z1 + zc) - (-pz + zc) * (x1 - xc)
+                # 6 decimals: a centre rounded to 1e-4 is off-equidistant from the ends by
+                # more than SolidWorks' tolerance at r ~700 and the extrude comes back null
+                toks.append(f"{'A' if cr > 0 else 'a'} {xc:.6f} {-zc:.6f} {x1:.6f} {-z1:.6f}")
+                px, pz = x1, z1
+            else:
+                toks.append(f"L {q[0]:.6f} {-q[1]:.6f}")
+                px, pz = q
+        return f"prof|{y0} {y1}|{' '.join(toks)}|{kind}|top"
 
     def tol(v, k=0.2):
         return f"{v:.1f} {abs(v) * k + 5:.1f}"
@@ -2310,13 +2421,13 @@ def canopy_lines(path: str) -> list[str]:
     zlo, zhi = e[1] - 12.0, e[1] + 6.0
     lines = [
         f"part|{path}",
-        prismy(p, -hw, hw, "boss"),
+        prismy([a, b, ("arc", xcr, zcr, *c), d, e, fp], -hw, hw, "boss"),
         # plan corners at the rear (vertical edges)
         f"fillet|{rr}|z|{a[0] - 0.1} {-hw - 0.1} {a[1]} {a[0] + 0.1} {hw + 0.1} {b[1]}|2|{tol(o['rear'], 0.05)}",
         # hood: back corners (vertical), back-top edge, ceiling side edges
         f"fillet|{rh}|any|{c[0] - 0.1} {-hw - 0.1} {c[1] + 0.1} {c[0] + 0.6 * (e[0] - c[0]):.3f} {hw + 0.1} {e[1] + 0.1}|5|{tol(o['hood'])}",
         # body top: rear edge, plan arcs and side edges; not the concave edge at the hood
-        f"filletface|{rt}|z:1|{b[1]}|{a[0]} {-hw} {c[0]} {hw}|1|{tol(o['top'])}|skip:{c[0] - 0.5} {-hw - 1} {b[1] - 0.5} {c[0] + rh + 0.5} {hw + 1} {b[1] + 0.5}",
+        f"filletface|{rt}|cyl|{rcr:.4f}|{a[0]} {-hw} {c[0]} {hw}|1|{tol(o['top'])}|skip:{c[0] - 0.5} {-hw - 1} {b[1] - 0.5} {c[0] + rh + 0.5} {hw + 1} {b[1] + 0.5}",
         f"shell|{CAN_T}|z:-1|{CAN_Z0}|{a[0] - 1} {-hw - 1} {fp[0] + 1} {hw + 1}|1|{-f['v_in']:.1f} {0.04 * (f['v_out'] - f['v_in']):.1f}",
         prismy(win, -CAN_WIN_HW, CAN_WIN_HW, "cut"),
         *[
@@ -2324,8 +2435,12 @@ def canopy_lines(path: str) -> list[str]:
             for sg in (-1, 1)
         ],
         *[
-            f"box|{x0:.3f} {x1:.3f}|{y0:.3f} {y1:.3f}|{z0:.3f} {z1:.3f}"
-            for x0, x1, y0, y1, z0, z1 in canopy_ribs()
+            prismy(canopy_rib_profile(), y0, y1, "boss")
+            for _, _, y0, y1, _, _ in canopy_ribs()[: len(CAN_RIBS_Y)]
+        ],
+        *[
+            prismy(canopy_cross_rib_profile(x0, x1), y0, y1, "boss")
+            for x0, x1, y0, y1, _, _ in canopy_ribs()[len(CAN_RIBS_Y) :]
         ],
         *[
             prismy(
@@ -2339,12 +2454,12 @@ def canopy_lines(path: str) -> list[str]:
         # P6g (Ben): r 1.0 at the rib and keel roots on the ceiling's underside (every cell
         # face of the grid, outer loops). Not the tangent seams into the inner rounds
         # (x -77, |y| 45) nor the ceiling's front end at the hood (x 36.2)
-        f"filletface|{CAN_ROOT_R}|z:-1|{zc_in:.3f}|{CAN_X0} {-CAN_HW} {xb_in + 1:.3f} {CAN_HW}|any"
+        f"filletface|{CAN_ROOT_R}|cyl|{rcr - CAN_T:.4f}|{CAN_X0} {-CAN_HW} {xb_in + 1:.3f} {CAN_HW}|any"
         f"|{f['roots']:.1f} {0.15 * f['roots']:.1f}"
-        f"|skip:{CAN_X0 - 1} {-CAN_HW - 1} {zc_in - 0.5:.3f} {xr_in + 0.4:.3f} {CAN_HW + 1} {zc_in + 0.5:.3f}"
-        f";{xb_in - 0.4:.3f} {-CAN_HW - 1} {zc_in - 0.5:.3f} {xb_in + 1:.3f} {CAN_HW + 1} {zc_in + 0.5:.3f}"
-        f";{CAN_X0 - 1} {yr_in - 0.4:.3f} {zc_in - 0.5:.3f} {xb_in + 1:.3f} {CAN_HW + 1} {zc_in + 0.5:.3f}"
-        f";{CAN_X0 - 1} {-CAN_HW - 1} {zc_in - 0.5:.3f} {xb_in + 1:.3f} {-yr_in + 0.4:.3f} {zc_in + 0.5:.3f}",
+        f"|skip:{CAN_X0 - 1} {-CAN_HW - 1} {zc_in - 0.5:.3f} {xr_in + 0.4:.3f} {CAN_HW + 1} {zc_hi + 0.5:.3f}"
+        f";{xb_in - 0.4:.3f} {-CAN_HW - 1} {zc_in - 0.5:.3f} {xb_in + 1:.3f} {CAN_HW + 1} {zc_hi + 0.5:.3f}"
+        f";{CAN_X0 - 1} {yr_in - 0.4:.3f} {zc_in - 0.5:.3f} {xb_in + 1:.3f} {CAN_HW + 1} {zc_hi + 0.5:.3f}"
+        f";{CAN_X0 - 1} {-CAN_HW - 1} {zc_in - 0.5:.3f} {xb_in + 1:.3f} {-yr_in + 0.4:.3f} {zc_hi + 0.5:.3f}",
         *[
             ln
             for sg in (-1, 1)
@@ -2381,16 +2496,31 @@ CAN_HEEL = (
 )  # x, y, r, pad height: centred on a rib cell (-42..-22, 0..15)
 
 
+def canopy_heel() -> tuple[float, float, float]:
+    """S8 pad on the crowned top: (bottom z, flat top z, volume added above the skin).
+    Bottom 0.1 under the lowest skin point it covers; top hh over the highest."""
+    hx, _, hr, hh = CAN_HEEL
+    zs = [can_top_z(hx + hr * k / 20) for k in range(-20, 21)]
+    z0, z1 = min(zs) - 0.1, max(zs) + hh
+    n, add = 60, 0.0
+    for i in range(n):
+        for j in range(n):
+            u, v = -hr + (i + 0.5) * 2 * hr / n, -hr + (j + 0.5) * 2 * hr / n
+            if u * u + v * v <= hr * hr:
+                add += (z1 - can_top_z(hx + u)) * (2 * hr / n) ** 2
+    return z0, z1, add
+
+
 def canopy_fea_lines(path: str) -> list[str]:
     body = canopy_lines(path)
     assert body[-1] == "save" and body[-2].startswith("expect|vol ")
     hx, hy, hr, hh = CAN_HEEL
-    pad = math.pi * hr * hr * hh
+    z0, z1, pad = canopy_heel()
     vol = canopy_features()["vol"] + pad
     head, rest = body[-2].split("|box ")
     return [
         *body[:-2],
-        f"cyl|z|{hx} {hy}|{CAN_TOP} {CAN_TOP + hh}|{hr}|boss",
+        f"cyl|z|{hx} {hy}|{z0:.3f} {z1:.3f}|{hr}|boss",
         f"expect|vol {vol:.1f} {vol * 0.03:.1f}|box {rest}",
         "save",
     ]

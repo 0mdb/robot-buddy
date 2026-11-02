@@ -305,7 +305,7 @@ def s8() -> dict:
     Top 97 -> 95 (Ben): rib bottoms 3.2 over the stack, so < 1.7 mm keeps 1.5 mm; at
     300 N (x2) the ribs may touch the HAT top (accepted)."""
     hx, hy, hr, hh = chassis.CAN_HEEL
-    top = chassis.CAN_TOP + hh
+    top = chassis.canopy_heel()[1]  # P6f: flat pad top over the crowned skin
     f = 150.0
     return {
         "name": "S8",
@@ -318,7 +318,7 @@ def s8() -> dict:
             "fix plane 0 0 1 0",
             f"load heel plane 0 0 1 {top}",
             f"disp heel plane 0 0 1 {top}",
-            "probe top -86 -54 80 35 54 95",
+            "probe top -86 -54 80 35 54 98.5",  # P6f crown: apex 97.5
             "probe hood 30 -54 90 75 54 125",
             "probe rear -86 -54 -1 -70 54 40",
             "hotspots 5",

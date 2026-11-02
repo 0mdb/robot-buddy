@@ -464,3 +464,16 @@ Newest at the bottom. One entry per tick.
 - With T4: canopy (PC, 0.4, 4 walls / 40 % gyroid, tree auto) +z 186.0 g / 9 h 29; **+x (rear wall down) 149.2 g / 6 h 49**; −x 190.9 / 9 h 52; +y 191.2 / 10 h 32; −z 145.6 / 7 h 37 (hood top touches first, body top hangs 28 mm); no support 101.5 g / 3 h 28. `bridge_no_support` and `support_on_build_plate_only` change nothing (the floating rib/keel bottoms drag support under every cell).
 - meshcheck: +z 77 cm² bridges + 17 ledge/float; +x 14 bridges + 24 ledge/float (the cross ribs become 4 mm horizontal fins, the hood back wall a 106-wide ceiling).
 - +x turns the top's x-bending across the layers: S8 on PC Z UTS 56 → SF 2.23 (≥ 2, datasheet). Strength basis + finish → **Q26**, default (a) +x with 45° undersides on the cross ribs and a ramp under the hood back wall. 0 g, no geometry. Next: the crown (independent of Q26).
+
+## tick 74 · P6f canopy crown 2.5 mm · accepted · 2026-11-01 20:35 MST
+- Body top is now an arc in XZ (sagitta **2.5** over rear wall → hood, R 714.2, centre x −25.3; E1 §2 no flat > 60 × 60). `canopy_crown` / `can_top_z`; ribs and keels follow it (tops 0.5 into the skin, **constant 4 mm depth**, bottoms on the concentric arc); heel pad's flat top over the highest skin point (`canopy_heel`).
+- swbuild: `filletface|r|cyl|R|…` picks faces by cylinder radius (the crowned top and ceiling are no longer planes); `prof` arcs carry **6 decimals** (a 4-decimal centre at R 714 gave a null extrude on asymmetric arcs) and continue from the arc's actual end. swsim: `hotspots` now prints the **peak node's coordinates** (CWMesh.GetNodes, [x y z] by node number).
+- Four S8 runs to get here, all 0 interferences / BUILD OK:
+  - a: flat-bottom ribs (6.5 deep mid-span): **38.4 MPa**, 0.94 mm. Peak on the rear ceiling panel.
+  - b: constant-depth ribs: **83.0 MPa**, 1.44 mm, same panel.
+  - c: ribs ending on the crowned rear seam (x −77.45, not −77: the crown moves it; a 0.45 sliver was left behind the rib ends): **82.7 MPa**, now named on the x −22 cross rib.
+  - d (diagnostic, peak node): **(−22.80, 15.80, 91.69)**, the bottom corner of a crossing: flat-bottomed cross-rib boxes vs arc-bottomed lengthwise ribs left a micron step at every crossing. #2 at (−77.45, 31.2): keels still met the ceiling at −77.
+  - e: cross ribs as arc profiles (same arcs), keels ending on the seam: **22.8 MPa (SF 2.72 XY, was 25.1)**, heel **1.434 mm** (< 1.7, was 1.626). Peaks now spread over the rib bottoms near the heel (21–23 MPa, no single spike).
+- **S5k (PC)** lugs ures 0.762 mm (was 0.768), hood 9.52 MPa (was 9.68). Probe hood in S8 22.8 vs 21.0 (+8.6 %: the box now catches the long rib-bottom face; inside 10 %).
+- Canopy 112.8 → **114.8 g** PC (95,627 mm³), printed total 661.2 → **663.2 g**, CoG z 22.6. Shots `shots/1-P6f/`.
+- Lesson: on curved ribs, every rib face that meets another must lie on the same surface; flat vs arc at a crossing makes a micron step that FEA reads as an 80 MPa singularity. Peak-node coordinates found it in one run after three guesses.

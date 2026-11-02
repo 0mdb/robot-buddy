@@ -251,7 +251,23 @@ class SwBuild
             {
                 double cx = double.Parse(t[i + 1], ci), cy = double.Parse(t[i + 2], ci);
                 double x = double.Parse(t[i + 3], ci), y = double.Parse(t[i + 4], ci);
-                sm.CreateArc(M(cx), M(cy), 0, M(px), M(py), 0, M(x), M(y), 0, (short)(k == "A" ? 1 : -1));
+                ISketchSegment sa = sm.CreateArc(M(cx), M(cy), 0, M(px), M(py), 0, M(x), M(y), 0, (short)(k == "A" ? 1 : -1));
+                // P6f (tick 74): SolidWorks keeps the start radius and puts the end on that
+                // circle, so an end given off it by ~1e-5 mm left the loop open (extrude null).
+                // Continue from the end it actually made (whichever arc end is not our start).
+                if (sa == null) Console.WriteLine("    arc NULL");
+                if (sa != null)
+                {
+                    ISketchArc arc = (ISketchArc)sa;
+                    ISketchPoint e0 = (ISketchPoint)arc.GetStartPoint2(), e1 = (ISketchPoint)arc.GetEndPoint2();
+                    double d0 = Math.Abs(e0.X * 1e3 - px) + Math.Abs(e0.Y * 1e3 - py);
+                    double d1 = Math.Abs(e1.X * 1e3 - px) + Math.Abs(e1.Y * 1e3 - py);
+                    ISketchPoint ee = d0 > d1 ? e0 : e1;
+                    if (System.Environment.GetEnvironmentVariable("SWB_DEBUG") != null)
+                        Console.WriteLine(string.Format(ci, "    arc ends ({0:F5},{1:F5}) ({2:F5},{3:F5}) asked ({4:F5},{5:F5})",
+                            e0.X * 1e3, e0.Y * 1e3, e1.X * 1e3, e1.Y * 1e3, x, y));
+                    x = ee.X * 1e3; y = ee.Y * 1e3;
+                }
                 px = x; py = y; i += 5; segs++;
             }
             else { Check("prof token " + k, false, ""); return; }
@@ -480,8 +496,12 @@ class SwBuild
     {
         // normal: "<z sign>" (legacy) or "<axis>:<sign>" (S1b, tick 32); the plane value is
         // along that axis and the box is over the other two axes, in x, y, z order
+        // P6f (tick 74): "cyl" in place of the normal = cylindrical faces of radius f[3] (mm,
+        // +-1e-3) instead of planar ones, box centre over x, y (a crowned top / its ceiling)
         int ax = 2; string nspec = f[2];
-        if (nspec.Contains(":")) { ax = "xyz".IndexOf(nspec[0]); nspec = nspec.Substring(2); }
+        bool cylMode = nspec == "cyl";
+        if (cylMode) nspec = "1";
+        else if (nspec.Contains(":")) { ax = "xyz".IndexOf(nspec[0]); nspec = nspec.Substring(2); }
         int ua = ax == 0 ? 1 : 0, va = ax == 2 ? 1 : 2;
         double r = double.Parse(f[1], ci), nz = double.Parse(nspec, ci), z = double.Parse(f[3], ci);
         double[] b = Nums(f[4]);
@@ -507,11 +527,21 @@ class SwBuild
             foreach (object fo in (object[])((IBody2)bo).GetFaces())
             {
                 IFace2 fc = (IFace2)fo;
-                if (!((ISurface)fc.GetSurface()).IsPlane()) continue;
-                double[] n = (double[])fc.Normal;
-                if (Math.Abs(n[ax] - nz) > 1e-6) continue;
+                ISurface su = (ISurface)fc.GetSurface();
                 double[] bx = (double[])fc.GetBox();
-                if (Math.Abs(bx[ax] * 1e3 - z) > 1e-3 || Math.Abs(bx[ax + 3] * 1e3 - z) > 1e-3) continue;
+                if (cylMode)
+                {
+                    if (!su.IsCylinder()) continue;
+                    double[] cp = (double[])su.CylinderParams;
+                    if (Math.Abs(cp[6] * 1e3 - z) > 1e-3) continue;
+                }
+                else
+                {
+                    if (!su.IsPlane()) continue;
+                    double[] n = (double[])fc.Normal;
+                    if (Math.Abs(n[ax] - nz) > 1e-6) continue;
+                    if (Math.Abs(bx[ax] * 1e3 - z) > 1e-3 || Math.Abs(bx[ax + 3] * 1e3 - z) > 1e-3) continue;
+                }
                 double cx = (bx[ua] + bx[ua + 3]) * 500, cy = (bx[va] + bx[va + 3]) * 500;
                 if (cx < b[0] || cy < b[1] || cx > b[2] || cy > b[3]) continue;
                 cand.Add(fc);

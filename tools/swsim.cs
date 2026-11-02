@@ -90,16 +90,21 @@ static class SwSim
 
     // Where is the stress? One GetStressForEntities call per face (a batched call pools the
     // nodes, so it can't say which face holds the peak), then the top hotN faces.
-    static void HotSpots(CWResults res, List<IFace2> faces, string caseName, StringBuilder report)
+    static void HotSpots(CWResults res, ICWMesh mesh, List<IFace2> faces, string caseName, StringBuilder report)
     {
         var ranked = new List<KeyValuePair<double, IFace2>>();
+        var peakNode = new Dictionary<IFace2, int>();
         int e;
         foreach (IFace2 f in faces)
         {
-            double m = MaxPair((object[])res.GetStressForEntities(9, 0, null, new object[] { f }, 0, out e));
-            if (!double.IsNaN(m) && !double.IsInfinity(m)) ranked.Add(new KeyValuePair<double, IFace2>(m, f));
+            object[] arr = (object[])res.GetStressForEntities(9, 0, null, new object[] { f }, 0, out e);
+            double m = MaxPair(arr);
+            if (!double.IsNaN(m) && !double.IsInfinity(m)) { ranked.Add(new KeyValuePair<double, IFace2>(m, f)); peakNode[f] = MaxNode(arr); }
         }
         ranked.Sort((a, b) => b.Key.CompareTo(a.Key));
+        var want = new HashSet<int>();
+        for (int k = 0; k < Math.Min(hotN, ranked.Count); k++) want.Add(peakNode[ranked[k].Value]);
+        var xyz = NodeXyz(mesh, want);
         for (int k = 0; k < Math.Min(hotN, ranked.Count); k++)
         {
             IFace2 f = ranked[k].Value;
@@ -112,9 +117,51 @@ static class SwSim
             else what = "other";
             string line = string.Format(ci, "{0:F3} MPa  centre ({1:F1}, {2:F1}, {3:F1})  {4}  box X[{5:F1},{6:F1}] Y[{7:F1},{8:F1}] Z[{9:F1},{10:F1}]",
                 ranked[k].Key / 1e6, cx, cy, cz, what, b[0] * 1e3, b[3] * 1e3, b[1] * 1e3, b[4] * 1e3, b[2] * 1e3, b[5] * 1e3);
+            double[] q;
+            if (xyz.TryGetValue(peakNode[f], out q))
+                line += string.Format(ci, "  peak node {0} at ({1:F2}, {2:F2}, {3:F2})", peakNode[f], q[0], q[1], q[2]);
             Log("  hot {0}: {1}", k + 1, line);
             report.AppendFormat(ci, "{0},hot{1},\"{2}\",MPa\n", caseName, k + 1, line);
         }
+    }
+
+    static int MaxNode(object[] arr)   // [node, value, ...] -> node of the max value
+    {
+        int n = -1; double m = double.NegativeInfinity;
+        if (arr == null) return -1;
+        for (int k = 1; k < arr.Length; k += 2)
+        { double v = Convert.ToDouble(arr[k], ci); if (v > m) { m = v; n = Convert.ToInt32(arr[k - 1], ci); } }
+        return n;
+    }
+
+    // Node coordinates (mm) by node number, from CWMesh.GetNodes ([node, x, y, z, ...] in m)
+    static Dictionary<int, double[]> NodeXyz(ICWMesh mesh, HashSet<int> want)
+    {
+        var r = new Dictionary<int, double[]>();
+        try
+        {
+            object o = mesh.GetNodes();
+            Array a = o as Array;
+            int n = mesh.NodeCount;
+            if (a == null) { Log("  GetNodes: null"); return r; }
+            Func<int, double> at = k => Convert.ToDouble(a.GetValue(k), ci);
+            if (a.Length == 4 * n)        // [node, x, y, z, ...]
+            {
+                for (int k = 0; k + 3 < a.Length; k += 4)
+                {
+                    int id = (int)at(k);
+                    if (want.Contains(id)) r[id] = new[] { at(k + 1) * 1e3, at(k + 2) * 1e3, at(k + 3) * 1e3 };
+                }
+            }
+            else if (a.Length == 3 * n)   // [x, y, z, ...] by node number from 1
+            {
+                foreach (int id in want)
+                    if (id >= 1 && id <= n) r[id] = new[] { at(3 * id - 3) * 1e3, at(3 * id - 2) * 1e3, at(3 * id - 1) * 1e3 };
+            }
+            else Log("  GetNodes: {0} values for {1} nodes, layout unknown", a.Length, n);
+        }
+        catch (Exception ex) { Log("  GetNodes failed: {0}", ex.Message); }
+        return r;
     }
 
     static double MaxPair(object[] arr)   // [node, value, node, value, ...] -> max value
@@ -330,7 +377,7 @@ static class SwSim
                 report.AppendFormat(ci, "{0},reaction,{1:F3} {2:F3} {3:F3},N\n", t[1], rx, ry, rz);
             }
             else Log("  reaction: unexpected array length {0}", rf == null ? -1 : rf.Length);
-            if (hotN > 0) HotSpots(res, faces, t[1], report);
+            if (hotN > 0) HotSpots(res, (ICWMesh)study.Mesh, faces, t[1], report);
             foreach (var kv in probeFaces)
             {
                 double pm = double.NegativeInfinity;
