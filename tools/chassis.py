@@ -578,6 +578,7 @@ def plate_lines(plate: str) -> list[str]:
         )
         vol -= dvl
     lines += [
+        PART_LABELS["plate"],
         f"expect|vol {vol:.1f} {vol * 0.004:.1f}|box {-hx} {hx} {-hy} {hy} {UNDER_BOSS_Z} {DECK_Z} 0.01",
         "save",
     ]
@@ -858,6 +859,20 @@ HERO_VIEWS = (
     ("rear_quarter", "-1 -0.7 0.5", "0 0 1"),
     ("top", "0 0 1", "1 0 0"),
 )
+
+
+# R3 (tick 78): part number + revision, 4 mm bold, cut 0.6 into a hidden face. Volumes are
+# not predicted (~20 mm3, inside every part's expect tolerance); the FEA copies drop them.
+#   plate: belly cell (x -11.5..11.5, y -8.5..-1, clear of ribs/slots: STL ray scan), read
+#   from below; canopy: the left skirt's inner face (y 51.2), z 40..44, read from inside
+#   (seen from inside, Top-plane text is the whole line turned 180°; SW's escapement turns
+#   each glyph in place and "mirror" flips the whole line, so: mirror + 180° + the string
+#   reversed. Checked by ray-casting exported test walls, tick 78. No hyphen: the reversed
+#   string with "-" cut nothing, twice)
+PART_LABELS = {
+    "plate": "text|front|11.5 -6.75|-4.5 -3.4|4|RB-001 r1|mirror",
+    "canopy": f"text|top|-10 -40|50.9 51.8|4|{'RB 004 r1'[::-1]}|mirror|180",
+}
 
 
 def rebuild_manifest(win: str) -> list[str]:
@@ -1655,7 +1670,7 @@ def mount_ops_chassis(side: int) -> list[tuple]:
 
 
 def fea_plate_mounts_lines(path: str) -> list[str]:
-    plate = plate_lines(path)
+    plate = [ln for ln in plate_lines(path) if not ln.startswith("text|")]  # R3 labels: not in FEA
     assert plate[-2].startswith("expect|vol ") and plate[-1] == "save"
     v_plate = float(plate[-2].split("|")[1].split()[1])
     v_mount, _ = solid_volume_numeric(
@@ -2520,6 +2535,7 @@ def canopy_lines(path: str) -> list[str]:
             for b in canopy_front_corners()[1]
         ],
         *canopy_vents()[0],
+        PART_LABELS["canopy"],
         f"expect|vol {f['vol']:.1f} {f['vol'] * 0.03:.1f}|box {CAN_X0} {fp[0]:.2f} {-hw} {hw} {-CAN_TAB[2]} {e[1]:.2f} 0.5",
         "save",
     ]
@@ -2553,7 +2569,7 @@ def canopy_heel() -> tuple[float, float, float]:
 
 
 def canopy_fea_lines(path: str) -> list[str]:
-    body = canopy_lines(path)
+    body = [ln for ln in canopy_lines(path) if not ln.startswith("text|")]  # R3 labels: not in FEA
     assert body[-1] == "save" and body[-2].startswith("expect|vol ")
     hx, hy, hr, hh = CAN_HEEL
     z0, z1, pad = canopy_heel()

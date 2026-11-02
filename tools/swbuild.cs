@@ -36,6 +36,11 @@
 //                                             one shaded view looking from direction e
 //                                             (target -> eye) with up u, zoom to fit, 1600 x 1200
 //                                             (E4 hero renders; matrix columns = view x, y, z)
+//   text|<plane>|u v|a0 a1|h|<text>[|mirror|flip|mirrorflip|plain[|glyph angle deg]]
+//                                             R3 (tick 78): sketch text on front/top/right at
+//                                             sketch (u, v) (left-bottom), char height h mm, cut
+//                                             from a0 to a1 along the plane normal; "mirror"
+//                                             reads right from the far side (a belly face)
 //   edges|x0 y0 z0 x1 y1 z1                   list the edges whose mid-point is in the box
 //                                             (type, mid-point, ends): finding pick boxes
 //   ring|z0 z1|<loop>|<loop>|boss|cut         annulus on Front about the Z axis, along Z.
@@ -127,6 +132,7 @@ class SwBuild
                 case "stl": Stl(f[1], f[2]); break;
                 case "fillet": Fillet(f); break;
                 case "edges": Edges(f); break;
+                case "text": Text(f); break;
                 case "view": View(f); break;
                 case "filletface": FilletFace(f); break;
                 case "ring": Ring(f); break;
@@ -288,6 +294,33 @@ class SwBuild
         bool cut = f.Length > 3 && (f[3] == "cut" || f[3] == "all");
         After("prof " + plane + " " + segs + " segs span " + f[1] + (cut ? " " + f[3] : ""),
               Extrude(z[0], z[1], cut, f.Length > 3 && f[3] == "all"));
+    }
+
+    static void Text(string[] f)
+    {
+        string plane = f[1];
+        double[] uv = Nums(f[2]), a = Nums(f[3]);
+        double h = double.Parse(f[4], ci);
+        string txt = f[5];
+        // options: "mirror" (whole text left-right), "flip" (whole text upside down), both =
+        // a 180° turn of the line; angle = escapement, which SW applies to each glyph in place
+        string opt = f.Length > 6 ? f[6] : "";
+        bool mirror = opt.Contains("mirror"), flip = opt.Contains("flip");
+        double ang = f.Length > 7 ? double.Parse(f[7], ci) * Math.PI / 180 : 0;
+        if (!Sketch(plane)) return;
+        ISketchText st = (ISketchText)doc.InsertSketchText(M(uv[0]), M(uv[1]), 0, txt, 0, flip ? 1 : 0, mirror ? 1 : 0, 100, 100);
+        if (st == null) { CloseSketch(); Check("text " + txt, false, "InsertSketchText null"); return; }
+        ITextFormat tf = (ITextFormat)st.GetTextFormat();
+        tf.CharHeight = M(h);
+        tf.Bold = true;
+        if (ang != 0) tf.Escapement = ang;
+        st.SetTextFormat(false, tf);
+        CloseSketch();
+        double v0 = PartVolume();
+        IFeature feat = Extrude(a[0], a[1], true, false);
+        doc.EditRebuild3();
+        Check("text '" + txt + "' on " + plane, feat != null && PartVolume() < v0,
+            string.Format(ci, "dvol {0:F2} mm3 | {1}", PartVolume() - v0, Measure()));
     }
 
     static string Measure()

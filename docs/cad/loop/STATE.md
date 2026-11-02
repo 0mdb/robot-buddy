@@ -1,9 +1,9 @@
 # CAD loop state
 
 pass: 1, leg 3 (leg 2 ended 2026-11-01 06:15 at tick 67)
-tick: 77
+tick: 78
 sw: up (restarted by Ben ~06:40 MST; S8/S5k re-run clean)
-current: none (tick 77: D2 done; next D1b carriage/bulkhead knee with a mesh check, D6, R3)  [leg 3 order: P13 → P7/P8 → P6d/f/e → T4 → P10/E4 → polish]
+current: none (tick 78: R3 plate + canopy labels; next R3 rest or D1b / D6)  [leg 3 order: P13 → P7/P8 → P6d/f/e → T4 → P10/E4 → polish]
 hypothesis: —
 baseline_commit: d8179d2 (cad)
 stop_after: none (Ben, leg 3, 2026-11-01: "until completed")
