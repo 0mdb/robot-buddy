@@ -2395,7 +2395,8 @@ def canopy_features() -> dict:
         "rim": canopy_rim_round()[0],
         "hood_edge": canopy_hood_edge()[0],
         "fcorner": canopy_front_corners()[0],
-        "vol": -canopy_rim_round()[0]
+        "vol": -canopy_rear_edges()[0]
+        - canopy_rim_round()[0]
         - canopy_hood_edge()[0]
         - canopy_front_corners()[0]
         + v_out
@@ -2442,6 +2443,33 @@ def canopy_vents() -> tuple[list[str], float]:
     area = sum((z1 - z0 - 2 * r) * 2 * r + math.pi * r * r for z0, z1 in CAN_VENT_Z) * n
     line = f"prof|{CAN_X0 - 0.2} {CAN_X0 + CAN_T + 0.2}|{' '.join(loops)}|cut|right"
     return [line], area * CAN_T
+
+
+CAN_VENT_EDGE_R = 0.5  # P6e (tick 85): vent slot outer edges (2 wide slots, 1.8 wall)
+
+
+def canopy_rear_edges() -> tuple[float, list[str]]:
+    """P6e (tick 85), kid-safety edges the canopy audit lists on the rear wall: r 0.5 on the
+    26 vent slots' OUTER edges (inner loops of the x -85 face) and r 1.0 on the rear apron's
+    two outer vertical corners (y +-26, under the skirt). Returns (volume removed, lines)."""
+    r = CAN_VENT_W / 2
+    n = int(round(2 * CAN_VENT_HY / CAN_VENT_PITCH)) + 1
+    per = sum(2 * (z1 - z0 - 2 * r) + 2 * math.pi * r for z0, z1 in CAN_VENT_Z) * n
+    dv_v = (1 - math.pi / 4) * CAN_VENT_EDGE_R**2 * per
+    zs = [z for zz in CAN_VENT_Z for z in zz]
+    vent = (
+        f"filletface|{CAN_VENT_EDGE_R}|x:-1|{CAN_X0}|{-CAN_HW} {CAN_Z0} {CAN_HW} {CAN_TOP}|1"
+        f"|{-dv_v:.2f} {0.25 * dv_v:.2f}"
+        f"|loops:{-CAN_VENT_HY - 2} {min(zs) - 2} {CAN_VENT_HY + 2} {max(zs) + 2}"
+    )
+    L = CAN_Z0 - CAN_EDGE_R  # 0 .. under the skirt rim's r 1
+    dv_a = (1 - math.pi / 4) * CAN_EDGE_R**2 * L
+    apron = [
+        f"fillet|{CAN_EDGE_R}|z|{CAN_X0 - 0.1} {s * CAN_APRON_HW - 0.1} {L / 2 - 3:.2f} {CAN_X0 + 0.1} {s * CAN_APRON_HW + 0.1} {L / 2 + 3:.2f}"
+        f"|1|{-dv_a:.2f} {0.2 * dv_a:.2f}"
+        for s in (-1, 1)
+    ]
+    return dv_v + 2 * dv_a, [vent, *apron]
 
 
 def canopy_lines(path: str) -> list[str]:
@@ -2556,6 +2584,7 @@ def canopy_lines(path: str) -> list[str]:
             for b in canopy_front_corners()[1]
         ],
         *canopy_vents()[0],
+        *canopy_rear_edges()[1],
         PART_LABELS["canopy"],
         f"expect|vol {f['vol']:.1f} {f['vol'] * 0.03:.1f}|box {CAN_X0} {fp[0]:.2f} {-hw} {hw} {-CAN_TAB[2]} {e[1]:.2f} 0.5",
         "save",

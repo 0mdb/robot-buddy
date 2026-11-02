@@ -539,3 +539,8 @@ Newest at the bottom. One entry per tick.
 - Rebuilt the drivetrain exports (bars_stagger tread) and wrote `belt_shrink0.56.stl` (Ø133.6 × 36, the 0.56 % strip-1 shrink); `drivetrain.py build` then dies in its matplotlib preview (not in the venv), after the STLs.
 - Sliced (TPU = Ben's belt presets, 0.6; coupons PET-CF): **belt 59.9 g / 7 h 11 × 2**, strip 17.3 g / 1 h 55, lug6 10.4 g / 1 h 19, ttbore / 624 / 684 coupons 1.3–1.6 g / ~9 min, band slice 11.1 g / 28 min. No header mismatches. `.3mf` per piece in `CAD/exports/print/`.
 - Robot total with the belts: 623.1 + 119.8 = **742.9 g filament, 26.2 + 14.4 h** (the belts' 14.4 h; the coupons are separate). belt_print.md updated.
+
+## tick 85 · P6e canopy rear edges: vent slots r 0.5, apron corners r 1 · accepted · 2026-11-02 11:50 MST
+- From the canopy edge audit (tick 75): r 0.5 on the 26 vent slots' outer edges (`filletface x:-1 … loops:` on the rear face, 104 edges, −40.4 vs −39.5 mm³) and r 1.0 on the rear apron's two outer vertical corners (−6.5 / −6.5 vs −6.2). `canopy_rear_edges()`.
+- Rebuild **0 interferences**, printed 662.9 g. **S8 (PC)** 22.53 MPa (=), heel 1.44 mm (=); **S5k (PC)** 9.53 MPa (=), lugs 0.765 mm (=).
+- Canopy accessible sharp edges **1,205 → 405 mm**. Left: the hood's inner front edge (over the bulkhead top: not reachable, rule to refine), the side tongues' corners (in the plate slots), the apron's bottom edge (on the plate). Shots `shots/1-P6e/*_t85.png`.
