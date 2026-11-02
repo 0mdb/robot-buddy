@@ -850,6 +850,16 @@ REFLEX_AT = (
 FACE_BASE = [0, 0, 1, 0, -1, 0, 1, 0, 0]
 
 
+# E4 hero renders (tick 76): eye direction (target -> eye), up vector, perspective. "face": a
+# 5-year-old's eye ~40 cm off the floor, ~1 m in front (looking down ~17°).
+HERO_VIEWS = (
+    ("three_quarter", "1 0.65 0.45", "0 0 1"),
+    ("face", "1 0 0.3", "0 0 1"),
+    ("rear_quarter", "-1 -0.7 0.5", "0 0 1"),
+    ("top", "0 0 1", "1 0 0"),
+)
+
+
 def rebuild_manifest(win: str) -> list[str]:
     cad = win + r"\CAD"
     plate = cad + r"\parts\RB-PRT-001_base_plate.SLDPRT"
@@ -964,6 +974,7 @@ def rebuild_manifest(win: str) -> list[str]:
         *fea_plate_mounts_lines(cad + r"\\fea\\FEA-plate_mounts.SLDPRT"),
         *canopy_fea_lines(canopy_fea),
         f"shot|{asm}|{shots}",
+        *[f"view|{asm}|{win}\\shots\\hero_{tag}.bmp|{eye}|{up}|persp" for tag, eye, up in HERO_VIEWS],
         f"close|{asm}",
         f"shot|{plate}|{win}\\shots\\plate",
         f"close|{plate}",

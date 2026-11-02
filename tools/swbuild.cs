@@ -32,6 +32,10 @@
 //                                             change of dvol +- tol (mm3, + = concave)
 //                                             axis "curve": any edge (line or curve), by the
 //                                             point at its mid-parameter (tick 75)
+//   view|<doc>|<out.bmp>|ex ey ez|ux uy uz|persp|ortho
+//                                             one shaded view looking from direction e
+//                                             (target -> eye) with up u, zoom to fit, 1600 x 1200
+//                                             (E4 hero renders; matrix columns = view x, y, z)
 //   edges|x0 y0 z0 x1 y1 z1                   list the edges whose mid-point is in the box
 //                                             (type, mid-point, ends): finding pick boxes
 //   ring|z0 z1|<loop>|<loop>|boss|cut         annulus on Front about the Z axis, along Z.
@@ -123,6 +127,7 @@ class SwBuild
                 case "stl": Stl(f[1], f[2]); break;
                 case "fillet": Fillet(f); break;
                 case "edges": Edges(f); break;
+                case "view": View(f); break;
                 case "filletface": FilletFace(f); break;
                 case "ring": Ring(f); break;
                 case "shell": Shell(f); break;
@@ -862,6 +867,35 @@ class SwBuild
 
     // SaveBMP only writes when the document window is visible and active
     // (found 2026-10-30; it returns True and writes nothing otherwise).
+    static void View(string[] f)
+    {
+        string path = f[1], outp = f[2];
+        double[] ev = Nums(f[3]), uv = Nums(f[4]);
+        bool persp = f[5] == "persp";
+        int e = 0, w = 0;
+        int type = path.ToUpper().EndsWith(".SLDASM") ? (int)swDocumentTypes_e.swDocASSEMBLY
+                                                      : (int)swDocumentTypes_e.swDocPART;
+        IModelDoc2 d = (IModelDoc2)sw.OpenDoc6(path, type,
+            (int)swOpenDocOptions_e.swOpenDocOptions_Silent, "", ref e, ref w);
+        if (d == null) { Check("view open", false, "err " + e); return; }
+        d.Visible = true;
+        sw.ActivateDoc3(d.GetTitle(), false, (int)swRebuildOnActivation_e.swDontRebuildActiveDoc, ref e);
+        Func<double[], double[]> nrm = v => { double l = Math.Sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]); return new[] { v[0] / l, v[1] / l, v[2] / l }; };
+        Func<double[], double[], double[]> cross = (a, b) => new[] { a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0] };
+        double[] z = nrm(ev), x = nrm(cross(uv, z)), y = cross(z, x);
+        double[] a16 = { x[0], y[0], z[0], x[1], y[1], z[1], x[2], y[2], z[2], 0, 0, 0, 1, 0, 0, 0 };
+        d.ShowNamedView2("*Isometric", -1);
+        IModelView mv = (IModelView)d.ActiveView;
+        IMathUtility mu = (IMathUtility)sw.GetMathUtility();
+        mv.Orientation3 = (MathTransform)mu.CreateTransform(a16);
+        if (persp) mv.AddPerspective(); else mv.RemovePerspective();
+        d.ViewZoomtofit2();
+        d.GraphicsRedraw2();
+        bool ok = d.SaveBMP(outp, 1600, 1200) && File.Exists(outp);
+        if (persp) mv.RemovePerspective();
+        Check("view " + Path.GetFileName(outp), ok, string.Format(ci, "eye ({0:F2}, {1:F2}, {2:F2}) up ({3:F2}, {4:F2}, {5:F2})", z[0], z[1], z[2], y[0], y[1], y[2]));
+    }
+
     static void Shot(string path, string prefix)
     {
         int e = 0, w = 0;

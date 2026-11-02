@@ -485,3 +485,9 @@ Newest at the bottom. One entry per tick.
 - Kept: **r 1 on the canopy's outer front corners** (|y| 53, rim to the hood's r 8 side round, 2 × 18.8 mm³). Rebuild **0 interferences**, canopy 114.7 g, printed **663.1 g**. **S5k** 9.61 MPa (=), lugs 0.764 mm (=); **S8** 22.68 MPa (=), heel 1.435 mm.
 - Tooling: swbuild `edges|box` (list edges by mid-point: type, ends) and `fillet|r|curve|…` (curved edges by mid-parameter point). Gate bug fixed in the run line: `grep -q "BUILD OK"` matched "did not report BUILD OK" (one S5k/S8 ran on a stale model); now `grep -qx`.
 - Canopy audit left: rear vent slot edges (2 mm slots, z 36–48 / 70–84), apron + tab corners at z 16, the hood's inner front edge (over the bulkhead top, not reachable: rule to refine). Shots `shots/1-P6e/`.
+
+## tick 76 · E4 hero renders · accepted · 2026-11-02 00:45 MST
+- swbuild `view|doc|out.bmp|eye|up|persp`: sets `IModelView.Orientation3` from an eye direction + up (matrix columns = view x, y, z; the transposed form rendered the robot on its side, checked by eye), perspective on, zoom to fit, 1600 × 1200. The named `*Front` view in the old `shot` looks down our +z (SW's Front plane is our XY), so `shot`'s labels don't match the robot frame; the hero views do.
+- `HERO_VIEWS` in chassis.py, rendered every rebuild after the assembly shot: **three_quarter**, **face** (a 5-year-old's eye ~40 cm up, ~1 m away: eye (1, 0, 0.3)), **rear_quarter**, **top** (front up). `shots/hero/*.png`.
+- Read from them: the canopy crown and the rear vents read well; the hood-top screw heads sit right on the hood's front edge in the top view (Q27); the rear apron leaves the carriage bays open beside it (by design, tick 47).
+- P10: every part that exists is placed (33 components, 0 interferences); left are the blocked ones (speaker Q25, XVF3800 P9, TPU smalls P8) and fasteners. 0 g, no geometry.
