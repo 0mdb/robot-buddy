@@ -1182,6 +1182,9 @@ def bulkhead_features() -> tuple[list[tuple], list[tuple]]:
             ("cut", ("cylx", y, z, x0 - BH_SLEEVE_L - 0.1, x1 + 0.1, BH_SONAR_R))
         )
     sy, sz, sr = BH_SPK
+    # D2 (tick 77): full-radius ends (box + two Ø2 end cylinders), same overall length;
+    # they were square-ended boxes on the face side
+    sr_end = BH_SLOT_W / 2
     for dz in BH_SLOT_DZ:
         far = abs(dz) + BH_SLOT_W / 2
         half = math.sqrt(sr * sr - far * far)
@@ -1192,13 +1195,15 @@ def bulkhead_features() -> tuple[list[tuple], list[tuple]]:
                     "box",
                     x0 - 0.1,
                     x1 + 0.1,
-                    sy - half,
-                    sy + half,
+                    sy - half + sr_end,
+                    sy + half - sr_end,
                     sz + dz - BH_SLOT_W / 2,
                     sz + dz + BH_SLOT_W / 2,
                 ),
             )
         )
+        for ye in (sy - half + sr_end, sy + half - sr_end):
+            pre.append(("cut", ("cylx", ye, sz + dz, x0 - 0.1, x1 + 0.1, sr_end)))
     cy, cz, cr = BH_CAM
     pre.append(("cut", ("cylx", cy, cz, x0 - 0.1, x1 + 0.1, cr)))
     for sgn in (-1, 1):

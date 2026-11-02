@@ -491,3 +491,8 @@ Newest at the bottom. One entry per tick.
 - `HERO_VIEWS` in chassis.py, rendered every rebuild after the assembly shot: **three_quarter**, **face** (a 5-year-old's eye ~40 cm up, ~1 m away: eye (1, 0, 0.3)), **rear_quarter**, **top** (front up). `shots/hero/*.png`.
 - Read from them: the canopy crown and the rear vents read well; the hood-top screw heads sit right on the hood's front edge in the top view (Q27); the rear apron leaves the carriage bays open beside it (by design, tick 47).
 - P10: every part that exists is placed (33 components, 0 interferences); left are the blocked ones (speaker Q25, XVF3800 P9, TPU smalls P8) and fasteners. 0 g, no geometry.
+
+## tick 77 · D2 speaker grille slots full-radius ends · accepted · 2026-11-02 01:05 MST
+- The 6 grille slots (2 wide, on the bulkhead's face side) were square-ended boxes. Now box + two Ø2 `cylx` ends, same overall length (corner on the Ø34 grille circle as before). Bulkhead 44.7 g (34,678.6 mm³, voxel expect passed).
+- Rebuild **0 interferences**, printed 663.1 g. **S5c** 7.47 MPa (SF 4.7, =), bezel 0.265 mm (=).
+- D2 audit of the rest: plate guide/clamp/wire slots and the canopy vents were already `slot` (full radius). Left square by function: bulkhead tab slots + canopy tongue slots (rectangular mating fits, 0.1–0.3 clearance; a radius would need dog-bones), the plate's bell pockets (blind reliefs under the motors, hidden). Shots `shots/1-D2/`.
