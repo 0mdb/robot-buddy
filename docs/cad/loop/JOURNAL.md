@@ -544,3 +544,7 @@ Newest at the bottom. One entry per tick.
 - From the canopy edge audit (tick 75): r 0.5 on the 26 vent slots' outer edges (`filletface x:-1 … loops:` on the rear face, 104 edges, −40.4 vs −39.5 mm³) and r 1.0 on the rear apron's two outer vertical corners (−6.5 / −6.5 vs −6.2). `canopy_rear_edges()`.
 - Rebuild **0 interferences**, printed 662.9 g. **S8 (PC)** 22.53 MPa (=), heel 1.44 mm (=); **S5k (PC)** 9.53 MPa (=), lugs 0.765 mm (=).
 - Canopy accessible sharp edges **1,205 → 405 mm**. Left: the hood's inner front edge (over the bulkhead top: not reachable, rule to refine), the side tongues' corners (in the plate slots), the apron's bottom edge (on the plate). Shots `shots/1-P6e/*_t85.png`.
+
+## tick 86 · bulkhead speaker-grille slot edges r 0.5 · accepted · 2026-11-02 12:50 MST
+- The bulkhead's biggest accessible sharp cluster (edgeaudit 330 mm at (78, 23, 27)) was the 6 grille slots' face-side edges, left square in tick 59 (2 wide: r 1 rounds through). r 0.5 pre-tilt with `filletface x:1 … loops:` round the grille (24 edges, −20.4 vs −20.1 mm³).
+- Rebuild **0 interferences**, printed 662.9 g. **S5c** 7.48 MPa (=), bezel 0.265 mm (=). Bulkhead accessible sharp 684 → 309 mm; left: the lower front band at z 0–9 (x 85: the foot's front edges on the plate, 74 + ~160 mm in short runs) and the knee pad (66, 7, 4).

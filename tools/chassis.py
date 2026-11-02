@@ -1099,6 +1099,7 @@ BH_SLOT_W, BH_SLOT_DZ = (
     2.0,
     (-10.0, -6.0, -2.0, 2.0, 6.0, 10.0),
 )  # grille slots <= 2 mm (audio §4.3)
+BH_GRILLE_EDGE_R = 0.5  # tick 86: grille slot face edges
 BH_CAM = (
     0.0,
     113.0,
@@ -1402,6 +1403,18 @@ def bulkhead_lines(path: str) -> list[str]:
     dvf = (1 - math.pi / 4) * PLATE_EDGE_R**2 * face_len
     lines.append(
         f"filletface|{PLATE_EDGE_R}|x:1|{BH_XF}|-50 -5 50 130|1|{-dvf:.2f} {0.15 * dvf:.2f}|loops:-45 10 10 125"
+    )
+    # P-kid (tick 86): r 0.5 on the speaker-grille slots' face-side edges (2 wide: r 1 would
+    # round through), the bulkhead's biggest accessible sharp cluster (330 mm, edgeaudit)
+    sy_, sz_, sr_ = BH_SPK
+    gl = 0.0
+    for dz in BH_SLOT_DZ:
+        half = math.sqrt(sr_ * sr_ - (abs(dz) + BH_SLOT_W / 2) ** 2)
+        gl += 2 * (2 * half - BH_SLOT_W) + math.pi * BH_SLOT_W
+    dvg = (1 - math.pi / 4) * BH_GRILLE_EDGE_R**2 * gl
+    lines.append(
+        f"filletface|{BH_GRILLE_EDGE_R}|x:1|{BH_XF}|-50 -5 50 130|1|{-dvg:.2f} {0.25 * dvg:.2f}"
+        f"|loops:{sy_ - sr_ - 1} {sz_ - sr_ - 1} {sy_ + sr_ + 1} {sz_ + sr_ + 1}"
     )
     # S1b3 (tick 63): r 1.0 on the wall's top front edge (x BH_XF, z BH_H, along y), the
     # top of the "head", also pre-tilt. Between the side flanges' ends (|y| BH_W / 2)
