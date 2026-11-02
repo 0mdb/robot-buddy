@@ -30,6 +30,10 @@
 //                                             parallel to the axis whose midpoint is in the
 //                                             box; expects exactly n edges and a volume
 //                                             change of dvol +- tol (mm3, + = concave)
+//                                             axis "curve": any edge (line or curve), by the
+//                                             point at its mid-parameter (tick 75)
+//   edges|x0 y0 z0 x1 y1 z1                   list the edges whose mid-point is in the box
+//                                             (type, mid-point, ends): finding pick boxes
 //   ring|z0 z1|<loop>|<loop>|boss|cut         annulus on Front about the Z axis, along Z.
 //                                             loop: "c R" circle, or "p r0 r1 .. rn-1" a
 //                                             polyline through radii at equal angles from
@@ -118,6 +122,7 @@ class SwBuild
                 case "rotbody": RotBody(f); break;
                 case "stl": Stl(f[1], f[2]); break;
                 case "fillet": Fillet(f); break;
+                case "edges": Edges(f); break;
                 case "filletface": FilletFace(f); break;
                 case "ring": Ring(f); break;
                 case "shell": Shell(f); break;
@@ -439,6 +444,38 @@ class SwBuild
         return mp.Volume * 1e9;
     }
 
+    // mid-point (m) of an edge at its mid-parameter; lines and curves alike
+    static double[] EdgeMid(IEdge e)
+    {
+        ICurve c = (ICurve)e.GetCurve();
+        double[] cp = (double[])e.GetCurveParams2();
+        double[] pt = (double[])c.Evaluate2((cp[6] + cp[7]) / 2, 0);
+        return new[] { pt[0], pt[1], pt[2] };
+    }
+
+    static void Edges(string[] f)
+    {
+        double[] b = Nums(f[1]);
+        object[] bodies = (object[])((IPartDoc)doc).GetBodies2((int)swBodyType_e.swSolidBody, true);
+        int n = 0;
+        foreach (object bo in bodies)
+            foreach (object eo in (object[])((IBody2)bo).GetEdges())
+            {
+                IEdge e = (IEdge)eo;
+                ICurve c = (ICurve)e.GetCurve();
+                if (c == null) continue;
+                double[] m = EdgeMid(e);
+                double mx = m[0] * 1e3, my = m[1] * 1e3, mz = m[2] * 1e3;
+                if (mx < b[0] || my < b[1] || mz < b[2] || mx > b[3] || my > b[4] || mz > b[5]) continue;
+                double[] cp = (double[])e.GetCurveParams2();
+                string kind = c.IsLine() ? "line" : c.IsCircle() ? "circle" : "curve";
+                Console.WriteLine(string.Format(ci, "  edge {0} mid ({1:F3}, {2:F3}, {3:F3}) ends ({4:F3}, {5:F3}, {6:F3}) ({7:F3}, {8:F3}, {9:F3})",
+                    kind, mx, my, mz, cp[0] * 1e3, cp[1] * 1e3, cp[2] * 1e3, cp[3] * 1e3, cp[4] * 1e3, cp[5] * 1e3));
+                n++;
+            }
+        Console.WriteLine("  edges in box: " + n);
+    }
+
     static void Fillet(string[] f)
     {
         double r = double.Parse(f[1], ci);
@@ -453,7 +490,15 @@ class SwBuild
             {
                 IEdge e = (IEdge)eo;
                 ICurve c = (ICurve)e.GetCurve();
-                if (c == null || !c.IsLine()) continue;
+                if (c == null) continue;
+                if (ax == "curve")
+                {
+                    double[] q = EdgeMid(e);
+                    double qx = q[0] * 1e3, qy = q[1] * 1e3, qz = q[2] * 1e3;
+                    if (qx >= b[0] && qy >= b[1] && qz >= b[2] && qx <= b[3] && qy <= b[4] && qz <= b[5]) picked.Add(e);
+                    continue;
+                }
+                if (!c.IsLine()) continue;
                 double[] p0 = (double[])((IVertex)e.GetStartVertex()).GetPoint();
                 double[] p1 = (double[])((IVertex)e.GetEndVertex()).GetPoint();
                 double dx = p1[0] - p0[0], dy = p1[1] - p0[1], dz = p1[2] - p0[2];

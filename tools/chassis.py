@@ -2193,6 +2193,22 @@ def canopy_hood_edge() -> tuple[float, str]:
     return vol, box
 
 
+def canopy_front_corners() -> tuple[float, list[str]]:
+    """P6e (tick 75): r 1.0 on the canopy's outer front corners (front face meets the side
+    face at |y| 53), from the rim round up to the hood's r 8 side round."""
+    e, f = canopy_profile()[4], canopy_profile()[5]
+    tan15 = (f[0] - e[0]) / (e[1] - f[1])
+    z1 = e[1] - CAN_R[1]
+    L = (z1 - CAN_Z0) / math.cos(math.atan(tan15)) - CAN_EDGE_R
+    zm = (CAN_Z0 + z1) / 2
+    xm = f[0] - (zm - CAN_Z0) * tan15
+    boxes = [
+        f"{xm - 0.7:.3f} {s * CAN_HW - 0.3:.3f} {zm - 2:.3f} {xm + 0.7:.3f} {s * CAN_HW + 0.3:.3f} {zm + 2:.3f}"
+        for s in (-1, 1)
+    ]
+    return 2 * _round_area(90.0, CAN_EDGE_R) * L, boxes
+
+
 def canopy_rim_round() -> tuple[float, list[str]]:
     """P6e (tick 61): r 1.0 on the OUTER edge of the skirt's bottom rim (z CAN_Z0), the edge a
     hand meets; the inner edge stays square (rounding both would eat the 1.8 wall). Returns
@@ -2326,8 +2342,10 @@ def canopy_features() -> dict:
         "tabs": tabs,
         "rim": canopy_rim_round()[0],
         "hood_edge": canopy_hood_edge()[0],
+        "fcorner": canopy_front_corners()[0],
         "vol": -canopy_rim_round()[0]
         - canopy_hood_edge()[0]
+        - canopy_front_corners()[0]
         + v_out
         - v_in
         - win
@@ -2478,6 +2496,13 @@ def canopy_lines(path: str) -> list[str]:
         f"filletface|{CAN_EDGE_R}|z:-1|{CAN_Z0}|{CAN_X0 - 1} {-hw - 1} {fp[0] + 1} {hw + 1}|any"
         f"|{-f['rim']:.2f} {0.25 * f['rim']:.2f}|skip:"
         + ";".join(canopy_rim_round()[1]),
+        # (tick 75: no round on the window lips' edges at y +-47.3: they sit in a 0.3 x 3 slot
+        # beside the bulkhead, which stands 3 proud of the lip face; rounding them raised
+        # S5k 9.5 -> 11.1 MPa at the window's top corner, which won't take a fillet)
+        *[
+            f"fillet|{CAN_EDGE_R}|any|{b}|1|{-f['fcorner'] / 2:.2f} {0.15 * f['fcorner'] / 2:.2f}"
+            for b in canopy_front_corners()[1]
+        ],
         *canopy_vents()[0],
         f"expect|vol {f['vol']:.1f} {f['vol'] * 0.03:.1f}|box {CAN_X0} {fp[0]:.2f} {-hw} {hw} {-CAN_TAB[2]} {e[1]:.2f} 0.5",
         "save",

@@ -84,6 +84,10 @@ The loop adds questions here and moves on. Answer inline (`**A:** …`); the nex
   Options: (a) **+x, rear wall on the bed** (recommended): +45° undersides on the 5 cross ribs and a 45° ramp under the hood back wall should take it to ~3.5–4.5 h with almost no support; nicer top finish; vents print on the bed face. (b) Keep +z: 9.5 h, ~80 g of support to pick out of the inside. (c) Split the canopy (top + skirt): more parts, a seam.
   **Default (a)**; the 45° undersides wait on your pick. The crown (P6f) doesn't depend on it.
 
+- **Q27 Hood-top screw heads (P6e, tick 75).** The two front F9 screws (M3 × 8 ISO 7380-2, flange Ø6.9) go down through the hood ceiling at x 45.65, y ±38 into the bulkhead lugs. Checked for the E1 recess: the hole is **3.25 mm** from the hood's front edge (x 48.9, r 1 round), so the flange (r 3.45) already hangs **~0.5 mm past the flat** onto the round, on a 15° slope. A counterbore would break out of the front face, and there is no room under the 1.8 ceiling (lugs 0.1 below it).
+  Options: (a) **move the two bulkhead lugs 3 mm aft** (lug x −3, a web back to the wall) and give each hole a flat-floored counterbore in a Ø12 collar on the hood (head 0.15 under the rim, r 1 top edge): heads recessed, flange on a flat seat; bulkhead change, re-run S5c/S5k. (b) Same collar but D-shaped, cut by the front plane, lugs unchanged: the counterbore opens forward (head visible from the front, under the face's top edge). (c) Leave as is (heads visible from above, behind the face); fix only the slope seat with a 15° wedge washer.
+  **Default (a)** (recommended): it also fixes the slope/edge seat, which matters before printing. Blocked until you pick; P6e moves on to the window lips.
+
 ## Measurements wanted (not questions; each replaces a 🟡 assumption)
 - **Drive gear hub** (for P2o, the outboard axle support): bore / D-flat, the outer face (is there a boss or recess), and whether a stub shaft or screw could be fixed on the outer side. Without it the loop can't design the outboard bearing.
 - Track tension at set-up (spring scale). Every S1 and S2 number scales with it (fea.py `TRACK_T` = 20 N).

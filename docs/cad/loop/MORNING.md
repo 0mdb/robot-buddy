@@ -25,13 +25,17 @@ Order (Ben): P13 road wheels → P7/P8 → canopy P6d/f/e → T4 slicing → P10
    constant 4 mm depth. **S8 22.8 MPa (SF 2.72, better than flat 25.1), heel 1.43 mm**; S5k unchanged.
    Canopy 114.8 g (+2.0). Took four runs: a micron step where flat-bottom cross ribs met curved
    lengthwise ribs read as 83 MPa; FEA hotspots now print the peak node's xyz. Look: `shots/1-P6f/canopy_right.png`.
-8. Backlog: **M6** PA6-CF wheel coupons (Fiberon PA6-CF20 in stock); **M3** insert ladder
+8. **Canopy edges (P6e, tick 75):** outer front corners r 1; the canopy is now in the kid-safety edge audit.
+   **Q27** (new): the hood-top screw heads can't be recessed where they are (flange already overhangs the
+   hood's front edge); default = lugs 3 mm aft + counterbored collar.
+9. Backlog: **M6** PA6-CF wheel coupons (Fiberon PA6-CF20 in stock); **M3** insert ladder
    ported from fpv250 (its PA6-CF result is M2 Ø3.4 × 5.5; buddy is M3).
 
-Printed total **663.2 g** (incl. belts 117 g, road discs 27 g), CoG (−0.3, 0.0, 22.6). Review-pass studies from
+Printed total **663.1 g** (incl. belts 117 g, road discs 27 g), CoG (−0.3, 0.0, 22.6). Review-pass studies from
 leg 2 stand except S6 (now 6.50).
 
 ## Open, for you
+- **Q27 hood-top screw heads:** flange overhangs the hood front edge; default lugs 3 mm aft + counterbored collar (bulkhead change).
 - **Q26 canopy print orientation:** rear wall on the bed = 149 g / 6.8 h (vs 186 g / 9.5 h as modelled, 83 g of support inside); S8 still SF 2.23 on the datasheet Z strength. Default: rear wall down + 45° rib undersides.
 - **Q24 road-wheel axles:** the plate-edge hanger doesn't fit; default = the track frame carries them. P13c/d wait.
 - **Q25 speaker:** the CE40P-8 hits the left motor mount 8 mm behind the wall; default = a pre-boxed 8 Ω micro speaker. P7 waits.

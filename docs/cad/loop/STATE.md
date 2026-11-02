@@ -1,9 +1,9 @@
 # CAD loop state
 
 pass: 1, leg 3 (leg 2 ended 2026-11-01 06:15 at tick 67)
-tick: 74
+tick: 75
 sw: up (restarted by Ben ~06:40 MST; S8/S5k re-run clean)
-current: none (tick 74: P6f crown accepted; orientation on Q26; next P6e)  [leg 3 order: P13 → P7/P8 → P6d/f/e → T4 → P10/E4 → polish]
+current: none (tick 75: P6e front corners; Q27 screw heads; next P6e vent-slot/apron edges or P10)  [leg 3 order: P13 → P7/P8 → P6d/f/e → T4 → P10/E4 → polish]
 hypothesis: —
 baseline_commit: d8179d2 (cad)
 stop_after: none (Ben, leg 3, 2026-11-01: "until completed")
