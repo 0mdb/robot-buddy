@@ -1,4 +1,26 @@
 {
+ "RB-CPN-001_slide_strip": {
+  "cad_g": 10.849142651488174,
+  "cm3": 7.57,
+  "grams": 9.77,
+  "mat": "PET-CF",
+  "mismatch": [],
+  "qty": 0,
+  "support": false,
+  "time": "26m 17s",
+  "up": "+z"
+ },
+ "RB-CPN-002_slide_rail": {
+  "cad_g": 2.760428781037123,
+  "cm3": 1.95,
+  "grams": 2.51,
+  "mat": "PET-CF",
+  "mismatch": [],
+  "qty": 0,
+  "support": false,
+  "time": "11m 20s",
+  "up": "-z"
+ },
  "RB-PRT-001_base_plate": {
   "cad_g": 110.84580888549496,
   "cm3": 98.45,

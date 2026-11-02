@@ -558,3 +558,9 @@ Newest at the bottom. One entry per tick.
 - **S1m 9.22 MPa** (9.97), **S1b 3.45** (3.71), **S1a 11.37** (11.63): all at the same singular corners as before, all a little lower (re-meshing).
 - **Part cache** (`chassis.py` `cache_parts`, swbuild `mass|`): each part block is hashed with swbuild.cs; unchanged parts whose file exists aren't rebuilt (their MASS line is read back) and their STL isn't re-exported; asm, interference and shots always run; `rebuild --full` ignores it. Seeded by this full build (SW took ~60 min for it; it had crept from ~25 since yesterday: a SW restart is Ben's call). Build timeout 2 h.
 - The R3 label's grooves now show in the plate audit (109 mm at (−1, −3, −4)): 0.6 deep engraving, not a hazard; the audit counts any sharp edge.
+
+## tick 89 · D6 follower-slide fit coupon · accepted · 2026-11-02 17:40 MST
+- Two native parts (not in the assembly or the robot mass): `RB-CPN-001_slide_strip` (52 × 60 × 4 plate section, three guide-slot pairs 4.5 / 4.7 / 4.9 wide at the real 11 mm spacing and rail+travel length, each with its M3 clamp slot and its width engraved) and `RB-CPN-002_slide_rail` (the carriage foot section: 20 × 20 × 4 foot, two 4.0 × 3.6 rails, M3 clamp hole). Slide the stub in each pair: the narrowest free slide over the full travel sets GUIDE_W (now 4.7).
+- Built to their expects (8,407.5 / 2,139.7 mm³), STL to `exports/gen`, sliced: strip 9.8 g / 26 min, rail 2.5 g / 11 min (`just cad-slice --only slide`).
+- **Part cache, first use: 22 unchanged parts skipped, rebuild 2 min** (was ~60). Totals unchanged (662.9 g) from the read-back MASS lines; 0 interferences.
+- D6 left: the insert ladder (needs the M3 insert dims, M3) and the motor-hole pair (the TT's holes are 🟡 until measured).

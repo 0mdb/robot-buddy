@@ -145,9 +145,12 @@ PARTS = {
     "coupon_624_20": ("PET-CF", "+z", 0, False, "test: 624 seat"),
     "coupon_684_10": ("PET-CF", "+z", 0, False, "test: 684 seat (M6: also --mat PA6-CF)"),
     "coupon_band_slice": ("PET-CF", "+z", 0, False, "test: lug mesh on a TT"),
+    # D6 (tick 89): follower-slide fit, native parts from chassis.py (CAD/exports/gen)
+    "RB-CPN-001_slide_strip": ("PET-CF", "+z", 0, False, "test: guide slot pairs 4.5 / 4.7 / 4.9"),
+    "RB-CPN-002_slide_rail": ("PET-CF", "-z", 0, False, "test: carriage rail stub, foot down"),
 }
 RND = os.path.join(REPO, "CAD", "exports", "rnd", "drivetrain")
-SRC = {k: RND for k in PARTS if not k.startswith("RB-PRT-")}  # drivetrain.py build output
+SRC = {k: RND for k in PARTS if not k.startswith(("RB-PRT-", "RB-CPN-"))}  # drivetrain.py build output
 ALIAS = {
     "plate": "RB-PRT-001_base_plate",
     "bulkhead": "RB-PRT-002_bulkhead",
@@ -162,6 +165,7 @@ ALIAS = {
     "belts": "belt_shrink0.56",
     "tests": "belt_strip150,belt_lug6,coupon_ttbore_10,coupon_624_10,coupon_624_15,coupon_624_20,coupon_684_10,coupon_band_slice",
     "m6": "coupon_624_10,coupon_624_15,coupon_624_20,coupon_684_10",
+    "slide": "RB-CPN-001_slide_strip,RB-CPN-002_slide_rail",
 }
 
 

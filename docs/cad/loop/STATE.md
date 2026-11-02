@@ -1,9 +1,9 @@
 # CAD loop state
 
 pass: 1, leg 3 (leg 2 ended 2026-11-01 06:15 at tick 67)
-tick: 88
+tick: 89
 sw: up (restarted by Ben ~06:40 MST; S8/S5k re-run clean)
-current: none (tick 88: plate tongue slots + part cache; next D6 follower-slide coupon, R3 bulkhead, review pass)  [leg 3 order: P13 → P7/P8 → P6d/f/e → T4 → P10/E4 → polish]
+current: none (tick 89: D6 slide coupon; rebuilds now 2 min with the part cache; next R3 bulkhead, D1b retry, review pass)  [leg 3 order: P13 → P7/P8 → P6d/f/e → T4 → P10/E4 → polish]
 hypothesis: —
 baseline_commit: d8179d2 (cad)
 stop_after: none (Ben, leg 3, 2026-11-01: "until completed")

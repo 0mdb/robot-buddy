@@ -975,6 +975,9 @@ def rebuild_manifest(win: str) -> list[str]:
         *wheel_lines(idler, dt.idler_layers(2)),
         *wheel_lines(road, dt.road_wheel_layers()),
         *road_axle_lines(road_axle),
+        # D6 (tick 89): follower-slide fit coupon (not in the assembly, not in the robot mass)
+        *coupon_slide_strip_lines(cad + r"\parts\RB-CPN-001_slide_strip.SLDPRT"),
+        *coupon_slide_rail_lines(cad + r"\parts\RB-CPN-002_slide_rail.SLDPRT"),
         *belt_native_lines(belt_l, +1),
         *belt_native_lines(belt_r, -1),
         f"asm|{asm}",
@@ -1045,10 +1048,68 @@ def rebuild_manifest(win: str) -> list[str]:
                 (sprocket, "RB-PRT-020_sprocket"),
                 (idler, "RB-PRT-021_idler"),
                 (road, "RB-PRT-022_road_disc"),
+                (cad + r"\parts\RB-CPN-001_slide_strip.SLDPRT", "RB-CPN-001_slide_strip"),
+                (cad + r"\parts\RB-CPN-002_slide_rail.SLDPRT", "RB-CPN-002_slide_rail"),
             )
         ],
     ]
     return lines
+
+
+# D6 (tick 89): the follower's slide fit. The carriage's two 4.0 x 3.6 rails (11 apart,
+# CAR_RAIL_W/D) run in the plate's 4.7 guide slots (GUIDE_W: 0.35/side) with an M3 clamp
+# slot between. The strip carries three slot pairs, 4.5 / 4.7 / 4.9 wide, each with its
+# clamp slot and its width engraved; the rail stub is the carriage foot section. Slide it in
+# each pair: the narrowest that slides freely over the full travel sets GUIDE_W.
+CPN_SLIDE_W = (4.5, GUIDE_W, 4.9)
+
+
+def _stadium(x0: float, x1: float, y: float, r: float) -> str:
+    """Front-plane slot (x0 .. x1 centre line at y, radius r), arcs CCW."""
+    a, b = x0 + r, x1 - r
+    return (
+        f"M {a:g} {y - r:g} L {b:g} {y - r:g} A {b:g} {y:g} {b:g} {y + r:g} "
+        f"L {a:g} {y + r:g} A {a:g} {y:g} {a:g} {y - r:g}"
+    )
+
+
+def coupon_slide_strip_lines(path: str) -> list[str]:
+    L, W, T = 52.0, 60.0, PLATE_T
+    sx0, sx1 = 5.0, 5.0 + RAIL_L + TRAVEL  # rail length + travel, like the plate
+    half = (GUIDE_Y[1] - GUIDE_Y[0]) / 2  # 5.5
+    vol = L * W * T
+    lines = [f"part|{path}", f"box|0 {L}|0 {W}|0 {T}"]
+    for k, w in enumerate(CPN_SLIDE_W):
+        yc = 10.0 + 20.0 * k
+        for yy in (yc - half, yc + half):
+            lines.append(f"prof|-0.1 {T + 0.1}|{_stadium(sx0, sx1, yy, w / 2)}|all")
+            vol -= ((sx1 - sx0 - w) * w + math.pi * (w / 2) ** 2) * T
+        cw = CLR_M3
+        lines.append(f"prof|-0.1 {T + 0.1}|{_stadium(sx0 + 5, sx1 - 5, yc, cw / 2)}|all")
+        vol -= ((sx1 - sx0 - 10 - cw) * cw + math.pi * (cw / 2) ** 2) * T
+        # its width, read from above (0.6 deep)
+        lines.append(f"text|front|{sx1 + 2.5} {yc - 2}|{T - 0.6} {T + 0.5}|3.5|{w:.1f}")
+    lines += [
+        f"expect|vol {vol:.1f} {vol * 0.02:.1f}|box 0 {L} 0 {W} 0 {T} 0.05",
+        "save",
+    ]
+    return lines
+
+
+def coupon_slide_rail_lines(path: str) -> list[str]:
+    """The carriage foot section: a 20 x 20 x 4 foot with the two rails under it."""
+    hx = RAIL_L / 2
+    half = (GUIDE_Y[1] - GUIDE_Y[0]) / 2
+    rw, rd = CAR_RAIL_W, CAR_RAIL_D
+    vol = RAIL_L * 20.0 * CAR_FOOT_T + 2 * RAIL_L * rw * rd - math.pi * (CLR_M3 / 2) ** 2 * CAR_FOOT_T
+    return [
+        f"part|{path}",
+        f"box|{-hx} {hx}|-10 10|0 {CAR_FOOT_T}",
+        *[f"box|{-hx} {hx}|{s * half - rw / 2} {s * half + rw / 2}|{-rd} 0" for s in (-1, 1)],
+        f"cyl|z|0 0|-0.1 {CAR_FOOT_T + 0.1}|{CLR_M3 / 2}|cut",
+        f"expect|vol {vol:.1f} {vol * 0.01:.1f}|box {-hx} {hx} -10 10 {-rd} {CAR_FOOT_T} 0.05",
+        "save",
+    ]
 
 
 def envelope_lines(pi: str, face: str, reflex: str) -> list[str]:
