@@ -41,6 +41,7 @@
 //                                             sketch (u, v) (left-bottom), char height h mm, cut
 //                                             from a0 to a1 along the plane normal; "mirror"
 //                                             reads right from the far side (a belly face)
+//   mass|<part.SLDPRT>                        MASS line of an existing part (part cache)
 //   edges|x0 y0 z0 x1 y1 z1                   list the edges whose mid-point is in the box
 //                                             (type, mid-point, ends): finding pick boxes
 //   ring|z0 z1|<loop>|<loop>|boss|cut         annulus on Front about the Z axis, along Z.
@@ -133,6 +134,7 @@ class SwBuild
                 case "fillet": Fillet(f); break;
                 case "edges": Edges(f); break;
                 case "text": Text(f); break;
+                case "mass": MassOf(f[1]); break;
                 case "view": View(f); break;
                 case "filletface": FilletFace(f); break;
                 case "ring": Ring(f); break;
@@ -358,6 +360,22 @@ class SwBuild
                 Check("box", worst <= v[6], string.Format(ci, "worst axis error {0:F3} mm", worst));
             }
         }
+    }
+
+    // mass|<part>: the MASS line of an existing part (chassis.py's part cache skips
+    // rebuilding unchanged parts, tick 88)
+    static void MassOf(string path)
+    {
+        int e = 0, w = 0;
+        IModelDoc2 d = (IModelDoc2)sw.OpenDoc6(path, (int)swDocumentTypes_e.swDocPART,
+            (int)swOpenDocOptions_e.swOpenDocOptions_Silent | (int)swOpenDocOptions_e.swOpenDocOptions_ReadOnly, "", ref e, ref w);
+        if (d == null) { Check("mass open " + Path.GetFileName(path), false, "err " + e); return; }
+        IMassProperty mp = (IMassProperty)d.Extension.CreateMassProperty();
+        double[] com = (double[])mp.CenterOfMass;
+        Console.WriteLine(string.Format(ci, "MASS|{0}|{1:F1}|{2:F3} {3:F3} {4:F3}",
+            Path.GetFileName(path), mp.Volume * 1e9, com[0] * 1e3, com[1] * 1e3, com[2] * 1e3));
+        Check("cached " + Path.GetFileName(path), true, string.Format(ci, "vol {0:F1} mm3", mp.Volume * 1e9));
+        sw.CloseDoc(d.GetTitle());
     }
 
     static void SavePart()

@@ -36,7 +36,10 @@ Order (Ben): P13 road wheels → P7/P8 → canopy P6d/f/e → T4 slicing → P10
     noise at the jack block's square root (no-label A/B = 3.20); rounding that root (r 2) made S1m/S1a/S1b
     worse (+33/+27/+15 %), **rejected**. **M6:** PA6-CF coupon set in 08 §7, `just cad-slice --mat PA6-CF`
     uses your fpv250 preset (idler 28.5 g, road disc 2.5 g). SW rebuilds have slowed to ~45 min: a restart may help.
-12. Backlog: PA6-CF wheel coupons (Fiberon PA6-CF20 in stock); **M3** insert ladder
+12. **Kid-safety edges (ticks 85–88):** canopy vent slots + apron corners, bulkhead grille slots + foot front,
+    plate tongue slots. Accessible sharp edges: canopy 1,205 → 405 mm, bulkhead 684 → 236 mm (the rest sits on/in
+    other parts). All studies unchanged. **Part cache**: unchanged parts aren't rebuilt (SW rebuilds had reached ~1 h).
+13. Backlog: PA6-CF wheel coupons (Fiberon PA6-CF20 in stock); **M3** insert ladder
    ported from fpv250 (its PA6-CF result is M2 Ø3.4 × 5.5; buddy is M3).
 
 Printed total **663.1 g** (incl. belts 117 g, road discs 27 g), CoG (−0.3, 0.0, 22.6). Review-pass studies from

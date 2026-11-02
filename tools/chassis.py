@@ -17,6 +17,7 @@ measured (06 §9) and are flagged in the specs.
 from __future__ import annotations
 
 import argparse
+import json
 import math
 import os
 import shutil
@@ -467,6 +468,7 @@ def plate_volume_numeric(step: float = 0.1) -> float:
 
 
 PLATE_EDGE_R = 1.0  # S1a: accessible edges r >= 1.0 (BACKLOG kid-safety)
+PLATE_SLOT_EDGE_R = 0.5  # tick 88: 2 mm wide slots (r 1 would round through)
 
 
 def plate_perimeter() -> float:
@@ -577,6 +579,18 @@ def plate_lines(plate: str) -> list[str]:
             f"filletface|{PLATE_EDGE_R}|-1|{-PLATE_T}|{-hx} {-hy} {hx} {hy}|any|{-dvl:.2f} {0.15 * dvl:.2f}|loops:{box}"
         )
         vol -= dvl
+    # P-kid (tick 88): r 0.5 on the canopy-tongue slots' belly edges (28.2 x 2.0: r 1 would
+    # round through), the plate's biggest accessible sharp clusters after the R3 label
+    (_, _), (tx0, tx1), _, cl = CAN_TAB
+    ts_len = 2 * ((tx1 - tx0 + 2 * cl) + (CAN_T + 2 * cl))
+    dvts = (1 - math.pi / 4) * PLATE_SLOT_EDGE_R**2 * ts_len
+    for sgn in (-1, 1):
+        ya, yb = sorted((sgn * (CAN_HW - CAN_T - cl - 3), sgn * (CAN_HW + cl + 3)))
+        lines.append(
+            f"filletface|{PLATE_SLOT_EDGE_R}|-1|{-PLATE_T}|{-hx} {-hy} {hx} {hy}|any|{-dvts:.2f} {0.25 * dvts:.2f}"
+            f"|loops:{tx0 - 3} {ya} {tx1 + 3} {yb}"
+        )
+        vol -= dvts
     # D1b (tick 82, REJECTED): an r 2 round of each jack block's root (one 4-edge feature)
     # made S1m 9.97 -> 13.3, S1a 11.6 -> 14.8, S1b 3.7 -> 4.3 (half mesh 5.0 -> 7.9) at the
     # vertex where the fillet's corner blend meets the plate (-40 / -26, +-29, 0). Removed.
@@ -3014,11 +3028,56 @@ def mass_report(lines: list[str], out: str) -> list[tuple]:
     return rows
 
 
-def run(lines: list[str], dry: bool) -> None:
+def cache_parts(lines: list[str], tool: str, full: bool) -> tuple[list[str], dict]:
+    """Part cache (tick 88: SW rebuilds had slowed to > 1 h). Each `part|path` .. `save`
+    block is hashed with swbuild.cs; a block whose hash matches the last successful build
+    and whose file exists becomes `mass|path` (its MASS line for the totals), and its `stl`
+    export is skipped. The assembly, interference and shots always run. Returns the new
+    lines and the {path: hash} to record once the build reports BUILD OK."""
+    import hashlib
+
+    eng = open(os.path.join(sw.REPO, "tools", "swbuild.cs"), "rb").read()
+    cpath = os.path.join(tool, "part_cache.json")
+    old = {} if full or not os.path.exists(cpath) else json.load(open(cpath))
+    out: list[str] = []
+    new: dict = {}
+    skipped: set = set()
+    i = 0
+    while i < len(lines):
+        ln = lines[i]
+        if ln.startswith("part|"):
+            j = i
+            while j < len(lines) and lines[j] != "save":
+                j += 1
+            block = lines[i : j + 1]
+            path = ln.split("|", 1)[1]
+            h = hashlib.sha1(eng + "\n".join(block).encode()).hexdigest()
+            new[path] = h
+            wsl = "/mnt/" + path[0].lower() + path[2:].replace("\\", "/")
+            if old.get(path) == h and os.path.exists(wsl):
+                out.append(f"mass|{path}")
+                skipped.add(path)
+            else:
+                out += block
+            i = j + 1
+            continue
+        if ln.startswith("stl|") and ln.split("|")[1] in skipped:
+            i += 1
+            continue
+        out.append(ln)
+        i += 1
+    if skipped:
+        print(f"part cache: {len(skipped)} unchanged part(s) not rebuilt")
+    return out, new
+
+
+def run(lines: list[str], dry: bool, full: bool = False) -> None:
     stage = sw.staging()
     tool = os.path.join(stage, "tools")
     os.makedirs(tool, exist_ok=True)
     os.makedirs(os.path.join(stage, "shots"), exist_ok=True)
+    mass_lines = lines
+    lines, hashes = cache_parts(lines, tool, full or dry)
     man = os.path.join(tool, "chassis_manifest.txt")
     with open(man, "w", newline="") as fh:
         fh.write("\r\n".join(lines) + "\r\n")
@@ -3037,9 +3096,11 @@ def run(lines: list[str], dry: bool) -> None:
     out = r.stdout.replace("\r", "")
     print(out, end="")
     # cmd.exe swallows .NET exit codes through WSL interop -- trust the last line
-    mass_report(lines, out)
-    if "BUILD OK" not in out:
+    mass_report(mass_lines, out)
+    if not any(x.strip() == "BUILD OK" for x in out.splitlines()):
         sys.exit("swbuild did not report BUILD OK")
+    with open(os.path.join(tool, "part_cache.json"), "w") as fh:
+        json.dump(hashes, fh, indent=0)
 
 
 def main() -> None:
@@ -3048,10 +3109,11 @@ def main() -> None:
     )
     ap.add_argument("what", choices=["rebuild"])
     ap.add_argument("-n", "--dry-run", action="store_true")
+    ap.add_argument("--full", action="store_true", help="rebuild every part (ignore the part cache)")
     a = ap.parse_args()
     win = sw.winpath(sw.staging())
     if a.what == "rebuild":
-        run(rebuild_manifest(win), a.dry_run)
+        run(rebuild_manifest(win), a.dry_run, a.full)
 
 
 if __name__ == "__main__":
