@@ -63,13 +63,13 @@ The loop adds questions here and moves on. Answer inline (`**A:** …`); the nex
   (a) **The track frame carries them** (recommended): Ø4 axle through a boss in the side plate, plus a blade on the frame that comes in over the outer disc (z > 1.1) and drops between the two discs, in the lug row above the lug tips (5 mm under the axle), carrying the axle mid-span; head outboard, M3 end into an insert in the blade. Road-wheel load then goes frame → sprocket's outboard 624 / idler axle: the same supports the robot's weight uses without road wheels. Costs ~4 g/side; the blade's underside is a ~13 mm overhang printing the frame outer-face-down (45° ramp or a small tree support). New study: frame + both road axles, 1/4 weight × 3 per axle.
   (b) Separate hanger blocks under the plate edge, screwed up into new plate-top bosses: needs the motor and bell pocket moved at road wheel 2. Not recommended.
   (c) Cantilever each axle from the side plate only: steel is fine (~26 MPa), but the 2.4 plate twists about x; needs a deep boss. Weakest.
-  **Blocked until you pick**; the loop moves on to P7/P8 meanwhile.
+  **A (Ben, 2026-11-02): (a) the track frame carries the road axles** (side-plate boss + mid-span blade between the discs, M3 end into an insert in the blade; new frame study).
 
 - **Q25 The CE40P-8 doesn't fit behind its grille (P7, tick 70).** Datasheet: Ø40, 23 deep, cutout 35.5, 2 holes, Vas 10 cc. At the bulkhead's speaker seat (y 24, z 26, wall tilted 15°) the driver's basket reaches the left motor mount's end stop (x 65–68) **7.9 mm** behind the wall and the mount upright + TT gearbox from 10.4 mm (point-sampled envelope: frame Ø40 × 3, basket Ø34 to 12, magnet Ø25 to 23 🟡). No room for a 30 cc box either. Above it the face board fills the wall from z 52; the centre has the knee gusset (y 1.2–3.6) and the sonar (y −43…−0.7); the other side is the mirror image. Options:
   (a) **A pre-boxed rectangular micro speaker** (recommended): laptop-style sealed module, 8 Ω, 1–2 W, about 30 × 20 × 5–8 mm (e.g. a 2030 / 2831 enclosed module), long side along z behind the existing grille (y 8…26, under the mount top). No printed back box: P7 becomes a TPU-gasketed clamp frame. Keeps the 8 Ω loudness bound (audio §5). Voice band only, which is all the AEC path needs.
   (b) Keep the CE40P-8 and move it to the canopy's rear wall (firing back), back box inside the canopy behind the stack. Costs the "speaker below the face" layout and needs the mic-disc spacing re-checked; the grille moves with it.
   (c) A shallow Ø36–40 mylar speaker (≤ 7 mm deep) in the same seat with a thin printed back box: quietest option, fragile cone.
-  **Blocked until you pick**; P7 and P8's speaker gasket wait on it.
+  **A (Ben, 2026-11-02): (a) pre-boxed rectangular micro speaker** (8 Ω, 1–2 W, ~30 × 20 × 6) behind the existing grille; P7 becomes a TPU-gasketed clamp frame. Exact module dims 🟡 until one is chosen/in hand.
 
 - **Q26 Canopy print orientation (P6f, tick 73).** Sliced headless (T4) in PC on the 0.4 nozzle, 4 walls / 40 % gyroid, tree support:
 
@@ -82,11 +82,11 @@ The loop adds questions here and moves on. Answer inline (`**A:** …`); the nex
 
   Strength: S8 was judged on XY UTS (open side down). With the rear wall on the bed, the top bends across the layers along x: on the PC datasheet Z UTS (56 vs 62 MPa) **S8 is SF 2.23 (≥ 2)**. Real PC layer adhesion is usually worse than the datasheet number: a coupon (a 3-point bend bar printed upright) would settle it.
   Options: (a) **+x, rear wall on the bed** (recommended): +45° undersides on the 5 cross ribs and a 45° ramp under the hood back wall should take it to ~3.5–4.5 h with almost no support; nicer top finish; vents print on the bed face. (b) Keep +z: 9.5 h, ~80 g of support to pick out of the inside. (c) Split the canopy (top + skirt): more parts, a seam.
-  **Default (a)**; the 45° undersides wait on your pick. The crown (P6f) doesn't depend on it.
+  **A (Ben, 2026-11-02): (a) rear wall on the bed**, with 45° undersides on the cross ribs and a ramp under the hood back wall. A PC Z-bend coupon is advised before the canopy print.
 
 - **Q27 Hood-top screw heads (P6e, tick 75).** The two front F9 screws (M3 × 8 ISO 7380-2, flange Ø6.9) go down through the hood ceiling at x 45.65, y ±38 into the bulkhead lugs. Checked for the E1 recess: the hole is **3.25 mm** from the hood's front edge (x 48.9, r 1 round), so the flange (r 3.45) already hangs **~0.5 mm past the flat** onto the round, on a 15° slope. A counterbore would break out of the front face, and there is no room under the 1.8 ceiling (lugs 0.1 below it).
   Options: (a) **move the two bulkhead lugs 3 mm aft** (lug x −3, a web back to the wall) and give each hole a flat-floored counterbore in a Ø12 collar on the hood (head 0.15 under the rim, r 1 top edge): heads recessed, flange on a flat seat; bulkhead change, re-run S5c/S5k. (b) Same collar but D-shaped, cut by the front plane, lugs unchanged: the counterbore opens forward (head visible from the front, under the face's top edge). (c) Leave as is (heads visible from above, behind the face); fix only the slope seat with a 15° wedge washer.
-  **Default (a)** (recommended): it also fixes the slope/edge seat, which matters before printing. Blocked until you pick; P6e moves on to the window lips.
+  **A (Ben, 2026-11-02): (a) lugs 3 mm aft + counterbored collar on the hood** (bulkhead change; re-run S5c/S5k/S5).
 
 ## Measurements wanted (not questions; each replaces a 🟡 assumption)
 - **Drive gear hub** (for P2o, the outboard axle support): bore / D-flat, the outer face (is there a boss or recess), and whether a stub shaft or screw could be fixed on the outer side. Without it the loop can't design the outboard bearing.

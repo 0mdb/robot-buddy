@@ -45,6 +45,8 @@ Order (Ben): P13 road wheels → P7/P8 → canopy P6d/f/e → T4 slicing → P10
 Printed total **663.1 g** (incl. belts 117 g, road discs 27 g), CoG (−0.3, 0.0, 22.6). Review-pass studies from
 leg 2 stand except S6 (now 6.50).
 
+## Answered 2026-11-02 (Ben): Q24 (a) frame carries road axles · Q25 (a) boxed micro speaker · Q26 (a) canopy rear wall down · Q27 (a) lugs 3 mm aft + counterbore. The loop builds them next (P13c/d, P7, P6f undersides, P6e screw heads).
+
 ## Open, for you
 - **Q27 hood-top screw heads:** flange overhangs the hood front edge; default lugs 3 mm aft + counterbored collar (bulkhead change).
 - **Q26 canopy print orientation:** rear wall on the bed = 149 g / 6.8 h (vs 186 g / 9.5 h as modelled, 83 g of support inside); S8 still SF 2.23 on the datasheet Z strength. Default: rear wall down + 45° rib undersides.
