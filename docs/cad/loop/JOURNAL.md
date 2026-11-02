@@ -521,3 +521,9 @@ Newest at the bottom. One entry per tick.
 - `fea.py --part \CAD\fea\X.SLDPRT` runs a study on another part (A/B checks).
 - A: plate built without the R3 label (temporary FEA copy, deleted after): **S1b 3.199 MPa**, peak (−36.4, −30.8, 0), = the tick-67 value. B: labelled plate, half mesh: **4.97 MPa**, peak (−38.0, −31.0, 0.5) on the jack block's root face. Label probe 1.414 / 1.420 / 1.491 MPa (no label / full / half mesh): converged.
 - So the +16 % is mesh noise: the label re-meshes the plate and the S1b peak sits on the jack block's unfilleted root corner, which climbs on refinement (singular, 3.2 → 3.7 → 5.0). Not a real change; the label is accepted. The jack-block root joins D1b as a fillet candidate (it is S1b's and S1m's peak).
+
+## tick 82 · D1b jack-block root r 2 · REJECTED · 2026-11-02 09:20 MST
+- r 2 concave round on each jack block's 4 root edges (one feature, corners blended), aimed at S1b/S1m's singular peak at the square root (tick 81). Built: +37.9 / +39.2 mm³ (first estimate subtracted the corners; concave corner blends add: full perimeter 36.0).
+- Results (PET-CF): **S1m 9.97 → 13.26 MPa (+33 %)**, **S1a 11.63 → 14.78 (+27 %)**, **S1b 3.71 → 4.28 (+15 %); half mesh 4.97 → 7.91**. Every peak moved to the vertex where the fillet's corner blend runs out onto the plate, (−40 / −26, ±29, 0), and it still climbs on refinement: the blend's toe is a sharper singularity than the square root was. Same outcome as tick 60's boss roots.
+- **Rejected**, generator restored (a comment records why), rebuild to put the mirror back. A rounded block with its own corner radius (r ≥ 3 on the vertical edges first, then the root) would be the next try, not tonight.
+- Tooling: the first rerun's 40 min build timeout killed the Python wrapper while swbuild kept going (SW was just slow: 25 → ~45 min a rebuild now); build timeout 60 min.

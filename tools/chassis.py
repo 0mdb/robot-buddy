@@ -577,6 +577,9 @@ def plate_lines(plate: str) -> list[str]:
             f"filletface|{PLATE_EDGE_R}|-1|{-PLATE_T}|{-hx} {-hy} {hx} {hy}|any|{-dvl:.2f} {0.15 * dvl:.2f}|loops:{box}"
         )
         vol -= dvl
+    # D1b (tick 82, REJECTED): an r 2 round of each jack block's root (one 4-edge feature)
+    # made S1m 9.97 -> 13.3, S1a 11.6 -> 14.8, S1b 3.7 -> 4.3 (half mesh 5.0 -> 7.9) at the
+    # vertex where the fillet's corner blend meets the plate (-40 / -26, +-29, 0). Removed.
     lines += [
         PART_LABELS["plate"],
         f"expect|vol {vol:.1f} {vol * 0.004:.1f}|box {-hx} {hx} {-hy} {hy} {UNDER_BOSS_Z} {DECK_Z} 0.01",

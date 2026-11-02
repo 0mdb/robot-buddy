@@ -1,9 +1,9 @@
 # CAD loop state
 
 pass: 1, leg 3 (leg 2 ended 2026-11-01 06:15 at tick 67)
-tick: 81
+tick: 82
 sw: up (restarted by Ben ~06:40 MST; S8/S5k re-run clean)
-current: none (tick 81: S1b drift = mesh noise at the jack-block root; next D1b jack-block root fillet with a half-mesh check)  [leg 3 order: P13 → P7/P8 → P6d/f/e → T4 → P10/E4 → polish]
+current: none (tick 82: D1b jack root rejected, rebuild restoring; next D6 fit coupons or R3 bulkhead)  [leg 3 order: P13 → P7/P8 → P6d/f/e → T4 → P10/E4 → polish]
 hypothesis: —
 baseline_commit: d8179d2 (cad)
 stop_after: none (Ben, leg 3, 2026-11-01: "until completed")
