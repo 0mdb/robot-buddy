@@ -1327,6 +1327,15 @@ def _rotate_y(p, deg: float, pivot):
     return out + pivot
 
 
+BH_LUG_AFT = 3.0  # Q27 (a): lugs 3 mm aft of the tick-47 position
+BH_LUG_WEB = INS_BOSS  # web from each lug back to the wall, as wide as the lug (tick 94: a 4 mm web put S5c at 8.14 MPa on its side face)
+
+
+def bh_lug_x() -> float:
+    """Pre-tilt x of the canopy lugs' axis (bulkhead and canopy hole share it)."""
+    return BH_XF - BH_T - INS_BOSS / 2 + 1.0 - BH_LUG_AFT
+
+
 def grille_half(dz: float) -> float:
     """Half-length (y) of the grille slot at z offset dz. P7 (tick 92): equal slots inside
     the speaker pocket (the old Ø34 round grille, sized for the CE40P-8, ran under the
@@ -1367,10 +1376,15 @@ def bulkhead_features() -> tuple[list[tuple], list[tuple]]:
     sonar = [(BH_SONAR_Y + d * BH_SONAR_PITCH / 2, BH_SONAR_Z) for d in (-1, 1)]
     for y, z in sonar:
         pre.append(("add", ("cylx", y, z, x0 - BH_SLEEVE_L, x0 + 0.5, BH_SLEEVE_R)))
-    # canopy lugs (vertical before the tilt)
-    lug_x = x0 - INS_BOSS / 2 + 1.0
+    # canopy lugs (vertical before the tilt). Q27 (a) (Ben 2026-11-02, tick 94): BH_LUG_AFT
+    # further from the wall, joined to it by a web, so the hood screws clear the hood's front
+    # edge and can sit in counterbored collars
+    lug_x = bh_lug_x()
     for sgn in (-1, 1):
         pre.append(("add", ("cylz", lug_x, sgn * BH_LUG_Y, *BH_LUG_Z, INS_BOSS / 2)))
+        pre.append(
+            ("add", ("box", lug_x, x0 + 0.5, sgn * BH_LUG_Y - BH_LUG_WEB / 2, sgn * BH_LUG_Y + BH_LUG_WEB / 2, *BH_LUG_Z))
+        )
     # S2a side cheeks (pre-tilt: the wall's thickness, beyond its sides)
     cw, ch = BH_CHEEK
     for sgn in (-1, 1):
@@ -1549,7 +1563,7 @@ def bulkhead_volume_numeric(step: float = 0.2) -> tuple[float, list[float]]:
     import numpy as np
 
     pre, post = bulkhead_features()
-    xs = np.arange(40.0 + step / 2, 90.0, step)
+    xs = np.arange(30.0 + step / 2, 90.0, step)  # tick 94: the lugs moved aft reach x 38.6
     yh = BH_W / 2 + BH_CHEEK[0] + 1  # S2a: the cheeks reach |y| BH_W / 2 + 5
     ys = np.arange(-yh + step / 2, yh, step)
     zs = np.arange(-5.0 + step / 2, BH_H + 2, step)
@@ -2268,6 +2282,9 @@ CAN_BOSS = (
     12.0,
     12.0,
 )  # rear insert bosses: x, |y|, height (clear of the deck at x -75)
+HOOD_COLLAR_R = 5.5  # Q27 (a): collar round each hood screw (Ø11)
+HOOD_CBORE_D = 7.5  # counterbore for the ISO 7380-2 M3 flange (Ø6.9)
+HOOD_HEAD_SINK = 0.15  # head top under the collar rim
 CAN_LUG_HOLE = 3.9  # vertical hole through the 15° hood ceiling: 3.4 + 1.8 tan 15
 CAN_LUG_GAP = 0.1  # ceiling over the lug tops (touching on the 15° tilt read as 2 x 0.1 mm3 interference, tick 47); the screws close it
 # P6f (tick 74): crown along x over the body top (E1 §2: no flat panel > 60 x 60; white
@@ -2502,6 +2519,57 @@ def canopy_front_corners() -> tuple[float, list[str]]:
     return 2 * _round_area(90.0, CAN_EDGE_R) * L, boxes
 
 
+def hood_collar() -> dict:
+    """Q27 (a) (tick 94): a collar round each hood screw hole with a flat-floored counterbore,
+    so the ISO 7380-2 flange (Ø6.9 x 1.65) seats flat and sits HOOD_HEAD_SINK under the rim.
+    The hood top slopes 15°: the floor is at the surface's high point over the bore."""
+    f = canopy_features()
+    hx, _ = f["lug_hole"]
+    d, e = canopy_profile()[3], canopy_profile()[4]
+    k = (e[1] - d[1]) / (e[0] - d[0])
+
+    def zs(x):
+        return d[1] + (x - d[0]) * k
+
+    R, rc = HOOD_COLLAR_R, HOOD_CBORE_D / 2
+    zf = zs(hx + rc) + 0.05
+    zt = zf + 1.65 + HOOD_HEAD_SINK
+    t_vert = CAN_T * math.sqrt(1 + k * k)  # shell thickness measured along z
+    vol = math.pi * R * R * (zt - zs(hx)) - math.pi * rc * rc * (zt - zf)
+    vol -= math.pi * (CAN_LUG_HOLE / 2) ** 2 * (zf - zs(hx))
+    q = (1 - math.pi / 4) * 1.0**2
+    dvr = q * 2 * math.pi * (R - 0.2234)  # r 1 round the rim's outer edge (torus)
+    return {"hx": hx, "zs": zs, "k": k, "zf": zf, "zt": zt, "t": t_vert, "vol": 2 * (vol - dvr), "dvr": dvr}
+
+
+def hood_collar_lines() -> list[str]:
+    g = hood_collar()
+    hx, zs, zf, zt, t = g["hx"], g["zs"], g["zf"], g["zt"], g["t"]
+    R, rc = HOOD_COLLAR_R, HOOD_CBORE_D / 2
+    zb = zs(hx - R) - 0.5 * t  # inside the shell at the collar's low (rear) side
+    out = []
+    for sg in (-1, 1):
+        y = sg * BH_LUG_Y
+        out.append(f"cyl|z|{hx:.4f} {y}|{zb:.3f} {zt:.3f}|{R}|boss")
+    # trim what pokes below the ceiling's underside (the hood's inside, over the lug): a
+    # Top-plane prism under the underside line, x hx -+ (R + 1), over each collar's y span
+    xa, xb_ = hx - R - 1, hx + R + 1
+    ua, ub = zs(xa) - t, zs(xb_) - t
+    prof = f"M {xa:.3f} {-ua:.3f} L {xb_:.3f} {-ub:.3f} L {xb_:.3f} {-(ub - 12):.3f} L {xa:.3f} {-(ua - 12):.3f}"
+    for sg in (-1, 1):
+        y0, y1 = sorted((sg * (BH_LUG_Y - R - 1), sg * (BH_LUG_Y + R + 1)))
+        out.append(f"prof|{y0:.3f} {y1:.3f}|{prof}|cut|top")
+    for sg in (-1, 1):
+        y = sg * BH_LUG_Y
+        out.append(f"cyl|z|{hx:.4f} {y}|{zs(hx) - 3:.3f} {zt + 0.1:.3f}|{CAN_LUG_HOLE / 2}|cut")
+        out.append(f"cyl|z|{hx:.4f} {y}|{zf:.3f} {zt + 0.1:.3f}|{rc}|cut")
+        out.append(
+            f"filletface|1.0|1|{zt:.3f}|{hx - R - 1:.3f} {y - R - 1:.3f} {hx + R + 1:.3f} {y + R + 1:.3f}|1"
+            f"|{-g['dvr']:.2f} {0.3 * g['dvr']:.2f}"
+        )
+    return out
+
+
 def canopy_rim_round() -> tuple[float, list[str]]:
     """P6e (tick 61): r 1.0 on the OUTER edge of the skirt's bottom rim (z CAN_Z0), the edge a
     hand meets; the inner edge stays square (rounding both would eat the 1.8 wall). Returns
@@ -2573,7 +2641,7 @@ def canopy_features() -> dict:
     zp0 = (CAN_Z0 - s * (xm - BH_PIVOT[0])) / c_
     win = CAN_T * 2 * CAN_WIN_HW * (BH_H + CAN_LUG_GAP - zp0)
     # lug holes: lug axis on the wall's (tilted) z, at mid-ceiling
-    lug_x = BH_XF - BH_T - INS_BOSS / 2 + 1.0  # = bulkhead_features()' lug_x
+    lug_x = bh_lug_x()
     hx, hz = _pre2ch(lug_x, BH_H + CAN_LUG_GAP + CAN_T / 2)
     holes = 2 * math.pi * (CAN_LUG_HOLE / 2) ** 2 * CAN_T / c_
     # rear apron + bosses (the boss's slice inside the apron counted once)
@@ -2773,6 +2841,7 @@ def canopy_lines(path: str) -> list[str]:
             f"cyl|z|{hx:.4f} {sg * BH_LUG_Y}|{zlo:.3f} {zhi:.3f}|{CAN_LUG_HOLE / 2}|cut"
             for sg in (-1, 1)
         ],
+        *hood_collar_lines(),
         *[
             prismy(canopy_rib_profile(), y0, y1, "boss")
             for _, _, y0, y1, _, _ in canopy_ribs()[: len(CAN_RIBS_Y)]
@@ -2827,7 +2896,7 @@ def canopy_lines(path: str) -> list[str]:
         *canopy_vents()[0],
         *canopy_rear_edges()[1],
         PART_LABELS["canopy"],
-        f"expect|vol {f['vol']:.1f} {f['vol'] * 0.03:.1f}|box {CAN_X0} {fp[0]:.2f} {-hw} {hw} {-CAN_TAB[2]} {e[1]:.2f} 0.5",
+        f"expect|vol {f['vol'] + hood_collar()['vol']:.1f} {f['vol'] * 0.03:.1f}|box {CAN_X0} {fp[0]:.2f} {-hw} {hw} {-CAN_TAB[2]} {hood_collar()['zt']:.2f} 0.5",
         "save",
     ]
     return lines
@@ -2864,7 +2933,7 @@ def canopy_fea_lines(path: str) -> list[str]:
     assert body[-1] == "save" and body[-2].startswith("expect|vol ")
     hx, hy, hr, hh = CAN_HEEL
     z0, z1, pad = canopy_heel()
-    vol = canopy_features()["vol"] + pad
+    vol = canopy_features()["vol"] + pad + hood_collar()["vol"]
     head, rest = body[-2].split("|box ")
     return [
         *body[:-2],
