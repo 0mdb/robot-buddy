@@ -606,3 +606,8 @@ Newest at the bottom. One entry per tick.
 - Every study on today's geometry (`review.sh`, sequential, ~3.5 h): S1a 11.37 MPa · S1b 3.45 · S1d 9.05 · S1m 9.22 · S2 6.20 · S6 6.50 · S9 12.16 / 0.35 mm · S5 49.4 (reported, Q13) · S5c 5.78 · S5k 9.38 / lugs 0.73 · S8 17.70 / 1.16 mm. All equal to the last accepted values and inside their gates.
 - Edge audit (accessible sharp edges): plate 360 mm (109 = the R3 label grooves, the rest on the plate line), bulkhead 217 (plate line / behind the wall), canopy 393 (hood inner front edge over the bulkhead top, tongue corners in their slots, apron bottom on the plate), mounts 0, sprocket / idler 41 each (outboard face: now behind the frame's side plates; the audit rule predates them). No new reachable edges.
 - The review accepts no change. Open for the stop condition: the optional W2–W4 (plate lightening) and the blocked items (Q23/HAT heights, mic disc, XVF3800, M3 insert dims, Q28/Q29 defaults).
+
+## tick 96 · W4 plate 4.0 → 3.6 (ribs 0.4 deeper, bottoms stay at −8) · REJECTED · 2026-11-03 01:35 MST
+- Plate 86,0 → 80,470 mm³ (−7.1 g; 110.9 → 103.8 g), 0 interferences (tabs and tongues still fit the 3.6 slots).
+- **S1m 9.22 → 9.94 MPa (+7.8 %)**, **S1b 3.45 → 3.82 (+10.6 %), deck 0.138 → 0.155 mm (+12 %)**, **S1a 11.37 → 13.25 (+16.5 %)**. The stress peaks sit at the known singular corners, but the deck deflection is real stiffness lost. −7 g isn't worth it: rejected, generator reverted (git), rebuild to restore.
+- Closes the W items for this pass: W4 shows the plate has no stiffness margin to give; W2 (pockets) and W3b (rib sweep) would take material from the same plate under the same loads. Not pursued; back in the backlog as pass-2 ideas.

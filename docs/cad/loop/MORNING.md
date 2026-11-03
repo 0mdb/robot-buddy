@@ -1,3 +1,11 @@
+# Leg 3 finished (2026-11-03 01:45 MST): every unblocked item done, review pass accepts no change
+
+**Stop condition met** (STATE.md): the leg-3 list is done except what waits on you (below), and a full review pass on the final geometry (all 11 studies + the edge audit) matched every accepted value. **Nothing is print-ready until you've looked** (eyes before electrons): start with `docs/cad/loop/shots/hero/` (three-quarter, face, rear, top).
+
+**Robot now:** 707.1 g printed (+ belts), 0 interferences. Studies: S1a 11.4 · S1b 3.45 · S1d 9.05 · S1m 9.22 · S2 6.20 · S6 6.50 · S9 12.2 / 0.35 mm · S5c 5.78 · S5k 9.38 · S8 17.7 / 1.16 mm (MPa).
+
+**Waiting on you:** Q28 (frame +34 g, default keep), Q29 (hood ramp, default keep the step), Q23 + UPS HAT heights (charge jack / switch, cell ribs), mic-disc dims (seat + grommets), XVF3800 board (P9), M3 insert OD × length (insert ladder coupon), the micro-speaker part (🟡 30 × 20 × 6), encoder connector (R2b strain relief).
+
 # Summary: CAD loop leg 3 (from tick 68, 2026-11-01 11:00 MST; no stop time)
 
 Order (Ben): P13 road wheels → P7/P8 → canopy P6d/f/e → T4 slicing → P10/E4 → polish.
