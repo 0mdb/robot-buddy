@@ -594,6 +594,10 @@ def plate_lines(plate: str) -> list[str]:
     # D1b (tick 82, REJECTED): an r 2 round of each jack block's root (one 4-edge feature)
     # made S1m 9.97 -> 13.3, S1a 11.6 -> 14.8, S1b 3.7 -> 4.3 (half mesh 5.0 -> 7.9) at the
     # vertex where the fillet's corner blend meets the plate (-40 / -26, +-29, 0). Removed.
+    # Retry (tick 90, REJECTED): r 3 vertical corners first, then r 2 on the tangent root
+    # loop: S1m 9.2 -> 8.4, S1b 3.45 -> 2.93 at the 2 mm mesh, but half mesh 23 MPa on the
+    # toroidal blend's tangent seam (-35, -30.9, 1.3): not converged. Roots stay square;
+    # their S1 peaks are singular and SF is judged on converged measures (07 §3).
     lines += [
         PART_LABELS["plate"],
         f"expect|vol {vol:.1f} {vol * 0.004:.1f}|box {-hx} {hx} {-hy} {hy} {UNDER_BOSS_Z} {DECK_Z} 0.01",

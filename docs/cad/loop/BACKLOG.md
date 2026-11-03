@@ -181,7 +181,7 @@ Rules the loop enforces from here on (ASTM F963 / EN 71-1 / IEC 62115 as design 
   **Done tick 81:** no-label plate 3.199 (= tick 67), half mesh 4.97 at the jack-block root: singular corner + re-meshing. Label region converged (1.41–1.49). Jack-block root → D1b.
 - [ ] D1b `[sw]` fillet every internal corner on a load path (bulkhead foot, carriage pedestal root, plate boss roots)
   **Tick 81:** the jack-block root corner (−38, ±31, 0) is S1b's (and S1m's) singular peak: candidate.
-  **Tick 82, jack-block root r 2: rejected** (S1m +33 %, S1a +27 %, S1b +15 %; the corner blend's toe is a worse singularity). Next try: radius the block's vertical corners (r ≥ 3) first, then the root.
+  **Tick 82, jack-block root r 2: rejected** (S1m +33 %, S1a +27 %, S1b +15 %; the corner blend's toe is a worse singularity). Next try: radius the block's vertical corners (r ≥ 3) first, then the root. **Tick 90: tried, rejected** (coarse −9/−15 %, half mesh 23 MPa at the blend seam). Jack-block roots stay square.
   **Tick 60, plate boss roots: rejected** (S1b +60 %, S1m +19 %, mesh-sensitive peaks; front posts collide with the mount feet). Next try: carriage pedestal root or bulkhead knee, with a half-mesh convergence check.
 - [x] D2 `[sw]` slot ends and wire slot: full-radius ends, no square ends
   **Done tick 77:** grille slots now full-radius (S5c =). Plate guide/clamp/wire slots and canopy vents already were. Left square by function: tab/tongue slots (mating rect fits), bell pockets (hidden).

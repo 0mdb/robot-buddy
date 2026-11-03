@@ -564,3 +564,8 @@ Newest at the bottom. One entry per tick.
 - Built to their expects (8,407.5 / 2,139.7 mm³), STL to `exports/gen`, sliced: strip 9.8 g / 26 min, rail 2.5 g / 11 min (`just cad-slice --only slide`).
 - **Part cache, first use: 22 unchanged parts skipped, rebuild 2 min** (was ~60). Totals unchanged (662.9 g) from the read-back MASS lines; 0 interferences.
 - D6 left: the insert ladder (needs the M3 insert dims, M3) and the motor-hole pair (the TT's holes are 🟡 until measured).
+
+## tick 90 · D1b retry: jack block r 3 corners + r 2 tangent root · REJECTED · 2026-11-02 18:20 MST
+- Vertical corners r 3 first (4 edges, −77.3 mm³ exact), then the root as one tangent loop of 4 lines + 4 arcs, r 2 with the `curve` fillet mode (8 edges, +33.2 / +34.0 vs +31.6). Rebuild 24 min (plate + its FEA copy rebuilt, 22 parts cached), 0 interferences, 662.7 g.
+- 2 mm mesh: **S1m 9.22 → 8.41 (−9 %), S1b 3.45 → 2.93 (−15 %), S1a 11.37 → 11.60 (+2 %, peak elsewhere)**. Half-mesh S1b: **23.0 MPa** at (−35.0, −30.9, 1.3), the toroidal blend face's tangent seam with the straight run. The coarse gain doesn't converge; the blend seam is a worse singularity than the square root (4.97 half mesh).
+- **Rejected**, generator reverted (comment records both tries). D1b closes for the jack blocks: their roots stay square; the S1 peaks there are singular and SF is judged on converged measures (07 §3).
