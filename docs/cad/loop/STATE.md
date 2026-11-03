@@ -3,7 +3,7 @@
 pass: 1, leg 3 (leg 2 ended 2026-11-01 06:15 at tick 67)
 tick: 95
 sw: up (restarted by Ben 2026-11-02 ~18:40; part-cached rebuilds 1–7 min)
-current: none (tick 95: canopy rib undersides; next the hood back-wall ramp (Q26), then the review pass)  [leg 3 order: P13 → P7/P8 → P6d/f/e → T4 → P10/E4 → polish]
+current: none (review pass 2026-11-03 01:00: all studies = accepted, no change; next W4 plate 4.0 -> 3.6 (optional), then W3b/W2)  [leg 3 order: P13 → P7/P8 → P6d/f/e → T4 → P10/E4 → polish]
 hypothesis: —
 baseline_commit: d8179d2 (cad)
 stop_after: none (Ben, leg 3, 2026-11-01: "until completed")
