@@ -55,15 +55,15 @@
   "up": "+z"
  },
  "RB-PRT-004_canopy": {
-  "cad_g": 112.78075001443494,
-  "cm3": 155.03,
-  "grams": 186.04,
+  "cad_g": 118.53063849014232,
+  "cm3": 119.84,
+  "grams": 143.81,
   "mat": "PC",
   "mismatch": [],
   "qty": 1,
   "support": true,
-  "time": "9h 29m 3s",
-  "up": "+z"
+  "time": "6h 4m 1s",
+  "up": "+x"
  },
  "RB-PRT-010_motor_mount_R": {
   "cad_g": 14.037096919049874,

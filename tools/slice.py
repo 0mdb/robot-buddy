@@ -108,10 +108,10 @@ PARTS = {
     "RB-PRT-003_pi_deck": ("PET-CF", "+z", 1, False, "flat"),
     "RB-PRT-004_canopy": (
         "PC",
-        "+z",
+        "+x",
         1,
         True,
-        "open side down, ceiling on support (P6f decides)",
+        "rear wall on the bed (Q26 a, Ben 2026-11-02): cross ribs 45° (tick 95); the hood back wall still needs support until its ramp",
     ),
     "RB-PRT-010_motor_mount_R": ("PET-CF", "+z", 1, False, "foot down"),
     "RB-PRT-011_motor_mount_L": ("PET-CF", "+z", 1, False, "foot down"),

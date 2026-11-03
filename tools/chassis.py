@@ -2293,6 +2293,7 @@ CAN_LUG_GAP = 0.1  # ceiling over the lug tops (touching on the 15° tilt read a
 # the ribs and keels follow it (tops CAN_RIB_SINK into the skin, bottoms flat as before).
 CAN_CROWN = 2.5
 CAN_RIB_SINK = 0.5
+CAN_RIB_W45 = 4.5  # P6f (tick 95): cross-rib 45° wedge run (= rib depth + sink)
 
 
 def _pre2ch(xp: float, zp: float) -> tuple[float, float]:
@@ -2441,7 +2442,15 @@ def canopy_cross_rib_profile(x0: float, x1: float) -> list:
     and S8 peaked on it, 83.8 MPa at (-22.8, 15.8, 91.69))."""
     xc, zc, _ = canopy_crown()
     ib = CAN_T + CAN_RIB[1]
-    return [*_crown_top(x0, x1), (x1, can_top_z(x1, ib)), ("arc", xc, zc, x0, can_top_z(x0, ib))]
+    # P6f (tick 95, Q26 a: the canopy prints rear wall down, building +x): a 45° wedge on the
+    # rib's -x face, from the rib's bottom edge up to the skin CAN_RIB_W45 further back, so
+    # the 4 mm fin doesn't print as an overhang
+    xw = x0 - CAN_RIB_W45
+    return [
+        *_crown_top(xw, x1),
+        (x1, can_top_z(x1, ib)),
+        ("arc", xc, zc, x0, can_top_z(x0, ib)),
+    ]
 
 
 def canopy_rib_profile() -> list:
@@ -2663,6 +2672,8 @@ def canopy_features() -> dict:
     rib_vol = (
         nY * rt_ * (_crown_area(xa_, xb_, CAN_T, zb - 9) - _crown_area(xa_, xb_, CAN_T + rd_, zb - 9))
         + sum(rt_ * 2 * ya_ * d for d in dep.values())  # cross ribs
+        + len(CAN_RIBS_X) * (CAN_RIB_W45 * (rd_ + CAN_RIB_SINK) / 2 - CAN_RIB_W45 * CAN_RIB_SINK) * 2 * ya_  # 45° wedges below the ceiling
+        - len(CAN_RIBS_X) * nY * rt_ * CAN_RIB_W45 * rd_ / 2  # wedges through the x-ribs
         - sum(nY * rt_ * rt_ * d for d in dep.values())  # rib crossings
         + 2
         * kt
@@ -2680,7 +2691,11 @@ def canopy_features() -> dict:
     l_x = nxr * 2 * ((xb - xa) - nyr * rt_)  # x-ribs
     l_y = nyr * 2 * (2 * ya - nxr * rt_ - 2 * kt)  # y-ribs
     l_k = 2 * 2 * ((xb - xa) - nyr * rt_)  # keels
-    roots = (1 - math.pi / 4) * CAN_ROOT_R**2 * (l_x + l_y + l_k)
+    # tick 95: the cross ribs' -x roots now meet the ceiling at 135° (the 45° wedge):
+    # a concave round there adds (cot 67.5° - pi/8) r² per mm instead of (1 - pi/4) r²
+    q90 = (1 - math.pi / 4) * CAN_ROOT_R**2
+    q135 = (1 / math.tan(math.radians(67.5)) - math.pi / 8) * CAN_ROOT_R**2
+    roots = q90 * (l_x + l_y / 2 + l_k) + q135 * l_y / 2
     (wx0, wx1), (tx0, tx1), td, _ = CAN_TAB
     tabs = 2 * CAN_T * ((wx1 - wx0) * CAN_Z0 + (tx1 - tx0) * td)
     return {
