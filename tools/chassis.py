@@ -979,6 +979,10 @@ def rebuild_manifest(win: str) -> list[str]:
         *wheel_lines(idler, dt.idler_layers(2)),
         *wheel_lines(road, dt.road_wheel_layers()),
         *road_axle_lines(road_axle),
+        # P7 / P8 (tick 93): speaker clamp, gasket and module envelope
+        *speaker_clamp_lines(cad + r"\parts\RB-PRT-060_speaker_clamp.SLDPRT"),
+        *speaker_gasket_lines(cad + r"\parts\RB-PRT-061_speaker_gasket.SLDPRT"),
+        *speaker_module_lines(cad + r"\library\speaker_module_envelope.SLDPRT"),
         # D6 (tick 89): follower-slide fit coupon (not in the assembly, not in the robot mass)
         *coupon_slide_strip_lines(cad + r"\parts\RB-CPN-001_slide_strip.SLDPRT"),
         *coupon_slide_rail_lines(cad + r"\parts\RB-CPN-002_slide_rail.SLDPRT"),
@@ -1021,6 +1025,9 @@ def rebuild_manifest(win: str) -> list[str]:
         f"comp|belt_L|{belt_l}|{row(ROT_I, (0, 0, 0))}",
         f"comp|belt_R|{belt_r}|{row(ROT_I, (0, 0, 0))}",
         f"comp|face|{face}|{row(*face_on_bulkhead())}",
+        f"comp|spk_clamp|{cad}\\parts\\RB-PRT-060_speaker_clamp.SLDPRT|{row(*speaker_tilt())}",
+        f"comp|spk_gasket|{cad}\\parts\\RB-PRT-061_speaker_gasket.SLDPRT|{row(*speaker_tilt())}",
+        f"comp|spk_module|{cad}\\library\\speaker_module_envelope.SLDPRT|{row(*speaker_tilt())}",
         "interfere",
         "asmsave",
         # T10: analysis-only part, plate + both mounts as one body (not printed)
@@ -1052,6 +1059,8 @@ def rebuild_manifest(win: str) -> list[str]:
                 (sprocket, "RB-PRT-020_sprocket"),
                 (idler, "RB-PRT-021_idler"),
                 (road, "RB-PRT-022_road_disc"),
+                (cad + r"\parts\RB-PRT-060_speaker_clamp.SLDPRT", "RB-PRT-060_speaker_clamp"),
+                (cad + r"\parts\RB-PRT-061_speaker_gasket.SLDPRT", "RB-PRT-061_speaker_gasket"),
                 (cad + r"\parts\RB-CPN-001_slide_strip.SLDPRT", "RB-CPN-001_slide_strip"),
                 (cad + r"\parts\RB-CPN-002_slide_rail.SLDPRT", "RB-CPN-002_slide_rail"),
             )
@@ -1075,6 +1084,93 @@ def _stadium(x0: float, x1: float, y: float, r: float) -> str:
         f"M {a:g} {y - r:g} L {b:g} {y - r:g} A {b:g} {y:g} {b:g} {y + r:g} "
         f"L {a:g} {y + r:g} A {a:g} {y:g} {a:g} {y - r:g}"
     )
+
+
+# P7 / P8 (tick 93): speaker clamp plate (PET-CF) and gasket (TPU 85A), plus the module's
+# envelope. All three are modelled in the bulkhead's PRE-TILT frame (the wall vertical, its
+# back face at x BH_XF - BH_T) and placed with the wall's 15° tilt about BH_PIVOT.
+def speaker_tilt() -> tuple[list[float], tuple[float, float, float]]:
+    t = math.radians(BH_TILT)
+    c, s_ = math.cos(t), math.sin(t)
+    R = [c, 0, -s_, 0, 1, 0, s_, 0, c]  # local +z -> (-sin, 0, cos): the wall leans back
+    px, py, pz = BH_PIVOT
+    tx = px - (c * px - s_ * pz)
+    tz = pz - (s_ * px + c * pz)
+    return R, (tx, py, tz)
+
+
+def _spk_geom() -> dict:
+    x0 = BH_XF - BH_T
+    (sy_, sz_), (ml, mw, md) = SPK_CTR, SPK_MOD
+    iy0, iy1 = sy_ - mw / 2 - SPK_CLR, sy_ + mw / 2 + SPK_CLR
+    iz0, iz1 = sz_ - ml / 2 - SPK_CLR, sz_ + ml / 2 + SPK_CLR
+    return {
+        "x0": x0, "xb": x0 - SPK_DEPTH, "sy": sy_, "sz": sz_, "ml": ml, "mw": mw, "md": md,
+        "iy": (iy0, iy1), "iz": (iz0, iz1), "oy": (iy0 - SPK_RIM_T, iy1 + SPK_RIM_T),
+        "oz": (iz0 - SPK_RIM_T, SPK_BOSS_Z + INS_BOSS / 2),
+    }
+
+
+def speaker_clamp_lines(path: str) -> list[str]:
+    """1.6 plate over the pocket's rim and both boss faces, two Ø3.4 holes for M3 x 8 into
+    the bosses' inserts, and a 0.15 pad that meets the module's back (the gasket takes the
+    screws' preload). Hidden behind the wall: square edges are fine."""
+    g = _spk_geom()
+    xb, (oy0, oy1), (oz0, oz1) = g["xb"], g["oy"], g["oz"]
+    (iy0, iy1), (iz0, iz1) = g["iy"], g["iz"]
+    oy1 = iy1 + 0.6  # tick 93: the outboard edge stops 0.6 over the rim (at 27.9 it touched the left mount, 3.6 mm3)
+    pt, pad = SPK_CLAMP_T, 0.15
+    py0, py1 = g["sy"] - g["mw"] / 2 + 1, g["sy"] + g["mw"] / 2 - 1
+    pz0, pz1 = g["sz"] - g["ml"] / 2 + 1, g["sz"] + g["ml"] / 2 - 1
+    vol = (oy1 - oy0) * (oz1 - oz0) * pt + (py1 - py0) * (pz1 - pz0) * pad
+    vol -= len(SPK_BOSS_Y) * math.pi * (CLR_M3 / 2) ** 2 * pt
+    return [
+        f"part|{path}",
+        f"box|{xb - pt:.3f} {xb:.3f}|{oy0:.3f} {oy1:.3f}|{oz0:.3f} {oz1:.3f}",
+        f"box|{xb:.3f} {xb + pad:.3f}|{py0:.3f} {py1:.3f}|{pz0:.3f} {pz1:.3f}",
+        *[f"cyl|x|{by} {SPK_BOSS_Z:.3f}|{xb - pt - 0.1:.3f} {xb + 0.1:.3f}|{CLR_M3 / 2}|cut" for by in SPK_BOSS_Y],
+        # notch for the left mount's end-stop corner (pre-tilt y 26.4-26.9, z' 23.5-25.3):
+        # the edge steps back to 25.9 there, still over the module's edge (26.0)
+        f"prof|{SPK_NOTCH_Z[0]} {SPK_NOTCH_Z[1]}|M {xb - pt - 0.1:.3f} {SPK_NOTCH_Y} L {xb + pad + 0.1:.3f} {SPK_NOTCH_Y} "
+        f"L {xb + pad + 0.1:.3f} {oy1 + 0.1:.3f} L {xb - pt - 0.1:.3f} {oy1 + 0.1:.3f}|cut",
+        f"expect|vol {vol - (oy1 - SPK_NOTCH_Y) * (SPK_NOTCH_Z[1] - SPK_NOTCH_Z[0]) * pt:.1f} {vol * 0.01:.1f}|box {xb - pt:.2f} {xb + pad:.2f} {oy0:.2f} {oy1:.2f} {oz0:.2f} {oz1:.2f} 0.05",
+        "save",
+    ]
+
+
+def speaker_gasket_lines(path: str) -> list[str]:
+    """P8: TPU 85A ring, SPK_GASKET_T thick, between the module's face and the wall, round
+    the grille slots: the module's outline, a 2 mm band."""
+    g = _spk_geom()
+    x0 = g["x0"]
+    y0, y1 = g["sy"] - g["mw"] / 2, g["sy"] + g["mw"] / 2
+    z0, z1 = g["sz"] - g["ml"] / 2, g["sz"] + g["ml"] / 2
+    b = SPK_GASKET_BAND
+    vol = ((y1 - y0) * (z1 - z0) - (y1 - y0 - 2 * b) * (z1 - z0 - 2 * b)) * SPK_GASKET_T
+    return [
+        f"part|{path}",
+        f"box|{x0 - SPK_GASKET_T:.3f} {x0:.3f}|{y0:.3f} {y1:.3f}|{z0:.3f} {z1:.3f}",
+        # the inner opening: a Front-plane rectangle (x, y) cut along z over the inner span
+        f"prof|{z0 + b:.3f} {z1 - b:.3f}|M {x0 - SPK_GASKET_T - 0.1:.3f} {y0 + b:.3f} L {x0 + 0.1:.3f} {y0 + b:.3f} "
+        f"L {x0 + 0.1:.3f} {y1 - b:.3f} L {x0 - SPK_GASKET_T - 0.1:.3f} {y1 - b:.3f}|cut",
+        f"expect|vol {vol:.1f} {vol * 0.02:.1f}|box {x0 - SPK_GASKET_T:.2f} {x0:.2f} {y0:.2f} {y1:.2f} {z0:.2f} {z1:.2f} 0.05",
+        "save",
+    ]
+
+
+def speaker_module_lines(path: str) -> list[str]:
+    """Envelope of the 🟡 SPK_MOD module (interference only), between gasket and clamp."""
+    g = _spk_geom()
+    x1 = g["x0"] - SPK_GASKET_T
+    y0, y1 = g["sy"] - g["mw"] / 2, g["sy"] + g["mw"] / 2
+    z0, z1 = g["sz"] - g["ml"] / 2, g["sz"] + g["ml"] / 2
+    v = g["mw"] * g["ml"] * g["md"]
+    return [
+        f"part|{path}",
+        f"box|{x1 - g['md']:.3f} {x1:.3f}|{y0:.3f} {y1:.3f}|{z0:.3f} {z1:.3f}",
+        f"expect|vol {v:.1f} {v * 0.005:.1f}|box {x1 - g['md']:.2f} {x1:.2f} {y0:.2f} {y1:.2f} {z0:.2f} {z1:.2f} 0.05",
+        "save",
+    ]
 
 
 def coupon_slide_strip_lines(path: str) -> list[str]:
@@ -1189,6 +1285,9 @@ SPK_CLR = 0.3  # module in the pocket, per side
 SPK_RIM_T = 1.6
 SPK_DEPTH = SPK_GASKET_T + 6.0 + 0.2  # rim stand-off = gasket + module depth + 0.2
 SPK_CTR = (16.0, 26.0)  # y, z' of the module centre (grille centre y 24: overlaps its inboard half)
+SPK_CLAMP_T = 1.6  # clamp plate (P7)
+SPK_NOTCH_Y, SPK_NOTCH_Z = 25.6, (21.0, 28.0)  # tick 93: clamp notch round the left mount's end stop (25.9 still touched: 0.0 mm3)
+SPK_GASKET_BAND = 2.0  # gasket ring width (P8)
 SPK_BOSS_Y, SPK_BOSS_Z = (9.0, 23.0), 26.0 + 15.0 + 0.3 + 1.6 + 4.6 - 0.6  # above the pocket, 0.6 into the rim (tangent contact gave a null boss)
 BH_CAM = (
     0.0,
@@ -3135,6 +3234,8 @@ def compile_engine(tool: str) -> str:
 RHO = {"PET-CF": 1.29, "TPU": 1.22, "PC": 1.20}  # PC 🟡 until checked on the TDS
 PART_MATERIAL = {
     "RB-PRT-001": "PET-CF",
+    "RB-PRT-060": "PET-CF",  # speaker clamp (P7)
+    "RB-PRT-061": "TPU",  # speaker gasket (P8)
     "RB-PRT-002": "PET-CF",
     "RB-PRT-003": "PET-CF",
     "RB-PRT-004": "PC",  # canopy (06 §6, P6): PC white (M4, tick 49)

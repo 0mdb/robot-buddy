@@ -39,7 +39,10 @@ Order (Ben): P13 road wheels → P7/P8 → canopy P6d/f/e → T4 slicing → P10
 12. **Kid-safety edges (ticks 85–88):** canopy vent slots + apron corners, bulkhead grille slots + foot front,
     plate tongue slots. Accessible sharp edges: canopy 1,205 → 405 mm, bulkhead 684 → 236 mm (the rest sits on/in
     other parts). All studies unchanged. **Part cache**: unchanged parts aren't rebuilt (SW rebuilds had reached ~1 h).
-13. Backlog: PA6-CF wheel coupons (Fiberon PA6-CF20 in stock); **M3** insert ladder
+13. **Your answers built (ticks 91–93):** road axles on the track frame (S9 passes after a 3.6 mm plate: +34 g, Q28);
+    speaker pocket + clamp + gasket for a boxed micro speaker, grille re-centred on it (S5c better: 6.1 MPa).
+    Module dims are a 🟡 30 × 20 × 6 placeholder: send the part you'll buy.
+14. Backlog: PA6-CF wheel coupons (Fiberon PA6-CF20 in stock); **M3** insert ladder
    ported from fpv250 (its PA6-CF result is M2 Ø3.4 × 5.5; buddy is M3).
 
 Printed total **663.1 g** (incl. belts 117 g, road discs 27 g), CoG (−0.3, 0.0, 22.6). Review-pass studies from

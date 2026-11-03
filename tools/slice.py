@@ -134,6 +134,9 @@ PARTS = {
         True,
         "outer face down (P13c), tree support under the blades",
     ),
+    # P7 / P8 (tick 93): speaker clamp (pad side up) and gasket, flat
+    "RB-PRT-060_speaker_clamp": ("PET-CF", "+x", 1, False, "flat, pad up"),
+    "RB-PRT-061_speaker_gasket": ("TPU", "+x", 1, False, "flat ring, 1 mm"),
     # T13 (tick 84): the belts and the 08 §7 test pieces, from drivetrain.py's exports
     # (CAD/exports/rnd/drivetrain, SRC below). qty 0 = test piece, not in the robot total.
     "belt_shrink0.56": ("TPU", "+z", 2, False, "upright ring, lugs in (belt_print.md); 0.56 % shrink"),
@@ -166,6 +169,7 @@ ALIAS = {
     "tests": "belt_strip150,belt_lug6,coupon_ttbore_10,coupon_624_10,coupon_624_15,coupon_624_20,coupon_684_10,coupon_band_slice",
     "m6": "coupon_624_10,coupon_624_15,coupon_624_20,coupon_684_10",
     "slide": "RB-CPN-001_slide_strip,RB-CPN-002_slide_rail",
+    "speaker": "RB-PRT-060_speaker_clamp,RB-PRT-061_speaker_gasket",
 }
 
 

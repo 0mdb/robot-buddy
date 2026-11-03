@@ -186,6 +186,28 @@
   "time": "1h 42m 2s",
   "up": "+y"
  },
+ "RB-PRT-060_speaker_clamp": {
+  "cad_g": 2.036761939004241,
+  "cm3": 1.54,
+  "grams": 1.98,
+  "mat": "PET-CF",
+  "mismatch": [],
+  "qty": 1,
+  "support": false,
+  "time": "10m 5s",
+  "up": "+x"
+ },
+ "RB-PRT-061_speaker_gasket": {
+  "cad_g": 0.22447999999999999,
+  "cm3": 0.37,
+  "grams": 0.45,
+  "mat": "TPU",
+  "mismatch": [],
+  "qty": 1,
+  "support": false,
+  "time": "9m 19s",
+  "up": "+x"
+ },
  "belt_lug6": {
   "cad_g": 7.844111962106823,
   "cm3": 8.51,
