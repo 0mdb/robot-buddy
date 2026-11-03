@@ -42,7 +42,10 @@ Order (Ben): P13 road wheels → P7/P8 → canopy P6d/f/e → T4 slicing → P10
 13. **Your answers built (ticks 91–93):** road axles on the track frame (S9 passes after a 3.6 mm plate: +34 g, Q28);
     speaker pocket + clamp + gasket for a boxed micro speaker, grille re-centred on it (S5c better: 6.1 MPa).
     Module dims are a 🟡 30 × 20 × 6 placeholder: send the part you'll buy.
-14. Backlog: PA6-CF wheel coupons (Fiberon PA6-CF20 in stock); **M3** insert ladder
+14. **Q26–Q27 built (ticks 94–95):** hood screws now sit in counterbored collars (lugs 3 mm aft); canopy prints rear
+    wall down with 45° rib undersides: **143.8 g / 6 h 04** (was 186 g / 9.5 h) and S8 improved (22.5 → 17.7 MPa).
+    **Q29 (new):** the remaining support sits under the hood's back wall; an outside ramp fixes it but changes the look.
+15. Backlog: PA6-CF wheel coupons (Fiberon PA6-CF20 in stock); **M3** insert ladder
    ported from fpv250 (its PA6-CF result is M2 Ø3.4 × 5.5; buddy is M3).
 
 Printed total **663.1 g** (incl. belts 117 g, road discs 27 g), CoG (−0.3, 0.0, 22.6). Review-pass studies from
@@ -51,6 +54,9 @@ leg 2 stand except S6 (now 6.50).
 ## Answered 2026-11-02 (Ben): Q24 (a) frame carries road axles · Q25 (a) boxed micro speaker · Q26 (a) canopy rear wall down · Q27 (a) lugs 3 mm aft + counterbore. The loop builds them next (P13c/d, P7, P6f undersides, P6e screw heads).
 
 ## Open, for you
+- **Q29 hood ramp:** remaining canopy support is under the hood back wall; an outside 45° ramp changes the silhouette. Default: keep the step.
+- **Q28 frame mass:** frame-carried road axles cost +34 g (3.6 mm frame plate); default keep.
+- ~~Q27~~ built.
 - **Q27 hood-top screw heads:** flange overhangs the hood front edge; default lugs 3 mm aft + counterbored collar (bulkhead change).
 - **Q26 canopy print orientation:** rear wall on the bed = 149 g / 6.8 h (vs 186 g / 9.5 h as modelled, 83 g of support inside); S8 still SF 2.23 on the datasheet Z strength. Default: rear wall down + 45° rib undersides.
 - **Q24 road-wheel axles:** the plate-edge hanger doesn't fit; default = the track frame carries them. P13c/d wait.
