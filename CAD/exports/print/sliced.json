@@ -165,26 +165,26 @@
   "up": "-x"
  },
  "RB-PRT-040_trackframe_L": {
-  "cad_g": 18.968909519449806,
-  "cm3": 14.3,
-  "grams": 18.45,
+  "cad_g": 35.77488822093181,
+  "cm3": 33.97,
+  "grams": 43.83,
   "mat": "PET-CF",
   "mismatch": [],
   "qty": 1,
-  "support": false,
-  "time": "37m 48s",
-  "up": "+y"
+  "support": true,
+  "time": "1h 44m 50s",
+  "up": "-y"
  },
  "RB-PRT-041_trackframe_R": {
-  "cad_g": 18.968909519449813,
-  "cm3": 14.31,
-  "grams": 18.46,
+  "cad_g": 35.77742052360219,
+  "cm3": 33.58,
+  "grams": 43.31,
   "mat": "PET-CF",
   "mismatch": [],
   "qty": 1,
-  "support": false,
-  "time": "37m 51s",
-  "up": "-y"
+  "support": true,
+  "time": "1h 42m 2s",
+  "up": "+y"
  },
  "belt_lug6": {
   "cad_g": 7.844111962106823,

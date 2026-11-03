@@ -2056,12 +2056,16 @@ def road_axle_lines(path: str) -> list[str]:
     from inner race to inner race (through the discs' r 3.7 shoulder holes). Part
     frame: axis Y, y 0 = the belt's inner edge. Hanger-side axle ends come with P13c."""
     bw, bd = dt.BELT_W, dt.RW_BRG_W
-    v = math.pi * (4.0 * bw + (RW_SPACER_R**2 - 4.0) * (bw - 2 * bd - 0.1))
     r = RW_SPACER_R
+    # P13c (tick 91): the frame's blade sits mid-span (belt centre, RA_T thick), so the
+    # spacer is two tubes, inner race -> blade face (0.1 clear)
+    m0, m1 = bw / 2 - RA_T / 2 - 0.1, bw / 2 + RA_T / 2 + 0.1
+    v = math.pi * (4.0 * bw + (RW_SPACER_R**2 - 4.0) * ((m0 - bd - 0.05) + (bw - bd - 0.05 - m1)))
     return [
         f"part|{path}",
         f"cyl|y|0 0|0 {bw}|2.0|boss",
-        f"cyl|y|0 0|{bd + 0.05} {bw - bd - 0.05}|{r}|boss",
+        f"cyl|y|0 0|{bd + 0.05} {m0}|{r}|boss",
+        f"cyl|y|0 0|{m1} {bw - bd - 0.05}|{r}|boss",
         f"expect|vol {v:.1f} {v * 0.005:.1f}|box {-r} {r} 0 {bw} {-r} {r} 0.05",
         "save",
     ]
@@ -2911,7 +2915,7 @@ def belt_native_lines(path: str, side: int) -> list[str]:
 # room for them (the |y| 47 load rib, the canopy tongue slots, the motor), tick 54.
 TF_GAP, TF_T, TF_H = (
     1.0,
-    2.4,
+    3.6,  # tick 91c experiment: 2.4 -> 3.6 against the road axles' twist (S9)
     14.0,
 )  # off the wheel faces, thickness, height (bar stadium)
 # S2b (Q22 F2, tick 66): the bar grows into a SIDE PLATE over the belt loop's window, so a
@@ -2953,6 +2957,62 @@ def trackframe_geom() -> dict:
         "r": r,
         "vol": vol,
     }
+
+
+# P13c (tick 91, Q24 (a) Ben 2026-11-02): the track frame carries the road-wheel axles.
+# Per axle: an r 5 boss extends the side plate below its z -10 edge round a Ø4.1 bore; an
+# arm runs inboard from the plate's inner face 1.0 over the outer disc's top; a 3 mm blade
+# drops from it between the two discs (3.6 to each) into the lug row and carries the axle
+# mid-span in a second Ø4.1 bore, its bottom 1.0 over the lug tips (z -13.4).
+RA_BORE = 4.1
+RA_BOSS_R = 5.0
+RA_HALF_X = 5.0  # blade half-length along x (6 -> 5, tick 91c: the shelf's end touched the sprocket rim)
+RA_T = 4.0  # blade thickness (tick 91b: 3 -> 4; 3.1 to each disc)
+RA_ARM_T = 5.0  # the shelf joining both blades to the plate (tick 91b: S9 3 mm arms 22 MPa / 1.24 mm)
+RA_GAP = 1.0  # arm over the disc top, blade over the lug tips
+
+
+def road_axle_carrier(side: int) -> tuple[list[str], float, tuple[float, float]]:
+    """Lines (Top-plane / Front-plane features in chassis coordinates), the volume added,
+    and the |y| span (signed) the carrier reaches. Placed after the slot cut and before the
+    outer-face round, so the boss joins the plate's outline."""
+    g = trackframe_geom()
+    y0, y1 = g["y"]
+    s = 1 if side > 0 else -1
+    zr = dt.wheels()[1][2]  # road axle z (-8.40)
+    disc_top = zr + dt.RW_R
+    lug_tip = zr - dt.RW_R + dt.LUG_H
+    yc = (track_y()[0] + track_y()[1]) / 2  # belt centre = the lug row (74.5)
+    ba, bb = yc - RA_T / 2, yc + RA_T / 2  # blade |y|
+    za0, za1 = disc_top + RA_GAP, disc_top + RA_GAP + RA_ARM_T  # shelf z
+    zb0 = lug_tip + RA_GAP  # blade bottom
+    lines, vol = [], 0.0
+    zp0 = TF_PLATE_Z[0]
+    d = zp0 - zr  # plate bottom below the axle centre (negative)
+    seg = RA_BOSS_R**2 * math.acos(-d / RA_BOSS_R) + d * math.sqrt(RA_BOSS_R**2 - d * d)
+    def Y(a, b):
+        return (a, b) if s > 0 else (-b, -a)
+
+    xr1, xr2 = dt.wheels()[1][1], dt.wheels()[2][1]
+    sx0, sx1 = xr1 - RA_HALF_X, xr2 + RA_HALF_X
+    a0, a1 = Y(bb, y0 + 0.01)
+    # one shelf over both outer discs, both blades hang from it (tick 91b)
+    lines.append(f"box|{sx0:.3f} {sx1:.3f}|{a0:.2f} {a1:.2f}|{za0:.3f} {za1:.3f}")
+    vol += (sx1 - sx0) * (y0 - bb) * RA_ARM_T
+    for x in (xr1, xr2):
+        p0, p1 = Y(y0, y1)
+        lines.append(f"cyl|y|{x:.3f} {zr:.3f}|{p0:.2f} {p1:.2f}|{RA_BOSS_R}|boss")
+        b0, b1 = Y(ba, bb)
+        lines.append(f"box|{x - RA_HALF_X:.3f} {x + RA_HALF_X:.3f}|{b0:.2f} {b1:.2f}|{zb0:.3f} {za1:.3f}")
+        c0, c1 = Y(ba - 0.1, y1 + 0.1)
+        lines.append(f"cyl|y|{x:.3f} {zr:.3f}|{c0:.2f} {c1:.2f}|{RA_BORE / 2}|cut")
+        vol += seg * TF_T  # boss below the plate edge
+        vol += 2 * RA_HALF_X * RA_T * (za1 - zb0)  # blade (its top overlaps the shelf's end)
+        vol -= math.pi * (RA_BORE / 2) ** 2 * (TF_T + RA_T)
+    return lines, vol, (s * ba, s * y1)
+
+
+RA_BOSS_Z = (dt.wheels()[1][2] - 5.0, 0.0)  # frame z bottom with the bosses (box check)
 
 
 def trackframe_lines(path: str, side: int) -> list[str]:
@@ -2999,10 +3059,12 @@ def trackframe_lines(path: str, side: int) -> list[str]:
         f"cyl|y|{xs} {z}|{ba} {bb}|{br}|boss",
         f"cyl|y|{xs} {z}|{da} {db}|{TF_DOWEL / 2}|cut",
         f"prof|{ya - 0.1} {yb + 0.1}|{stadium(xi - tr, xi + tr, sw / 2)}|cut|top",
+        *road_axle_carrier(side)[0],
         f"filletface|1.0|y:{s}|{s * y1:.2f}|{xa - r - 1} {zb - 1} {xs + r + 1} {zt + 1}|1|{-dvo:.2f} {0.15 * dvo:.2f}",
         trackframe_label(side),
-        f"expect|vol {vol - dvo:.1f} {vol * 0.01:.1f}|box {xa - r:.2f} {xs + r:.2f} "
-        f"{min(ya, ba):.2f} {max(yb, bb):.2f} {TF_PLATE_Z[0]:.2f} {TF_PLATE_Z[1]:.2f} 0.05",
+        f"expect|vol {vol - dvo + road_axle_carrier(side)[1]:.1f} {vol * 0.01:.1f}|box {xa - r:.2f} {xs + r:.2f} "
+        f"{min(ya, ba, *road_axle_carrier(side)[2]):.2f} {max(yb, bb, *road_axle_carrier(side)[2]):.2f} "
+        f"{RA_BOSS_Z[0]:.2f} {TF_PLATE_Z[1]:.2f} 0.05",
         "save",
     ]
 

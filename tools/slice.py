@@ -122,17 +122,17 @@ PARTS = {
     "RB-PRT-031_carriage_R": ("PET-CF", "-x", 1, False, "front face down (D3)"),
     "RB-PRT-040_trackframe_L": (
         "PET-CF",
-        "+y",
+        "-y",
         1,
-        False,
-        "inner face down (0 cm2 support)",
+        True,
+        "outer face down (P13c: the road-axle shelf + blades stand off the inner face; tree support under the blades)",
     ),
     "RB-PRT-041_trackframe_R": (
         "PET-CF",
-        "-y",
+        "+y",
         1,
-        False,
-        "inner face down (0 cm2 support)",
+        True,
+        "outer face down (P13c), tree support under the blades",
     ),
     # T13 (tick 84): the belts and the 08 §7 test pieces, from drivetrain.py's exports
     # (CAD/exports/rnd/drivetrain, SRC below). qty 0 = test piece, not in the robot total.

@@ -175,6 +175,49 @@ def s6() -> dict:
     }
 
 
+ROBOT_KG = 1.4  # 🟡 drivetrain MASS_G (891 g) + belts/wheels/frames (~300 g) + margin
+
+
+def s9() -> dict:
+    """P13d (tick 91, Q24 (a)): the left track frame carrying both road-wheel axles. Held
+    where it is held in use: the sprocket's dowel bore (the outboard 624) and the idler
+    axle's slot. Each road axle pushes up through its two bores (side-plate boss + blade)
+    with 1/4 of the robot's weight x 3 (07 §3.4 bump factor), as a remote load at the
+    axle centre."""
+    g = chassis.trackframe_geom()
+    w = chassis.dt.wheels()
+    zr = w[1][2]
+    f = 0.25 * ROBOT_KG * 9.81 * 3
+    lines = [
+        "discard_open",
+        f"fix cyl 0 1 0 {chassis.TF_DOWEL / 2} 0.05",  # sprocket dowel / outboard 624
+        f"fix cyl 0 1 0 {chassis.TF_SLOT[1] / 2} 0.05",  # idler axle in its slot ends
+    ]
+    cases = []
+    for name, x in (("road1", w[1][1]), ("road2", w[2][1])):
+        lines.append(
+            f"remote {name} {x:.2f} {sum(chassis.track_y()) / 2:.2f} {zr:.2f} cyl 0 1 0 "
+            f"{chassis.RA_BORE / 2} 0.05 box {x - 4:.2f} 70 {zr - 4:.2f} {x + 4:.2f} 97 {zr + 4:.2f}"
+        )
+        cases.append(f"{name}:0,0,{f:.2f}")
+    lines += [
+        f"disp bores cyl 0 1 0 {chassis.RA_BORE / 2} 0.05",
+        "probe blade -30 70 -14 30 77 6",
+        "probe boss -30 92 -14 30 97 -5",
+        "hotspots 5",
+        "mesh 1.0 0.05",
+        "case bump " + " ".join(cases),
+    ]
+    return {
+        "name": "S9",
+        "title": "Track frame carrying the road axles (1/4 weight x 3 each)",
+        "part": r"\CAD\parts\RB-PRT-040_trackframe_L.SLDPRT",
+        "lines": lines,
+        "applied": (0, 0, 2 * f),
+        "limit_disp_mm": 0.5,
+    }
+
+
 def s2() -> dict:
     """Motor mount v2 (RB-PRT-010, right side) in its own part frame (P2).
 
@@ -373,6 +416,7 @@ STUDIES = {
     "S1m": s1m,
     "S1d": s1d,
     "S6": s6,
+    "S9": s9,
     "S1a": s1a,
     "S1b": s1b,
     "S2": s2,

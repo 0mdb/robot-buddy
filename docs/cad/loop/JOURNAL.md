@@ -569,3 +569,13 @@ Newest at the bottom. One entry per tick.
 - Vertical corners r 3 first (4 edges, −77.3 mm³ exact), then the root as one tangent loop of 4 lines + 4 arcs, r 2 with the `curve` fillet mode (8 edges, +33.2 / +34.0 vs +31.6). Rebuild 24 min (plate + its FEA copy rebuilt, 22 parts cached), 0 interferences, 662.7 g.
 - 2 mm mesh: **S1m 9.22 → 8.41 (−9 %), S1b 3.45 → 2.93 (−15 %), S1a 11.37 → 11.60 (+2 %, peak elsewhere)**. Half-mesh S1b: **23.0 MPa** at (−35.0, −30.9, 1.3), the toroidal blend face's tangent seam with the straight run. The coarse gain doesn't converge; the blend seam is a worse singularity than the square root (4.97 half mesh).
 - **Rejected**, generator reverted (comment records both tries). D1b closes for the jack blocks: their roots stay square; the S1 peaks there are singular and SF is judged on converged measures (07 §3).
+
+## tick 91 · P13c/P13d road axles carried by the track frame (Q24 a) · accepted (Q28 for the cost) · 2026-11-02 19:30 MST
+- SW restarted by Ben (18:40): the restore rebuild took **7 min** (24 before), part-cached rebuilds now 1–7 min.
+- `road_axle_carrier(side)`: per axle an r 5 boss below the side plate's z −10 edge round a Ø4.1 bore; one 5 mm **shelf** over both outer discs (z 1.6–6.6, 1.0 over the disc tops), from the plate's inner face to the lug row; a **4 mm blade** per axle dropping from it between the discs (3.1 to each) into the lug row, its bottom 1.0 over the lug tips (z −13.4), carrying the axle mid-span in a second Ø4.1 bore. The road-axle envelope's Ø7 spacer is now two tubes either side of the blade.
+- New study **S9** (fea.py): left frame held at the sprocket dowel and the idler slot, each road axle +10.3 N (¼ × 1.4 kg 🟡 × g × 3) as a remote load through its two bores. Iterations (rebuild 1 min + S9 ~5 min each):
+  - 3 mm arms, 2.4 plate: **22 MPa (arm root) / 1.24 mm**; the plate twists (load 20 mm inboard), uy −0.85.
+  - 5 mm shelf + 4 mm blades: 17 MPa / 0.82 mm, and 2 interferences (shelf corner on the sprocket rim, 3 mm³): carrier ±6 → ±5 in x.
+  - + frame plate 2.4 → 3.6 (outboard): **0 interferences, bores 0.33 mm (< 0.5), blade 9.5 MPa (SF 3.7)**; peak 12.2 MPa at the idler slot's edge next to the restraint (fixture-adjacent).
+- Cost: frame 18.9 → **35.8 g** each, printed **662.9 → 696.5 g**, +1.2 mm width per side → **Q28** (default: keep). Frames now print outer face down with tree support: 43.8 g / 1 h 45 each sliced (was 18.5 g).
+- Open: 07 §3.4 amendment (S9), S2 pinch re-check of the side plate's bottom edge near the bosses.

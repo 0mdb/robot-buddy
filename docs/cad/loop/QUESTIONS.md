@@ -88,6 +88,16 @@ The loop adds questions here and moves on. Answer inline (`**A:** …`); the nex
   Options: (a) **move the two bulkhead lugs 3 mm aft** (lug x −3, a web back to the wall) and give each hole a flat-floored counterbore in a Ø12 collar on the hood (head 0.15 under the rim, r 1 top edge): heads recessed, flange on a flat seat; bulkhead change, re-run S5c/S5k. (b) Same collar but D-shaped, cut by the front plane, lugs unchanged: the counterbore opens forward (head visible from the front, under the face's top edge). (c) Leave as is (heads visible from above, behind the face); fix only the slope seat with a 15° wedge washer.
   **A (Ben, 2026-11-02): (a) lugs 3 mm aft + counterbored collar on the hood** (bulkhead change; re-run S5c/S5k/S5).
 
+- **Q28 Cost of frame-carried road axles (P13c, tick 91).** With Q24 (a) the road load sits 20 mm inboard of the frame plate, so the plate twists. New study **S9** (frame held at the sprocket dowel + idler slot, ¼ weight × 3 = 10.3 N per axle, 1.4 kg 🟡):
+
+  | variant | bore disp | blade | frame (each) |
+  |---|--:|--:|--:|
+  | 3 mm arms, 2.4 plate | 1.24 mm | 22 MPa | 22 g |
+  | 5 mm shelf, 2.4 plate | 0.82 mm | 17 MPa | 27 g |
+  | **5 mm shelf, 3.6 plate (built)** | **0.33 mm** | **9.5 MPa (SF 3.7)** | **35.8 g** (was 18.9) |
+
+  The built one passes (< 0.5 mm, SF ≥ 3) but costs **+17 g per frame (+34 g robot, 663 → 697 g)** and **+1.2 mm width per side**, more than Q24's "~4 g/side". Options: (a) **keep it** (recommended: passes both gates, the plate also stiffens the pinch-guard); (b) 2.4 plate + shelf and accept ~0.8 mm / SF ~2 under a 3 g bump (the belt tolerates it; −17 g); (c) a second bearing at each axle's inner end (no twist at all, but needs a hanger off the plate: the Q24 (b) problems). **Default (a)**; frames now print outer face down with tree support (43.8 g sliced each).
+
 ## Measurements wanted (not questions; each replaces a 🟡 assumption)
 - **Drive gear hub** (for P2o, the outboard axle support): bore / D-flat, the outer face (is there a boss or recess), and whether a stub shaft or screw could be fixed on the outer side. Without it the loop can't design the outboard bearing.
 - Track tension at set-up (spring scale). Every S1 and S2 number scales with it (fea.py `TRACK_T` = 20 N).
