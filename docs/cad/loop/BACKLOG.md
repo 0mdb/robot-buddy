@@ -89,7 +89,7 @@ Baseline at loop start (commit on `cad`): plate rev 1, envelopes, Ben's imported
     **Done tick 69:** RB-PRT-022 3.4 g × 8, 0 interferences; next P13c: axle carried in the side plate (no nyloc room outboard) + inboard hanger.
   - [x] P13c `[sw]` (Q24 → (a), Ben 2026-11-02: the track frame carries the road axles: side-plate boss + mid-span blade between the discs, M3 into an insert in the blade; was: plate-edge hanger L/R, PET-CF, inside the loop, plate-edge inserts) + interference + 2.5 mm to the sprocket running surface
   - [x] P13d `[sw]` `[doc]` FEA load case (1/4 weight × 3 per axle), 07 §3.4 amendment, S2 pinch re-check: the side plate's bottom edge (z −10) vs the lower bottom run (lug tips ~ −13.4 now) and the road-wheel nips
-    **Done tick 91:** frame boss + 5 mm shelf + 4 mm blades (`road_axle_carrier`), frame plate 2.4 → 3.6; new study **S9** 0.33 mm / blade 9.5 MPa (SF 3.7); 0 interferences; frame 18.9 → 35.8 g each (Q28 for the cost). 07 §3.4 amendment and S2 pinch re-check still to write.
+    **Done tick 91:** frame boss + 5 mm shelf + 4 mm blades (`road_axle_carrier`), frame plate 2.4 → 3.6; new study **S9** 0.33 mm / blade 9.5 MPa (SF 3.7); 0 interferences; frame 18.9 → 35.8 g each (Q28 for the cost). 07 §3.4 amended (S9) and the S2 pinch check noted (tick 95b).
 - Parked for after the bench tests in 08 §7 (Ben prints these, not the loop): TT shaft length + end screw, bore / 624 / 684 coupons, TPU 85A/95A strip creep, lug ratchet test, **tread A/B/C** (`belt_pads` default, `belt_bars`, `belt_smooth`), pivot current, mic noise, **step blocks 5–25 mm**. ~~A middle road wheel per side (08 §4) waits on the pivot-current result~~ (now P13: needed for clearance, not just turning)
 
 ## T: Tooling (measure before optimising)
