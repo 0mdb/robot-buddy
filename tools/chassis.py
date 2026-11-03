@@ -1170,15 +1170,26 @@ BH_SONAR_Y, BH_SONAR_Z, BH_SONAR_PITCH, BH_SONAR_R = (
 )  # HC-SR04 Ø16
 BH_SLEEVE_R, BH_SLEEVE_L = 9.8, 6.0
 BH_SPK = (
-    24.0,
+    16.0,
     26.0,
-    17.0,
-)  # speaker centre y, z and grille radius (CE40P-8, cone ~Ø34)
+    10.0,
+)  # grille centre y, z and its loop-pick radius. P7 (tick 92, Q25 a): centred on the speaker
+# module (SPK_CTR), equal slots BH_GRILLE_HALF each side, inside the pocket (was y 24 / Ø34
+# round for the CE40P-8)
+BH_GRILLE_HALF = 8.5  # slot half-length: y 7.5 .. 24.5, 1.8 inside the pocket's inner wall
 BH_SLOT_W, BH_SLOT_DZ = (
     2.0,
     (-10.0, -6.0, -2.0, 2.0, 6.0, 10.0),
 )  # grille slots <= 2 mm (audio §4.3)
 BH_GRILLE_EDGE_R = 0.5  # tick 86: grille slot face edges
+# P7 (tick 92): speaker module pocket on the bulkhead's back face (pre-tilt wall frame)
+SPK_MOD = (30.0, 20.0, 6.0)  # 🟡 module length (z'), width (y), depth: 2030-class sealed 8 Ω box, until chosen
+SPK_GASKET_T = 1.0  # TPU 85A gasket between the module's face and the wall (P8)
+SPK_CLR = 0.3  # module in the pocket, per side
+SPK_RIM_T = 1.6
+SPK_DEPTH = SPK_GASKET_T + 6.0 + 0.2  # rim stand-off = gasket + module depth + 0.2
+SPK_CTR = (16.0, 26.0)  # y, z' of the module centre (grille centre y 24: overlaps its inboard half)
+SPK_BOSS_Y, SPK_BOSS_Z = (9.0, 23.0), 26.0 + 15.0 + 0.3 + 1.6 + 4.6 - 0.6  # above the pocket, 0.6 into the rim (tangent contact gave a null boss)
 BH_CAM = (
     0.0,
     113.0,
@@ -1215,6 +1226,13 @@ def _rotate_y(p, deg: float, pivot):
     x, z = q[..., 0], q[..., 2]
     out = np.stack([c * x + s_ * z, q[..., 1], -s_ * x + c * z], axis=-1)
     return out + pivot
+
+
+def grille_half(dz: float) -> float:
+    """Half-length (y) of the grille slot at z offset dz. P7 (tick 92): equal slots inside
+    the speaker pocket (the old Ø34 round grille, sized for the CE40P-8, ran under the
+    pocket rim and put S5c's peak on that crossing: 7.48 -> 9.02 MPa)."""
+    return BH_GRILLE_HALF
 
 
 def bulkhead_features() -> tuple[list[tuple], list[tuple]]:
@@ -1298,8 +1316,7 @@ def bulkhead_features() -> tuple[list[tuple], list[tuple]]:
     # they were square-ended boxes on the face side
     sr_end = BH_SLOT_W / 2
     for dz in BH_SLOT_DZ:
-        far = abs(dz) + BH_SLOT_W / 2
-        half = math.sqrt(sr * sr - far * far)
+        half = grille_half(dz)
         pre.append(
             (
                 "cut",
@@ -1318,6 +1335,26 @@ def bulkhead_features() -> tuple[list[tuple], list[tuple]]:
             pre.append(("cut", ("cylx", ye, sz + dz, x0 - 0.1, x1 + 0.1, sr_end)))
     cy, cz, cr = BH_CAM
     pre.append(("cut", ("cylx", cy, cz, x0 - 0.1, x1 + 0.1, cr)))
+    # P7 (tick 92, Q25 (a) Ben 2026-11-02): pocket for a pre-boxed micro speaker on the back
+    # face, behind the grille's inboard half: a 1.6 rim standing SPK_DEPTH off the face round
+    # the module + gasket, and two M3 insert bosses above it for the clamp plate's screws
+    # (no room below: the foot is 1.4 behind the wall; nor at the sides: knee gusset /
+    # left motor mount; free depth mapped by ray-casting the mount, motor and face envelopes)
+    (sy_, sz_), (ml, mw, md) = SPK_CTR, SPK_MOD
+    iy0, iy1 = sy_ - mw / 2 - SPK_CLR, sy_ + mw / 2 + SPK_CLR
+    iz0, iz1 = sz_ - ml / 2 - SPK_CLR, sz_ + ml / 2 + SPK_CLR
+    rt = SPK_RIM_T
+    xb = x0 - SPK_DEPTH
+    for yy0, yy1, zz0, zz1 in (
+        (iy0 - rt, iy0, iz0 - rt, iz1 + rt),
+        (iy1, iy1 + rt, iz0 - rt, iz1 + rt),
+        (iy0, iy1, iz0 - rt, iz0),
+        (iy0, iy1, iz1, iz1 + rt),
+    ):
+        pre.append(("add", ("box", xb, x0, yy0, yy1, zz0, zz1)))
+    for by in SPK_BOSS_Y:
+        pre.append(("add", ("cylx", by, SPK_BOSS_Z, xb, x0, INS_BOSS / 2)))
+        pre.append(("cut", ("cylx", by, SPK_BOSS_Z, xb - 0.1, xb + INS_DEPTH, INS_HOLE / 2)))
     for sgn in (-1, 1):
         pre.append(
             (
@@ -1488,7 +1525,7 @@ def bulkhead_lines(path: str) -> list[str]:
     sy_, sz_, sr_ = BH_SPK
     gl = 0.0
     for dz in BH_SLOT_DZ:
-        half = math.sqrt(sr_ * sr_ - (abs(dz) + BH_SLOT_W / 2) ** 2)
+        half = grille_half(dz)
         gl += 2 * (2 * half - BH_SLOT_W) + math.pi * BH_SLOT_W
     dvg = (1 - math.pi / 4) * BH_GRILLE_EDGE_R**2 * gl
     lines.append(

@@ -71,6 +71,7 @@ Baseline at loop start (commit on `cad`): plate rev 1, envelopes, Ben's imported
   **Tick 73:** orientation sliced (Q26: +z 186 g / 9.5 h, +x rear-down 149 g / 6.8 h, part alone 101.5 g / 3.5 h); orientation: Q26 → (a) rear wall down (Ben 2026-11-02): add 45° rib undersides + hood back-wall ramp. Crown still open.
   **Crown done tick 74:** 2.5 mm arc (R 714), constant-depth ribs on concentric arcs, keels to the crowned seam; S8 PC 22.8 MPa (SF 2.72) / 1.434 mm, S5k 0.762 mm; canopy 114.8 g. Orientation still on Q26.
 - [ ] P7 `[sw]` (Q25 → (a), Ben 2026-11-02: pre-boxed micro speaker, TPU-gasketed clamp frame behind the grille; was: the CE40P-8 hits the left motor mount) **Speaker back box** (PETG, sealed ~30 cc, gasket land) for the CE40P-8; mounts to the bulkhead behind the grille (F12)
+  **Tick 92:** pocket + 2 M3 bosses on the bulkhead back, grille re-centred on the module (S5c 6.12 MPa, better). Left: the clamp plate part + gasket (P8); module dims 🟡.
 - [ ] P8 `[sw]` **Small TPU parts**: mic grommets ×3, speaker gasket, motor-lead strain relief
 - [ ] P9 `[sw]` `[blocked]` XVF3800 core-board mount aft between the carriages: needs the board's measured outline and holes (audio bench step 7)
 - [ ] P10 `[sw]` **Full assembly**: every part placed, interference clean (except the 🟡 motor-envelope overlaps), assembly mass + CoG, hero renders (E4)

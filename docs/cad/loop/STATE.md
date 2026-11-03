@@ -1,9 +1,9 @@
 # CAD loop state
 
 pass: 1, leg 3 (leg 2 ended 2026-11-01 06:15 at tick 67)
-tick: 91
+tick: 92
 sw: up (restarted by Ben 2026-11-02 ~18:40; part-cached rebuilds 1–7 min)
-current: none (tick 91: P13c/d frame-carried road axles, Q28 cost; next P7 speaker clamp (Q25 a), then P6e lugs (Q27), P6f undersides (Q26))  [leg 3 order: P13 → P7/P8 → P6d/f/e → T4 → P10/E4 → polish]
+current: none (tick 92: P7 pocket + grille; next P7 clamp plate + P8 gasket, then P6e lugs (Q27), P6f undersides (Q26))  [leg 3 order: P13 → P7/P8 → P6d/f/e → T4 → P10/E4 → polish]
 hypothesis: —
 baseline_commit: d8179d2 (cad)
 stop_after: none (Ben, leg 3, 2026-11-01: "until completed")

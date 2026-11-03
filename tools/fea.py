@@ -294,6 +294,8 @@ def s5(canopy: bool = False) -> dict:
             f"disp bezel plane {n[0]:.9f} 0 {n[2]:.9f} {d:.4f}",
             "probe foot 76 -48 -4 86 48 12",
             "probe window 40 -32 40 86 32 110",
+            "probe speaker 60 0 0 86 35 60",  # P7 (tick 92): the speaker pocket rim + bosses
+            "hotspots 5",
             "mesh 2.0 0.1",
             f"case screen screen:{F[0]:.3f},{F[1]:.3f},{F[2]:.3f}",
             f"case bezel bezel:{F[0]:.3f},{F[1]:.3f},{F[2]:.3f}",
