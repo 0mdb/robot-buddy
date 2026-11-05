@@ -149,6 +149,48 @@ def s1d() -> dict:
     }
 
 
+CORE_KG = 0.030  # XVF3800 core board + the FPC / USB-C plug ends it carries [assumption]
+DROP_G = 20.0  # 07 §3.4 S6: 0.75 m drop as 20 g quasi-static on each heavy mass [assumption]
+
+
+def s1e() -> dict:
+    """P9b: the deck wall carrying the XVF3800 core board in a drop. The board's 20 g acts
+    at its centre of mass (remote load, coupled to the three insert bores), one case per
+    axis (the drop can land any way up); deck held at its four M3 post holes as S1d."""
+    g = chassis.core_geom()
+    zc = chassis.DECK_Z + chassis.DECK_T  # chassis z of the deck frame's 0
+    cx = sum(g["x"]) / 2
+    cz = sum(g["z"]) / 2 - zc
+    cy = g["y_out"] - 1.0  # parts outboard of the PCB pull the CoG out [assumption]
+    f = CORE_KG * 9.81 * DROP_G
+    (x0, x1), (wy0, wy1) = chassis.CORE_WALL_X, g["y_wall"]
+    ztop = chassis.CORE_WALL_TOP - zc
+    return {
+        "name": "S1e",
+        "title": "Pi deck wall, core board at 20 g (drop, each axis)",
+        "part": r"\CAD\parts\RB-PRT-003_pi_deck.SLDPRT",
+        "lines": [
+            "discard_open",
+            f"fix cyl 0 0 1 {chassis.CLR_M3 / 2} 0.05",
+            f"remote board {cx:.2f} {cy:.2f} {cz:.2f} cyl 0 1 0 {chassis.CORE_INS_D / 2} 0.05",
+            f"disp bores cyl 0 1 0 {chassis.CORE_INS_D / 2} 0.05",
+            f"disp aftend plane 1 0 0 {x0}",  # root -> top: wall bending vs deck twist
+            f"disp walltop plane 0 0 1 {ztop:.2f}",
+            f"probe wall {x0 - 1} {wy0 - 0.5} {-chassis.DECK_T - 1} {x1 + 1} {wy1 + 0.5} {ztop + 1}",
+            f"probe root {x0 - 1} {wy0 - 1} {-chassis.DECK_T - 1} {chassis.CORE_DECK_X1 + 1} {-chassis.DECK_HW + 1} 4",
+            f"probe deck -70 -35 {-chassis.DECK_T - 1} 40 35 1",
+            "hotspots 5",
+            "mesh 1.5 0.1",
+            f"case dropy board:0,{-f:.2f},0",
+            f"case dropz board:0,0,{-f:.2f}",
+            f"case dropx board:{-f:.2f},0,0",
+        ],
+        "applied": [(0, -f, 0), (0, 0, -f), (-f, 0, 0)],
+        # the board's parts sit CORE_GAP (2.0) off the canopy wall: keep 25 % of it
+        "limit_disp_mm": 0.75 * chassis.CORE_GAP,
+    }
+
+
 def s6() -> dict:
     """Follower carriage (P5, left part): the belt pulls the idler toward the sprocket
     (+X) at the belt centre plane, through the axle bore. Held where it is held in use:
@@ -417,6 +459,7 @@ STUDIES = {
     "S8": s8,
     "S1m": s1m,
     "S1d": s1d,
+    "S1e": s1e,
     "S6": s6,
     "S9": s9,
     "S1a": s1a,
@@ -570,16 +613,19 @@ def run_study(
         sys.exit(f"{st['name']}: swsim did not report SIM OK")
     # equilibrium: the fixture must react exactly the applied total (catches per-face loads)
     if st["applied"]:
-        for line in text.splitlines():
-            if "reaction sum (" in line:
-                got = [float(v) for v in line.split("(")[1].split(")")[0].split(",")]
-                err = max(abs(g + a) for g, a in zip(got, st["applied"]))
-                ok = err <= 0.01 * max(abs(a) for a in st["applied"]) + 0.05
-                print(
-                    f"  {'ok' if ok else 'FAIL'}   equilibrium: reaction {got} vs applied {st['applied']}"
-                )
-                if not ok:
-                    sys.exit(f"{st['name']}: reactions do not balance the applied load")
+        # one applied total per case, in case order (a single tuple = every case)
+        want = st["applied"] if isinstance(st["applied"], list) else None
+        sums = [ln for ln in text.splitlines() if "reaction sum (" in ln]
+        for i, line in enumerate(sums):
+            app = want[i] if want else st["applied"]
+            got = [float(v) for v in line.split("(")[1].split(")")[0].split(",")]
+            err = max(abs(g + a) for g, a in zip(got, app))
+            ok = err <= 0.01 * max(abs(a) for a in app) + 0.05
+            print(
+                f"  {'ok' if ok else 'FAIL'}   equilibrium: reaction {got} vs applied {app}"
+            )
+            if not ok:
+                sys.exit(f"{st['name']}: reactions do not balance the applied load")
     return os.path.join(out, "results.csv")
 
 

@@ -116,6 +116,8 @@ face, audio, misc ~150 g → **m ≈ 1.0 kg**, W ≈ 10 N.
 | **S6 Drop** | Whole assembly | 0.75 m table drop, as 20 g quasi-static on each heavy mass (stack, motors) in turn [assumption] | Contact face fixed | Comparative: find the weakest joint; nothing above Z UTS. Confirm with a physical drop of the PETG prototype |
 | **S7 Modes** | Plate + deck + stack | Free-free | — | First mode clear of motor/gear excitation (report; no hard target yet) |
 
+> Amendment (loop P9b, tick 100, 2026-11-05): **S1e, the S6 drop case for the core-board wall.** Pi deck alone, held at its 4 M3 post holes (as S1d); the board (30 g incl. cable ends 🟡) at 20 g as a remote load at its centre of mass, coupled to the 3 insert bores; one case per axis (−y toward the canopy, −z, −x). Gates: SF ≥ 3 on the Z UTS (the wall prints upright, so it bends across layers) and the bores ≤ 1.5 mm (75 % of the board's 2.0 gap to the canopy wall). The bare 2 mm wall: 7.6 MPa but **1.95 mm** → stiffened (3 ribs 2 × 4 + a 45° 4 × 4 top chord, inboard, under the keels): **10.8 MPa (SF 3.2) / 1.16 mm**, S1d 9.00 (=). Conservative: the post holes are pinned, not clamped on the post tops. Confirm with the physical drop (S6).
+
 Run S1, S2 and S5 on the plate/mount/bulkhead **before** the first PET-CF print; S3, S4 with
 the canopy. Fillets and ribs are added *after* the first S-run picks where they go (fpv250's
 "simulate first, then fillet, then print").

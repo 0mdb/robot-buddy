@@ -77,7 +77,8 @@ Baseline at loop start (commit on `cad`): plate rev 1, envelopes, Ben's imported
 - [x] P6d-mic `[sw]` (tick 98, Q30 b) mic disc under the rib grid: keel windows (3.1 tall) + doublers, 3 M2.5 bosses, 4 port tubes, TPU washers RB-PRT-062, disc envelope; S8 19.3 (+8.9 %), S5k 9.47
 - [x] P7b `[sw]` (tick 97) speaker pocket to the ordered Same Sky CMS-30205 (30 × 20 × 5.6, stadium): depth for 0.3 preload, stadium gasket, magnet pad, lead notch
 - [x] P9 `[sw]` (tick 99, Q31 default) XVF3800 core board on edge in the −y side bay, on a wall standing on the Pi deck (3 × M2.5 standoffs, 45° overhang over the motor); voxel layout study
-- [ ] P9b `[sw]` deck wall: a drop/handling FEA case (board 30 g, 1 m drop) and lightening window if it passes easily (+11.6 g now)
+- [x] P9b `[sw]` deck wall: a drop/handling FEA case (board 30 g, 1 m drop) and lightening window if it passes easily (+11.6 g now)
+  **Done tick 100:** new S1e (20 g on the board, each axis). The bare wall passed on stress (7.6 MPa) but its bores moved 1.95 mm toward the canopy (2.0 gap): no window; 3 ribs + a 45° top chord inboard instead (+2.1 g, deck 32.4 g): 10.8 MPa (SF 3.2), 1.16 mm, S1d 9.00 (=). Physical drop (S6) still to confirm.
 - [ ] ~~P9 old~~ `[blocked]` XVF3800 core-board mount aft between the carriages: needs the board's measured outline and holes (audio bench step 7)
 - [ ] P10 `[sw]` **Full assembly**: every part placed, interference clean (except the 🟡 motor-envelope overlaps), assembly mass + CoG, hero renders (E4)
   **Tick 76:** 33 components placed, 0 interferences, 663.1 g printed, CoG (−0.4, 0, 22.6); hero renders in. Left: blocked parts (P7 Q25, P8, P9) and fasteners.

@@ -668,6 +668,31 @@ def core_overhang_poly() -> list[tuple[float, float]]:
     return [(x0, zb), (x1, zb + (x1 - x0)), (x1, CORE_WALL_TOP - zc), (x0, CORE_WALL_TOP - zc)]
 
 
+# P9b (S1e, 20 g drop): the bare 2 mm wall let the bores move 1.95 mm toward the canopy wall
+# (2.0 gap), so no lightening window. Stiffeners on its inboard face, inside the 5.7 gap to
+# the Pi box (|y| 28) and under the keels (chassis z 73): vertical ribs and a 45° top chord.
+CORE_RIB_D, CORE_RIB_T = 4.0, 2.0  # depth inboard of the wall, thickness
+CORE_RIB_X = (-66.0, -42.0, -18.0)  # rib centres; the last 5 aft of the deck step at x -12 (a rib flush with it took S1d 9.0 -> 15.3)
+CORE_RIB_TOP = 72.7  # chassis z: the keel bottoms are at 73
+
+
+def core_stiffeners() -> tuple[list, list[str], float]:
+    """Deck-frame features: ribs (deck_features adds), the chord (a Right-plane prism), volume
+    of the chord minus its overlap with the ribs."""
+    zc = DECK_Z + DECK_T
+    wi = core_geom()["y_wall"][1]  # wall's inboard face
+    zt = CORE_RIB_TOP - zc
+    ribs = [("add", ("rect", x - CORE_RIB_T / 2, x + CORE_RIB_T / 2, wi, wi + CORE_RIB_D), -DECK_T, zt)
+            for x in CORE_RIB_X]
+    d = CORE_RIB_D  # chord: triangle in (y, z), 45° underside off the wall; Right plane (-z, y)
+    tri = [(wi, zt), (wi + d, zt), (wi, zt - d)]
+    chord = ("prof|{:.3f} {:.3f}|M {:.3f} {:.3f} ".format(CORE_WALL_X[0], CORE_WALL_X[1], -tri[0][1], tri[0][0])
+             + " ".join(f"L {-z:.3f} {y:.3f}" for y, z in tri[1:]) + "|boss|right")
+    area = d * d / 2
+    vol = area * (CORE_WALL_X[1] - CORE_WALL_X[0]) - area * CORE_RIB_T * len(CORE_RIB_X)
+    return ribs, [chord], vol
+
+
 def core_standoffs() -> list[tuple[float, float]]:
     """Holes that get a standoff: all but the forward-lower one (under the 45° overhang)."""
     zc = DECK_Z + DECK_T
@@ -721,6 +746,7 @@ def deck_features() -> list[tuple[str, tuple, float, float]]:
         ("add", ("rect", CORE_WALL_X[0], CORE_DECK_X1, wy0, -DECK_HW + 0.5), z0, z1),  # widening
         ("add", ("rect", CORE_WALL_X[0], CORE_DECK_X1, wy0, wy1), z0, CORE_WALL_TOP - zc),
     ]  # + the overhang forward of CORE_DECK_X1 (core_overhang_poly, a Top-plane prism)
+    add += core_stiffeners()[0]  # P9b ribs (+ the chord, a Right-plane prism in deck_lines)
     cut: list[tuple[str, tuple, float, float]] = []
     for x, y in DECK_POSTS:
         cut.append(("all", ("circle", x, y, CLR_M3 / 2), 0, 0))
@@ -790,6 +816,9 @@ def deck_lines(path: str) -> list[str]:
     boss.append(f"prof|{wy0:.3f} {wy1:.3f}|M {pts[0][0]:.3f} {-pts[0][1]:.3f} "
                 + " ".join(f"L {x:.3f} {-z:.3f}" for x, z in pts[1:]) + "|boss|top")
     vol += _poly_area(pts) * CORE_WALL_T
+    _, chord, cvol = core_stiffeners()  # P9b
+    boss += chord
+    vol += cvol
     for hx, hz in core_standoffs():  # P9 standoffs: board back -> wall's inboard face, insert through
         boss.append(f"cyl|y|{hx:.3f} {hz - zc:.3f}|{yb:.3f} {yw1:.3f}|{CORE_BOSS_D / 2}|boss")
         boss.append(f"cyl|y|{hx:.3f} {hz - zc:.3f}|{yb - 0.1:.3f} {yw1 + 0.1:.3f}|{CORE_INS_D / 2}|cut")

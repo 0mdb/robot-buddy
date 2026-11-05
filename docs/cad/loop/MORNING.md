@@ -1,9 +1,10 @@
-# 2026-11-05: your parts built in (ticks 97–98)
+# 2026-11-05: your parts built in (ticks 97–100)
 
 - **Speaker pocket → the Same Sky you ordered (tick 97):** 6.45 deep for 0.3 preload, stadium TPU gasket, clamp pad on the magnet only, lead notch. S5c 5.72 MPa (was 5.78).
 - **Mic disc under the canopy ribs (tick 98, Q30 b):** 3 bosses + TPU washers, 4 Ø1.2 ports on the top (the only visible change: `shots/1-P6d-mic/hero_top_t98.png`). The disc is wider than the keels, so each keel has a window; the first windows cost S8 +39 %. Shrunk to what the board really has there (STEP: ≤ 0.6 mm parts) and doubled the keel over them: **S8 19.3 MPa (+8.9 %, SF 3.2), heel 1.16 mm, S5k 9.47**. Canopy 120.9 g, printed 709.1 g, 0 interferences.
-- **Core board (P9, tick 99, Q31 default):** a 1 mm voxel map says it only fits on edge; it stands in the right (−y) side bay outboard of the Pi on a wall that's part of the Pi deck, 3 × M2.5 × 6 into M2.5 × 4 inserts, USB-C pointing down into the pocket between the carriage and motor (**right-angle USB-C cable**). 0 interferences, S1b =, deck 18.8 → 30.3 g (printed 720.7 g). Look: `shots/1-P9/deck_wall_t99.png`. Say if you'd rather the front bay or a separate bracket (Q31).
-- **Need from you:** Encoder socket height + plug depth (clash check vs the reflex board, 0.7 mm away). Check the disc's thickness when it arrives (STEP 1.5, DXF 1.2). Next: P9 core-board layout study (the rear bay is also the Pi's USB space and the intake).
+- **Core board (P9, tick 99, Q31 default):** a 1 mm voxel map says it only fits on edge; it stands in the right (−y) side bay outboard of the Pi on a wall that's part of the Pi deck, 3 × M2.5 × 6 into M2.5 × 4 inserts, USB-C pointing down into the pocket between the carriage and motor (**right-angle USB-C cable**). 0 interferences, S1b =, deck 18.8 → 30.3 g (printed 720.7 g). Look: `shots/1-P9/deck_wall_t99.png`. Q31: side bay confirmed (Ben).
+- **Core-board wall in a drop (P9b, tick 100):** new study S1e, board at 20 g each way. The bare wall was strong enough but swung 1.95 mm toward the canopy (the board's parts have 2.0). So no lightening window: 3 small ribs + a 45° top chord on the wall's inboard side (+2.1 g): **1.16 mm, 10.8 MPa (SF 3.2)**, Pi-deck study S1d unchanged. Deck 32.4 g, printed 722.8 g. Look: `shots/1-P9/deck_wall_ribs_t100.png`. Worth a sideways drop on the prototype.
+- **Need from you:** Encoder socket height + plug depth (clash check vs the reflex board, 0.7 mm away). Check the disc's thickness when it arrives (STEP 1.5, DXF 1.2).
 
 # Leg 3 finished (2026-11-03 01:45 MST): every unblocked item done, review pass accepts no change
 
