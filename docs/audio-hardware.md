@@ -106,8 +106,10 @@ Confirm prices and stock before ordering. They were checked from search results,
 
 ### Measured from the vendor files (2026-11-05)
 
-Sources in `CAD/library/vendor/`: Seeed's DXF + STEP for the Flex (`ReSpeakerFlex/`, KiCad
-exports dated 2026-02-10) and the Same Sky datasheet PDF. Read with ezdxf / OpenCascade;
+Sources in `CAD/library/vendor/`: Seeed's DXF for the Flex (`ReSpeakerFlex/`; the STEPs, KiCad
+exports dated 2026-02-10, are git-ignored like all vendor STEPs: re-fetch from
+`https://files.seeedstudio.com/wiki/reSpeaker_flex/reSpeaker_xvf3800_flex_{circular_260210,Separate}.step`)
+and the Same Sky datasheet PDF. Read with ezdxf / OpenCascade;
 check against the boards when they arrive.
 
 **Mic disc (circular-4)**
