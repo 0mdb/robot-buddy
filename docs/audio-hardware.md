@@ -157,7 +157,7 @@ On arrival: measure per §7 step 7 (disc, core board, mic port side, Flex speake
 ### 4.3 Speaker enclosure and grille
 
 - ~~Sealed printed back box ~30 cc~~ (2026-11-05: the CMS-30205 has a closed magnet back; it needs only a sealed front rim, no box
-  volume). The module is clamped into the bulkhead pocket through the TPU gasket
+  ). The module is clamped into the bulkhead pocket through the TPU gasket
   (RB-PRT-061), not hard-bolted, so the chassis doesn't become a soundboard.
 - **Grille**: openings **≤ 2 mm** (holes or slots), wall 1.5–2 mm, open area ≥ 35% of
   the cone area. Put a fine mesh or fabric behind it so a pencil or toothpick cannot
