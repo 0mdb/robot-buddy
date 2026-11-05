@@ -137,6 +137,7 @@ PARTS = {
     # P7 / P8 (tick 93): speaker clamp (pad side up) and gasket, flat
     "RB-PRT-060_speaker_clamp": ("PET-CF", "+x", 1, False, "flat, pad up"),
     "RB-PRT-061_speaker_gasket": ("TPU", "+x", 1, False, "flat ring, 1 mm"),
+    "RB-PRT-062_mic_washer": ("TPU", "+z", 6, False, "flat, 1 mm; 2 per mic-disc screw"),
     # T13 (tick 84): the belts and the 08 §7 test pieces, from drivetrain.py's exports
     # (CAD/exports/rnd/drivetrain, SRC below). qty 0 = test piece, not in the robot total.
     "belt_shrink0.56": ("TPU", "+z", 2, False, "upright ring, lugs in (belt_print.md); 0.56 % shrink"),

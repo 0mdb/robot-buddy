@@ -1,3 +1,9 @@
+# 2026-11-05: your parts built in (ticks 97–98)
+
+- **Speaker pocket → the Same Sky you ordered (tick 97):** 6.45 deep for 0.3 preload, stadium TPU gasket, clamp pad on the magnet only, lead notch. S5c 5.72 MPa (was 5.78).
+- **Mic disc under the canopy ribs (tick 98, Q30 b):** 3 bosses + TPU washers, 4 Ø1.2 ports on the top (the only visible change: `shots/1-P6d-mic/hero_top_t98.png`). The disc is wider than the keels, so each keel has a window; the first windows cost S8 +39 %. Shrunk to what the board really has there (STEP: ≤ 0.6 mm parts) and doubled the keel over them: **S8 19.3 MPa (+8.9 %, SF 3.2), heel 1.16 mm, S5k 9.47**. Canopy 120.9 g, printed 709.1 g, 0 interferences.
+- **Need from you:** are M2.5 × 4 inserts OK (or order them)? Encoder socket height + plug depth (clash check vs the reflex board, 0.7 mm away). Check the disc's thickness when it arrives (STEP 1.5, DXF 1.2). Next: P9 core-board layout study (the rear bay is also the Pi's USB space and the intake).
+
 # Leg 3 finished (2026-11-03 01:45 MST): every unblocked item done, review pass accepts no change
 
 **Stop condition met** (STATE.md): the leg-3 list is done except what waits on you (below), and a full review pass on the final geometry (all 11 studies + the edge audit) matched every accepted value. **Nothing is print-ready until you've looked** (eyes before electrons): start with `docs/cad/loop/shots/hero/` (three-quarter, face, rear, top).

@@ -983,6 +983,9 @@ def rebuild_manifest(win: str) -> list[str]:
         *speaker_clamp_lines(cad + r"\parts\RB-PRT-060_speaker_clamp.SLDPRT"),
         *speaker_gasket_lines(cad + r"\parts\RB-PRT-061_speaker_gasket.SLDPRT"),
         *speaker_module_lines(cad + r"\library\speaker_module_envelope.SLDPRT"),
+        # P6d / P8 (tick 98, Q30 b): mic disc envelope + its TPU washers
+        *mic_disc_lines(cad + r"\library\mic_disc_envelope.SLDPRT"),
+        *mic_washer_lines(cad + r"\parts\RB-PRT-062_mic_washer.SLDPRT"),
         # D6 (tick 89): follower-slide fit coupon (not in the assembly, not in the robot mass)
         *coupon_slide_strip_lines(cad + r"\parts\RB-CPN-001_slide_strip.SLDPRT"),
         *coupon_slide_rail_lines(cad + r"\parts\RB-CPN-002_slide_rail.SLDPRT"),
@@ -1028,6 +1031,12 @@ def rebuild_manifest(win: str) -> list[str]:
         f"comp|spk_clamp|{cad}\\parts\\RB-PRT-060_speaker_clamp.SLDPRT|{row(*speaker_tilt())}",
         f"comp|spk_gasket|{cad}\\parts\\RB-PRT-061_speaker_gasket.SLDPRT|{row(*speaker_tilt())}",
         f"comp|spk_module|{cad}\\library\\speaker_module_envelope.SLDPRT|{row(*speaker_tilt())}",
+        f"comp|mic_disc|{cad}\\library\\mic_disc_envelope.SLDPRT|{row(ROT_I, (0, 0, 0))}",
+        *[
+            f"comp|mic_washer_{i}{tag}|{cad}\\parts\\RB-PRT-062_mic_washer.SLDPRT|{row(ROT_I, (hx, hy, z))}"
+            for i, (hx, hy) in enumerate(mic_geom()["holes"])
+            for tag, z in (("a", MIC_PLANE - MIC_WASHER[2]), ("b", mic_geom()["zb"] - MIC_WASHER[2]))
+        ],
         "interfere",
         "asmsave",
         # T10: analysis-only part, plate + both mounts as one body (not printed)
@@ -1061,6 +1070,7 @@ def rebuild_manifest(win: str) -> list[str]:
                 (road, "RB-PRT-022_road_disc"),
                 (cad + r"\parts\RB-PRT-060_speaker_clamp.SLDPRT", "RB-PRT-060_speaker_clamp"),
                 (cad + r"\parts\RB-PRT-061_speaker_gasket.SLDPRT", "RB-PRT-061_speaker_gasket"),
+                (cad + r"\parts\RB-PRT-062_mic_washer.SLDPRT", "RB-PRT-062_mic_washer"),
                 (cad + r"\parts\RB-CPN-001_slide_strip.SLDPRT", "RB-CPN-001_slide_strip"),
                 (cad + r"\parts\RB-CPN-002_slide_rail.SLDPRT", "RB-CPN-002_slide_rail"),
             )
@@ -1113,15 +1123,17 @@ def _spk_geom() -> dict:
 
 def speaker_clamp_lines(path: str) -> list[str]:
     """1.6 plate over the pocket's rim and both boss faces, two Ø3.4 holes for M3 x 8 into
-    the bosses' inserts, and a 0.15 pad that meets the module's back (the gasket takes the
-    screws' preload). Hidden behind the wall: square edges are fine."""
+    the bosses' inserts, and a 0.15 pad on the speaker's magnet that squeezes the gasket
+    SPK_PRELOAD at nominal depth. Hidden behind the wall: square edges are fine."""
     g = _spk_geom()
     xb, (oy0, oy1), (oz0, oz1) = g["xb"], g["oy"], g["oz"]
     (iy0, iy1), (iz0, iz1) = g["iy"], g["iz"]
     oy1 = iy1 + 0.6  # tick 93: the outboard edge stops 0.6 over the rim (at 27.9 it touched the left mount, 3.6 mm3)
-    pt, pad = SPK_CLAMP_T, 0.15
-    py0, py1 = g["sy"] - g["mw"] / 2 + 1, g["sy"] + g["mw"] / 2 - 1
-    pz0, pz1 = g["sz"] - g["ml"] / 2 + 1, g["sz"] + g["ml"] / 2 - 1
+    pt, pad = SPK_CLAMP_T, SPK_PAD
+    # tick 97: a square pad on the magnet boss only (the lead's glue blob sits 0.6 proud
+    # of the frame at one end; the old full-face pad would have landed on it)
+    py0, py1 = g["sy"] - SPK_PAD_W / 2, g["sy"] + SPK_PAD_W / 2
+    pz0, pz1 = g["sz"] - SPK_PAD_W / 2, g["sz"] + SPK_PAD_W / 2
     vol = (oy1 - oy0) * (oz1 - oz0) * pt + (py1 - py0) * (pz1 - pz0) * pad
     vol -= len(SPK_BOSS_Y) * math.pi * (CLR_M3 / 2) ** 2 * pt
     return [
@@ -1138,37 +1150,52 @@ def speaker_clamp_lines(path: str) -> list[str]:
     ]
 
 
+def _stadium_right(sy: float, sz: float, length: float, width: float) -> str:
+    """Stadium (full-round ends) along z', width along y, as a Right-plane loop (sketch
+    x = -z, y = y), drawn like the canopy vent slots."""
+    r = width / 2
+    ulo, uhi = -(sz - length / 2 + r), -(sz + length / 2 - r)
+    return (
+        f"M {ulo:.4f} {sy - r:.4f} L {uhi:.4f} {sy - r:.4f} a {uhi:.4f} {sy:.4f} {uhi:.4f} {sy + r:.4f} "
+        f"L {ulo:.4f} {sy + r:.4f} a {ulo:.4f} {sy:.4f} {ulo:.4f} {sy - r:.4f}"
+    )
+
+
+def _stadium_area(length: float, width: float) -> float:
+    return (length - width) * width + math.pi * (width / 2) ** 2
+
+
 def speaker_gasket_lines(path: str) -> list[str]:
-    """P8: TPU 85A ring, SPK_GASKET_T thick, between the module's face and the wall, round
-    the grille slots: the module's outline, a 2 mm band."""
+    """P8: TPU 85A ring, SPK_GASKET_T thick, between the speaker's face and the wall, round
+    the grille slots. Tick 97: follows the speaker's stadium outline (a rectangular ring
+    left the four corners open: front and back waves would meet), SPK_GASKET_BAND wide."""
     g = _spk_geom()
-    x0 = g["x0"]
-    y0, y1 = g["sy"] - g["mw"] / 2, g["sy"] + g["mw"] / 2
-    z0, z1 = g["sz"] - g["ml"] / 2, g["sz"] + g["ml"] / 2
+    x0, sy, sz, ml, mw = g["x0"], g["sy"], g["sz"], g["ml"], g["mw"]
     b = SPK_GASKET_BAND
-    vol = ((y1 - y0) * (z1 - z0) - (y1 - y0 - 2 * b) * (z1 - z0 - 2 * b)) * SPK_GASKET_T
+    vol = (_stadium_area(ml, mw) - _stadium_area(ml - 2 * b, mw - 2 * b)) * SPK_GASKET_T
     return [
         f"part|{path}",
-        f"box|{x0 - SPK_GASKET_T:.3f} {x0:.3f}|{y0:.3f} {y1:.3f}|{z0:.3f} {z1:.3f}",
-        # the inner opening: a Front-plane rectangle (x, y) cut along z over the inner span
-        f"prof|{z0 + b:.3f} {z1 - b:.3f}|M {x0 - SPK_GASKET_T - 0.1:.3f} {y0 + b:.3f} L {x0 + 0.1:.3f} {y0 + b:.3f} "
-        f"L {x0 + 0.1:.3f} {y1 - b:.3f} L {x0 - SPK_GASKET_T - 0.1:.3f} {y1 - b:.3f}|cut",
-        f"expect|vol {vol:.1f} {vol * 0.02:.1f}|box {x0 - SPK_GASKET_T:.2f} {x0:.2f} {y0:.2f} {y1:.2f} {z0:.2f} {z1:.2f} 0.05",
+        f"prof|{x0 - SPK_GASKET_T:.3f} {x0:.3f}|{_stadium_right(sy, sz, ml, mw)}|boss|right",
+        f"prof|{x0 - SPK_GASKET_T - 0.1:.3f} {x0 + 0.1:.3f}|{_stadium_right(sy, sz, ml - 2 * b, mw - 2 * b)}|cut|right",
+        f"expect|vol {vol:.1f} {vol * 0.02:.1f}|box {x0 - SPK_GASKET_T:.2f} {x0:.2f} {sy - mw / 2:.2f} {sy + mw / 2:.2f} {sz - ml / 2:.2f} {sz + ml / 2:.2f} 0.05",
         "save",
     ]
 
 
 def speaker_module_lines(path: str) -> list[str]:
-    """Envelope of the 🟡 SPK_MOD module (interference only), between gasket and clamp."""
+    """Envelope of the speaker (interference only): its stadium outline at the thinnest
+    depth the datasheet allows (SPK_MOD depth - SPK_TOL, less 0.02 so touching doesn't read
+    as an interference), face on the gasket. That part just meets the clamp pad: every
+    thicker one squeezes the gasket."""
     g = _spk_geom()
     x1 = g["x0"] - SPK_GASKET_T
-    y0, y1 = g["sy"] - g["mw"] / 2, g["sy"] + g["mw"] / 2
-    z0, z1 = g["sz"] - g["ml"] / 2, g["sz"] + g["ml"] / 2
-    v = g["mw"] * g["ml"] * g["md"]
+    d = g["md"] - SPK_TOL - 0.02
+    sy, sz, ml, mw = g["sy"], g["sz"], g["ml"], g["mw"]
+    v = _stadium_area(ml, mw) * d
     return [
         f"part|{path}",
-        f"box|{x1 - g['md']:.3f} {x1:.3f}|{y0:.3f} {y1:.3f}|{z0:.3f} {z1:.3f}",
-        f"expect|vol {v:.1f} {v * 0.005:.1f}|box {x1 - g['md']:.2f} {x1:.2f} {y0:.2f} {y1:.2f} {z0:.2f} {z1:.2f} 0.05",
+        f"prof|{x1 - d:.3f} {x1:.3f}|{_stadium_right(sy, sz, ml, mw)}|boss|right",
+        f"expect|vol {v:.1f} {v * 0.005:.1f}|box {x1 - d:.2f} {x1:.2f} {sy - mw / 2:.2f} {sy + mw / 2:.2f} {sz - ml / 2:.2f} {sz + ml / 2:.2f} 0.05",
         "save",
     ]
 
@@ -1279,11 +1306,18 @@ BH_SLOT_W, BH_SLOT_DZ = (
 )  # grille slots <= 2 mm (audio §4.3)
 BH_GRILLE_EDGE_R = 0.5  # tick 86: grille slot face edges
 # P7 (tick 92): speaker module pocket on the bulkhead's back face (pre-tilt wall frame)
-SPK_MOD = (30.0, 20.0, 6.0)  # 🟡 module length (z'), width (y), depth: 2030-class sealed 8 Ω box, until chosen
+SPK_MOD = (30.0, 20.0, 5.6)  # length (z'), width (y), depth: Same Sky CMS-30205-158L120-67 (ordered
+# 2026-11-05, datasheet rev 1.03): 30 +-0.3 x 20 +-0.2 x 5.6 +-0.3, full-round (stadium) ends,
+# Ø17 magnet boss is the rearmost face, 120 mm lead out of one short end
+SPK_TOL = 0.3  # depth tolerance (datasheet)
+SPK_PRELOAD = 0.3  # gasket squeeze at nominal depth = SPK_TOL: the thinnest part (5.3) still touches
+SPK_PAD, SPK_PAD_W = 0.15, 16.0  # clamp pad: thickness, square side (presses the Ø17 magnet only)
 SPK_GASKET_T = 1.0  # TPU 85A gasket between the module's face and the wall (P8)
 SPK_CLR = 0.3  # module in the pocket, per side
 SPK_RIM_T = 1.6
-SPK_DEPTH = SPK_GASKET_T + 6.0 + 0.2  # rim stand-off = gasket + module depth + 0.2
+SPK_DEPTH = SPK_GASKET_T + SPK_MOD[2] + SPK_PAD - SPK_PRELOAD  # rim stand-off (6.45): the clamp
+# seats on the rim, so the squeeze is set by geometry (0 .. 0.6 over the depth tolerance)
+SPK_LEAD = (3.0, 2.5)  # lead notch in the rim's top end (z' high): width (y), depth from the open edge
 SPK_CTR = (16.0, 26.0)  # y, z' of the module centre (grille centre y 24: overlaps its inboard half)
 SPK_CLAMP_T = 1.6  # clamp plate (P7)
 SPK_NOTCH_Y, SPK_NOTCH_Z = 25.6, (21.0, 28.0)  # tick 93: clamp notch round the left mount's end stop (25.9 still touched: 0.0 mm3)
@@ -1468,6 +1502,11 @@ def bulkhead_features() -> tuple[list[tuple], list[tuple]]:
     for by in SPK_BOSS_Y:
         pre.append(("add", ("cylx", by, SPK_BOSS_Z, xb, x0, INS_BOSS / 2)))
         pre.append(("cut", ("cylx", by, SPK_BOSS_Z, xb - 0.1, xb + INS_DEPTH, INS_HOLE / 2)))
+    # tick 97: lead notch in the rim's top end, between the bosses (the lead leaves one
+    # short end at the speaker's back; the clamp closes the notch into a tunnel and the
+    # lead runs up between the bosses past the clamp's top edge)
+    lw, ld = SPK_LEAD
+    pre.append(("cut", ("box", xb - 0.1, xb + ld, sy_ - lw / 2, sy_ + lw / 2, iz1 - 0.1, iz1 + rt + 0.1)))
     for sgn in (-1, 1):
         pre.append(
             (
@@ -2295,6 +2334,29 @@ CAN_CROWN = 2.5
 CAN_RIB_SINK = 0.5
 CAN_RIB_W45 = 4.5  # P6f (tick 95): cross-rib 45° wedge run (= rib depth + sink)
 
+# P6d mic disc (Q30 b, Ben 2026-11-05): reSpeaker Flex XVF3800 circular-4 (Seeed DXF/STEP,
+# audio-hardware §3) hung UNDER the rib grid, bare (port) face up, on 3 bosses through TPU
+# washers; each mic hears through a Ø1.2 port in a tube from the top skin down to the board
+# (a 1 mm foam ring seals tube to board). The disc is wider than the keel spacing, so each
+# keel gets a window where the board's edge passes. Centre x -30: the four mics land
+# mid-cell (x -52 / -8, |y| 22) and the 0° hole on the y 0 rib.
+MIC_D, MIC_PCB_T, MIC_COMP_H = 72.5, 1.5, 1.4  # board Ø, thickness, components (down)
+MIC_SQ = 44.0  # mics on a square, at 45° to the hole pattern
+MIC_PCD, MIC_HOLE_ANG = 62.5, (0.0, 120.0, 240.0)  # 3 x Ø3.3 holes
+MIC_CTR = (-30.0, 0.0)
+MIC_PLANE = 90.6  # boss / tube bottoms: comps 0.7 over the stack top (86) with 1 mm washers
+MIC_WASHER = (7.0, 3.0, 1.0)  # TPU 85A washer OD, ID (M2.5 clear), thickness; 2 per hole
+MIC_BOSS_D, MIC_INS = 8.0, (3.6, 5.0)  # M2.5 x 4 insert 🟡: drawn hole, pocket (L + 1)
+MIC_TUBE = (3.2, 1.2, 0.3)  # port tube OD, port Ø, reach below MIC_PLANE (foam squeeze)
+MIC_WIN = (1.0, 0.5)  # keel window: clearance round the board's edge (x), over/under (z)
+# tick 98b: the first windows (3.9 tall, sized for the full 1.4 component layer) took S8
+# 17.7 -> 24.6 MPa at the window's end. Where the keels cross the board (local ±90°, |y|
+# >= 28.6) the vendor STEP has nothing taller than a 0402 cap (0.585), and only on one side;
+# so the windows drop to 3.1 tall, and the keel's band over each window gets a doubler
+# (2 mm on each face, window ±5 mm, -x end at 45° for the +x print build).
+MIC_COMP_EDGE, MIC_EDGE_Y = 0.6, 28.6  # component height in the keel strips, strip start |y|
+MIC_DBL = (2.0, 5.0)  # doubler width per face, overhang past the window ends
+
 
 def _pre2ch(xp: float, zp: float) -> tuple[float, float]:
     """Bulkhead pre-tilt (x, z) -> chassis (x, z): the same 15° back tilt as the wall."""
@@ -2796,6 +2858,130 @@ def canopy_rear_edges() -> tuple[float, list[str]]:
     return dv_v + 2 * dv_a, [vent, *apron]
 
 
+def mic_geom() -> dict:
+    """Mic-disc layout in the chassis frame: hole and mic xy, the board's z span, and the
+    keel windows (x0, x1, z0, z1)."""
+    cx, cy = MIC_CTR
+    r = MIC_PCD / 2
+    holes = [(cx + r * math.cos(math.radians(a)), cy + r * math.sin(math.radians(a))) for a in MIC_HOLE_ANG]
+    h = MIC_SQ / 2
+    mics = [(cx + sx * h, cy + sy * h) for sx in (-1, 1) for sy in (-1, 1)]
+    zt = MIC_PLANE - MIC_WASHER[2]  # board top (port face)
+    zb = zt - MIC_PCB_T
+    ky = CAN_KEEL[0] - CAN_KEEL[1] / 2  # keel inner face
+    half = math.sqrt((MIC_D / 2) ** 2 - ky**2) + MIC_WIN[0]
+    win = (cx - half, cx + half, zb - MIC_COMP_EDGE - MIC_WIN[1], zt + MIC_WIN[1])
+    return {"holes": holes, "mics": mics, "zt": zt, "zb": zb, "win": win}
+
+
+def canopy_mic_lines() -> tuple[list[str], float]:
+    """P6d (Q30 b): keel windows, 3 insert bosses and 4 port tubes, built after the root
+    rounds (they'd pick up the new loops on the ceiling). Volume: overlaps with ribs, wedges
+    and the root rounds are ignored (a few mm³ against the canopy's 3 % tolerance)."""
+    g = mic_geom()
+    wx0, wx1, wz0, wz1 = g["win"]
+    rw = (wz1 - wz0) / 2
+    lines: list[str] = []
+    vol = 0.0
+    ky, kt, _ = CAN_KEEL
+    for sg in (-1, 1):  # stadium window through each keel: Top plane (x, -z), along y
+        y0, y1 = sg * ky - kt / 2 - 0.1, sg * ky + kt / 2 + 0.1
+        zm = (wz0 + wz1) / 2
+        lines.append(
+            f"prof|{min(y0, y1):.3f} {max(y0, y1):.3f}|M {wx0 + rw:.4f} {-wz0:.4f} L {wx1 - rw:.4f} {-wz0:.4f} "
+            f"a {wx1 - rw:.4f} {-zm:.4f} {wx1 - rw:.4f} {-wz1:.4f} L {wx0 + rw:.4f} {-wz1:.4f} "
+            f"a {wx0 + rw:.4f} {-zm:.4f} {wx0 + rw:.4f} {-wz0:.4f}|cut|top"
+        )
+        vol -= kt * ((wx1 - wx0 - 2 * rw) * 2 * rw + math.pi * rw * rw)
+        # doublers over the window: outboard from the window top, inboard from the boss plane
+        # (the boss-side washers reach |y| 30.56 at z 89.6..90.6); crown-following top
+        dw, dx = MIC_DBL
+        xa, xb = wx0 - dx, wx1 + dx
+        xc, zc, _ = canopy_crown()
+        for face, zd in ((1, wz1), (-1, MIC_PLANE)):
+            yi = sg * ky + face * sg * kt / 2  # keel face
+            yo = yi + face * sg * dw
+            xw = xa - (can_top_z(xa, CAN_T) - zd)  # 45° wedge back to the skin
+            poly = [*_crown_top(xw, xb), (xb, zd), (xa, zd)]
+            pts = [f"M {poly[0][0]:.6f} {-poly[0][1]:.6f}"]
+            px, pz = poly[0]
+            for q in poly[1:]:
+                if q[0] == "arc":
+                    _, qxc, qzc, x1, z1 = q
+                    cr = (px - qxc) * (-z1 + qzc) - (-pz + qzc) * (x1 - qxc)
+                    pts.append(f"{'A' if cr > 0 else 'a'} {qxc:.6f} {-qzc:.6f} {x1:.6f} {-z1:.6f}")
+                    px, pz = x1, z1
+                else:
+                    pts.append(f"L {q[0]:.6f} {-q[1]:.6f}")
+                    px, pz = q
+            lines.append(f"prof|{min(yi, yo):.3f} {max(yi, yo):.3f}|{' '.join(pts)}|boss|top")
+            n = 40  # area under the crown (skin underside), wedge as a triangle
+            hm = sum(can_top_z(xa + (xb - xa) * (i + 0.5) / n, CAN_T) - zd for i in range(n)) / n
+            hw_ = can_top_z(xa, CAN_T) - zd
+            vol += dw * ((xb - xa) * hm + hw_ * hw_ / 2)
+    ins_d, ins_l = MIC_INS
+    for hx, hy in g["holes"]:
+        ztop = can_top_z(hx, CAN_T - CAN_RIB_SINK)
+        lines.append(f"cyl|z|{hx:.4f} {hy:.4f}|{MIC_PLANE:.3f} {ztop:.3f}|{MIC_BOSS_D / 2}|boss")
+        lines.append(f"cyl|z|{hx:.4f} {hy:.4f}|{MIC_PLANE - 0.1:.3f} {MIC_PLANE + ins_l:.3f}|{ins_d / 2}|cut")
+        vol += math.pi * (MIC_BOSS_D / 2) ** 2 * (can_top_z(hx, CAN_T) - MIC_PLANE)
+        vol -= math.pi * (ins_d / 2) ** 2 * ins_l
+    to, tp, reach = MIC_TUBE
+    for mx, my in g["mics"]:
+        ztop = can_top_z(mx, CAN_T - CAN_RIB_SINK)
+        lines.append(f"cyl|z|{mx:.4f} {my:.4f}|{MIC_PLANE - reach:.3f} {ztop:.3f}|{to / 2}|boss")
+        lines.append(f"cyl|z|{mx:.4f} {my:.4f}|{MIC_PLANE - reach - 0.1:.3f} {can_top_z(mx) + 0.5:.3f}|{tp / 2}|cut")
+        vol += math.pi * (to / 2) ** 2 * (can_top_z(mx, CAN_T) - MIC_PLANE + reach)
+        vol -= math.pi * (tp / 2) ** 2 * (can_top_z(mx) - MIC_PLANE + reach)
+    return lines, vol
+
+
+def mic_washer_lines(path: str) -> list[str]:
+    """P8: TPU 85A washer (2 per hole: boss side and screw-head side) that floats the mic
+    disc (audio §4.2). Part frame: centred on the origin, z 0..t."""
+    od, idd, t = MIC_WASHER
+    v = math.pi * ((od / 2) ** 2 - (idd / 2) ** 2) * t
+    return [
+        f"part|{path}",
+        f"cyl|z|0 0|0 {t}|{od / 2}|boss",
+        f"cyl|z|0 0|-0.1 {t + 0.1}|{idd / 2}|cut",
+        f"expect|vol {v:.2f} {v * 0.02:.2f}|box {-od / 2} {od / 2} {-od / 2} {od / 2} 0 {t} 0.05",
+        "save",
+    ]
+
+
+def mic_disc_lines(path: str) -> list[str]:
+    """Envelope (interference only): the board plus a component layer under it, chassis
+    frame; the component layer is clear round each hole (Ø6 pads; Ø7.4 for the washer)."""
+    g = mic_geom()
+    cx, cy = MIC_CTR
+    r, rc = MIC_D / 2, MIC_WASHER[0] / 2 + 0.2
+    v = math.pi * r * r * (MIC_PCB_T + MIC_COMP_H) - 3 * math.pi * (1.65**2 * MIC_PCB_T + rc**2 * MIC_COMP_H)
+
+    def seg(rr: float, d: float) -> float:  # circle area beyond a chord at distance d
+        return rr * rr * math.acos(d / rr) - d * math.sqrt(rr * rr - d * d)
+
+    # keel strips (|y| >= MIC_EDGE_Y): components only MIC_COMP_EDGE tall (tick 98b)
+    ey, dz = MIC_EDGE_Y, MIC_COMP_H - MIC_COMP_EDGE
+    z0, z1 = g["zb"] - MIC_COMP_H, g["zb"] - MIC_COMP_EDGE
+    v -= 2 * dz * seg(r, ey)
+    v += dz * sum(seg(rc, ey - abs(hy)) for _, hy in g["holes"] if ey - abs(hy) < rc)  # overlap
+    strips = [
+        f"prof|{lo:.3f} {hi:.3f}|M {cx - r - 0.5:.3f} {-(z0 - 0.1):.3f} L {cx + r + 0.5:.3f} {-(z0 - 0.1):.3f} "
+        f"L {cx + r + 0.5:.3f} {-z1:.3f} L {cx - r - 0.5:.3f} {-z1:.3f} L {cx - r - 0.5:.3f} {-(z0 - 0.1):.3f}|cut|top"
+        for lo, hi in ((ey, r + 0.5), (-r - 0.5, -ey))
+    ]
+    return [
+        f"part|{path}",
+        f"cyl|z|{cx} {cy}|{g['zb'] - MIC_COMP_H:.3f} {g['zt']:.3f}|{r}|boss",
+        *[f"cyl|z|{hx:.4f} {hy:.4f}|{g['zb'] - 0.1:.3f} {g['zt'] + 0.1:.3f}|1.65|cut" for hx, hy in g["holes"]],
+        *[f"cyl|z|{hx:.4f} {hy:.4f}|{g['zb'] - MIC_COMP_H - 0.1:.3f} {g['zb']:.3f}|{rc}|cut" for hx, hy in g["holes"]],
+        *strips,
+        f"expect|vol {v:.1f} {v * 0.01:.1f}|box {cx - r} {cx + r} {cy - r} {cy + r} {g['zb'] - MIC_COMP_H:.2f} {g['zt']:.2f} 0.05",
+        "save",
+    ]
+
+
 def canopy_lines(path: str) -> list[str]:
     f = canopy_features()
     p = f["p"]
@@ -2910,8 +3096,9 @@ def canopy_lines(path: str) -> list[str]:
         ],
         *canopy_vents()[0],
         *canopy_rear_edges()[1],
+        *canopy_mic_lines()[0],
         PART_LABELS["canopy"],
-        f"expect|vol {f['vol'] + hood_collar()['vol']:.1f} {f['vol'] * 0.03:.1f}|box {CAN_X0} {fp[0]:.2f} {-hw} {hw} {-CAN_TAB[2]} {hood_collar()['zt']:.2f} 0.5",
+        f"expect|vol {f['vol'] + hood_collar()['vol'] + canopy_mic_lines()[1]:.1f} {f['vol'] * 0.03:.1f}|box {CAN_X0} {fp[0]:.2f} {-hw} {hw} {-CAN_TAB[2]} {hood_collar()['zt']:.2f} 0.5",
         "save",
     ]
     return lines
@@ -3320,6 +3507,7 @@ PART_MATERIAL = {
     "RB-PRT-001": "PET-CF",
     "RB-PRT-060": "PET-CF",  # speaker clamp (P7)
     "RB-PRT-061": "TPU",  # speaker gasket (P8)
+    "RB-PRT-062": "TPU",  # mic-disc washers (P8, tick 98)
     "RB-PRT-002": "PET-CF",
     "RB-PRT-003": "PET-CF",
     "RB-PRT-004": "PC",  # canopy (06 §6, P6): PC white (M4, tick 49)

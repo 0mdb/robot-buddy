@@ -178,6 +178,15 @@ On arrival: measure per §7 step 7 (disc, core board, mic port side, Flex speake
 
 ### 4.2 Mic porting and vibration isolation
 
+> Amendment (2026-11-05, Ben Q30 b, CAD tick 98): the Ø72.5 disc can't sit against the
+> canopy ceiling (rib grid + keels), so it hangs under the ribs and each port is a Ø1.2 bore
+> in a Ø3.2 tube from the top skin to the board: **port length ~5.7–6 mm, not ≤ 2 mm.**
+> Rough Helmholtz check (port 1.13 mm², front cavity ~3 mm³): resonance ≈ 13–14 kHz, still
+> above the 8 kHz band the 16 kHz pipeline uses. Verify in §7 (sweep or speech A/B against the
+> bare board). Seal: a 1 mm closed-cell foam ring between each tube end and the board (tube
+> reaches 0.3 into it). Float: M2.5 × 8 through the board's Ø3.3 holes (0.4 radial clear)
+> with a 1 mm TPU washer each side, into M2.5 inserts in the canopy bosses.
+
 - One acoustic port per mic: **Ø1.2 mm through-hole**, port length (canopy wall) **≤ 2 mm**
   so the port resonance stays well above the voice band. Align it to the MEMS port ±0.3 mm.
   **Confirm top-port vs bottom-port mics on the real board before modelling** (this
