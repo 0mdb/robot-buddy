@@ -104,6 +104,40 @@ From the datasheet (rev 1.03, 2025-02-26; tolerance ±0.5 unless noted):
 
 Confirm prices and stock before ordering. They were checked from search results, not live carts.
 
+### Measured from the vendor files (2026-11-05)
+
+Sources in `CAD/library/vendor/`: Seeed's DXF + STEP for the Flex (`ReSpeakerFlex/`, KiCad
+exports dated 2026-02-10) and the Same Sky datasheet PDF. Read with ezdxf / OpenCascade;
+check against the boards when they arrive.
+
+**Mic disc (circular-4)**
+- Ø**72.5**, PCB **1.5** (STEP; the DXF has a 1.2 dimension, which may be the port Ø).
+- **All parts on one face, ≤ 1.4 mm tall**; the other face is bare (logo, silkscreen).
+- Mics: Infineon **IM69D130** (bottom-port), so the **ports open on the bare logo face**
+  (Seeed: "the port is on the side with the logo"). **Bare face against the canopy**,
+  components face into the robot: the canopy seat is flat, with 1.4 mm of relief under it.
+- Mics on a **44 × 44 square**, at 45° to the hole pattern (radius ≈ 31.1).
+- **3 × M3 holes, Ø3.3, Ø6 pads, on a Ø62.5 PCD at 0° / 120° / 240°.** A Ø52.5 circle on
+  the drawing marks the inner layout.
+- FPC: 24-pin 0.5 mm with a locking latch; its position isn't in the STEP (check on arrival).
+
+**Core board**
+- **70.5 × 52.2**, PCB 1.5, **4 × M3 Ø3.3 on 62.5 × 44.2** (4.0 in from each edge).
+- Component side up to **9.0** above the board (2 × 4 header at 2.54 mm; two 470 µF cans at
+  7.7); **1.6** below (through-hole leads). Envelope ≈ 70.5 × 52.2 × 12.1.
+- One long edge (call it y 0) carries **USB-C** (x 29.5–38.4 from the corner, 1.3 proud
+  of the edge, top 4.9), the **3.5 mm jack** (x 54.8–62.1, 2.0 proud, top 7.1) and a
+  **JST PH 4-pin** (x 8.6–20.6). Plug room is needed off that edge: ~20 mm, or a right-angle cable.
+- **Speaker output: JST PH 2.0 mm 2-pin, upright** (`PH-2A-M`), at x 11.4–17.4 near the
+  opposite edge (y 46.9–51.6).
+
+**PAM8302A (#2130):** 24 × 15 × 2 mm without the header, 1.4 g, 3.5 mm screw terminals
+(about 10 mm tall). The page lists no mounting holes: plan a printed clip or foam tape.
+
+**Speaker → wiring:** the CMS-30205 lead ends in a PicoBlade 1.25 plug; the Flex output is
+JST PH 2.0 and the PAM8302A has screw terminals. Either cut the plug off for the terminals,
+or crimp a PH 2-pin onto the lead.
+
 ### Order list (2026-11-05)
 
 | Qty | Part | Where (Canada) | ≈ | Note |
