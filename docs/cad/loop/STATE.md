@@ -1,9 +1,9 @@
 # CAD loop state
 
 pass: 1, leg 3 (leg 2 ended 2026-11-01 06:15 at tick 67)
-tick: 98
+tick: 99
 sw: up (restarted by Ben 2026-11-02 ~18:40; part-cached rebuilds 1–7 min)
-current: none (tick 98 P6d-mic done; next P9 core-board layout study, then encoder-plug clash check once Ben sends the socket height)
+current: none (tick 99 P9 done; next P9b deck-wall drop case, encoder-plug clash once Ben sends the socket height)
 hypothesis: —
 baseline_commit: d8179d2 (cad)
 stop_after: none (Ben, leg 3, 2026-11-01: "until completed")

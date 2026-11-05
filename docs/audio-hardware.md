@@ -173,7 +173,12 @@ On arrival: measure per §7 step 7 (disc, core board, mic port side, Flex speake
   and the speaker (front, below face). Keep **≥ 70 mm from the speaker cone centre**
   to the nearest mic.
 - **Speaker fires forward**, at the child, below the TFT. It never fires up at the mics.
-- **Core board** on the base plate near the Pi USB ports. The FPC runs ≤ 20 cm, with a
+- > Amendment (CAD tick 99, Q31 default): no flat spot fits the 70.5 × 52.2 board. It stands
+  > on edge in the right (−y) side bay outboard of the Pi, parts facing the canopy wall, connector
+  > edge down, on a wall that is part of the Pi deck (3 × M2.5). The USB-C points down into the
+  > pocket between the right carriage and motor: **use a right-angle USB-C plug**; the cable runs
+  > aft over the carriage to the Pi's USB-A. FPC from the disc ≈ 10–15 cm.
+- ~~**Core board** on the base plate near the Pi USB ports.~~ The FPC runs ≤ 20 cm, with a
   loose loop and no sharp folds (bend radius ≥ 3 mm), and is secured so it cannot rattle.
 
 ### 4.2 Mic porting and vibration isolation

@@ -630,6 +630,69 @@ DECK_CABLE_FRONT = (
 )  # forward, to the bulkhead; ends 1 mm short of
 # the tongue's front edge (x 36): a slot end tangent to an edge makes the cut return null
 
+# P9 (tick 99): XVF3800 core board (Seeed DXF/STEP, audio-hardware §3: 70.5 x 52.2 x 1.5,
+# 4 x Ø3.3 on 62.5 x 44.2, parts 9.0 up / leads 1.6 down; USB-C, 3.5 jack, PH-4 on one long
+# edge). The voxel map of the canopy interior (tick 99) finds it only fits on edge: the free
+# bay outboard of the Pi on the -y side (x -74..42, z 27..92, |y| 36..48; +y is the Pi/HAT
+# port side, aft is the Pi's USB plug space). Board in the x-z plane, parts outboard (2.0
+# off the canopy wall), connector edge DOWN with the USB-C over the free pocket between the
+# right carriage and motor (x -50..-10, z 3..24) for a right-angle plug; USB-C end forward.
+# It hangs on a wall standing on the deck (the canopy lifts off, so nothing on it): the deck
+# widens to the wall aft of the motor (x <= -12); forward of that the wall overhangs the
+# motor from z 27.5. Its upper holes sit level with the keel (z >= 73, |y| 30.6..32.4), so
+# the standoff + wall is 5.0: M2.5 x 4 inserts (Ben 2026-11-05) pressed through Ø8 bosses,
+# M2.5 x 6 SHCS (M3 inserts need a 6.7 pocket).
+CORE_PCB = (70.5, 52.2, 1.5)
+CORE_HOLES = (62.5, 44.2)  # 4.0 in from each edge
+CORE_COMP_H, CORE_LEAD_H = 9.0, 1.6
+CORE_X1 = 4.0  # board's forward end (USB-C end); u runs aft from here
+CORE_ZB = 27.5  # connector edge (bottom): 1.5 over the right motor's top (26)
+CORE_GAP = 2.0  # parts to the canopy's side wall (|y| 51.2)
+CORE_BOSS_D, CORE_INS_D = 8.0, 3.6  # Ø8 boss, M2.5 x 4 insert pocket, through
+CORE_WALL_T = 2.0
+CORE_WALL_X = (-68.0, 6.0)
+CORE_WALL_TOP = 80.0
+CORE_DECK_X1 = -12.0  # deck widening ends aft of the motor / encoder (x -10)
+CORE_USB = (29.5, 38.4, 1.3, 4.9)  # u span, proud of the edge, top above the PCB
+CORE_JACK = (54.8, 62.1, 2.0, 7.1)
+
+
+def core_overhang_poly() -> list[tuple[float, float]]:
+    """P9: the wall forward of the deck (x CORE_DECK_X1 .. CORE_WALL_X[1]), deck frame (x, z).
+    The deck prints top up, so its underside rises at 45° from the deck's bottom + 1 (support-
+    free; 1.0 over the motor's top at x -10). The forward-lower standoff goes with it: the
+    board hangs on 3 of its 4 holes."""
+    zc = DECK_Z + DECK_T
+    x0, x1 = CORE_DECK_X1, CORE_WALL_X[1]
+    zb = -DECK_T + 1.0
+    return [(x0, zb), (x1, zb + (x1 - x0)), (x1, CORE_WALL_TOP - zc), (x0, CORE_WALL_TOP - zc)]
+
+
+def core_standoffs() -> list[tuple[float, float]]:
+    """Holes that get a standoff: all but the forward-lower one (under the 45° overhang)."""
+    zc = DECK_Z + DECK_T
+    poly = core_overhang_poly()
+    out = []
+    for hx, hz in core_geom()["holes"]:
+        if hx > CORE_DECK_X1:  # on the overhang: boss must sit above its 45° underside
+            zl = poly[0][1] + (hx - poly[0][0]) + zc
+            if hz - CORE_BOSS_D / 2 < zl:
+                continue
+        out.append((hx, hz))
+    return out
+
+
+def core_geom() -> dict:
+    """P9: core board in the chassis frame (u along -x from CORE_X1, v up from CORE_ZB)."""
+    L, W, t = CORE_PCB
+    y_out = -(CAN_HW - CAN_T) + CORE_GAP + CORE_COMP_H  # PCB outer (parts) face: -40.2
+    y_back = y_out + t  # -38.7
+    y_wall = y_back + (5.0 - CORE_WALL_T)  # wall's outboard face: -35.7
+    hu, hv = (L - CORE_HOLES[0]) / 2, (W - CORE_HOLES[1]) / 2
+    holes = [(CORE_X1 - u, CORE_ZB + v) for u in (hu, L - hu) for v in (hv, W - hv)]
+    return {"x": (CORE_X1 - L, CORE_X1), "z": (CORE_ZB, CORE_ZB + W), "y_out": y_out, "y_back": y_back,
+            "y_wall": (y_wall, y_wall + CORE_WALL_T), "holes": holes}
+
 
 def pi_holes_chassis() -> list[tuple[float, float]]:
     px, py, _ = PI_AT
@@ -651,6 +714,13 @@ def deck_features() -> list[tuple[str, tuple, float, float]]:
             z1,
         ),
     ]
+    g = core_geom()
+    zc = DECK_Z + DECK_T  # chassis z of the deck frame's 0
+    wy0, wy1 = g["y_wall"]
+    add += [
+        ("add", ("rect", CORE_WALL_X[0], CORE_DECK_X1, wy0, -DECK_HW + 0.5), z0, z1),  # widening
+        ("add", ("rect", CORE_WALL_X[0], CORE_DECK_X1, wy0, wy1), z0, CORE_WALL_TOP - zc),
+    ]  # + the overhang forward of CORE_DECK_X1 (core_overhang_poly, a Top-plane prism)
     cut: list[tuple[str, tuple, float, float]] = []
     for x, y in DECK_POSTS:
         cut.append(("all", ("circle", x, y, CLR_M3 / 2), 0, 0))
@@ -708,16 +778,58 @@ def feature_lines(feats: list) -> list[str]:
 
 def deck_lines(path: str) -> list[str]:
     feats = deck_features()
+    g = core_geom()
     vol = features_volume(
-        feats, (DECK_X[0] - 1, DECK_TONGUE[0] + 1), (-DECK_HW - 1, DECK_HW + 1)
+        feats, (DECK_X[0] - 1, DECK_TONGUE[0] + 1), (g["y_wall"][0] - 1, DECK_HW + 1)
     )
+    zc = DECK_Z + DECK_T
+    yb, yw1 = g["y_back"], g["y_wall"][1]
+    boss = []
+    wy0, wy1 = g["y_wall"]
+    pts = core_overhang_poly()
+    boss.append(f"prof|{wy0:.3f} {wy1:.3f}|M {pts[0][0]:.3f} {-pts[0][1]:.3f} "
+                + " ".join(f"L {x:.3f} {-z:.3f}" for x, z in pts[1:]) + "|boss|top")
+    vol += _poly_area(pts) * CORE_WALL_T
+    for hx, hz in core_standoffs():  # P9 standoffs: board back -> wall's inboard face, insert through
+        boss.append(f"cyl|y|{hx:.3f} {hz - zc:.3f}|{yb:.3f} {yw1:.3f}|{CORE_BOSS_D / 2}|boss")
+        boss.append(f"cyl|y|{hx:.3f} {hz - zc:.3f}|{yb - 0.1:.3f} {yw1 + 0.1:.3f}|{CORE_INS_D / 2}|cut")
+        vol += math.pi * (CORE_BOSS_D / 2) ** 2 * (g["y_wall"][0] - yb)  # outboard of the wall
+        vol -= math.pi * (CORE_INS_D / 2) ** 2 * (yw1 - yb)
     return [
         f"part|{path}",
         *feature_lines(feats),
+        *boss,
         PART_LABELS["deck"],
-        f"expect|vol {vol:.1f} {vol * 0.004:.1f}|box {DECK_X[0]} {DECK_TONGUE[0]} {-DECK_HW} {DECK_HW} {-DECK_T} 0 0.01",
+        f"expect|vol {vol:.1f} {vol * 0.004:.1f}|box {DECK_X[0]} {DECK_TONGUE[0]} {yb:.2f} {DECK_HW} {-DECK_T} {CORE_WALL_TOP - zc:.2f} 0.01",
         "save",
     ]
+
+
+def core_board_lines(path: str) -> list[str]:
+    """P9 envelope (interference only), chassis frame: PCB, the parts layer outboard, the
+    lead layer inboard (clear Ø8.4 round each standoff), USB-C and jack proud of the edge."""
+    g = core_geom()
+    (x0, x1), (z0, z1) = g["x"], g["z"]
+    yo, yb = g["y_out"], g["y_back"]
+    ycomp, ylead = yo - CORE_COMP_H, yb + CORE_LEAD_H
+
+    def blk(xa, xb, ya, yb_, za, zb_):  # Top plane (x, -z) prism along y
+        return (f"prof|{min(ya, yb_):.3f} {max(ya, yb_):.3f}|M {xa:.3f} {-za:.3f} L {xb:.3f} {-za:.3f} "
+                f"L {xb:.3f} {-zb_:.3f} L {xa:.3f} {-zb_:.3f}|boss|top")
+
+    ln = [f"part|{path}", blk(x0, x1, ycomp, ylead, z0, z1)]
+    v = (x1 - x0) * (z1 - z0) * (ylead - ycomp)
+    for u0, u1, proud, top in (CORE_USB, CORE_JACK):
+        ln.append(blk(CORE_X1 - u1, CORE_X1 - u0, yo - top, yo, z0 - proud, z0 + 0.5))
+        v += (u1 - u0) * proud * top
+    rc = CORE_BOSS_D / 2 + 0.2
+    for hx, hz in g["holes"]:
+        ln.append(f"cyl|y|{hx:.3f} {hz:.3f}|{yb:.3f} {ylead + 0.1:.3f}|{rc}|cut")
+        ln.append(f"cyl|y|{hx:.3f} {hz:.3f}|{ycomp - 0.1:.3f} {ylead + 0.1:.3f}|1.65|cut")
+        v -= math.pi * rc * rc * CORE_LEAD_H + math.pi * 1.65**2 * (yb - ycomp)
+    ln += [f"expect|vol {v:.1f} {v * 0.01:.1f}|box {x0:.2f} {x1:.2f} {ycomp:.2f} {ylead:.2f} "
+           f"{z0 - CORE_JACK[2]:.2f} {z1:.2f} 0.05", "save"]
+    return ln
 
 
 # ------------------------------------------------- envelopes (06 §9, 07 §4.5)
@@ -986,6 +1098,8 @@ def rebuild_manifest(win: str) -> list[str]:
         # P6d / P8 (tick 98, Q30 b): mic disc envelope + its TPU washers
         *mic_disc_lines(cad + r"\library\mic_disc_envelope.SLDPRT"),
         *mic_washer_lines(cad + r"\parts\RB-PRT-062_mic_washer.SLDPRT"),
+        # P9 (tick 99): XVF3800 core-board envelope (on the deck's wall)
+        *core_board_lines(cad + r"\library\xvf_core_envelope.SLDPRT"),
         # D6 (tick 89): follower-slide fit coupon (not in the assembly, not in the robot mass)
         *coupon_slide_strip_lines(cad + r"\parts\RB-CPN-001_slide_strip.SLDPRT"),
         *coupon_slide_rail_lines(cad + r"\parts\RB-CPN-002_slide_rail.SLDPRT"),
@@ -1032,6 +1146,7 @@ def rebuild_manifest(win: str) -> list[str]:
         f"comp|spk_gasket|{cad}\\parts\\RB-PRT-061_speaker_gasket.SLDPRT|{row(*speaker_tilt())}",
         f"comp|spk_module|{cad}\\library\\speaker_module_envelope.SLDPRT|{row(*speaker_tilt())}",
         f"comp|mic_disc|{cad}\\library\\mic_disc_envelope.SLDPRT|{row(ROT_I, (0, 0, 0))}",
+        f"comp|xvf_core|{cad}\\library\\xvf_core_envelope.SLDPRT|{row(ROT_I, (0, 0, 0))}",
         *[
             f"comp|mic_washer_{i}{tag}|{cad}\\parts\\RB-PRT-062_mic_washer.SLDPRT|{row(ROT_I, (hx, hy, z))}"
             for i, (hx, hy) in enumerate(mic_geom()["holes"])
@@ -2346,7 +2461,7 @@ MIC_PCD, MIC_HOLE_ANG = 62.5, (0.0, 120.0, 240.0)  # 3 x Ø3.3 holes
 MIC_CTR = (-30.0, 0.0)
 MIC_PLANE = 90.6  # boss / tube bottoms: comps 0.7 over the stack top (86) with 1 mm washers
 MIC_WASHER = (7.0, 3.0, 1.0)  # TPU 85A washer OD, ID (M2.5 clear), thickness; 2 per hole
-MIC_BOSS_D, MIC_INS = 8.0, (3.6, 5.0)  # M2.5 x 4 insert 🟡: drawn hole, pocket (L + 1)
+MIC_BOSS_D, MIC_INS = 8.0, (3.6, 5.0)  # M2.5 x 4 insert (Ben: OK): drawn hole, pocket (L + 1)
 MIC_TUBE = (3.2, 1.2, 0.3)  # port tube OD, port Ø, reach below MIC_PLANE (foam squeeze)
 MIC_WIN = (1.0, 0.5)  # keel window: clearance round the board's edge (x), over/under (z)
 # tick 98b: the first windows (3.9 tall, sized for the full 1.4 component layer) took S8

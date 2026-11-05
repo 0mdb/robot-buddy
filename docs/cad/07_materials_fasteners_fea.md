@@ -201,7 +201,9 @@ before ordering (screw engagement ≥ 1.3 d, tip ≥ 0.5 mm short of the pocket 
 | F8 | XVF3800 core board → plate | ~~M3 × 6~~ **M3 × 8** SHCS (A2) | M3 inserts, printed standoffs | PCB 1.6 → 4.4 | 4 |
 | F9 | Canopy → body | M3 × 8 **ISO 7380-2 flanged** button head | M3 inserts: bulkhead top ×2, plate rear posts ×2 | canopy 1.8 + boss land 1.2 → 5 | 4 |
 | F10 | Mic disc → canopy | M3 × 10 SHCS through TPU grommets | M3 inserts in ASA canopy bosses | PCB 1.6 + grommet 3 🟡 → 5.4 | 3 |
-> Amendment (loop tick 98, 2026-11-05, Q30 b): F10 → **M2.5 × 8 SHCS** through the disc's Ø3.3 holes (an M3 shank would touch the board; M2.5 leaves 0.4 radial), a 1 mm TPU 85A washer (RB-PRT-062) above and below the board, into **M2.5 × 4 inserts 🟡** (pocket Ø3.6 × 5.0) in three PC canopy bosses: the boss + skin is only 6.4 deep, too short for the 5.7 insert. PCB 1.5 (Seeed STEP).
+> Amendment (loop tick 98, 2026-11-05, Q30 b): F10 → **M2.5 × 8 SHCS** through the disc's Ø3.3 holes (an M3 shank would touch the board; M2.5 leaves 0.4 radial), a 1 mm TPU 85A washer (RB-PRT-062) above and below the board, into **M2.5 × 4 inserts ✅ (Ben 2026-11-05: in hand, fine)** (pocket Ø3.6 × 5.0) in three PC canopy bosses: the boss + skin is only 6.4 deep, too short for the 5.7 insert. PCB 1.5 (Seeed STEP).
+>
+> Amendment (loop tick 99, 2026-11-05, P9 / Q31 default): the XVF3800 **core board** hangs on edge from a wall on the Pi deck (RB-PRT-003): **3 × M2.5 × 6 SHCS** through the board's Ø3.3 holes into **3 × M2.5 × 4 inserts** pressed through Ø8 × 5 standoffs (the fourth, forward-lower hole has no standoff: 45° overhang over the right motor). M3 inserts don't fit (6.7 pocket; the keel leaves 5.0).
 | F11 | Face board FNK0104 → bulkhead | ~~M3 × 6~~ **M3 × 8** SHCS (A2) through the PCB (Ø3.2 holes, **42.0 × 78.0** c-c per the ES3C28P drawing; PCB 50 × 86 confirmed by Ben) | M3 inserts in bulkhead standoffs | PCB 1.6 → 4.4 | 4 |
 | F12 | Speaker box → bulkhead | M2.5 × 8 SHCS through the gasket | M2.5 inserts in bulkhead | 🟡 | 4 |
 | F13 | HC-SR04 housing, camera | as their existing models (M1.6 countersunk in the HC-SR04 housing) | — | — | — |

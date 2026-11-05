@@ -76,7 +76,8 @@ Baseline at loop start (commit on `cad`): plate rev 1, envelopes, Ben's imported
   **Tick 93:** speaker gasket done (RB-PRT-061). Left: mic grommets (mic-disc dims 🟡), motor-lead strain relief (R2b connector 🟡).
 - [x] P6d-mic `[sw]` (tick 98, Q30 b) mic disc under the rib grid: keel windows (3.1 tall) + doublers, 3 M2.5 bosses, 4 port tubes, TPU washers RB-PRT-062, disc envelope; S8 19.3 (+8.9 %), S5k 9.47
 - [x] P7b `[sw]` (tick 97) speaker pocket to the ordered Same Sky CMS-30205 (30 × 20 × 5.6, stadium): depth for 0.3 preload, stadium gasket, magnet pad, lead notch
-- [ ] P9 `[sw]` XVF3800 core-board mount (70.5 × 52.2 × 12, holes 62.5 × 44.2, USB-C/jack on one long edge; Seeed DXF): the rear bay is the Pi's USB plug space and the intake; needs a layout study (was blocked on dims, now open)
+- [x] P9 `[sw]` (tick 99, Q31 default) XVF3800 core board on edge in the −y side bay, on a wall standing on the Pi deck (3 × M2.5 standoffs, 45° overhang over the motor); voxel layout study
+- [ ] P9b `[sw]` deck wall: a drop/handling FEA case (board 30 g, 1 m drop) and lightening window if it passes easily (+11.6 g now)
 - [ ] ~~P9 old~~ `[blocked]` XVF3800 core-board mount aft between the carriages: needs the board's measured outline and holes (audio bench step 7)
 - [ ] P10 `[sw]` **Full assembly**: every part placed, interference clean (except the 🟡 motor-envelope overlaps), assembly mass + CoG, hero renders (E4)
   **Tick 76:** 33 components placed, 0 interferences, 663.1 g printed, CoG (−0.4, 0, 22.6); hero renders in. Left: blocked parts (P7 Q25, P8, P9) and fasteners.
