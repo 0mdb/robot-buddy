@@ -72,26 +72,35 @@ unverified (§7 step 2). If it does, skip this part. If not:
   just becomes part of the echo path the AEC models.
 - ≈ US$4. Canada: DigiKey.ca, PiShop.ca, Elmwood Electronics, BuyaPi.ca.
 
-### Speaker: **Adafruit #3923 Mini Oval Speaker, 8 Ω 1 W** (30 × 20 × 5 mm, pre-boxed)
+### Speaker: **Same Sky CMS-30205-158L120-67** (30 × 20 × 5.6 mm, 8 Ω, 1.5 W, IP67 front) — ordered 2026-11-05
 
 > Amendment (2026-11-05, Ben, Q25 a): the CE40P-8 (Ø40 × 23 deep + a 30 cc box) doesn't
 > fit behind the bulkhead grille (tick 70: 7.9 mm to the motor mount). Replaced by a
-> pre-boxed rectangular micro speaker in the bulkhead pocket built for a 30 × 20 × 6
-> placeholder (`SPK_MOD` in `tools/chassis.py`, clamp RB-PRT-060, TPU gasket RB-PRT-061).
+> 30 × 20 micro speaker in the bulkhead pocket built for a 30 × 20 × 6 placeholder
+> (`SPK_MOD` in `tools/chassis.py`, clamp RB-PRT-060, TPU gasket RB-PRT-061).
 
-- 30 × 20 × 5 mm, 3 g, 8 Ω, 1 W, top-firing; ~110 mm lead on a Molex PicoBlade 1.25 mm
-  2-pin plug (datasheet; Adafruit's page says 30 mm). Cut the plug off for the PAM8302A's
-  screw terminals, or re-terminate to whatever the Flex JST is.
-- Has its own sealed back volume: no printed box. The 5 mm body sits in the 6 mm pocket
-  with the TPU gasket taking the extra 1 mm.
-- Voice only: a 30 × 20 driver rolls off below ~600–800 Hz. Intelligible, thin, never boomy.
-  That is acceptable for a kid robot and keeps the echo path linear for the AEC.
-- **Loudness and rating:** the PAM8302A can push ~1.5 W into 8 Ω at 5 V, more than the
-  speaker's 1 W. The §5 gain cap (trimmer set at the bench, then glued) also protects the speaker.
-- ≈ US$2. Canada: **DigiKey.ca** (Adafruit 3923), PiShop.ca, Elmwood. Buy 2 (one spare).
-- Alternative (same footprint, 1.5 W, IP67, 5.6 mm): Same Sky (CUI) **CMS-30205-158L120-67**
-  on DigiKey. Spill-proof is a plus around kids; pick it if the 3923 is out of stock.
-- Superseded: Dayton CE40P-8 (doesn't fit), Adafruit #3351 (bench only).
+From the datasheet (rev 1.03, 2025-02-26; tolerance ±0.5 unless noted):
+
+| | |
+|---|---|
+| Outline | **30 ± 0.3 × 20 ± 0.2**, rounded (oval) ends, not a rectangle; front face with a black net over the ports |
+| Depth | **5.6 ± 0.3** overall; the back carries a Ø17 ± 0.2 magnet boss on a stepped frame (rear frame 28.5 × 18.5 outer, 25.2 × 15.2 inner) |
+| Lead | 120 ± 5 mm, UL1571 30 AWG, exits the **short end in the plane of the frame**, with a glue blob 0.6 proud of the back; Molex 51021-0200 (PicoBlade 1.25, 2-pin) housing 4.2 × 3.2 × 4.0 |
+| Electrical | 8 Ω (6.8–9.2); 1.5 W rated, 2.0 W max; Fo 900 Hz (720–1080); response Fo–20 kHz |
+| SPL | 96 dB (93–99) at 1 W / **10 cm** → ≈ 88 dB at 25 cm, ≈ 76 dB at 1 m |
+| Other | 4.6 g; IP67 (front side); −40…70 °C; T-S: Qts 4.6, Vas 0.0155 (free air) |
+
+- A bare micro driver with a closed magnet back, not a boxed module: it needs a **seal round
+  its front rim** so the front and back waves don't meet (acoustic short). The gasket must
+  follow the oval, not the pocket's rectangle (see CAD notes).
+- **Loudness (§5):** 1 W gives ≈ 88 dB at 25 cm, over the 85 dBA target, so the gain cap
+  lands near 0.5 W. The PAM8302A (~1.5 W into 8 Ω at 5 V) stays inside the 1.5 W rating.
+- Voice only (Fo 900 Hz): intelligible, thin, no bass. Fine for speech and for the AEC.
+- CAD (next loop tick): `SPK_MOD` 30 × 20 × 6 → 30 × 20 × 5.6 with oval ends; gasket
+  ring to the oval; pocket depth set so the clamp preloads the gasket (today the 7.2 mm
+  stand-off leaves ~1.6 mm of air behind a 5.6 speaker: nothing presses it); a lead slot
+  at one short end for the 120 mm lead + PicoBlade plug.
+- Superseded: Adafruit #3923 (30 × 20 × 5, alternative), Dayton CE40P-8 (doesn't fit), Adafruit #3351 (bench only).
 
 Confirm prices and stock before ordering. They were checked from search results, not live carts.
 
@@ -99,15 +108,15 @@ Confirm prices and stock before ordering. They were checked from search results,
 
 | Qty | Part | Where (Canada) | ≈ | Note |
 |---|---|---|---|---|
-| 1 | Seeed **reSpeaker Flex XVF3800 Circular-4, without XIAO** (USB firmware) | seeedstudio.com, ca.robotshop.com, DigiKey.ca | US$55–60 | The "with XIAO ESP32S3" kits ship I2S firmware. Some resellers show pre-order 4–8 weeks: check stock first |
-| 2 | Adafruit **#3923** mini oval speaker 8 Ω 1 W | DigiKey.ca, PiShop.ca | US$2 | one spare |
-| 1 | Adafruit **#2130** PAM8302A 2.5 W mono amp | DigiKey.ca, PiShop.ca, Elmwood | US$4 | conditional (§7 step 2), but cheaper than a second order |
+| ✅ | Seeed **reSpeaker Flex XVF3800 Circular-4** (ordered 2026-11-05; check it shipped with USB firmware, else `dfu-util` per Seeed) | seeedstudio.com, ca.robotshop.com, DigiKey.ca | US$55–60 | The "with XIAO ESP32S3" kits ship I2S firmware. Some resellers show pre-order 4–8 weeks: check stock first |
+| ✅ | Same Sky **CMS-30205-158L120-67** speaker (ordered 2026-11-05) | DigiKey | — | chosen over the #3923 |
+| ✅ | Adafruit **#2130** PAM8302A 2.5 W mono amp (ordered 2026-11-05) | DigiKey.ca, PiShop.ca, Elmwood | US$4 | conditional (§7 step 2), but cheaper than a second order |
 | 1 | Short **USB-A → USB-C** cable, 15–20 cm, right-angle C end if possible | any | — | Pi → core board |
 | 1 | 1 mm **closed-cell foam, adhesive** (EPDM/neoprene) | any | — | mic-port gasket rings (§4.2) |
 | — | Acoustic mesh / speaker cloth scrap | any | — | optional, behind the grille (§4.3) |
 
 Printed, not bought: mic-disc grommets (TPU 95A, P8), speaker gasket RB-PRT-061, clamp RB-PRT-060.
-On arrival: measure per §7 step 7 (disc, core board, mic port side, Flex speaker JST pitch, the #3923 lead exit side).
+On arrival: measure per §7 step 7 (disc, core board, mic port side, Flex speaker JST pitch, which short end the speaker lead should exit).
 
 ## 4. Placement, isolation and porting (drives the CAD)
 
@@ -176,7 +185,7 @@ concern. Twist the speaker leads and route them away from the motor leads.
 - **Our target** (much stricter): **≤ 85 dBA at 25 cm** at maximum volume, normal speech
   ≈ 65–70 dBA at 1 m.
 - Layers, from hardware up:
-  1. 8 Ω driver + 5 V amp → physically ≈ 1–1.5 W max into the 1 W #3923 (SPL at 25 cm measured in §7 step 5).
+  1. 8 Ω driver + 5 V amp → physically ≈ 1–1.5 W max into the 1.5 W CMS-30205 (≈ 88 dB at 25 cm per watt; SPL measured in §7 step 5).
   2. Amp gain (PAM8302A trimmer, or the XVF output gain saved to flash) set during §7 step 5, then **glued or recorded**.
   3. Supervisor hard cap: a `max_volume` config the dashboard slider cannot exceed
      (today it maps 0–100% straight through, `tts_worker.py` `TTS_CMD_SET_VOLUME`).
@@ -223,8 +232,8 @@ Pass → write the measured numbers back into this doc and build the envelopes.
 - Seeed wiki, reSpeaker XVF3800 USB 4-Mic Array: https://wiki.seeedstudio.com/respeaker_xvf3800_introduction/
 - XMOS XVF3800 user guide v3.2.1: https://www.xmos.com/documentation/XM-014888-PC/pdf/xvf3800_user_guide_v3.2.1.pdf
 - TI LM48511: https://www.ti.com/product/lm48511
-- Adafruit #3923 Mini Oval Speaker 8 Ω 1 W: https://www.adafruit.com/product/3923 (datasheet: https://mm.digikey.com/Volume0/opasdata/d220001/medias/docus/902/3923_Web.pdf)
-- Same Sky CMS-30205-158L120-67 (alternative): https://www.digikey.com/en/products/detail/same-sky-formerly-cui-devices/CMS-30205-158L120-67/12424500
+- Same Sky CMS-30205-158L120-67 datasheet: https://www.sameskydevices.com/product/resource/cms-30205-158l120-67.pdf
+- Adafruit #3923 Mini Oval Speaker 8 Ω 1 W (alternative): https://www.adafruit.com/product/3923 (datasheet: https://mm.digikey.com/Volume0/opasdata/d220001/medias/docus/902/3923_Web.pdf)
 - Dayton CE40P-8 (superseded): https://www.daytonaudio.com/product/1145/ce40p-8-1-1-2-mini-speaker-driver-8-ohm
 - Adafruit #3351 / #4445 enclosed speakers: https://www.adafruit.com/product/4445
 - Toys Regulations SOR/2011-17: https://laws-lois.justice.gc.ca/eng/regulations/sor-2011-17/page-1.html
