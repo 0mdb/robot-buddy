@@ -72,17 +72,42 @@ unverified (§7 step 2). If it does, skip this part. If not:
   just becomes part of the echo path the AEC models.
 - ≈ US$4. Canada: DigiKey.ca, PiShop.ca, Elmwood Electronics, BuyaPi.ca.
 
-### Speaker: **Dayton Audio CE40P-8** (1-1/2", 8 Ω, 2 W RMS)
+### Speaker: **Adafruit #3923 Mini Oval Speaker, 8 Ω 1 W** (30 × 20 × 5 mm, pre-boxed)
 
-- Sensitivity ≈ 80 dB @ 1 W/1 m, Fs ≈ 228 Hz. Voice band (300 Hz–4 kHz) is what matters; bass is irrelevant.
-- **8 Ω on purpose**: it halves the power any 5 V amp can push compared with 4 Ω, so the
-  driver itself bounds loudness (§5). It also lowers USB/rail current.
-- Needs a **sealed back box ≈ 30 cc** (printed, §4.3).
-- ≈ US$5. Canada: **Solen.ca** (Québec, Dayton distributor), Parts Express (ships to CA).
-- Bench-only alternative: Adafruit #3351 enclosed 3 W 4 Ω (70 × 31 × 17 mm,
-  pre-boxed). Fine for §7, **not** for the robot: 4 Ω on an LM48511 can reach ~5 W.
+> Amendment (2026-11-05, Ben, Q25 a): the CE40P-8 (Ø40 × 23 deep + a 30 cc box) doesn't
+> fit behind the bulkhead grille (tick 70: 7.9 mm to the motor mount). Replaced by a
+> pre-boxed rectangular micro speaker in the bulkhead pocket built for a 30 × 20 × 6
+> placeholder (`SPK_MOD` in `tools/chassis.py`, clamp RB-PRT-060, TPU gasket RB-PRT-061).
+
+- 30 × 20 × 5 mm, 3 g, 8 Ω, 1 W, top-firing; ~110 mm lead on a Molex PicoBlade 1.25 mm
+  2-pin plug (datasheet; Adafruit's page says 30 mm). Cut the plug off for the PAM8302A's
+  screw terminals, or re-terminate to whatever the Flex JST is.
+- Has its own sealed back volume: no printed box. The 5 mm body sits in the 6 mm pocket
+  with the TPU gasket taking the extra 1 mm.
+- Voice only: a 30 × 20 driver rolls off below ~600–800 Hz. Intelligible, thin, never boomy.
+  That is acceptable for a kid robot and keeps the echo path linear for the AEC.
+- **Loudness and rating:** the PAM8302A can push ~1.5 W into 8 Ω at 5 V, more than the
+  speaker's 1 W. The §5 gain cap (trimmer set at the bench, then glued) also protects the speaker.
+- ≈ US$2. Canada: **DigiKey.ca** (Adafruit 3923), PiShop.ca, Elmwood. Buy 2 (one spare).
+- Alternative (same footprint, 1.5 W, IP67, 5.6 mm): Same Sky (CUI) **CMS-30205-158L120-67**
+  on DigiKey. Spill-proof is a plus around kids; pick it if the 3923 is out of stock.
+- Superseded: Dayton CE40P-8 (doesn't fit), Adafruit #3351 (bench only).
 
 Confirm prices and stock before ordering. They were checked from search results, not live carts.
+
+### Order list (2026-11-05)
+
+| Qty | Part | Where (Canada) | ≈ | Note |
+|---|---|---|---|---|
+| 1 | Seeed **reSpeaker Flex XVF3800 Circular-4, without XIAO** (USB firmware) | seeedstudio.com, ca.robotshop.com, DigiKey.ca | US$55–60 | The "with XIAO ESP32S3" kits ship I2S firmware. Some resellers show pre-order 4–8 weeks: check stock first |
+| 2 | Adafruit **#3923** mini oval speaker 8 Ω 1 W | DigiKey.ca, PiShop.ca | US$2 | one spare |
+| 1 | Adafruit **#2130** PAM8302A 2.5 W mono amp | DigiKey.ca, PiShop.ca, Elmwood | US$4 | conditional (§7 step 2), but cheaper than a second order |
+| 1 | Short **USB-A → USB-C** cable, 15–20 cm, right-angle C end if possible | any | — | Pi → core board |
+| 1 | 1 mm **closed-cell foam, adhesive** (EPDM/neoprene) | any | — | mic-port gasket rings (§4.2) |
+| — | Acoustic mesh / speaker cloth scrap | any | — | optional, behind the grille (§4.3) |
+
+Printed, not bought: mic-disc grommets (TPU 95A, P8), speaker gasket RB-PRT-061, clamp RB-PRT-060.
+On arrival: measure per §7 step 7 (disc, core board, mic port side, Flex speaker JST pitch, the #3923 lead exit side).
 
 ## 4. Placement, isolation and porting (drives the CAD)
 
@@ -92,7 +117,7 @@ Confirm prices and stock before ordering. They were checked from search results,
         top canopy  ── mic disc (Ø73, ports UP, horizontal)        ← farthest from motors + speaker
         ┌───────────────────────────────┐
         │  TFT face (front, +X)         │
-        │  speaker grille below face ──►│  CE40P-8 faces forward (+X)
+        │  speaker grille below face ──►│  #3923 micro speaker faces forward (+X)
         │  [core board]  [Pi 5]         │  core board on base plate, short USB to Pi
         │══ base plate ═════════════════│
         └─ motors front (+X), idlers rear ┘
@@ -122,9 +147,9 @@ Confirm prices and stock before ordering. They were checked from search results,
 
 ### 4.3 Speaker enclosure and grille
 
-- **Sealed printed back box ~30 cc**, 100% walls (no infill air paths), with the driver
-  flange gasketed. Mount the box to the shell through the gasket, not hard-bolted, to
-  keep the chassis from becoming a soundboard. Its rear wave stays out of the chassis cavity.
+- ~~Sealed printed back box ~30 cc~~ (2026-11-05: the pre-boxed #3923 has its own back
+  volume). The module is clamped into the bulkhead pocket through the TPU gasket
+  (RB-PRT-061), not hard-bolted, so the chassis doesn't become a soundboard.
 - **Grille**: openings **≤ 2 mm** (holes or slots), wall 1.5–2 mm, open area ≥ 35% of
   the cone area. Put a fine mesh or fabric behind it so a pencil or toothpick cannot
   reach the cone.
@@ -151,7 +176,7 @@ concern. Twist the speaker leads and route them away from the motor leads.
 - **Our target** (much stricter): **≤ 85 dBA at 25 cm** at maximum volume, normal speech
   ≈ 65–70 dBA at 1 m.
 - Layers, from hardware up:
-  1. 8 Ω driver + 5 V amp → physically ≈ 1.5–3 W max. CE40P-8 at 1 W ≈ 80 dB @ 1 m.
+  1. 8 Ω driver + 5 V amp → physically ≈ 1–1.5 W max into the 1 W #3923 (SPL at 25 cm measured in §7 step 5).
   2. Amp gain (PAM8302A trimmer, or the XVF output gain saved to flash) set during §7 step 5, then **glued or recorded**.
   3. Supervisor hard cap: a `max_volume` config the dashboard slider cannot exceed
      (today it maps 0–100% straight through, `tts_worker.py` `TTS_CMD_SET_VOLUME`).
@@ -198,6 +223,8 @@ Pass → write the measured numbers back into this doc and build the envelopes.
 - Seeed wiki, reSpeaker XVF3800 USB 4-Mic Array: https://wiki.seeedstudio.com/respeaker_xvf3800_introduction/
 - XMOS XVF3800 user guide v3.2.1: https://www.xmos.com/documentation/XM-014888-PC/pdf/xvf3800_user_guide_v3.2.1.pdf
 - TI LM48511: https://www.ti.com/product/lm48511
-- Dayton CE40P-8: https://www.daytonaudio.com/product/1145/ce40p-8-1-1-2-mini-speaker-driver-8-ohm
+- Adafruit #3923 Mini Oval Speaker 8 Ω 1 W: https://www.adafruit.com/product/3923 (datasheet: https://mm.digikey.com/Volume0/opasdata/d220001/medias/docus/902/3923_Web.pdf)
+- Same Sky CMS-30205-158L120-67 (alternative): https://www.digikey.com/en/products/detail/same-sky-formerly-cui-devices/CMS-30205-158L120-67/12424500
+- Dayton CE40P-8 (superseded): https://www.daytonaudio.com/product/1145/ce40p-8-1-1-2-mini-speaker-driver-8-ohm
 - Adafruit #3351 / #4445 enclosed speakers: https://www.adafruit.com/product/4445
 - Toys Regulations SOR/2011-17: https://laws-lois.justice.gc.ca/eng/regulations/sor-2011-17/page-1.html

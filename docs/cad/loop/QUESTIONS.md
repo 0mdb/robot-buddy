@@ -106,5 +106,5 @@ The loop adds questions here and moves on. Answer inline (`**A:** …`); the nex
 - TT gearbox width across the screw holes, and the encoder housing's size (the 323 / 197 mm³ envelope overlaps).
 - UPS HAT: plan positions from photos (`HAT_ports.md`, 2026-11-01). Still: HAT PCB underside height, buzzer projection + height, NVMe adapter overhang.
 - M2.5 / M3 insert stock: OD × length (07 §4.2).
-- Encoder TT motors: is there a connector on the encoder board (PH2.0 6P?) or a fixed lead? (R2b)
-- CE40P-8 frame size and mounting holes, once in hand; XVF3800 Flex boards (audio §7 step 7).
+- ~~Encoder TT motors: is there a connector on the encoder board (PH2.0 6P?) or a fixed lead? (R2b)~~ **A (Ben, 2026-11-05): a socket on the encoder board, facing inboard (toward the chassis centre).** R2b: no inline connector needed. Still wanted: the socket's height on the housing and the plug + cable depth inboard. The encoder's inboard face is at |y| 30.7, x −10…3.3, z 1…26, and the reflex board edge sits 0.7 mm away (board top z 13.6, Pi deck above). A plug below z ~14 hits the board.
+- ~~CE40P-8 frame size~~ (Q25 a: speaker is now Adafruit #3923, 30 × 20 × 5, ordered 2026-11-05: lead exit side on arrival); XVF3800 Flex boards (audio §7 step 7).
