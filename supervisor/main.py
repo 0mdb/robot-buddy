@@ -138,9 +138,45 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument("--log-level", default="INFO", help="Log level")
     p.add_argument(
-        "--usb-speaker-device", default="default", help="ALSA speaker device"
+        "--usb-speaker-device",
+        default="default",
+        help="ALSA speaker device, or match:<card name>",
     )
-    p.add_argument("--usb-mic-device", default="default", help="ALSA mic device")
+    p.add_argument(
+        "--usb-mic-device",
+        default="default",
+        help="ALSA mic device, or match:<card name> (e.g. match:reSpeaker)",
+    )
+    p.add_argument(
+        "--usb-mic-channels",
+        type=int,
+        default=1,
+        help="Channels to capture (XVF3800 USB firmware: 2)",
+    )
+    p.add_argument(
+        "--usb-mic-channel",
+        type=int,
+        default=0,
+        help="Which captured channel feeds wake word / VAD / STT (0-based)",
+    )
+    p.add_argument(
+        "--xvf-control",
+        action="store_true",
+        help="Poll the XVF3800 over USB control for voice direction (ear.event.doa)",
+    )
+    p.add_argument(
+        "--doa-offset-deg",
+        type=float,
+        default=0.0,
+        help="XVF3800 azimuth of the robot's forward direction (bench calibration)",
+    )
+    p.add_argument(
+        "--doa-sign",
+        type=int,
+        default=1,
+        choices=(-1, 1),
+        help="-1 if the array's azimuth runs clockwise seen from above",
+    )
     p.add_argument(
         "--wakeword-model",
         default=os.environ.get(
@@ -320,6 +356,14 @@ async def async_main(args: argparse.Namespace) -> None:
         if planner_enabled:
             ear_init = {
                 "mic_device": args.usb_mic_device,
+                "mic_channels": args.usb_mic_channels,
+                "mic_channel": args.usb_mic_channel,
+                "xvf": {
+                    "enabled": args.xvf_control,
+                    "poll_hz": 10.0,
+                    "doa_offset_deg": args.doa_offset_deg,
+                    "doa_sign": args.doa_sign,
+                },
                 "mic_socket_path": workers.mic_socket_path,
                 "wakeword_model_path": args.wakeword_model,
                 "wakeword_threshold": 0.5,

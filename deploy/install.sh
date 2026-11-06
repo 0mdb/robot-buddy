@@ -59,6 +59,7 @@ sudo apt-get install -y --no-install-recommends \
     python3-picamera2 \
     python3-libcamera \
     libcamera-dev \
+    libusb-1.0-0 \
     2>/dev/null || warn "apt install skipped (non-RPi OS or no network). picamera2 may be unavailable."
 
 # ── 3. Create venv with system-site-packages (for picamera2) ─────────────────
@@ -86,7 +87,7 @@ uv pip install --python "$VENV/bin/python" -e .
 # no wheels for py3.12+/aarch64; we only use the onnx inference backend).
 info "Installing ear worker dependencies..."
 uv pip install --python "$VENV/bin/python" \
-    'onnxruntime>=1.16' 'scipy>=1.3' 'scikit-learn>=1' 'tqdm' 'requests'
+    'onnxruntime>=1.16' 'scipy>=1.3' 'scikit-learn>=1' 'tqdm' 'requests' 'pyusb>=1.2'
 uv pip install --python "$VENV/bin/python" --no-deps 'openwakeword>=0.6'
 
 ok "dependencies installed"

@@ -22,6 +22,7 @@ from typing import Any
 
 import numpy as np
 
+from supervisor.devices.alsa_device import resolve_alsa_device
 from supervisor.messages.envelope import Envelope
 from supervisor.messages.types import (
     SYSTEM_AUDIO_LINK_DOWN,
@@ -151,7 +152,14 @@ class TTSWorker(BaseWorker):
         if t == TTS_CONFIG_INIT:
             self._audio_mode = str(p.get("audio_mode", "direct"))
             self._spk_socket_path = str(p.get("spk_socket_path", ""))
-            self._speaker_device = str(p.get("speaker_device", "default"))
+            spec = str(p.get("speaker_device", "default"))
+            resolved = resolve_alsa_device(spec)
+            if resolved is None:
+                # Echo cancellation needs playback through the XVF3800 card
+                # (its USB playback is the AEC reference): say so loudly.
+                log.warning("no ALSA card matches %r, using 'default'", spec)
+                resolved = "default"
+            self._speaker_device = resolved
             self._tts_endpoint = str(p.get("tts_endpoint", ""))
             if "ring_mod_hz" in p:
                 self._ring_mod_hz = max(0.0, float(p.get("ring_mod_hz", 0.0)))

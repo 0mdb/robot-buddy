@@ -25,6 +25,8 @@ ear = [
     "onnxruntime>=1.16",
     "scipy>=1.3",
     "scikit-learn>=1",
+    # XVF3800 (reSpeaker Flex) USB control: voice direction, tuning. Needs libusb-1.0.
+    "pyusb>=1.2",
 ]
 rpi = [
     "picamera2>=0.3.17",
