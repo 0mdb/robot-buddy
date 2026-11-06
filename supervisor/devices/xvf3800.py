@@ -25,7 +25,7 @@ import math
 import struct
 import time
 from dataclasses import dataclass
-from typing import Protocol, Sequence
+from typing import Any, Protocol, Sequence
 
 log = logging.getLogger(__name__)
 
@@ -82,6 +82,10 @@ PARAMS: dict[str, Param] = {
     "AEC_FIXEDBEAMSONOFF": Param(33, 37, 1, "int32", "rw"),
     "AEC_FIXEDBEAMSAZIMUTH_VALUES": Param(33, 81, 2, "radians", "rw"),
     "AEC_FIXEDBEAMSGATING": Param(33, 83, 1, "uint8", "rw"),
+    # 1 = the processed ASR beam goes to the output; ASROUTGAIN is its fixed gain
+    # (linear, 0..1000). The Flex delivers ch 0 ~30 dB quiet at the default.
+    "AEC_ASROUTONOFF": Param(33, 35, 1, "int32", "rw"),
+    "AEC_ASROUTGAIN": Param(33, 36, 1, "float", "rw"),
     # audio manager
     "AUDIO_MGR_MIC_GAIN": Param(35, 0, 1, "float", "rw"),
     "AUDIO_MGR_REF_GAIN": Param(35, 1, 1, "float", "rw"),
@@ -96,6 +100,9 @@ PARAMS: dict[str, Param] = {
     "DOA_VALUE": Param(20, 18, 2, "uint16", "ro"),
     "GPO_READ_VALUES": Param(20, 0, 5, "uint8", "ro"),
     "GPO_WRITE_VALUE": Param(20, 1, 2, "uint8", "wo"),
+    # GPI pin select (0 = onboard mute button) and its level, 1 = active (muted)
+    "GPI_INDEX": Param(36, 1, 1, "uint8", "rw"),
+    "GPI_VALUE": Param(36, 4, 1, "uint8", "ro"),
     # post-processing
     "PP_AGCONOFF": Param(17, 10, 1, "int32", "rw"),
     "PP_AGCMAXGAIN": Param(17, 11, 1, "float", "rw"),
@@ -104,6 +111,23 @@ PARAMS: dict[str, Param] = {
     "PP_MIN_NS": Param(17, 21, 1, "float", "rw"),
     "PP_MIN_NN": Param(17, 22, 1, "float", "rw"),
 }
+
+
+# Settings the supervisor may write at start-up / from the dashboard. They are
+# written every time the board is opened and never saved to its flash, so the
+# repo config stays the source of truth (a swapped board behaves the same).
+TUNABLE: frozenset[str] = frozenset(
+    {
+        "AEC_ASROUTGAIN",
+        "AUDIO_MGR_MIC_GAIN",
+        "AUDIO_MGR_REF_GAIN",
+        "PP_AGCONOFF",
+        "PP_AGCMAXGAIN",
+        "PP_AGCDESIREDLEVEL",
+        "PP_MIN_NS",
+        "PP_MIN_NN",
+    }
+)
 
 
 class XvfError(RuntimeError):
@@ -280,6 +304,17 @@ class Xvf3800:
 
     def save_configuration(self) -> None:
         self.write("SAVE_CONFIGURATION", [1])
+
+    def apply_settings(self, settings: dict[str, Any]) -> list[str]:
+        """Write each TUNABLE setting (scalar or list); returns the names written."""
+        done: list[str] = []
+        for name, value in settings.items():
+            if name not in TUNABLE:
+                raise XvfError(f"{name} is not a tunable setting")
+            vals = list(value) if isinstance(value, (list, tuple)) else [value]
+            self.write(name, vals)
+            done.append(name)
+        return done
 
 
 def _param(name: str) -> Param:

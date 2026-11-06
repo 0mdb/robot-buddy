@@ -3,6 +3,12 @@
 Absorbs v1 audio_orchestrator.py + lip_sync.py.  Never calls face_client —
 reports energy to Core, which sends face commands.
 
+All sound goes through one always-open ``PlaybackStream`` (audio/playback.py):
+speech on the voice source, chimes on the fx source, mixed. With the reSpeaker
+Flex that stream is the echo canceller's reference, so nothing else may open
+the speaker. Lip-sync energy and TTS_EVENT_FINISHED follow the mixer clock,
+not the arrival of audio.
+
 Mic capture has moved to the ear worker (ear_worker.py).
 Mode A (direct): TTS PCM ← rb-spk socket.
 Mode B (relay):  TTS PCM ← NDJSON actions.
@@ -17,11 +23,21 @@ import math
 import socket
 import struct
 import time
+import wave
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 
+from supervisor.audio.format import (
+    CHUNK_BYTES,
+    MAX_FRAME_BYTES,
+    SAMPLE_RATE,
+    SAMPLE_WIDTH,
+    SOCKET_RETRY_INTERVAL_S,
+    SOCKET_RETRY_TIMEOUT_S,
+)
+from supervisor.audio.playback import AplaySink, PcmSink, PlaybackStream
 from supervisor.devices.alsa_device import resolve_alsa_device
 from supervisor.messages.envelope import Envelope
 from supervisor.messages.types import (
@@ -45,18 +61,10 @@ from supervisor.workers.base import BaseWorker, worker_main
 
 log = logging.getLogger(__name__)
 
-# Audio constants (Appendix C)
-SAMPLE_RATE = 16000
-SAMPLE_WIDTH = 2  # 16-bit signed LE
-CHANNELS = 1
-CHUNK_BYTES = 320  # 10ms
+__all__ = ["SAMPLE_RATE", "TTSWorker", "LipSyncTracker", "compute_rms_energy"]
 
 # Energy emission rate limit
 _ENERGY_MIN_INTERVAL_S = 1.0 / 20  # 20 Hz max
-
-# Socket connect retry
-_SOCKET_RETRY_INTERVAL_S = 0.1
-_SOCKET_RETRY_TIMEOUT_S = 30.0
 
 # Spk socket stream idle detection — gap > this ends the current playback stream.
 # Conversation audio arrives as a burst from the server; primarily terminated
@@ -111,8 +119,9 @@ class TTSWorker(BaseWorker):
         self._speaker_device = "default"
         self._tts_endpoint = ""
 
-        # Volume / mute
+        # Volume / mute. _max_volume is the hard cap (tts.config.init only).
         self._volume: float = 0.8  # 80% default; overridden by TTS_CMD_SET_VOLUME
+        self._max_volume: float = 1.0
         self._muted: bool = False
         self._mute_chimes: bool = False
 
@@ -135,9 +144,17 @@ class TTSWorker(BaseWorker):
 
         # Socket connection (Mode A — speaker only)
         self._spk_sock: socket.socket | None = None
+        self._spk_sock_up = False
+        self._spk_link_sent: bool | None = None
+        # After a cancel, drop the rest of the conversation stream until its
+        # end-of-stream marker (or the idle gap) so it does not restart.
+        self._spk_discard = False
+        self._spk_stream_open = False
 
-        # Playback process
-        self._aplay_proc: asyncio.subprocess.Process | None = None
+        # Playback: one stream for everything (built at config time)
+        self._playback: PlaybackStream | None = None
+        self._sink_factory: Any = AplaySink  # tests swap in a fake sink
+        self._chimes: dict[str, bytes] = {}
 
         # Persistent HTTP client — reused across utterances to avoid TCP setup
         self._http_client: Any = None  # httpx.AsyncClient once created
@@ -161,6 +178,10 @@ class TTSWorker(BaseWorker):
                 resolved = "default"
             self._speaker_device = resolved
             self._tts_endpoint = str(p.get("tts_endpoint", ""))
+            if "max_volume" in p:
+                self._max_volume = max(0.0, min(1.0, int(p["max_volume"]) / 100.0))
+            if "volume" in p:
+                self._volume = max(0.0, min(1.0, int(p["volume"]) / 100.0))
             if "ring_mod_hz" in p:
                 self._ring_mod_hz = max(0.0, float(p.get("ring_mod_hz", 0.0)))
             if "ring_mod_mix" in p:
@@ -168,8 +189,10 @@ class TTSWorker(BaseWorker):
                     0.0, min(1.0, float(p.get("ring_mod_mix", 1.0)))
                 )
             log.info(
-                "configured: mode=%s ring_mod=%.1fHz mix=%.2f",
+                "configured: mode=%s device=%s max_volume=%.0f%% ring_mod=%.1fHz mix=%.2f",
                 self._audio_mode,
+                self._speaker_device,
+                self._max_volume * 100,
                 self._ring_mod_hz,
                 self._ring_mod_mix,
             )
@@ -179,21 +202,10 @@ class TTSWorker(BaseWorker):
             await self._speech_queue.put(dict(p))
 
         elif t == TTS_CMD_CANCEL:
-            self._cancel_event.set()
-            # Drain queue
-            while not self._speech_queue.empty():
-                try:
-                    self._speech_queue.get_nowait()
-                except asyncio.QueueEmpty:
-                    break
-            await self._kill_aplay()
-            if self._speaking:
-                self._speaking = False
-                self.send(TTS_EVENT_CANCELLED)
+            self._cancel()
 
         elif t == TTS_CMD_PLAY_CHIME:
-            chime_name = str(p.get("chime", "listening"))
-            asyncio.create_task(self._play_chime(chime_name))
+            self._play_chime(str(p.get("chime", "listening")))
 
         elif t == TTS_CMD_SET_VOLUME:
             vol_int = int(p.get("volume", 80))
@@ -218,16 +230,91 @@ class TTSWorker(BaseWorker):
             # Mode B: audio relay from Core
             if self._audio_mode == "relay":
                 data_b64 = p.get("data_b64", "")
-                if data_b64:
-                    pcm = base64.b64decode(data_b64)
-                    await self._play_pcm_chunk(pcm)
+                if data_b64 and self._playback is not None:
+                    self._playback.queue_voice(base64.b64decode(data_b64))
 
     def health_payload(self) -> dict[str, Any]:
+        pb = self._playback
         return {
             "speaking": self._speaking,
             "queue_depth": self._speech_queue.qsize(),
             "audio_mode": self._audio_mode,
+            "speaker_device": self._speaker_device,
+            "max_volume": round(self._max_volume * 100),
+            "volume": round(self._volume * 100),
+            "playback": {
+                "link_up": pb.link_up if pb else False,
+                "voice_pending_ms": pb.voice_pending_ms if pb else 0,
+                "frames": pb.frames_written if pb else 0,
+                "underruns": pb.underruns if pb else 0,
+            },
         }
+
+    # ── playback stream ───────────────────────────────────────────
+
+    def _start_playback(self) -> PlaybackStream:
+        sink: PcmSink = self._sink_factory(self._speaker_device)
+        self._playback = PlaybackStream(
+            sink,
+            max_volume=self._max_volume,
+            voice_fx=self._voice_frame,
+            fx_gain=lambda: 0.0 if self._mute_chimes else self._volume,
+            on_link=self._on_playback_link,
+        )
+        self._playback.start()
+        return self._playback
+
+    def _voice_frame(self, frame: bytes) -> bytes:
+        """Runs as each voice frame is played: lip sync, mute, ring mod, volume."""
+        energy = 0
+        for i in range(0, len(frame), CHUNK_BYTES):
+            energy = self._lip_sync.update_chunk(frame[i : i + CHUNK_BYTES])
+        now = time.monotonic()
+        if now - self._last_energy_t >= _ENERGY_MIN_INTERVAL_S:
+            self._last_energy_t = now
+            self.send(TTS_EVENT_ENERGY, {"energy": energy})
+        if self._muted:
+            return bytes(len(frame))
+        if self._ring_mod_hz > 0.0 and self._ring_mod_mix > 0.0:
+            frame = self._apply_ring_mod(frame)
+        if self._volume < 0.999:
+            frame = self._scale_pcm(frame)
+        return frame
+
+    def _on_playback_link(self, up: bool, reason: str) -> None:
+        if not up:
+            log.warning("playback down (%s) on %s", reason, self._speaker_device)
+        else:
+            log.info("playback up on %s", self._speaker_device)
+        self._update_spk_link(reason)
+
+    def _update_spk_link(self, reason: str = "") -> None:
+        """spk link = speaker socket connected AND the playback device open."""
+        up = self._spk_sock_up and bool(self._playback and self._playback.link_up)
+        if up == self._spk_link_sent:
+            return
+        self._spk_link_sent = up
+        if up:
+            self.send(SYSTEM_AUDIO_LINK_UP, {"socket": "spk"})
+        else:
+            self.send(
+                SYSTEM_AUDIO_LINK_DOWN, {"socket": "spk", "reason": reason or "down"}
+            )
+
+    def _cancel(self) -> None:
+        self._cancel_event.set()
+        while not self._speech_queue.empty():
+            try:
+                self._speech_queue.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+        if self._playback is not None:
+            self._playback.flush_voice()
+        if self._speaking:
+            self._speaking = False
+            if self._spk_stream_open:
+                self._spk_discard = True
+            self.send(TTS_EVENT_CANCELLED)
 
     async def run(self) -> None:
         """Main TTS loop — wait for config, connect sockets, process speech."""
@@ -237,6 +324,8 @@ class TTSWorker(BaseWorker):
         except asyncio.TimeoutError:
             log.error("no config received within 10s")
             return
+
+        self._start_playback()
 
         # Connect speaker socket (Mode A)
         if self._audio_mode == "direct":
@@ -259,9 +348,11 @@ class TTSWorker(BaseWorker):
             if self._http_client is not None:
                 await self._http_client.aclose()
                 self._http_client = None
+            if self._playback is not None:
+                await self._playback.stop()
 
     async def _play_tts(self, req: dict) -> None:
-        """Stream TTS audio from server and play via aplay."""
+        """Stream TTS audio from the server into the voice source."""
         text = req.get("text", "")
         emotion = req.get("emotion", "neutral")
         ref_seq = req.get("ref_seq", 0)
@@ -272,6 +363,7 @@ class TTSWorker(BaseWorker):
         self._speaking = True
         self._chunks_played = 0
         self._lip_sync.reset()
+        t0 = time.monotonic()
         self.send(TTS_EVENT_STARTED, {"ref_seq": ref_seq, "text": text})
 
         try:
@@ -302,26 +394,16 @@ class TTSWorker(BaseWorker):
                     self._speaking = False
                     return
 
-                # Start aplay subprocess
-                await self._start_aplay()
-                t0 = time.monotonic()
-
                 async for chunk in resp.aiter_bytes(CHUNK_BYTES):
                     if self._cancel_event.is_set():
                         break
-
-                    await self._play_pcm_chunk(chunk)
+                    if self._playback is not None:
+                        self._playback.queue_voice(chunk)
                     self._chunks_played += 1
 
-                    # Energy for lip sync (coalesced to 20 Hz)
-                    energy = self._lip_sync.update_chunk(chunk)
-                    now = time.monotonic()
-                    if now - self._last_energy_t >= _ENERGY_MIN_INTERVAL_S:
-                        self._last_energy_t = now
-                        self.send(TTS_EVENT_ENERGY, {"energy": energy})
-
-                # Wait for aplay to finish
-                await self._drain_aplay()
+                # Return once the speech has actually been played.
+                if self._playback is not None and not self._cancel_event.is_set():
+                    await self._playback.drain_voice()
 
         except asyncio.CancelledError:
             pass
@@ -330,75 +412,48 @@ class TTSWorker(BaseWorker):
             log.warning("TTS playback error: %s", e)
         finally:
             self._speaking = False
-            await self._kill_aplay()
             if not self._cancel_event.is_set():
                 self.send(
                     TTS_EVENT_FINISHED,
                     {
                         "ref_seq": ref_seq,
-                        "duration_ms": int((time.monotonic() - t0) * 1000)
-                        if "t0" in dir()
-                        else 0,
+                        "duration_ms": int((time.monotonic() - t0) * 1000),
                         "chunks_played": self._chunks_played,
                     },
                 )
 
     # ── Chime playback ────────────────────────────────────────────
 
-    async def _play_chime(self, name: str) -> None:
-        """Play a short chime WAV file via aplay."""
-        if self._mute_chimes:
-            return
-        chime_path = _CHIME_DIR / f"{name}.wav"
-        if not chime_path.exists():
-            log.warning("chime not found: %s", chime_path)
-            return
-
+    def _load_chime(self, name: str) -> bytes | None:
+        """Read a chime WAV once; it must be mono S16_LE at SAMPLE_RATE."""
+        if name in self._chimes:
+            return self._chimes[name]
+        path = _CHIME_DIR / f"{name}.wav"
+        if not path.exists():
+            log.warning("chime not found: %s", path)
+            return None
         try:
-            proc = await asyncio.create_subprocess_exec(
-                "aplay",
-                "-D",
-                self._speaker_device,
-                "-q",
-                str(chime_path),
-                stdin=asyncio.subprocess.DEVNULL,
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL,
-            )
-            await proc.wait()
-        except Exception:
-            log.exception("chime playback error")
+            with wave.open(str(path)) as w:
+                fmt = (w.getnchannels(), w.getsampwidth(), w.getframerate())
+                if fmt != (1, SAMPLE_WIDTH, SAMPLE_RATE):
+                    log.warning(
+                        "chime %s is %s, need mono S16 %d Hz", path, fmt, SAMPLE_RATE
+                    )
+                    return None
+                pcm = w.readframes(w.getnframes())
+        except (OSError, wave.Error) as e:
+            log.warning("cannot read chime %s: %s", path, e)
+            return None
+        self._chimes[name] = pcm
+        return pcm
 
-    # ── aplay lifecycle ───────────────────────────────────────────
-
-    async def _start_aplay(self) -> None:
-        """Start aplay subprocess for audio playback."""
-        await self._kill_aplay()
-        self._aplay_proc = await asyncio.create_subprocess_exec(
-            "aplay",
-            "-D",
-            self._speaker_device,
-            "-r",
-            str(SAMPLE_RATE),
-            "-f",
-            "S16_LE",
-            "-c",
-            str(CHANNELS),
-            "-t",
-            "raw",
-            "-q",
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.DEVNULL,
-        )
-        # Give aplay a moment to fail if the device is absent
-        await asyncio.sleep(0.15)
-        if self._aplay_proc.returncode is not None:
-            log.warning("aplay exited immediately — speaker device unavailable")
-            self.send(
-                SYSTEM_AUDIO_LINK_DOWN, {"socket": "spk", "reason": "aplay_failed"}
-            )
-            self._aplay_proc = None
+    def _play_chime(self, name: str) -> None:
+        """Mix a chime over whatever is playing."""
+        if self._mute_chimes or self._playback is None:
+            return
+        pcm = self._load_chime(name)
+        if pcm:
+            self._playback.queue_fx(pcm)
 
     def _scale_pcm(self, pcm: bytes) -> bytes:
         """Scale S16_LE PCM samples by self._volume (0.0–1.0)."""
@@ -445,54 +500,7 @@ class TTSWorker(BaseWorker):
         np.clip(arr, -32768.0, 32767.0, out=arr)
         return arr.astype(np.int16, copy=False).tobytes()
 
-    async def _play_pcm_chunk(self, pcm: bytes) -> None:
-        """Write a PCM chunk to the aplay subprocess (applies volume + mute)."""
-        if self._muted:
-            return
-        if self._ring_mod_hz > 0.0 and self._ring_mod_mix > 0.0:
-            pcm = self._apply_ring_mod(pcm)
-        if self._volume < 0.999:
-            pcm = self._scale_pcm(pcm)
-        if self._aplay_proc and self._aplay_proc.stdin:
-            try:
-                self._aplay_proc.stdin.write(pcm)
-                await self._aplay_proc.stdin.drain()
-            except (BrokenPipeError, ConnectionResetError):
-                pass
-
-    async def _drain_aplay(self) -> None:
-        """Close stdin and wait for aplay to finish."""
-        if self._aplay_proc and self._aplay_proc.stdin:
-            try:
-                self._aplay_proc.stdin.close()
-                await self._aplay_proc.wait()
-            except Exception:
-                pass
-
-    async def _kill_aplay(self) -> None:
-        if self._aplay_proc:
-            try:
-                self._aplay_proc.kill()
-                await self._aplay_proc.wait()
-            except Exception:
-                pass
-            self._aplay_proc = None
-
     # ── Speaker socket (Mode A) ───────────────────────────────────
-
-    async def _has_audio_output(self) -> bool:
-        """Check whether at least one ALSA playback device is available."""
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                "aplay",
-                "-l",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.DEVNULL,
-            )
-            out, _ = await asyncio.wait_for(proc.communicate(), timeout=2.0)
-            return b"card" in out
-        except Exception:
-            return False
 
     async def _connect_spk_socket(self) -> None:
         """Connect to the rb-spk Unix domain socket (retry loop)."""
@@ -501,35 +509,31 @@ class TTSWorker(BaseWorker):
             return
 
         t0 = time.monotonic()
-        while self.running and (time.monotonic() - t0) < _SOCKET_RETRY_TIMEOUT_S:
+        while self.running and (time.monotonic() - t0) < SOCKET_RETRY_TIMEOUT_S:
             try:
                 sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
                 sock.connect(path)
                 sock.setblocking(False)
                 self._spk_sock = sock
                 log.info("connected to spk socket: %s", path)
+                self._spk_sock_up = True
+                self._update_spk_link()
                 asyncio.create_task(self._spk_read_loop())
-                if await self._has_audio_output():
-                    self.send(SYSTEM_AUDIO_LINK_UP, {"socket": "spk"})
-                else:
-                    log.warning("no audio output device found — spk link stays down")
                 return
             except (ConnectionRefusedError, FileNotFoundError, OSError):
-                await asyncio.sleep(_SOCKET_RETRY_INTERVAL_S)
+                await asyncio.sleep(SOCKET_RETRY_INTERVAL_S)
 
-        log.error("failed to connect spk socket after %.0fs", _SOCKET_RETRY_TIMEOUT_S)
+        log.error("failed to connect spk socket after %.0fs", SOCKET_RETRY_TIMEOUT_S)
 
     async def _spk_read_loop(self) -> None:
-        """Read TTS audio from speaker socket and play via aplay.
+        """Read conversation audio from the speaker socket into the voice source.
 
-        Conversation audio arrives here as a burst of PCM chunks from the
-        AI worker (forwarded from server /converse). aplay is started
-        lazily on the first chunk of a stream. End-of-stream is signalled
-        explicitly by a zero-length frame (``chunk_len == 0``) sent by
-        ai_worker on the server's WS ``done`` event; the idle watchdog at
-        ``_SPK_IDLE_END_S`` remains as a safety net for crashes or WS drops.
-        TTS_EVENT_STARTED/FINISHED bracket the stream so the conversation
-        pipeline timeline reflects actual playback, not just audio receipt.
+        Audio arrives from the AI worker (forwarded from server /converse),
+        often faster than real time. End-of-stream is an explicit zero-length
+        frame (``chunk_len == 0``) sent by ai_worker on the server's WS
+        ``done``; the idle watchdog at ``_SPK_IDLE_END_S`` is a safety net for
+        crashes or WS drops. TTS_EVENT_STARTED/FINISHED bracket the stream;
+        FINISHED waits until the queued audio has actually been played.
         """
         loop = asyncio.get_running_loop()
         sock = self._spk_sock
@@ -542,22 +546,25 @@ class TTSWorker(BaseWorker):
 
         async def _end_stream() -> None:
             nonlocal stream_chunks
-            if self._aplay_proc is None:
+            self._spk_discard = False
+            if not self._spk_stream_open:
                 return
-            duration_ms = int((time.monotonic() - stream_t0) * 1000)
+            self._spk_stream_open = False
             chunks_played = stream_chunks
-            await self._drain_aplay()
-            self._aplay_proc = None
+            stream_chunks = 0
+            if self._playback is not None:
+                await self._playback.drain_voice()
+            if not self._speaking:
+                return  # cancelled while draining; CANCELLED already sent
             self._speaking = False
             self.send(
                 TTS_EVENT_FINISHED,
                 {
                     "ref_seq": 0,
-                    "duration_ms": duration_ms,
+                    "duration_ms": int((time.monotonic() - stream_t0) * 1000),
                     "chunks_played": chunks_played,
                 },
             )
-            stream_chunks = 0
 
         async def _idle_watchdog() -> None:
             try:
@@ -583,51 +590,43 @@ class TTSWorker(BaseWorker):
                         idle_task.cancel()
                     await _end_stream()
                     continue
-                if chunk_len > 4096:
-                    continue
 
-                # Read PCM data
+                # Read PCM data (always consume it to keep the framing)
                 pcm = b""
                 while len(pcm) < chunk_len:
                     data = await loop.sock_recv(sock, chunk_len - len(pcm))
                     if not data:
                         raise ConnectionError("speaker socket closed")
                     pcm += data
+                if chunk_len > MAX_FRAME_BYTES:
+                    continue
 
                 # A new chunk resets the idle watchdog.
                 if idle_task and not idle_task.done():
                     idle_task.cancel()
+                idle_task = asyncio.create_task(_idle_watchdog())
 
-                # Lazy-start aplay on the first chunk of a new stream.
-                if self._aplay_proc is None:
-                    await self._start_aplay()
-                    if self._aplay_proc is None:
-                        # aplay failed to start — drop this chunk and wait for recovery
-                        continue
+                if self._spk_discard:
+                    continue  # rest of a cancelled stream
+
+                if not self._spk_stream_open:
+                    self._spk_stream_open = True
                     stream_t0 = time.monotonic()
                     stream_chunks = 0
                     self._speaking = True
                     self._lip_sync.reset()
                     self.send(TTS_EVENT_STARTED, {"ref_seq": 0, "text": ""})
 
-                await self._play_pcm_chunk(pcm)
+                if self._playback is not None:
+                    self._playback.queue_voice(pcm)
                 stream_chunks += 1
-
-                # Schedule a fresh idle watchdog.
-                idle_task = asyncio.create_task(_idle_watchdog())
-
-                # Energy
-                energy = self._lip_sync.update_chunk(pcm)
-                now = time.monotonic()
-                if now - self._last_energy_t >= _ENERGY_MIN_INTERVAL_S:
-                    self._last_energy_t = now
-                    self.send(TTS_EVENT_ENERGY, {"energy": energy})
 
         except (ConnectionError, OSError) as e:
             if idle_task and not idle_task.done():
                 idle_task.cancel()
             await _end_stream()
-            self.send(SYSTEM_AUDIO_LINK_DOWN, {"socket": "spk", "reason": str(e)})
+            self._spk_sock_up = False
+            self._update_spk_link(str(e))
             log.warning("speaker socket disconnected: %s", e)
         except asyncio.CancelledError:
             pass

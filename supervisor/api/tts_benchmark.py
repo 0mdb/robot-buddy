@@ -13,6 +13,7 @@ import statistics
 import time
 from typing import TYPE_CHECKING
 
+from supervisor.audio.format import BYTES_PER_MS, CHUNK_BYTES
 from supervisor.messages.types import TTS_BENCHMARK_DONE, TTS_BENCHMARK_PROGRESS
 
 if TYPE_CHECKING:
@@ -20,9 +21,8 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-# 320 bytes = 10 ms at 16 kHz, 16-bit mono
-_CHUNK_BYTES = 320
-_BYTES_PER_MS = 32  # 16000 Hz * 2 bytes / 1000
+_CHUNK_BYTES = CHUNK_BYTES
+_BYTES_PER_MS = BYTES_PER_MS
 
 BENCHMARK_CORPUS: list[tuple[str, str]] = [
     ("Hi!", "happy"),

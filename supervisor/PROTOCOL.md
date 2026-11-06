@@ -354,20 +354,49 @@ All types follow `domain.entity.verb`:
 
 | Type | Direction | Description |
 |------|-----------|-------------|
-| `tts.config.init` | Core → TTS | Startup config (audio_mode, socket paths, devices) |
+| `tts.config.init` | Core → TTS | Startup config (audio_mode, socket path, speaker device, `max_volume`, `volume`) |
 | `tts.cmd.speak` | Core → TTS | Request speech + playback |
-| `tts.cmd.cancel` | Core → TTS | Cancel current playback + queue |
-| `tts.cmd.start_mic` | Core → TTS | Begin arecord capture |
-| `tts.cmd.stop_mic` | Core → TTS | Stop capture |
+| `tts.cmd.cancel` | Core → TTS | Cancel current speech + queue (chimes keep playing) |
+| `tts.cmd.play_chime` | Core → TTS | Mix a chime over whatever is playing |
+| `tts.cmd.set_volume` / `set_mute` / `set_ring_mod` | Core → TTS | Runtime output settings (volume never exceeds `max_volume`) |
 | `tts.event.started` | TTS → Core | Playback started |
 | `tts.event.energy` | TTS → Core | Lip sync energy (0-255), best-effort ~20 Hz |
 | `tts.event.finished` | TTS → Core | Playback completed |
 | `tts.event.cancelled` | TTS → Core | Playback cancelled |
 | `tts.event.error` | TTS → Core | TTS/playback failure |
-| `tts.event.mic_dropped` | TTS → Core | Mic frames dropped (backpressure) |
-| `tts.status.health` | TTS → Core | Queue depth, connection |
+| `tts.status.health` | TTS → Core | Queue depth, playback stream (link, pending ms, underruns), volume, cap |
 | `tts.lifecycle.started` | TTS → Core | Worker ready |
 | `tts.lifecycle.stopped` | TTS → Core | Worker exiting |
+
+Mic capture lives in the ear worker (§4.4a); the old `tts.cmd.start_mic` / `stop_mic` /
+`tts.event.mic_dropped` are retired.
+
+### 4.4a Ear Domain (`ear.*`)
+
+The ear worker owns the microphone (supervised `arecord`), wake word, VAD and, with a
+reSpeaker Flex (XVF3800), the board's USB control.
+
+| Type | Direction | Description |
+|------|-----------|-------------|
+| `ear.config.init` | Core → Ear | `mic_device` (or `match:<card>`), `mic_channels`, `mic_channel`, `mic_socket_path`, wake word model + threshold, VAD knobs, `xvf {enabled, poll_hz, doa_offset_deg, doa_sign, settings}` |
+| `ear.cmd.start_listening` / `stop_listening` | Core → Ear | Forward mic audio to the mic socket + run VAD |
+| `ear.cmd.pause_vad` / `resume_vad` | Core → Ear | Half duplex only: skip VAD while the robot talks (not sent with `--barge-in`) |
+| `ear.cmd.set_threshold` | Core → Ear | Wake word threshold |
+| `ear.cmd.stream_scores` | Core → Ear | Stream `ear.event.oww_score` (dashboard) |
+| `ear.cmd.set_mic_channel` | Core → Ear | `{channel}`: which captured channel feeds wake word / VAD / STT |
+| `ear.cmd.xvf_set` | Core → Ear | `{settings: {XVF_PARAM: value}}`, tunable chip settings; written now and every time the board is reopened, never saved to its flash |
+| `ear.event.wake_word` | Ear → Core | `{model, score}` |
+| `ear.event.end_of_utterance` | Ear → Core | `{speech_ms, silence_ms}` |
+| `ear.event.oww_score` | Ear → Core | Wake word scores (opt-in) |
+| `ear.event.doa` | Ear → Core | `{speech, azimuth_deg (robot frame, + = left), energy, beam_energy[4]}`, then one `{speech: false}` |
+| `ear.status.health` | Ear → Core | Listening/VAD state, mic device + channel, `input_rms_dbfs` (1 s), `arecord_restarts`, XVF status / settings |
+
+`system.audio.link_up/down {socket: "mic"}` brackets each `arecord` run: it is restarted (and
+`match:` re-resolved) when it exits, e.g. after a USB replug.
+
+Core keeps the last `*.config.init` and the latest runtime settings (`tts.cmd.set_volume`,
+`set_mute`, `set_ring_mod`, `ear.cmd.set_threshold`, `set_mic_channel`, `stream_scores`, and
+`ear.cmd.xvf_set` merged) per worker and replays them, init first, when it restarts a worker.
 
 ### 4.5 AI Domain (`ai.*`)
 
@@ -733,22 +762,32 @@ Each worker has its own stdout pipe to Core (§6.1). Within a single worker's pi
 
 **Core → TTS:**
 
-`tts.config.init` (sent once after worker starts, before any commands):
+`tts.config.init` (sent after the worker starts, and again if it is restarted):
 ```json
 {
     "v": 2, "type": "tts.config.init", "src": "core", "seq": 1, "t_ns": 0,
     "audio_mode": "direct",
-    "mic_socket_path": "/tmp/rb-mic-12345.sock",
     "spk_socket_path": "/tmp/rb-spk-12345.sock",
-    "speaker_device": "default",
-    "mic_device": "default",
+    "speaker_device": "match:reSpeaker",
+    "max_volume": 80,
+    "volume": 80,
     "tts_endpoint": "http://10.0.0.20:8100/tts"
 }
 ```
 
 `audio_mode` values:
-- `"direct"` (Mode A): TTS worker connects to `mic_socket_path` and `spk_socket_path` for direct audio streaming with AI worker
+- `"direct"` (Mode A): TTS worker connects to `spk_socket_path` for conversation audio from the AI worker
 - `"relay"` (Mode B): No audio sockets; audio is relayed via Core using NDJSON base64 (dev/test only)
+
+**Playback.** The TTS worker keeps one `aplay` open for its lifetime and writes a 20 ms frame
+on a steady clock, silence when idle (`supervisor/audio/playback.py`). Two sources are mixed
+with saturation: *voice* (local TTS or the conversation stream, one at a time) and *fx*
+(chimes). With the reSpeaker Flex this stream is the echo canceller's reference, so nothing
+else may open the speaker. Producers may queue faster than real time: lip-sync energy is
+computed as each frame plays, and `tts.event.finished` is sent once the queued speech has
+actually played. `max_volume` (`--max-volume`, kid-safe ceiling) scales the final mix and
+cannot be changed at runtime. If `aplay` exits it is reopened; `system.audio.link_up/down
+{socket: "spk"}` reports socket-connected AND playback-open.
 
 `tts.cmd.speak` (deterministic speech from planner/speech policy):
 ```json
@@ -766,15 +805,8 @@ Each worker has its own stdout pipe to Core (§6.1). Within a single worker's pi
 {"v": 2, "type": "tts.cmd.cancel", "src": "core", "seq": 7, "t_ns": 0}
 ```
 
-`tts.cmd.start_mic`:
-```json
-{"v": 2, "type": "tts.cmd.start_mic", "src": "core", "seq": 8, "t_ns": 0}
-```
-
-`tts.cmd.stop_mic`:
-```json
-{"v": 2, "type": "tts.cmd.stop_mic", "src": "core", "seq": 9, "t_ns": 0}
-```
+`tts.cmd.cancel` flushes queued speech immediately and drops the rest of an in-flight
+conversation stream until its end-of-stream frame, so it cannot restart.
 
 **TTS → Core:**
 
@@ -1203,6 +1235,16 @@ Face button press → Core detects PTT toggle
 **Mode B (Relay):** When `audio_mode="relay"`, mic audio and TTS audio flow through Core as base64 NDJSON messages instead of the direct socket. Core forwards `tts.event.audio_chunk` → `ai.cmd.send_audio` and `ai.conversation.audio` → `tts.cmd.play_audio`. This mode exists for dev/test scenarios (mock workers, single-worker testing) and is not recommended for production due to Core throughput overhead (~32 KB/s base64).
 
 ---
+
+### 7.5 Barge-in (`--barge-in`, full duplex)
+
+Needs on-device echo cancellation (reSpeaker Flex) with every sound through its card. With
+the flag, Core stops sending `ear.cmd.pause_vad` during speech and accepts
+`ear.event.wake_word` while `world.speaking`: it sends `tts.cmd.cancel`, ends the current
+session (`ai.cmd.end_conversation`, which cancels the server turn and the mic forwarder),
+and starts a new wake-word session. The interrupted reply's `tts.event.cancelled` /
+`finished` is ignored so it cannot end the new session. Only the wake word interrupts (VAD
+alone does not). Without the flag, behaviour is half duplex as in §7.4.
 
 ## 8. Core Arbitration
 

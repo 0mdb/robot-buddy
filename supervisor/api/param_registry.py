@@ -124,6 +124,69 @@ class ParamRegistry:
         return results
 
 
+# Registry param -> (XVF3800 parameter, min, max, step, factory default, doc).
+XVF_PARAMS: dict[str, tuple[str, float, float, float, float, str]] = {
+    "ear.xvf.asr_out_gain": (
+        "AEC_ASROUTGAIN",
+        0.0,
+        1000.0,
+        0.5,
+        1.0,
+        "Fixed gain on the processed ASR output (linear). Flex ch 0 is ~30 dB quiet at 1",
+    ),
+    "ear.xvf.mic_gain": (
+        "AUDIO_MGR_MIC_GAIN",
+        0.0,
+        1000.0,
+        0.5,
+        10.0,
+        "Mic gain before the DSP (linear)",
+    ),
+    "ear.xvf.agc_max_gain": (
+        "PP_AGCMAXGAIN",
+        1.0,
+        1000.0,
+        1.0,
+        32.0,
+        "AGC gain ceiling (linear)",
+    ),
+    "ear.xvf.agc_desired_level": (
+        "PP_AGCDESIREDLEVEL",
+        0.0,
+        1.0,
+        0.0005,
+        0.0045,
+        "AGC target output level",
+    ),
+    "ear.xvf.ns_floor": (
+        "PP_MIN_NS",
+        0.0,
+        1.0,
+        0.01,
+        0.15,
+        "Stationary noise suppression floor (lower = more suppression)",
+    ),
+    "ear.xvf.nn_floor": (
+        "PP_MIN_NN",
+        0.0,
+        1.0,
+        0.01,
+        0.51,
+        "Non-stationary noise suppression floor (lower = more suppression)",
+    ),
+}
+
+
+def xvf_settings_from_registry(reg: "ParamRegistry") -> dict[str, float]:
+    """XVF3800 settings for params moved off their factory default."""
+    out: dict[str, float] = {}
+    for name, (xvf, _lo, _hi, _step, default, _doc) in XVF_PARAMS.items():
+        value = reg.get_value(name, default)
+        if value is not None and float(value) != float(default):
+            out[xvf] = float(value)
+    return out
+
+
 def create_default_registry() -> ParamRegistry:
     """Create registry pre-populated with known parameters."""
     reg = ParamRegistry()
@@ -1158,6 +1221,36 @@ def create_default_registry() -> ParamRegistry:
             doc="Block negative moods outside conversation (PE spec S2 §9.2)",
         )
     )
+    # -- Ear / reSpeaker Flex (XVF3800) parameters --
+    # Defaults are the board's factory values (bench read 2026-11-06), so only
+    # deliberate changes are written to the chip (never saved to its flash).
+    for name, (_xvf, lo, hi, step, default, doc) in XVF_PARAMS.items():
+        reg.register(
+            ParamDef(
+                name=name,
+                type="float",
+                min=lo,
+                max=hi,
+                step=step,
+                default=default,
+                owner="supervisor",
+                doc=doc,
+            )
+        )
+    reg.register(
+        ParamDef(
+            name="ear.mic_channel",
+            type="int",
+            min=-1,
+            max=7,
+            step=1,
+            default=-1,
+            owner="supervisor",
+            doc="Captured channel for wake word / VAD / STT; -1 = --usb-mic-channel "
+            "(Flex: 0 = processed ASR, 1 = second processed, 2-5 raw mics)",
+        )
+    )
+
     # -- TTS parameters --
     reg.register(
         ParamDef(

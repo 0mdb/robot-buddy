@@ -162,7 +162,22 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--xvf-control",
         action="store_true",
-        help="Poll the XVF3800 over USB control for voice direction (ear.event.doa)",
+        help="Open the XVF3800 over USB control: chip settings (ear.xvf.* params) "
+        "and voice direction (ear.event.doa)",
+    )
+    p.add_argument(
+        "--max-volume",
+        type=int,
+        default=80,
+        help="Hard output cap, 0-100, applied after the user volume "
+        "(kid-safe ceiling, docs/audio-hardware.md §5). Not settable at runtime",
+    )
+    p.add_argument(
+        "--barge-in",
+        action="store_true",
+        help="Full duplex: keep the wake word live while the robot talks; saying it "
+        "stops the reply and starts a new turn. Needs on-board echo cancellation "
+        "(reSpeaker Flex) with all sound through its card",
     )
     p.add_argument(
         "--doa-offset-deg",
@@ -308,6 +323,7 @@ async def async_main(args: argparse.Namespace) -> None:
             conv_capture=conv_capture,
             param_registry=registry,
             power_monitor=power_monitor,
+            barge_in=args.barge_in,
         )
 
         # ── HTTP server ──────────────────────────────────────────
@@ -354,15 +370,21 @@ async def async_main(args: argparse.Namespace) -> None:
             )
 
         if planner_enabled:
+            from supervisor.api.param_registry import xvf_settings_from_registry
+
+            mic_channel = int(registry.get_value("ear.mic_channel", -1))
             ear_init = {
                 "mic_device": args.usb_mic_device,
                 "mic_channels": args.usb_mic_channels,
-                "mic_channel": args.usb_mic_channel,
+                "mic_channel": mic_channel
+                if mic_channel >= 0
+                else args.usb_mic_channel,
                 "xvf": {
                     "enabled": args.xvf_control,
                     "poll_hz": 10.0,
                     "doa_offset_deg": args.doa_offset_deg,
                     "doa_sign": args.doa_sign,
+                    "settings": xvf_settings_from_registry(registry),
                 },
                 "mic_socket_path": workers.mic_socket_path,
                 "wakeword_model_path": args.wakeword_model,
@@ -380,6 +402,8 @@ async def async_main(args: argparse.Namespace) -> None:
                 "audio_mode": cfg.workers.audio_mode,
                 "spk_socket_path": workers.spk_socket_path,
                 "speaker_device": args.usb_speaker_device,
+                "max_volume": max(0, min(100, args.max_volume)),
+                "volume": int(registry.get_value("tts.speaker_volume", 80)),
                 "tts_endpoint": args.planner_api + "/tts" if args.planner_api else "",
                 # Ring modulator defaults (Dalek-ish robot voice). 0 Hz = off.
                 # 30 Hz growlier, 50 Hz classic Dalek, 80 Hz cartoony/cheery.
