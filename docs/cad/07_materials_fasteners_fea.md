@@ -158,6 +158,8 @@ Placeholder geometry (typical datasheet values) until a coupon says otherwise:
 | M3 | 4.6 × 5.7 | 4.0 | 7.2 (L + 1.5 relief) | 9.2 |
 | M2.5 | 4.0 × 5.7 | 3.6 | 7.2 | 8.0 |
 
+> Amendment (loop, 2026-11-06): **M3 inserts in hand measured (Ben): length 5.7, knurl (major) Ø4.6, lead-in (small end) Ø3.9**, sold as M3 × 5.7 × 4.6. That matches the M3 row, so the placeholders stand: drawn hole 4.0 (0.05 radial over the lead-in, so the insert drops in square and self-centres; the knurl cuts 0.3 radial), pockets 7.2 deep (6.7 in the plate under-bosses, D5), boss 9.2 (= 2 × knurl OD). No geometry changes. The ladder coupon still sets the final hole.
+
 Rule I1 (fpv250): drawn hole = datasheet hole **+0.00 for PET-CF**. Then print a **ladder
 coupon** (drawn −0.3 … +0.3 in 0.1 steps) in **PET-CF and ASA**, press at ~245 °C (PET-CF) /
 ~230 °C (ASA), and pick the **largest hole that seats with no spin** at the §4.3 torque. The

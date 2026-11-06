@@ -5,7 +5,8 @@
 - **Knock-on:** the tilted bulkhead's side flanges used to hang over the chamfer and would have hit the square corners. They're trimmed to 0.3 mm above the plate (flush at z 0 doubled the S5c stress in the FEA fixture).
 - **Numbers:** 0 interferences. Robot 728.5 g printed (+5.7: plate +2.0, canopy +3.6). Studies, all inside the gates (MPa): S1a 11.8 (+3.4 %) · S1b 3.20 · S1m 9.01 · S5c 5.81 · S8 19.3 / heel 1.15 mm · S5k 9.97 (+5.3 %) / lugs 0.61 mm. S8 and S5k now hold the wider wall foot, which is slightly optimistic.
 - **Housekeeping:** C: had filled to 508 MB with old Simulation results. That's why S8/S5k failed and probably why SolidWorks crashed. I deleted 660 files (~93 GB, you OK'd it), and `fea.py` now deletes each study's results once it has read them.
-- **Need from you:** unchanged (encoder socket height + plug depth; mic-disc thickness; Q28/Q29/Q23 + HAT heights; M3 insert dims).
+- **M3 inserts (Ben, later 2026-11-06):** 5.7 long, Ø4.6 knurl, Ø3.9 small end. That's exactly what the model already assumed (hole 4.0, pocket 7.2 / 6.7, boss 9.2), so nothing moves. 07 §4.2 amended.
+- **Need from you:** encoder socket height + plug depth; mic-disc thickness; Q28/Q29/Q23 + HAT heights.
 
 # 2026-11-05: your parts built in (ticks 97–100), review pass clean
 
