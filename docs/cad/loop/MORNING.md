@@ -1,4 +1,6 @@
-# 2026-11-05: your parts built in (ticks 97–100)
+# 2026-11-05: your parts built in (ticks 97–100), review pass clean
+
+- **Review pass (after tick 100):** all 12 studies re-run on today's geometry, all equal to their accepted values and inside the gates: S1a 11.4 · S1b 3.45 · S1d 9.00 · S1e 10.8 / 1.16 mm · S1m 9.22 · S2 6.36 · S6 6.50 · S9 12.2 / 0.35 mm · S5c 5.72 · S5k 9.47 · S8 19.3 / 1.16 mm (MPa). Only new sharp edges: the 4 mic port rims (Ø1.2, left sharp). Robot 722.8 g printed, 0 interferences. Nothing else can move until the items under "Need from you".
 
 - **Speaker pocket → the Same Sky you ordered (tick 97):** 6.45 deep for 0.3 preload, stadium TPU gasket, clamp pad on the magnet only, lead notch. S5c 5.72 MPa (was 5.78).
 - **Mic disc under the canopy ribs (tick 98, Q30 b):** 3 bosses + TPU washers, 4 Ø1.2 ports on the top (the only visible change: `shots/1-P6d-mic/hero_top_t98.png`). The disc is wider than the keels, so each keel has a window; the first windows cost S8 +39 %. Shrunk to what the board really has there (STEP: ≤ 0.6 mm parts) and doubled the keel over them: **S8 19.3 MPa (+8.9 %, SF 3.2), heel 1.16 mm, S5k 9.47**. Canopy 120.9 g, printed 709.1 g, 0 interferences.
