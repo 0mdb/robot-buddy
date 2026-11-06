@@ -21,6 +21,28 @@
   "time": "11m 20s",
   "up": "-z"
  },
+ "RB-CPN-003_insert_ladder": {
+  "cad_g": 24.690680800680493,
+  "cm3": 18.32,
+  "grams": 23.64,
+  "mat": "PET-CF",
+  "mismatch": [],
+  "qty": 0,
+  "support": false,
+  "time": "55m 28s",
+  "up": "+z"
+ },
+ "RB-CPN-003_insert_ladder@PC": {
+  "cad_g": 22.968075163423713,
+  "cm3": 16.26,
+  "grams": 19.51,
+  "mat": "PC",
+  "mismatch": [],
+  "qty": 0,
+  "support": false,
+  "time": "58m 31s",
+  "up": "+z"
+ },
  "RB-PRT-001_base_plate": {
   "cad_g": 110.84580888549496,
   "cm3": 98.45,

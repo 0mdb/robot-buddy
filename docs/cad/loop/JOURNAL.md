@@ -651,3 +651,10 @@ Newest at the bottom. One entry per tick.
 - Tooling: S8/S5k first failed with RunAnalysis err 24. Two causes: (1) zsh doesn't word-split `$var`, so `a="--material PC"; fea.py $st $a` passed one argument and the run fell back to PET-CF; (2) the solver LOG (UTF-16, beside the part) said "Inadequate disk space for the Iterative Solver": C: had 508 MB left. 660 old CWR/LOG/gsz deleted (Ben OK, ~93 GB); `fea.py` `clean_results()` now deletes each study's results once read. The SolidWorks crash during the first full rebuild (COM 0x800706BE) was probably the same full disk.
 - Look: `shots/hero/` (re-rendered), `shots/1-P15/` (plate + canopy).
 
+## tick 102 · D6 insert ladder coupon RB-CPN-003 (Ben 2026-11-06) · accepted · 2026-11-06 12:20 MST
+- Ben's M3 inserts measured: 5.7 long, knurl Ø4.6, small end Ø3.9; that matches the placeholders (07 §4.2 amended, commit a32f38f).
+- `coupon_insert_ladder_lines`: 86 × 40.9 base 2 thick. Row **H**: M3 horizontal (block 9.2 deep × 12 tall, holes at z 6, 7.2 deep from the front face), drawn Ø3.7–4.3. Row **A**: M3 vertical in Ø9.2 × 8.2 bosses, 7.2 deep (1 mm floor), Ø3.7–4.3. Row **B**: M2.5 vertical in Ø8 × 6 bosses, 5.0 deep, Ø3.3–3.9. Every size engraved 0.6 deep (block top, base beside each boss row). Not in the assembly.
+- First build failed only the bounding-box check (it was given the boss top 10.2, the block is 12); fixed. BUILD OK, 19,161 mm³, 0 interferences. Sliced (+z): **PET-CF 23.6 g / 55 min, PC 19.5 g / 59 min** (`CAD/exports/print/RB-CPN-003_insert_ladder{,@PC}.3mf`).
+- Look: `shots/D6-inserts/insert_ladder_iso.png`, `insert_ladder_top.png` (SolidWorks views of the part).
+- Also: the Flex boards arrived. `flex_measure.md` lists every board dimension the model uses, with the datasheet value, the slack and the study to re-run if it moves.
+

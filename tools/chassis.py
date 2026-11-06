@@ -1142,6 +1142,8 @@ def rebuild_manifest(win: str) -> list[str]:
         # D6 (tick 89): follower-slide fit coupon (not in the assembly, not in the robot mass)
         *coupon_slide_strip_lines(cad + r"\parts\RB-CPN-001_slide_strip.SLDPRT"),
         *coupon_slide_rail_lines(cad + r"\parts\RB-CPN-002_slide_rail.SLDPRT"),
+        # D6 (2026-11-06): heat-set insert ladder (Ben's M3 x 5.7 x 4.6, M2.5 x 4)
+        *coupon_insert_ladder_lines(cad + r"\parts\RB-CPN-003_insert_ladder.SLDPRT"),
         *belt_native_lines(belt_l, +1),
         *belt_native_lines(belt_r, -1),
         f"asm|{asm}",
@@ -1227,6 +1229,7 @@ def rebuild_manifest(win: str) -> list[str]:
                 (cad + r"\parts\RB-PRT-062_mic_washer.SLDPRT", "RB-PRT-062_mic_washer"),
                 (cad + r"\parts\RB-CPN-001_slide_strip.SLDPRT", "RB-CPN-001_slide_strip"),
                 (cad + r"\parts\RB-CPN-002_slide_rail.SLDPRT", "RB-CPN-002_slide_rail"),
+                (cad + r"\parts\RB-CPN-003_insert_ladder.SLDPRT", "RB-CPN-003_insert_ladder"),
             )
         ],
     ]
@@ -1391,6 +1394,58 @@ def coupon_slide_rail_lines(path: str) -> list[str]:
         f"expect|vol {vol:.1f} {vol * 0.01:.1f}|box {-hx} {hx} -10 10 {-rd} {CAR_FOOT_T} 0.05",
         "save",
     ]
+
+
+# D6 (2026-11-06): heat-set insert ladder, 07 §4.2. Ben's M3 inserts: 5.7 long, knurl Ø4.6,
+# lead-in Ø3.9; M2.5 x 4 in hand. Three rows of seven, drawn hole -0.3 .. +0.3 round the
+# placeholder (INS_HOLE 4.0, CORE_INS_D 3.6), each size engraved beside it:
+#   H: M3, axis horizontal (as the motor-mount uprights print), in a 9.2-deep block, 7.2 deep
+#   A: M3, vertical, in Ø9.2 (INS_BOSS) bosses, 7.2 deep (INS_DEPTH)
+#   B: M2.5, vertical, in Ø8 (CORE_BOSS_D) bosses, 5.0 deep (the mic / core-board pockets)
+# Print it in PET-CF and in PC; press at ~245 / ~260 °C; pick per row the largest hole that
+# seats square with no spin at the §4.3 torque. That replaces INS_HOLE / CORE_INS_D.
+CPN_INS_STEP = (-0.3, -0.2, -0.1, 0.0, 0.1, 0.2, 0.3)
+CPN_INS_PITCH, CPN_INS_X0 = 12.0, 7.0
+CPN_M25_DEPTH = 5.0
+
+
+def coupon_insert_ladder_lines(path: str) -> list[str]:
+    n = len(CPN_INS_STEP)
+    L = CPN_INS_X0 * 2 + CPN_INS_PITCH * (n - 1)  # 86
+    tb, hb, hz = 2.0, 12.0, 6.0  # base, block height, horizontal hole axis z
+    yb = INS_BOSS  # block depth (y 0 .. 9.2), holes open on its y = 0 face
+    ya, yB = yb + 2.0 + INS_BOSS / 2, 0.0  # row A boss centre y
+    yB = ya + INS_BOSS / 2 + 6.0 + CORE_BOSS_D / 2  # row B, labels for A between
+    W = yB + CORE_BOSS_D / 2 + 6.5
+    za, zb = tb + 8.2, tb + 6.0  # boss tops: 1 mm floor under each pocket
+    vol = L * W * tb + L * yb * (hb - tb)
+    lines = [f"part|{path}", f"box|0 {L:g}|0 {W:g}|0 {tb:g}", f"box|0 {L:g}|0 {yb:g}|{tb:g} {hb:g}"]
+    for k, dd in enumerate(CPN_INS_STEP):
+        x = CPN_INS_X0 + CPN_INS_PITCH * k
+        d3, d25 = INS_HOLE + dd, CORE_INS_D + dd
+        lines += [
+            f"cyl|z|{x:g} {ya:g}|{tb:g} {za:g}|{INS_BOSS / 2:g}|boss",
+            f"cyl|z|{x:g} {yB:g}|{tb:g} {zb:g}|{CORE_BOSS_D / 2:g}|boss",
+        ]
+        vol += math.pi * ((INS_BOSS / 2) ** 2 * (za - tb) + (CORE_BOSS_D / 2) ** 2 * (zb - tb))
+    for k, dd in enumerate(CPN_INS_STEP):
+        x = CPN_INS_X0 + CPN_INS_PITCH * k
+        d3, d25 = INS_HOLE + dd, CORE_INS_D + dd
+        lines += [
+            f"cyl|y|{x:g} {hz:g}|-0.1 {INS_DEPTH:g}|{d3 / 2:g}|cut",
+            f"cyl|z|{x:g} {ya:g}|{za - INS_DEPTH:g} {za + 0.1:g}|{d3 / 2:g}|cut",
+            f"cyl|z|{x:g} {yB:g}|{zb - CPN_M25_DEPTH:g} {zb + 0.1:g}|{d25 / 2:g}|cut",
+            # sizes, read from above (0.6 deep): on the block top, then beside each boss row
+            f"text|front|{x - 3.6:g} {yb - 5.5:g}|{hb - 0.6:g} {hb + 0.5:g}|3.0|{d3:.1f}",
+            f"text|front|{x - 3.6:g} {ya + INS_BOSS / 2 + 1.2:g}|{tb - 0.6:g} {tb + 0.5:g}|3.0|{d3:.1f}",
+            f"text|front|{x - 3.6:g} {yB + CORE_BOSS_D / 2 + 1.2:g}|{tb - 0.6:g} {tb + 0.5:g}|3.0|{d25:.1f}",
+        ]
+        vol -= math.pi * ((d3 / 2) ** 2 * 2 * INS_DEPTH + (d25 / 2) ** 2 * CPN_M25_DEPTH)
+    lines += [
+        f"expect|vol {vol:.1f} {vol * 0.02:.1f}|box 0 {L:g} 0 {W:g} 0 {max(za, hb):g} 0.05",
+        "save",
+    ]
+    return lines
 
 
 def envelope_lines(pi: str, face: str, reflex: str) -> list[str]:

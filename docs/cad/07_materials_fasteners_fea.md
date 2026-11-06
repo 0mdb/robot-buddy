@@ -160,6 +160,8 @@ Placeholder geometry (typical datasheet values) until a coupon says otherwise:
 
 > Amendment (loop, 2026-11-06): **M3 inserts in hand measured (Ben): length 5.7, knurl (major) Ø4.6, lead-in (small end) Ø3.9**, sold as M3 × 5.7 × 4.6. That matches the M3 row, so the placeholders stand: drawn hole 4.0 (0.05 radial over the lead-in, so the insert drops in square and self-centres; the knurl cuts 0.3 radial), pockets 7.2 deep (6.7 in the plate under-bosses, D5), boss 9.2 (= 2 × knurl OD). No geometry changes. The ladder coupon still sets the final hole.
 
+> Amendment (loop D6, 2026-11-06): the ladder coupon is **RB-CPN-003_insert_ladder** (`chassis.py` `coupon_insert_ladder_lines`, 86 × 41, 23.6 g PET-CF / 19.5 g PC, ~1 h each). Three rows of seven, each size engraved beside it: **H** M3 horizontal (in a 9.2-deep block, 7.2 deep) Ø3.7–4.3; **A** M3 vertical in Ø9.2 bosses, 7.2 deep, Ø3.7–4.3; **B** M2.5 vertical in Ø8 bosses, 5.0 deep, Ø3.3–3.9. Print it in PET-CF and in PC (the canopy's inserts are in PC). Per row, pick the largest hole where the insert seats square and doesn't spin at the §4.3 torque. That result replaces `INS_HOLE` / `CORE_INS_D` / `MIC_INS`.
+
 Rule I1 (fpv250): drawn hole = datasheet hole **+0.00 for PET-CF**. Then print a **ladder
 coupon** (drawn −0.3 … +0.3 in 0.1 steps) in **PET-CF and ASA**, press at ~245 °C (PET-CF) /
 ~230 °C (ASA), and pick the **largest hole that seats with no spin** at the §4.3 torque. The
