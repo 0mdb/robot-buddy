@@ -220,15 +220,26 @@
   "up": "+x"
  },
  "RB-PRT-061_speaker_gasket": {
-  "cad_g": 0.22447999999999999,
-  "cm3": 0.37,
-  "grams": 0.45,
+  "cad_g": 0.18662016554820746,
+  "cm3": 0.31,
+  "grams": 0.38,
   "mat": "TPU",
   "mismatch": [],
   "qty": 1,
   "support": false,
-  "time": "9m 19s",
+  "time": "8m 39s",
   "up": "+x"
+ },
+ "RB-PRT-062_mic_washer": {
+  "cad_g": 0.03828020386443592,
+  "cm3": 0.09,
+  "grams": 0.1,
+  "mat": "TPU",
+  "mismatch": [],
+  "qty": 6,
+  "support": false,
+  "time": "7m 5s",
+  "up": "+z"
  },
  "belt_lug6": {
   "cad_g": 7.844111962106823,
