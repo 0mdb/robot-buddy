@@ -57,6 +57,11 @@ x −57.3 ± 5 (08). The jack screw has 4.6 mm of install slack.
 belt, inside the jack slack, but compensated anyway): print the belts from `belt_shrink0.56.stl`.
 Re-measure on strip print 2 if the hotter settings move it by more than ~0.2 %.
 
+**Strip print 2 (2026-11-06, hot preset, engineering plate): 149.0 mm → 0.67 %**, no delamination,
+better finish. That is 0.11 % more than strip 1 (under the 0.2 % re-slice threshold; ≈ 0.4 mm on the
+400 mm belt, well inside the 4.6 mm jack slack). **Keep `belt_shrink0.56.stl`**; belts cleared to
+print as sliced.
+
 ## After printing, before fitting
 
 - Hang test (08 §7.3): 1 kg on the strip, length now and after 24 h. Past **1.5 %** total stretch the
