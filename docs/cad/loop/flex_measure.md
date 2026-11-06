@@ -1,5 +1,17 @@
 # reSpeaker Flex XVF3800: check the boards against the model (2026-11-06)
 
+**Ben (2026-11-06): the STEPs are the source.** Seeed's STEPs come from their PCB design, so
+outlines, holes and component placement are taken as-is. Only these need the real boards:
+
+| # | Check | Why | Result |
+|---|---|---|---|
+| K1 | Disc PCB thickness (caliper) | STEP 1.5 vs DXF 1.2 | |
+| K2 | Look at the disc edge at 3 and 9 o'clock (a mounting hole at 12), ~15 mm bands: anything taller than a tiny chip cap? | keel windows are cut for 0.6 (S8 failed at 3.9) | |
+| K3 | Photo of each board with the 24-pin FPC plugged in: connector position, latch side, cable exit | not in the STEP; the disc → core route isn't designed | |
+| K4 | M2.5 × 4 insert: knurl OD, small end, length | ladder row B, `MIC_INS`, `CORE_INS_D` | |
+
+The full table below is reference only (what the model uses and its slack).
+
 The boards arrived 2026-11-06. Every number the CAD uses came from Seeed's STEP/DXF
 (`docs/audio-hardware.md` §3, `CAD/library/vendor/ReSpeakerFlex/`). Fill in **Measured**
 (calipers, mm). **Slack** is how far off the value can be before the model has to change.

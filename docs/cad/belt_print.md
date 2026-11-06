@@ -11,7 +11,7 @@ Files: `python3 tools/drivetrain.py build -o CAD/exports/rnd/drivetrain [--shrin
 
 ## Headless slicing (tick 84)
 
-`just cad-slice --only belts` → `CAD/exports/print/belt_shrink0.56.3mf` (your two belt presets, textured PEI, upright);
+`just cad-slice --only belts` → `CAD/exports/print/belt_shrink0.56.3mf` (your two belt presets, engineering plate, upright);
 `--only tests` → the strip, the 6-lug length and the bore/seat coupons (PET-CF; `--mat PA6-CF` for the M6 set).
 Sliced: **belt 59.9 g / 7 h 11 each (× 2)**, strip 17.3 g / 1 h 55, lug6 10.4 g / 1 h 19, coupons 1.3–1.6 g / ~9 min,
 band slice 11.1 g / 28 min. The STLs come from `drivetrain.py build -o CAD/exports/rnd/drivetrain` (+ `belt_shrink0.56.stl`).
@@ -26,7 +26,7 @@ band slice 11.1 g / 28 min. The STLs come from `drivetrain.py build -o CAD/expor
   surface or the tread). Avoid a seam on the inner running face: it's what the wheels roll on.
 - **Material**: TPU 85A first, 95A as the fallback (08). Dry it. Feed it from the external spool,
   not the AMS (print-bom.md). Print slowly; tune on the strip first.
-- **Plate**: textured PEI (print-bom.md).
+- **Plate**: engineering plate (Ben, 2026-11-06; was textured PEI). Bed 35 °C either way.
 
 ## Orca setup (P2S, 0.6 hardened nozzle, 2026-11-01)
 
@@ -34,7 +34,7 @@ Bambu's TPU 85A profile for the P2S is only for the **0.6 nozzle**. Select:
 - Printer: **Bambu Lab P2S 0.6 nozzle**
 - Filament: **Bambu TPU 85A @BBL P2S** (stock: 225 °C, 2.2 mm³/s cap), loaded on the **external spool**
 - Process: **robot-buddy belt TPU85A 0.6**, a user preset (`%APPDATA%\OrcaSlicer\user\default\process`) on top of *0.24mm Balanced Quality @BBL P2S 0.6 nozzle*, with 4 walls (0.62 lines ≈ the 2.5 base, no infill), 0 % sparse infill and a 5 mm outer brim.
-- Plate: textured PEI. Keep the strip standing (36 mm up).
+- Plate: engineering plate (Ben, 2026-11-06). Keep the strip standing (36 mm up).
 
 **Strip print 1 (stock filament profile, 0.24 layers, classic walls): outer walls delaminated down
 the strip's edge.** The stock profile runs the part fan at 100 % (layer time ~40 s, well under its

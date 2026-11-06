@@ -18,7 +18,7 @@ for cosmetic shells and accents.
 | AMS | **AMS 2** present — run PLA / PETG / ASA / PC through it; run **PET-CF and TPU 85A external** from the spool holder (CF is abrasive, soft TPU can jam AMS feed) |
 | Dryer | **SUNLU** filament dryer on hand — **dry PET-CF, TPU, and PC before printing** (and PETG if it's been open a while). The AMS is not a dryer. |
 | Nozzles | **0.6 mm hardened** (default; required for PET-CF / abrasive) · **0.4 mm hardened** (fine detail on CF/abrasive) · **0.4 mm stainless** (fine detail on non-abrasive: PLA/PETG/TPU/ASA/PC — do **not** run CF through the SS nozzle, it wears fast) |
-| Plates | **Engineering plate** (PET-CF / PC / ASA — high-temp, needs the grippier plate) · **Textured PEI plate** (PLA / PETG / TPU — matte bottom finish, easy release) |
+| Plates | **Engineering plate** (PET-CF / PC / ASA / **TPU** — TPU moved here, Ben 2026-11-06) · **Textured PEI plate** (PLA / PETG — matte bottom finish, easy release) |
 
 **Nozzle/plate quick rule:** structural CF part → 0.6 hardened + engineering
 plate. Cosmetic/detail non-CF part → 0.4 stainless + textured plate. Detail on a
@@ -78,8 +78,8 @@ Datasheet numbers, the per-part verdicts and the FEA material model: `docs/cad/0
 | Track tensioners (rear follower carriages) | PET-CF | PETG | 0.6 hard / eng | only tension point (`06_frame_design_spec.md` D1); slip fits 0.3–0.4 mm/side |
 | **Front bulkhead** | **PET-CF** | PETG black | 0.6 hard / eng | face, speaker box, sonar, camera; print on its back |
 | Speaker back box | **PETG** | — | 0.6 hard / textured | sealed ~30 cc, solid walls (`docs/audio-hardware.md` §4.3) |
-| Mic grommets / speaker gasket | TPU 85A | — | 0.6 hard / textured | `docs/audio-hardware.md` §4.2 |
-| Tank tracks / treads | **TPU 85A** | — | 0.6 hard / textured | if printing treads; run external, low infill |
+| Mic grommets / speaker gasket | TPU 85A | — | 0.6 hard / engineering | `docs/audio-hardware.md` §4.2 |
+| Tank tracks / treads | **TPU 85A** | — | 0.6 hard / engineering | if printing treads; run external, low infill |
 | Raspberry Pi 5 holder / standoffs | PET-CF | PETG | 0.6 hard / eng | heat-set M2.5 bosses |
 | Reflex MCU board mount | PET-CF | PETG | 0.6 hard / eng | `CAD/library/robot-buddy-reflex-mcu.step` |
 | ESP32-face board mount | PET-CF | PETG | 0.6 hard / eng | TBD |
@@ -87,8 +87,8 @@ Datasheet numbers, the per-part verdicts and the FEA material model: `docs/cad/0
 | Face screen bezel / surround | **PLA** (or ASA) | — | 0.4 SS / textured | cosmetic; ILI9341 320×240 |
 | Top shell / canopy | **PC white (60100)** (2026-10-31, was ASA: the heel test S8 passes at SF 2.4 in PC, 1.45 in ASA; dry first, enclosed) | PETG | 0.4 SS / eng | PLA for bolt-on accents only |
 | Cosmetic accents (ears, antenna, badge) | PLA Glow / Wood / colors | — | 0.4 SS / textured | fun parts |
-| Vibration isolators / feet | TPU 85A | — | 0.6 hard / textured | low infill gyroid |
-| Cable strain reliefs / bumpers | TPU 85A | — | 0.6 hard / textured | |
+| Vibration isolators / feet | TPU 85A | — | 0.6 hard / engineering | low infill gyroid |
+| Cable strain reliefs / bumpers | TPU 85A | — | 0.6 hard / engineering | |
 | Battery holder | PET-CF | PETG | 0.6 hard / eng | size to pack; see `docs/power.md` |
 
 ## Open items

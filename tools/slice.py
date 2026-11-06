@@ -79,7 +79,7 @@ MATS = {
         "Bambu Lab P2S 0.6 nozzle",
         "robot-buddy belt TPU85A 0.6",
         "robot-buddy belt TPU85A hot",
-        "Textured PEI Plate",
+        "Engineering Plate",  # Ben 2026-11-06: TPU goes on the engineering plate, not textured PEI
         1.22,
     ),
 }
