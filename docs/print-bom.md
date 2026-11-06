@@ -68,6 +68,20 @@ PC) and a **softer TPU (~70A)** if 85A under-isolates the camera.
 
 Datasheet numbers, the per-part verdicts and the FEA material model: `docs/cad/07_materials_fasteners_fea.md` §2–3.
 
+**This inventory is shared with robot-scout** (same P2S, same stock; decided
+2026-11-06). Scout's `docs/print-bom.md` keeps only its parts → material table and
+points here. Log consumption from either robot here.
+
+## Print queue (buddy + scout)
+
+Parts that Ben has approved (eyes before electrons) and that are ready to slice. Group
+by material/nozzle/plate so one plate carries both robots' parts. Scout parts are
+`RS-…` (`~/robot-scout/CAD/exports/`), buddy parts `RB-…`.
+
+| Part | Robot | Material | Nozzle / plate | Qty | Est. g | Status |
+|------|-------|----------|----------------|-----|--------|--------|
+| _(empty — add rows when a part is approved)_ | | | | | | |
+
 ## Printed parts → material
 
 | Part | Material (final) | Prototype in | Nozzle / plate | Status |
