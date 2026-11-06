@@ -30,7 +30,10 @@ from typing import Protocol, Sequence
 log = logging.getLogger(__name__)
 
 VID = 0x2886  # Seeed
-PID = 0x001A  # reSpeaker XVF3800 USB firmware (Flex and 4-Mic Array)
+# reSpeaker XVF3800 USB firmwares. 0x001A: 4-Mic Array (Seeed docs). 0x001E: the
+# Flex as shipped (2026-11-06 bench: "reSpeaker Flex XVF3800 C16K6Ch", VERSION
+# 1.0.0, control on interface 3). Both speak the same control protocol.
+PIDS: tuple[int, ...] = (0x001A, 0x001E)
 
 STATUS_OK = 0
 STATUS_RETRY = 64
@@ -83,11 +86,13 @@ PARAMS: dict[str, Param] = {
     "AUDIO_MGR_MIC_GAIN": Param(35, 0, 1, "float", "rw"),
     "AUDIO_MGR_REF_GAIN": Param(35, 1, 1, "float", "rw"),
     # [0] processed DoA (NaN when neither fixed beam has speech), [1] auto-select beam DoA.
-    # Firmware <= 2.0.0 returned something else here.
+    # Seeed notes 4-Mic firmware <= 2.0.0 returned something else here; the Flex's
+    # 1.0.0 returns (nan, pi/2) when quiet, i.e. the new layout (bench 2026-11-06).
     "AUDIO_MGR_SELECTED_AZIMUTHS": Param(35, 11, 2, "radians", "ro"),
     "AUDIO_MGR_OP_L": Param(35, 15, 2, "uint8", "rw"),  # category, source
     "AUDIO_MGR_OP_R": Param(35, 19, 2, "uint8", "rw"),
-    # Seeed board firmware: [0] DoA 0..359 deg, [1] 1 when speech is detected
+    # Seeed board firmware: [0] DoA 0..359 deg, [1] 1 when speech is detected.
+    # Answers on the Flex 1.0.0; GPO_READ_VALUES does not (status 66).
     "DOA_VALUE": Param(20, 18, 2, "uint16", "ro"),
     "GPO_READ_VALUES": Param(20, 0, 5, "uint8", "ro"),
     "GPO_WRITE_VALUE": Param(20, 1, 2, "uint8", "wo"),
@@ -150,14 +155,17 @@ def decode(p: Param, payload: bytes) -> tuple[float | int, ...] | str:
 class UsbTransport:
     """pyusb on libusb. Needs read/write access to the device (udev rule)."""
 
-    def __init__(self, vid: int = VID, pid: int = PID) -> None:
+    def __init__(self, vid: int = VID, pids: Sequence[int] = PIDS) -> None:
         try:
             import usb.core  # type: ignore[import-untyped]
         except ImportError as e:  # pragma: no cover - depends on install
             raise XvfError("pyusb not installed (supervisor[ear] extra)") from e
-        dev = usb.core.find(idVendor=vid, idProduct=pid)
+        dev = usb.core.find(
+            idVendor=vid, custom_match=lambda d: d.idProduct in tuple(pids)
+        )
         if dev is None:
-            raise XvfError(f"no USB device {vid:04x}:{pid:04x}")
+            want = "/".join(f"{p:04x}" for p in pids)
+            raise XvfError(f"no USB device {vid:04x}:{want}")
         self._dev = dev
 
     def ctrl_in(self, wvalue: int, windex: int, length: int) -> bytes:
@@ -226,8 +234,8 @@ class Xvf3800:
         self._t = transport
 
     @classmethod
-    def open_usb(cls, vid: int = VID, pid: int = PID) -> Xvf3800:
-        return cls(UsbTransport(vid, pid))
+    def open_usb(cls, vid: int = VID, pids: Sequence[int] = PIDS) -> Xvf3800:
+        return cls(UsbTransport(vid, pids))
 
     def close(self) -> None:
         self._t.close()

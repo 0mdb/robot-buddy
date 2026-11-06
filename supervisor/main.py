@@ -151,7 +151,7 @@ def parse_args() -> argparse.Namespace:
         "--usb-mic-channels",
         type=int,
         default=1,
-        help="Channels to capture (XVF3800 USB firmware: 2)",
+        help="Channels to capture (reSpeaker Flex as shipped: 6)",
     )
     p.add_argument(
         "--usb-mic-channel",
