@@ -266,6 +266,43 @@ Bare boards on the bench with the Pi 5 running the supervisor:
 
 Pass → write the measured numbers back into this doc and build the envelopes.
 
+> Amendment (2026-11-06, first bench, Flex on the Pi 5 over USB, bare boards, headphones on the
+> 3.5 mm jack; speaker + PAM8302A not wired yet). Code fixes on branch `audio-xvf3800` (d53bb65).
+>
+> **Step 1, enumerate ✅**
+>
+> | Item | Measured |
+> |---|---|
+> | USB | `2886:001E` "reSpeaker Flex XVF3800 C16K6Ch", high speed. **Not** `001A` (that is the 4-Mic Array); the code and udev rule now take both |
+> | Firmware | as shipped: **6 ch / 16 kHz** (`C16K6Ch`), `VERSION` 1.0.0. We had planned 2 ch; 6 ch works as is (`--usb-mic-channels 6`) |
+> | ALSA card | id `C16K6Ch`; capture 6 ch S16_LE 16 kHz, playback 2 ch S16_LE 16 kHz; `match:reSpeaker` → `plughw:CARD=C16K6Ch,DEV=0` |
+> | Mixer | `PCM` playback 0–60 (default 40 = −20 dB); `Headset` capture 60 (0 dB) |
+> | Control | vendor interface 3 (WinUSB on Windows, libusb on the Pi). Every parameter in `PARAMS` reads except `GPO_READ_VALUES` (status 66); `AUDIO_MGR_OP_CH3..6` and `MUTE_FUNCTION_ENABLE` return 65; `LED_*` read nonsense (36) |
+> | Array | `AEC_MIC_ARRAY_TYPE` 2 (square), mics at (±22.2, ±22.2) mm |
+> | Defaults | `AUDIO_MGR_MIC_GAIN` 10, `REF_GAIN` 1.9, AGC on (max gain 32, desired level 0.0045), `PP_MIN_NS` 0.15, `PP_MIN_NN` 0.51, `AEC_ASROUTONOFF` 1, `AUDIO_MGR_OP_L` (8, 0), `AUDIO_MGR_OP_R` (7, 3) |
+> | Mute | `GPI_VALUE` (pin 0, mute button) 0 = inactive; no red LED |
+>
+> **Channel map** (from a steady 1 kHz tone through a headphone held at the array, and speech):
+>
+> | Ch | Carries | Quiet room | Speech (250 ms windows) | 1 kHz tone |
+> |---|---|---|---|---|
+> | 0 | processed ASR output (`OP_L`), heavily noise-suppressed | −92 dBFS | −61 to −67 | removed (−130) |
+> | 1 | second processed output (`OP_R` 7, 3; likely the auto-select beam), lighter suppression | −64 | −47 | removed (−105 to −118) |
+> | 2–5 | the four raw mics, matched within 2.5 dB | −64 to −70 | −52 to −54 | −69 to −71 |
+>
+> **Ch 0 is clean but ~30 dB too quiet** for openWakeWord / STT as delivered. Raise it on the chip
+> (`AEC_ASROUTGAIN`, `PP_AGCDESIREDLEVEL` / `PP_AGCMAXGAIN`) once mounted, since the enclosure
+> changes the levels; compare ch 1 as the wake-word input at the same time.
+>
+> **Assembly catch: the mic FPC must go in with its exposed contacts toward the metal fingers in
+> each connector.** Flipped, it seats and latches but the DSP gets no mic data and *every
+> sample on every channel is exactly 0* (the DSP still runs, beam azimuths stay at their π/2
+> default). Look into each open socket before inserting; the two ends can differ.
+>
+> **Other steps:** playback to the jack is clean (both channels). Step 3 (AEC) is **not tested**: a
+> headphone is too weak to put speech above the room floor at the mics, so it waits for the
+> speaker + amp. Steps 2, 4–7 and the DoA calibration wait for the speaker and for mounting.
+
 ## 8. Software follow-ups (after hardware arrives)
 
 > Amendment (2026-11-06, Flex boards arrived; code on branch `audio-xvf3800`, cd92124): the plan, in order.
@@ -304,6 +341,12 @@ Pass → write the measured numbers back into this doc and build the envelopes.
 >    the board's flash; DoA dial + speech-energy meter in Studio.
 > 6. **Privacy (Ben to decide before the canopy prints):** a parent-facing mute switch on the
 >    FPC's `GPIO_1/2`, or software mute only.
+>
+> Amendment (2026-11-06, after the first bench, §7): the board ships with the **6 ch** firmware
+> and enumerates as **`2886:001E`**; both are handled (d53bb65), the 2 ch firmware is no longer
+> needed. **The voice pipeline gets refactored for this hardware** (Ben) rather than patched: one
+> card for capture and playback, AEC on the board, chip setup at startup. See TODO "Voice
+> pipeline refactor (XVF3800)".
 
 
 - Ear worker: capture 2-ch from the XVF and pick the ASR channel (today `arecord` is mono).
