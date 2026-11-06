@@ -30,7 +30,11 @@ import sw  # noqa: E402  (staging/winpath/sync helpers)
 
 # ---------------------------------------------------------------- plate (06 §1, §4)
 PLATE_L, PLATE_W, PLATE_T = 170.0, 110.0, 4.0
-FRONT_CHAMFER = 20.0  # 45° corner chamfers at +X, kept from Ben's bottom_plate
+# Ben (2026-11-06): the 45° front chamfers are gone. The bulkhead and its cheeks span
+# |y| 52 at x 82-85 and hung over the cut corner (an unfinished-looking gap under the
+# face). Square front corners with a small plan radius (kid-safety r >= 1; E1 family 3).
+FRONT_R = 3.0  # front plan corner radii at +X
+MOUNT_CHAMFER_REF = 20.0  # the old chamfer line still fixes the motor station (mount_tx 47.4)
 REAR_RADIUS = 20.0  # corner radii at -X, kept from Ben's bottom_plate
 
 # --------------------------------------------- TT motor (Yahboom product drawing)
@@ -90,25 +94,27 @@ def mount_ty() -> float:
 
 def mount_tx() -> float:
     # Right side: chassis x = -(part x) + tx. Every foot corner must stay inside
-    # the front chamfer line x + |y| <= PLATE_L/2 + PLATE_W/2 - FRONT_CHAMFER.
+    # the (former) front chamfer line x + |y| <= PLATE_L/2 + PLATE_W/2 - MOUNT_CHAMFER_REF.
+    # Kept as a reference so squaring the plate's corners leaves the drivetrain where it is.
     ty = mount_ty()
-    lim = PLATE_L / 2 + PLATE_W / 2 - FRONT_CHAMFER - CHAMFER_MARGIN
+    lim = PLATE_L / 2 + PLATE_W / 2 - MOUNT_CHAMFER_REF - CHAMFER_MARGIN
     return min(lim - abs(-py - ty) + px for px, py in FOOT_FRONT_CORNERS)
 
 
 # ------------------------------------------------------------------- helpers
 def plate_profile() -> str:
-    hx, hy, c, r = PLATE_L / 2, PLATE_W / 2, FRONT_CHAMFER, REAR_RADIUS
+    hx, hy, c, r = PLATE_L / 2, PLATE_W / 2, FRONT_R, REAR_RADIUS
     return " ".join(
         [
             f"M {hx} {-(hy - c)}",
             f"L {hx} {hy - c}",
-            f"L {hx - c} {hy}",
+            f"A {hx - c} {hy - c} {hx - c} {hy}",
             f"L {-(hx - r)} {hy}",
             f"A {-(hx - r)} {hy - r} {-hx} {hy - r}",
             f"L {-hx} {-(hy - r)}",
             f"A {-(hx - r)} {-(hy - r)} {-(hx - r)} {-hy}",
             f"L {hx - c} {-hy}",
+            f"A {hx - c} {-(hy - c)} {hx} {-(hy - c)}",
         ]
     )
 
@@ -116,7 +122,7 @@ def plate_profile() -> str:
 def plate_volume() -> float:
     a = (
         PLATE_L * PLATE_W
-        - 2 * (FRONT_CHAMFER**2 / 2)
+        - 2 * (FRONT_R**2 * (1 - math.pi / 4))
         - 2 * (REAR_RADIUS**2 * (1 - math.pi / 4))
     )
     return a * PLATE_T
@@ -257,10 +263,12 @@ def mount_holes() -> list[tuple[float, float]]:
 
 
 def edge_room(x: float, y: float) -> float:
-    """Distance from (x, y) to the nearest plate edge (front chamfer or sides)."""
-    hx, hy = PLATE_L / 2, PLATE_W / 2
-    chamfer = (hx + hy - FRONT_CHAMFER - (x + abs(y))) / math.sqrt(2)
-    return min(chamfer, hy - abs(y), hx - abs(x))
+    """Distance from (x, y) to the nearest plate edge (front, sides, front corner arcs)."""
+    hx, hy, c = PLATE_L / 2, PLATE_W / 2, FRONT_R
+    d = min(hy - abs(y), hx - abs(x))
+    if x > hx - c and abs(y) > hy - c:
+        d = min(d, c - math.hypot(x - (hx - c), abs(y) - (hy - c)))
+    return d
 
 
 # Shapes: ("outline",), ("rect", x0, x1, y0, y1), ("circle", cx, cy, r),
@@ -283,10 +291,12 @@ def shape_mask(s: tuple, X, Y):
     import numpy as np
 
     if s[0] == "outline":
-        hx, hy, c, r = PLATE_L / 2, PLATE_W / 2, FRONT_CHAMFER, REAR_RADIUS
-        m = (np.abs(X) <= hx) & (np.abs(Y) <= hy) & (X + np.abs(Y) <= hx + hy - c)
+        hx, hy, c, r = PLATE_L / 2, PLATE_W / 2, FRONT_R, REAR_RADIUS
+        m = (np.abs(X) <= hx) & (np.abs(Y) <= hy)
         corner = (X < -(hx - r)) & (np.abs(Y) > hy - r)
-        return m & ~(corner & ((X + hx - r) ** 2 + (np.abs(Y) - (hy - r)) ** 2 > r * r))
+        m &= ~(corner & ((X + hx - r) ** 2 + (np.abs(Y) - (hy - r)) ** 2 > r * r))
+        fc = (X > hx - c) & (np.abs(Y) > hy - c)
+        return m & ~(fc & ((X - (hx - c)) ** 2 + (np.abs(Y) - (hy - c)) ** 2 > c * c))
     if s[0] == "rect":
         _, x0, x1, y0, y1 = s
         return (X >= x0) & (X <= x1) & (Y >= y0) & (Y <= y1)
@@ -308,7 +318,7 @@ def plate_features() -> list[tuple[str, tuple, float, float]]:
     """
     add: list[tuple[str, tuple, float, float]] = [("add", ("outline",), -PLATE_T, 0.0)]
     cut: list[tuple[str, tuple, float, float]] = []
-    # motor-mount inserts: under-boss, sized down where the front chamfer is close
+    # motor-mount inserts: under-boss, sized down where a plate edge is close
     for x, y in mount_holes():
         r = min(INS_BOSS / 2, round(edge_room(x, y) - 0.04, 2))
         add.append(("add", ("circle", x, y, r), UNDER_BOSS_Z, -PLATE_T))
@@ -472,12 +482,12 @@ PLATE_SLOT_EDGE_R = 0.5  # tick 88: 2 mm wide slots (r 1 would round through)
 
 
 def plate_perimeter() -> float:
-    """Outline length: straight front/rear/sides, two 45° front chamfers, two rear arcs."""
-    c, r = FRONT_CHAMFER, REAR_RADIUS
+    """Outline length: straight front/rear/sides, two front and two rear corner arcs."""
+    c, r = FRONT_R, REAR_RADIUS
     front = PLATE_W - 2 * c
     rear = PLATE_W - 2 * r
     sides = 2 * (PLATE_L - c - r)
-    return front + rear + sides + 2 * c * math.sqrt(2) + 2 * (math.pi / 2) * r
+    return front + rear + sides + 2 * (math.pi / 2) * (c + r)
 
 
 def belly_edge_length(step: float = 0.05) -> float:
@@ -1483,6 +1493,7 @@ BH_FOOT = (
     (-29.5, 29.5),
     (0.0, 9.0),
 )  # chassis box; x >= 78.5 clears the mount feet
+BH_FLANGE_GAP = 0.3  # side-flange bottoms clear the plate (2026-11-06)
 BH_TAB = (4.0, 9.8, 3.6)  # into the 4.6 x 10.4 plate slots (0.3/side)
 # Knee gusset (P1b): the only clear slot behind the lower band is between the sonar
 # sleeves (y <= 0.8) and the speaker (y >= 4); it stays below the face board (z <= 44).
@@ -1668,6 +1679,14 @@ def bulkhead_features() -> tuple[list[tuple], list[tuple]]:
     # post-tilt, chassis frame: foot, tabs, foot insert pockets (F1)
     (fx0, fx1), (fy0, fy1), (fz0, fz1) = BH_FOOT
     post: list[tuple] = [("add", ("box", fx0, fx1, fy0, fy1, fz0, fz1))]
+    # 2026-11-06: the tilt swings the side flanges' bottoms ~1 mm under the plate top at
+    # |y| 45-47, x ~78; the old front chamfer had no plate there. Trim them to BH_FLANGE_GAP
+    # over the plate, outboard of the tabs (|y| <= 15.9) and the foot (29.5): a flat at z 0
+    # would bear on the plate, and S5's "fix plane z 0" bonded it (S5c 5.72 -> 9.91 MPa at
+    # the flange root). The foot stays the only seat.
+    for sgn in (-1, 1):
+        ys = sorted((sgn * (fy1 + 0.5), sgn * (BH_W / 2 + BH_CHEEK[0] + 1)))
+        post.append(("trim", ("box", fx0 - 15.0, BH_XF + 1.0, *ys, -5.0, BH_FLANGE_GAP)))
     tw, th, td = BH_TAB
     for sgn in (-1, 1):
         cyy = sgn * BULK_TAB_Y
@@ -1836,6 +1855,8 @@ def bulkhead_lines(path: str) -> list[str]:
     )
     lines.append(f"rotbody|{BH_PIVOT[0]} {BH_PIVOT[1]} {BH_PIVOT[2]}|y|{-BH_TILT}")
     for op, sh in post:
+        if op == "trim":  # applied last, after the side-face rounds (below)
+            continue
         if sh[0] == "box" and op == "add":
             _, x0, x1, y0, y1, z0, z1 = sh
             lines.append(f"box|{x0} {x1}|{y0} {y1}|{z0} {z1}")
@@ -1881,6 +1902,7 @@ def bulkhead_lines(path: str) -> list[str]:
         f"fillet|{PLATE_EDGE_R}|any|{fx1 - 0.1} {fy0 - 0.1} {(fz0 + fz1) / 2 - 0.1} {fx1 + 0.1} {fy1 + 0.1} {fz1 + 0.1}|3|{-dvft:.2f} {0.25 * dvft:.2f}"
     )
     vol -= dvft
+    lines += [emit("cut", sh) for op, sh in post if op == "trim"]
     lines += [
         f"expect|vol {vol:.1f} {vol * 0.01:.1f}|box {' '.join(f'{v:.2f}' for v in bb)} 0.35",
         "save",
@@ -2459,7 +2481,12 @@ CAN_R = (
     8.0,
 )  # rear plan corners (= plate R20), hood edges, top edges (E1 8)
 CAN_WIN_HW = BH_W / 2 + 0.3  # front opening: the bulkhead's width + 0.3 per side
-CAN_APRON_HW = 26.0  # rear apron, inside the carriages (|y| >= 28)
+CAN_APRON_HW = 26.0  # (pre 2026-11-06) rear apron, inside the carriages (|y| >= 28)
+# Ben (2026-11-06): the open rear corners beside the apron showed the carriages and jack
+# blocks. The rear wall now runs to the plate across the full width and round both R20
+# plan corners, stopping on a radial face where its INNER surface is CAN_REAR_CLR aft of
+# the carriages' aft-most position (taut station - pedestal half-length - travel).
+CAN_REAR_CLR = 1.0
 CAN_BOSS = (
     -80.4,
     12.0,
@@ -2785,6 +2812,34 @@ def hood_collar_lines() -> list[str]:
     return out
 
 
+def canopy_rear_wall() -> dict:
+    """The rear wall below the skirt (z 0 .. CAN_Z0), plan view: the rear flat plus both
+    corner arcs (outer r CAN_R[0], inner r - CAN_T) to a radial end at angle phi (from +x,
+    about the corner centre (CAN_X0 + rr, +-(hw - rr))). Returns the plan profile, its
+    area and the end points."""
+    rr, hw, t = CAN_R[0], CAN_HW, CAN_T
+    cx, cy, ri = CAN_X0 + rr, hw - rr, rr - t
+    x_aft = dt.belt_fit()["x_fit"] - CAR_PED[0] - dt.TRAVEL  # carriage's aft-most face
+    phi = math.acos((x_aft - CAN_REAR_CLR - cx) / ri)  # inner end on x_aft - clr
+    co, si = math.cos(phi), math.sin(phi)
+    pi_, po = (cx + ri * co, cy + ri * si), (cx + rr * co, cy + rr * si)
+    prof = " ".join(
+        [
+            f"M {pi_[0]:.6f} {-pi_[1]:.6f}",
+            f"a {cx:.6f} {-cy:.6f} {cx - ri:.6f} {-cy:.6f}",  # a = clockwise
+            f"L {cx - ri:.6f} {cy:.6f}",
+            f"a {cx:.6f} {cy:.6f} {pi_[0]:.6f} {pi_[1]:.6f}",
+            f"L {po[0]:.6f} {po[1]:.6f}",
+            f"A {cx:.6f} {cy:.6f} {cx - rr:.6f} {cy:.6f}",
+            f"L {cx - rr:.6f} {-cy:.6f}",
+            f"A {cx:.6f} {-cy:.6f} {po[0]:.6f} {-po[1]:.6f}",
+        ]
+    )
+    sweep = math.pi - phi  # each arc, rear tangent (angle pi) to the end
+    area = t * 2 * cy + 2 * 0.5 * sweep * (rr * rr - ri * ri)
+    return {"prof": prof, "area": area, "phi": phi, "pi": pi_, "po": po, "x_aft": x_aft}
+
+
 def canopy_rim_round() -> tuple[float, list[str]]:
     """P6e (tick 61): r 1.0 on the OUTER edge of the skirt's bottom rim (z CAN_Z0), the edge a
     hand meets; the inner edge stays square (rounding both would eat the 1.8 wall). Returns
@@ -2797,10 +2852,11 @@ def canopy_rim_round() -> tuple[float, list[str]]:
     rr = CAN_R[0]
     (wx0, wx1), _, _, _ = CAN_TAB
     xf = canopy_profile()[5][0]  # front bottom on the wall's back-face line
-    rear = 2 * ((hw - rr) - CAN_APRON_HW)
+    rw = canopy_rear_wall()
+    rear = 0.0  # 2026-11-06: the rear wall reaches the plate; no rim along the rear flat
     sides = 2 * ((wx0 - (CAN_X0 + rr)) + (xf - wx1))
     cbar = r * (10 - 3 * math.pi) / (3 * (4 - math.pi))
-    arcs = 2 * q90 * (rr - cbar) * math.pi / 2
+    arcs = 2 * q90 * (rr - cbar) * (rw["phi"] - math.pi / 2)  # end face to the side tangent
     lips = 2 * (hw - CAN_WIN_HW)  # front-wall bottom edge beside the window (75° wedge)
     vol = q90 * (rear + sides) + _round_area(75.0, r) * lips + arcs
     zz = f"{z - 0.5} {z + 0.5}"
@@ -2816,17 +2872,17 @@ def canopy_rim_round() -> tuple[float, list[str]]:
         box(-200, 200, -yi - 0.4, -yi + 0.4),
         box(CAN_X0 + t - 0.4, CAN_X0 + t + 0.4, -60, 60),
     ]
-    # inner corner arcs: chord midpoint of the r (rr - t) arc centred (x0 + rr, +-(hw - rr))
-    cx, cy, ri = CAN_X0 + rr, hw - rr, rr - t
-    mx, my = cx - ri / 2, cy + ri / 2
-    skips += [
-        box(mx - 0.4, mx + 0.4, my - 0.4, my + 0.4),
-        box(mx - 0.4, mx + 0.4, -my - 0.4, -my + 0.4),
-    ]
+    # inner corner arcs (r rr - t, centre (x0 + rr, +-(hw - rr))) from the rear wall's end to
+    # the side seam: chord midpoint; and the concave junction with the wall's radial end face
+    cx, cy = CAN_X0 + rr, hw - rr
+    (pix, piy), (pox, poy) = rw["pi"], rw["po"]
+    mx, my = (pix + cx) / 2, (piy + hw - t) / 2
+    ex, ey = (pix + pox) / 2, (piy + poy) / 2
+    for sg in (-1, 1):
+        skips += [box(mx - 0.4, mx + 0.4, sg * my - 0.4, sg * my + 0.4)]
+        skips += [box(ex - 0.5, ex + 0.5, sg * ey - 0.5, sg * ey + 0.5)]
     for xw in (wx0, wx1):  # web junctions (concave)
         skips += [box(xw - 0.4, xw + 0.4, -60, 60)]
-    skips += [box(CAN_X0 - 1, CAN_X0 + t + 1, CAN_APRON_HW - 0.4, CAN_APRON_HW + 0.4)]
-    skips += [box(CAN_X0 - 1, CAN_X0 + t + 1, -CAN_APRON_HW - 0.4, -CAN_APRON_HW + 0.4)]
     # front-wall inner edge (back-face line minus t along the normal), beside the window
     xfi = xf - t / math.cos(math.radians(BH_TILT))
     skips += [box(xfi - 0.6, xfi + 0.6, -60, 60)]
@@ -2860,7 +2916,7 @@ def canopy_features() -> dict:
     hx, hz = _pre2ch(lug_x, BH_H + CAN_LUG_GAP + CAN_T / 2)
     holes = 2 * math.pi * (CAN_LUG_HOLE / 2) ** 2 * CAN_T / c_
     # rear apron + bosses (the boss's slice inside the apron counted once)
-    apron = CAN_T * 2 * CAN_APRON_HW * CAN_Z0
+    apron = canopy_rear_wall()["area"] * CAN_Z0
     bx, by, bh = CAN_BOSS
     r = INS_BOSS / 2
     dd = bx - (CAN_X0 + CAN_T)
@@ -2980,8 +3036,9 @@ CAN_VENT_EDGE_R = 0.5  # P6e (tick 85): vent slot outer edges (2 wide slots, 1.8
 
 def canopy_rear_edges() -> tuple[float, list[str]]:
     """P6e (tick 85), kid-safety edges the canopy audit lists on the rear wall: r 0.5 on the
-    26 vent slots' OUTER edges (inner loops of the x -85 face) and r 1.0 on the rear apron's
-    two outer vertical corners (y +-26, under the skirt). Returns (volume removed, lines)."""
+    26 vent slots' OUTER edges (inner loops of the x -85 face) and r 1.0 on the rear wall's
+    two outer vertical end edges (2026-11-06: at the radial ends round the plan corners;
+    were the apron's corners at y +-26). Returns (volume removed, lines)."""
     r = CAN_VENT_W / 2
     n = int(round(2 * CAN_VENT_HY / CAN_VENT_PITCH)) + 1
     per = sum(2 * (z1 - z0 - 2 * r) + 2 * math.pi * r for z0, z1 in CAN_VENT_Z) * n
@@ -2994,8 +3051,9 @@ def canopy_rear_edges() -> tuple[float, list[str]]:
     )
     L = CAN_Z0 - CAN_EDGE_R  # 0 .. under the skirt rim's r 1
     dv_a = (1 - math.pi / 4) * CAN_EDGE_R**2 * L
+    pox, poy = canopy_rear_wall()["po"]
     apron = [
-        f"fillet|{CAN_EDGE_R}|z|{CAN_X0 - 0.1} {s * CAN_APRON_HW - 0.1} {L / 2 - 3:.2f} {CAN_X0 + 0.1} {s * CAN_APRON_HW + 0.1} {L / 2 + 3:.2f}"
+        f"fillet|{CAN_EDGE_R}|z|{pox - 0.1:.3f} {s * poy - 0.1:.3f} {L / 2 - 3:.2f} {pox + 0.1:.3f} {s * poy + 0.1:.3f} {L / 2 + 3:.2f}"
         f"|1|{-dv_a:.2f} {0.2 * dv_a:.2f}"
         for s in (-1, 1)
     ]
@@ -3221,7 +3279,7 @@ def canopy_lines(path: str) -> list[str]:
                 f"box|{CAN_TAB[1][0]} {CAN_TAB[1][1]}|{min(sg * (CAN_HW - CAN_T), sg * CAN_HW)} {max(sg * (CAN_HW - CAN_T), sg * CAN_HW)}|{-CAN_TAB[2]} 0",
             )
         ],
-        f"box|{CAN_X0} {CAN_X0 + CAN_T}|{-CAN_APRON_HW} {CAN_APRON_HW}|0 {CAN_Z0}",
+        f"prof|0 {CAN_Z0}|{canopy_rear_wall()['prof']}",
         *[f"cyl|z|{bx} {sg * by}|0 {bh}|{INS_BOSS / 2}|boss" for sg in (-1, 1)],
         *[
             f"cyl|z|{bx} {sg * by}|-0.1 {INS_DEPTH}|{INS_HOLE / 2}|cut"

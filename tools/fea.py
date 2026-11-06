@@ -576,6 +576,23 @@ def run_watched(exe: str, man: str) -> str:
     return "".join(chunks).replace("\r", "")
 
 
+def clean_results(part: str) -> None:
+    """Delete the Simulation result files SolidWorks leaves beside the part for every run
+    (<part>-<study>-<hhmmss>.CWR/.LOG/.gsz, ~80-125 MB each). swsim reads what it needs
+    from the open study into results.csv, so they are never used; by 2026-11-06, 220 of
+    them (93 GB) had filled C: and the solver failed with "Inadequate disk space"."""
+    d, stem = os.path.split(os.path.splitext(part)[0])
+    if not os.path.isdir(d):
+        return
+    pre = (stem + "-").lower()
+    for f in os.listdir(d):
+        if f.lower().startswith(pre) and f.lower().endswith((".cwr", ".log", ".gsz")):
+            try:
+                os.remove(os.path.join(d, f))
+            except OSError as e:  # still open in SolidWorks: the next run gets it
+                print(f"  (kept {f}: {e})")
+
+
 def run_study(
     st: dict, exe: str, dry: bool, mesh_scale: float = 1.0, material: str = "PET-CF"
 ) -> str:
@@ -609,6 +626,7 @@ def run_study(
         return ""
     text = run_watched(exe, man)
     print(text, end="")
+    clean_results(os.path.join(stage, st["part"].lstrip("\\").replace("\\", "/")))
     if "SIM OK" not in text:
         sys.exit(f"{st['name']}: swsim did not report SIM OK")
     # equilibrium: the fixture must react exactly the applied total (catches per-face loads)

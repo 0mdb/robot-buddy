@@ -78,6 +78,7 @@ Baseline at loop start (commit on `cad`): plate rev 1, envelopes, Ben's imported
 - [x] P7b `[sw]` (tick 97) speaker pocket to the ordered Same Sky CMS-30205 (30 × 20 × 5.6, stadium): depth for 0.3 preload, stadium gasket, magnet pad, lead notch
 - [x] P9 `[sw]` (tick 99, Q31 default) XVF3800 core board on edge in the −y side bay, on a wall standing on the Pi deck (3 × M2.5 standoffs, 45° overhang over the motor); voxel layout study
 - [x] P9b `[sw]` deck wall: a drop/handling FEA case (board 30 g, 1 m drop) and lightening window if it passes easily (+11.6 g now)
+- [x] P15 `[sw]` (Ben, 2026-11-06) plate front corners square (plan r 3, chamfers gone) and the canopy rear wall full width down to the plate round both R20 corners (stops 1 mm behind the carriages); bulkhead side flanges trimmed 0.3 above the plate. Tick 101
   **Done tick 100:** new S1e (20 g on the board, each axis). The bare wall passed on stress (7.6 MPa) but its bores moved 1.95 mm toward the canopy (2.0 gap): no window; 3 ribs + a 45° top chord inboard instead (+2.1 g, deck 32.4 g): 10.8 MPa (SF 3.2), 1.16 mm, S1d 9.00 (=). Physical drop (S6) still to confirm.
 - [ ] ~~P9 old~~ `[blocked]` XVF3800 core-board mount aft between the carriages: needs the board's measured outline and holes (audio bench step 7)
 - [ ] P10 `[sw]` **Full assembly**: every part placed, interference clean (except the 🟡 motor-envelope overlaps), assembly mass + CoG, hero renders (E4)

@@ -131,6 +131,14 @@ the motors (pattern centre (−10.5, −3.5), board x −40…25, 0.7 mm to the 
 the follower carriages (\|y\| 28…44 aft of x −40) left no room aft. The XVF3800 core
 board and any off-board TB6612 now go aft, between the carriages (x −85…−40, \|y\| < 28) 🟡.
 
+> Amendment (loop, 2026-11-06, Ben): **front chamfers removed.** Plate outline 20 mm 45°
+> front chamfers → square front corners, plan r 3 (`FRONT_R`); rear R20 unchanged. The
+> bulkhead and its S2a cheeks span |y| 52 at x 82–85 and hung over the cut corners (an
+> unfinished-looking gap under the face). The motor station stays where the old chamfer line
+> put it (`MOUNT_CHAMFER_REF` 20 → `mount_tx` 47.4): no drivetrain change. Plate 110.9 →
+> 112.9 g. The bulkhead's side-flange bottoms, which the 15° tilt swings ~1 mm under the
+> plate top at |y| 45–47, are trimmed 0.3 mm above the plate top (`BH_FLANGE_GAP`; they used to hang over the chamfer). The gap matters: trimmed flush at z 0, the flat faces were bonded by the FEA "fix plane z 0" and S5c read 9.9 MPa.
+
 ## 5. Front bulkhead (piece 2)
 
 - Spans the plate width, inboard of the tracks; foot bolts to the plate (§4) with
@@ -199,6 +207,16 @@ board and any off-board TB6612 now go aft, between the carriages (x −85…−4
 > - Later in leg 2 (ticks 49–52): PC white; top 93 → **95** with a 4 mm rib grid and two
 >   keels (heel test S8, 07); inner roots r 1; **side tongues** (x −43…−15, 3 mm) into
 >   plate slots so the side walls brace the bulkhead's lugs (Q19).
+
+> Amendment (loop, 2026-11-06, Ben): **rear corners closed.** The rear apron (|y| ≤ 26,
+> z 0–30) → a rear wall to the plate across the full width and round both R20 plan corners,
+> ending on a radial face whose inner surface is 1.0 aft of the carriages' aft-most position
+> (x −72.2 = taut station − 10 − 5 travel): end at |y| ≈ 49.3 inner / 50.9 outer, r 1 on the
+> outer end edge. The open corners showed the carriages and jack blocks from behind and let
+> a finger reach the idler. Tensioning is done canopy-off, so nothing needed the opening.
+> What's left is a ~5.6 mm sliver per corner between the wall's end and the belt's inner
+> edge (56.5), behind the track; the carriages (|y| to 53) rule out closing it further.
+> Canopy 120.9 → 124.5 g.
 
 ## 7. Drivetrain parts
 

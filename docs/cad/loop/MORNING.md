@@ -1,3 +1,12 @@
+# 2026-11-06: front corners square, rear corners closed (tick 101)
+
+- **What changed:** the plate's 45° front chamfers are gone. The corners are square now, rounded r 3 in plan so they aren't sharp. The canopy's rear apron is now a full-width rear wall down to the plate. It runs round both R20 corners and stops 1 mm behind where the carriages reach at full tension travel. Look: `shots/hero/rear_quarter.png`, `three_quarter.png`; plate and canopy alone in `shots/1-P15/`.
+- **Still open:** a 5.6 mm sliver per rear corner, between the wall's end and the belt, behind the track. Closing it means moving the carriages, which reach |y| 53.
+- **Knock-on:** the tilted bulkhead's side flanges used to hang over the chamfer and would have hit the square corners. They're trimmed to 0.3 mm above the plate (flush at z 0 doubled the S5c stress in the FEA fixture).
+- **Numbers:** 0 interferences. Robot 728.5 g printed (+5.7: plate +2.0, canopy +3.6). Studies, all inside the gates (MPa): S1a 11.8 (+3.4 %) · S1b 3.20 · S1m 9.01 · S5c 5.81 · S8 19.3 / heel 1.15 mm · S5k 9.97 (+5.3 %) / lugs 0.61 mm. S8 and S5k now hold the wider wall foot, which is slightly optimistic.
+- **Housekeeping:** C: had filled to 508 MB with old Simulation results. That's why S8/S5k failed and probably why SolidWorks crashed. I deleted 660 files (~93 GB, you OK'd it), and `fea.py` now deletes each study's results once it has read them.
+- **Need from you:** unchanged (encoder socket height + plug depth; mic-disc thickness; Q28/Q29/Q23 + HAT heights; M3 insert dims).
+
 # 2026-11-05: your parts built in (ticks 97–100), review pass clean
 
 - **Review pass (after tick 100):** all 12 studies re-run on today's geometry, all equal to their accepted values and inside the gates: S1a 11.4 · S1b 3.45 · S1d 9.00 · S1e 10.8 / 1.16 mm · S1m 9.22 · S2 6.36 · S6 6.50 · S9 12.2 / 0.35 mm · S5c 5.72 · S5k 9.47 · S8 19.3 / 1.16 mm (MPa). Only new sharp edges: the 4 mic port rims (Ø1.2, left sharp). Robot 722.8 g printed, 0 interferences. Nothing else can move until the items under "Need from you".

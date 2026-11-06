@@ -36,9 +36,14 @@ def _plate(p: np.ndarray, n: np.ndarray) -> np.ndarray:
         [
             hx - np.abs(p[:, 0]),
             hy - np.abs(p[:, 1]),
-            (hx + hy - chassis.FRONT_CHAMFER - (p[:, 0] + np.abs(p[:, 1])))
-            / np.sqrt(2),
         ]
+    )
+    c = chassis.FRONT_R
+    fc = (p[:, 0] > hx - c) & (np.abs(p[:, 1]) > hy - c)
+    edge_d = np.where(
+        fc,
+        np.minimum(edge_d, c - np.hypot(p[:, 0] - (hx - c), np.abs(p[:, 1]) - (hy - c))),
+        edge_d,
     )
     rear = p[:, 0] < -(hx - chassis.REAR_RADIUS)
     corner = np.hypot(
