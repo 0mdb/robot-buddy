@@ -268,6 +268,44 @@ Pass → write the measured numbers back into this doc and build the envelopes.
 
 ## 8. Software follow-ups (after hardware arrives)
 
+> Amendment (2026-11-06, Flex boards arrived; code on branch `audio-xvf3800`, cd92124): the plan, in order.
+>
+> **What the Flex gives us** (Seeed wiki + `xvf_host.py`, XMOS user guide v3.2.1). One USB-C
+> cable carries two links. **Audio:** UAC 2.0, a normal ALSA card; Seeed's USB firmware comes
+> as 2 ch / 16 kHz, 6 ch / 16 kHz or 2 ch / 48 kHz. Use **2 ch / 16 kHz**. **Its USB playback
+> is the echo canceller's reference**, so every robot sound (TTS and chimes) must play
+> through this card. **Control:** USB vendor requests on endpoint 0, VID:PID `2886:001A`:
+> read = `0xC0, 0, 0x80|cmdid, resid`, reply = status byte (0 ok, 64 retry) + little-endian
+> values; write = `0x40, 0, cmdid, resid`. Parameters used: `AUDIO_MGR_SELECTED_AZIMUTHS`
+> (processed voice direction; NaN = no speech), `AEC_SPENERGY_VALUES` (speech energy per
+> beam), `AEC_FIXEDBEAMS*` (lock a beam), `AUDIO_MGR_OP_L/R` (what each output channel
+> carries), `AUDIO_MGR_MIC_GAIN` / `REF_GAIN`, `PP_AGC*`, `PP_MIN_NS` / `PP_MIN_NN`
+> (noise suppression), `SAVE_CONFIGURATION`. Firmware via `dfu-util`.
+>
+> 1. **Bench** (§7 step 1 + `xvf_host.py -l`): card name, which output channel is the ASR
+>    beam, the real parameter list for this firmware, and DoA sanity (talk from the front,
+>    then the left → `--doa-offset-deg` / `--doa-sign`).
+> 2. **Audio path** ✅ (code + tests): `--usb-mic-device match:<card>` / `--usb-speaker-device
+>    match:<card>` resolve by card name (`supervisor/devices/alsa_device.py`);
+>    `--usb-mic-channels 2 --usb-mic-channel N` captures stereo and keeps one channel as the
+>    16 kHz mono stream for wake word, VAD and STT. udev rule for the control interface
+>    (`deploy/99-robot-buddy.rules`), pyusb + libusb in install/update.
+> 3. **Control client** ✅ (code + tests): `supervisor/devices/xvf3800.py` (read / write /
+>    save, retry on busy, a fake board for tests). With `--xvf-control` the ear worker polls
+>    voice direction at 10 Hz and publishes **`ear.event.doa`** `{speech, azimuth_deg (robot
+>    frame, + = left, −180..180), energy, beam_energy[4]}` while someone talks, then one
+>    `{speech: false}`.
+> 4. **Use it** (next): eyes follow the voice (face gaze), turn toward the speaker after the
+>    wake word (planner, reflex safety limits, not while driving), barge-in once §7 step 3
+>    passes (keep wake word / VAD live during TTS, stop TTS on the child's voice), require
+>    speech energy before accepting a wake word (motor-noise false wakes), lock a fixed beam
+>    on the child during a conversation.
+> 5. **Tune + dashboard**: gains and noise floors from the bench, `SAVE_CONFIGURATION` to
+>    the board's flash; DoA dial + speech-energy meter in Studio.
+> 6. **Privacy (Ben to decide before the canopy prints):** a parent-facing mute switch on the
+>    FPC's `GPIO_1/2`, or software mute only.
+
+
 - Ear worker: capture 2-ch from the XVF and pick the ASR channel (today `arecord` is mono).
 - Device naming by ALSA card name in `deploy/supervisor.env`.
 - Once §7 step 3 passes: keep VAD and wake word live during TTS (remove the pause-during-playback path), then barge-in.
