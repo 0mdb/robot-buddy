@@ -92,8 +92,15 @@ STRUCT = {
     "sparse_infill_pattern": "gyroid",
     "top_shell_layers": "5",
     "bottom_shell_layers": "4",
+    # Ben 2026-11-08: no brim. The P2S profile's auto_brim plus the tree supports' own
+    # brims (tree_support_auto_brim) collide on a plate.
+    "brim_type": "no_brim",
 }
-SUPPORT = {"enable_support": "1", "support_type": "tree(auto)"}
+# 2026-11-08: normal(auto) with bridges left unsupported. tree(auto) ignores max_bridge_length
+# and bridge_no_support, so it filled every closed cell under the plate's ribs (31 g on the
+# plate alone); normal(auto) + 40 mm bridges leaves the edge strips only (12.6 g, -1 h).
+# Track frames: 86.9 -> 76.6 g. Bridges <= 40 mm hold in PET-CF (D3).
+SUPPORT = {"enable_support": "1", "support_type": "normal(auto)", "max_bridge_length": "40", "bridge_no_support": "1"}
 
 # stem -> (material, up axis, qty, support?, note). D3 orientation; qty per robot.
 PARTS = {
@@ -101,8 +108,8 @@ PARTS = {
         "PET-CF",
         "+z",
         1,
-        True,
-        "ribs down; tree support at the perimeter ledges (D3)",
+        False,
+        "rev 2: flat belly down, top pockets; no support (0.1 g if enabled)",
     ),
     "RB-PRT-002_bulkhead": ("PET-CF", "-x", 1, False, "face down (D3)"),
     "RB-PRT-003_pi_deck": ("PET-CF", "+z", 1, False, "flat"),
@@ -286,6 +293,7 @@ def run_orca(
 
 # Keys the G-code must carry as asked (trap 2: a key you set is not a key that won).
 CHECK = (
+    "brim_type",
     "layer_height",
     "wall_loops",
     "sparse_infill_density",
@@ -354,6 +362,7 @@ def slice_part(prof: Profiles, stem: str, threemf: bool, mat_override: str = "")
         else STRUCT["sparse_infill_density"],
         "filament_density": f"{rho:g}",
         "enable_support": "1" if support else "0",
+        "brim_type": None if mat == "TPU" else STRUCT["brim_type"],
     }
     bad = [
         f"{k}={r['cfg'].get(k)!r} (want {v})"
@@ -377,6 +386,30 @@ def slice_part(prof: Profiles, stem: str, threemf: bool, mat_override: str = "")
 # One material per plate; support is on if any part on it needs it (tree(auto) only grows
 # where a part overhangs, so flat parts get none).
 PLATES = {
+    # 2026-11-08 (Ben): the parts that won't change while the base plate is redesigned (ribs to
+    # the top face) and the speaker / cowl work lands: they only bolt to the plate.
+    "stable": [  # stable_a + stable_b on one bed; the wheels get a per-object support off
+        "RB-PRT-040_trackframe_L",
+        "RB-PRT-041_trackframe_R",
+        "RB-PRT-010_motor_mount_R",
+        "RB-PRT-011_motor_mount_L",
+        "RB-PRT-030_carriage_L",
+        "RB-PRT-031_carriage_R",
+        "RB-PRT-020_sprocket",
+        "RB-PRT-021_idler",
+    ],
+    "stable_a": [  # support on: the track frames' blades
+        "RB-PRT-040_trackframe_L",
+        "RB-PRT-041_trackframe_R",
+        "RB-PRT-010_motor_mount_R",
+        "RB-PRT-011_motor_mount_L",
+        "RB-PRT-030_carriage_L",
+        "RB-PRT-031_carriage_R",
+    ],
+    "stable_b": [  # no support (on one plate with the frames they grew ~30 g of it)
+        "RB-PRT-020_sprocket",
+        "RB-PRT-021_idler",
+    ],
     "petcf1": [  # base plate (support) + the small structure parts
         "RB-PRT-001_base_plate",
         "RB-PRT-010_motor_mount_R",
@@ -389,14 +422,58 @@ PLATES = {
         "RB-PRT-040_trackframe_L",
         "RB-PRT-041_trackframe_R",
     ],
-    "petcf3": [  # no support: bulkhead, Pi deck, wheels (after the 684 / M2.5 coupons)
+    "petcf3": [  # no support: bulkhead + sprockets (bore 0.15) + idlers (624 crush 0.15)
         "RB-PRT-002_bulkhead",
-        "RB-PRT-003_pi_deck",
         "RB-PRT-020_sprocket",
         "RB-PRT-021_idler",
+    ],
+    "petcf4": [  # waits on the 684 bearings (road-disc seat) and the M2.5 insert row (deck)
+        "RB-PRT-003_pi_deck",
         "RB-PRT-022_road_disc",
     ],
 }
+
+
+# Per-object support style on mixed plates (written into the project, so the plate-level
+# arrange keeps normal settings: with tree on plate-wide the arranger spaced the 10-part
+# plate onto two beds). Tree suits isolated small overhangs: the track frames' road-axle
+# blades take 1.4 g tree vs 2.9 g normal per frame.
+OBJECT_SUPPORT = {
+    "RB-PRT-040_trackframe_L": {"support_type": "tree(auto)", "tree_support_auto_brim": "0"},
+    "RB-PRT-041_trackframe_R": {"support_type": "tree(auto)", "tree_support_auto_brim": "0"},
+}
+
+
+def patch_support_off(mf: str, stems: set[str]) -> None:
+    """Per-object overrides in an Orca project: enable_support 0 on objects from `stems`,
+    OBJECT_SUPPORT settings on the others."""
+    import zipfile
+
+    tmp = mf + ".tmp"
+    with zipfile.ZipFile(mf) as zin, zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == "Metadata/model_settings.config":
+                txt = data.decode()
+                out, n = [], 0
+                for block in re.split(r"(?=<object id=)", txt):
+                    m = re.search(r'<metadata key="name" value="([^"]+)"/>', block)
+                    stem = re.sub(r"(_\d+)?\.stl$", "", m.group(1)) if m else ""
+                    if block.startswith("<object") and stem in stems:
+                        block = block.replace(
+                            '<metadata key="extruder"', '<metadata key="enable_support" value="0"/>\n    <metadata key="extruder"', 1
+                        )
+                        n += 1
+                    elif block.startswith("<object") and stem in OBJECT_SUPPORT:
+                        extra = "".join(
+                            f'<metadata key="{k}" value="{v}"/>\n    ' for k, v in OBJECT_SUPPORT[stem].items()
+                        )
+                        block = block.replace('<metadata key="extruder"', extra + '<metadata key="extruder"', 1)
+                    out.append(block)
+                assert n, "no object matched for the support override"
+                data = "".join(out).encode()
+            zout.writestr(item, data)
+    os.replace(tmp, mf)
 
 
 def slice_plate(prof: Profiles, name: str, threemf: bool) -> dict:
@@ -421,7 +498,18 @@ def slice_plate(prof: Profiles, name: str, threemf: bool) -> dict:
             cad_g += mesh.volume / 1000 * rho
             n += 1
     presets = write_presets(prof, mat, support, d)
-    run_orca(presets, bed, d, stls, "--arrange 1 --slice 0")
+    nosup = {k for k in stems if support and not PARTS[k][3]}
+    if nosup:  # mixed plate: arrange + export, turn support off per object, slice that project
+        name3 = f"{mat.replace('-', '')}_{name}.3mf"
+        run_orca(presets, bed, d, stls, f'--arrange 1 --export-3mf "{name3}"')
+        mf = os.path.join(d, name3)
+        if not os.path.exists(mf):
+            return {"stem": name, "error": "arrange/export failed"}
+        patch_support_off(mf, nosup)
+        run_orca(presets, bed, d, mf, "--slice 0")
+        stls = [mf]  # the 3mf export below re-exports this project
+    else:
+        run_orca(presets, bed, d, stls, "--arrange 1 --slice 0")
     g = sorted(os.path.join(d, x) for x in os.listdir(d) if x.endswith(".gcode"))
     r = {"stem": f"{mat.replace('-', '')}_{name}", "mat": mat, "objects": n, "support": support, "cad_g": cad_g}
     if not g:
@@ -432,9 +520,16 @@ def slice_plate(prof: Profiles, name: str, threemf: bool) -> dict:
         r["error"] = f"doesn't fit one bed: the arranger made {[os.path.basename(x) for x in g]}"
         return r
     r.update(read_gcode(g[0]))
+    cfg = r["cfg"]
+    if cfg.get("brim_type") != STRUCT["brim_type"] or (support and cfg.get("enable_support") != "1"):
+        r["error"] = f"G-code settings not as asked: brim_type={cfg.get('brim_type')!r} enable_support={cfg.get('enable_support')!r}"
+        return r
     os.makedirs(OUT, exist_ok=True)
     shutil.move(g[0], os.path.join(OUT, r["stem"] + ".gcode"))
-    if threemf:
+    if threemf and nosup:  # the patched project is the deliverable
+        shutil.copy(stls[0], os.path.join(OUT, r["stem"] + ".3mf"))
+        r["3mf"] = True
+    elif threemf:
         run_orca(presets, bed, d, stls, f'--arrange 1 --export-3mf "{r["stem"]}.3mf"')
         mf = os.path.join(d, r["stem"] + ".3mf")
         if os.path.exists(mf):

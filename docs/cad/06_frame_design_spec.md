@@ -126,6 +126,26 @@ the insert under-bosses). The left-rear Ø3.5 × 7 slot pair was an early follow
 | Bulkhead foot (F1) | 3 × Ø3.4 at x 81.5, y 0 / ±22, counterbored Ø6.5 × 2 from below; 2 tab slots 4.6 × 10.4 at y ±11 | only x ≥ 78.5 is clear of the mount feet: a 6.5 mm strip. 🟡 review with the bulkhead design |
 | Wire slot | 6 wide, x 35…55 on the centreline | between the mount feet |
 
+> Amendment (Ben, 2026-11-08): **rev 2, flat 6 mm plate with top pockets.** Rev 1 printed
+> ribs down and Orca supported every cell between the ribs (31 g, 1 h 25 on the plate alone;
+> tree support ignores the bridge settings, and with normal support the edge strips and some
+> closed cells still drew 12.6 g). Rev 2 has **nothing below the belly**: the plate is 6 mm
+> (z −6…0) and prints belly down with no support; the ribs and the Ø9.2 under-bosses go, and
+> the motor-mount insert holes go through (the 5.7 insert sits flush with the top). Stiffness
+> comes from the thickness (a flat 6 mm section is 1.23 × rev 1's ribbed one in X bending)
+> less 14 **top pockets** 3 deep (floor 3, r 3 corners, r 1 floor edge) cut where nothing rests:
+> placed by an offline map of the contact footprints at z 0…1 (mount feet, carriages over
+> their travel, bulkhead, canopy seat) and the plate's own posts, standoffs, jack blocks and
+> openings, each grown by a 2.4 web, plus a 3 mm edge band, in cells between the old rib
+> lines (`TOP_POCKETS`). Belly 2 mm higher than rev 1's rib bottoms (z −8 → −6). Screws
+> up from the belly get 2 mm longer (07 §4.4 amendment). **Verdicts (2026-11-08, 2 mm mesh,
+> PET-CF):** S1m 9.01 → **9.65 MPa**, inserts 1.04 → **1.03 mm** (drive increment 0.185 mm
+> without the frame bars, ~0.09 with: < 0.2 ✓); S1b 3.20 → **2.64 MPa**, deck 0.127 →
+> **0.097 mm**; S1a 11.76 → **9.84 MPa**. Peaks on a pocket's top corner (−3.4, 20.2, 0) and
+> the bell-pocket rim (singular edges, 07 §3); SF ≥ 3.6 on the Z UTS. 0 interferences.
+> Volume 100,704 mm³; sliced **105.1 g / 3 h 27 with 0.1 g support** (rev 1 128 g / 4 h 42
+> with 31 g of tree support).
+
 **Layout changes found while building:** the reflex board moved forward to the space between
 the motors (pattern centre (−10.5, −3.5), board x −40…25, 0.7 mm to the encoders), because
 the follower carriages (\|y\| 28…44 aft of x −40) left no room aft. The XVF3800 core
@@ -289,6 +309,12 @@ teardrop the horizontal motor-screw holes; ≥ 2 mm fillet at the inside corner.
 >   inner race (a shoulder bolt can't work there: its nut would be inside the turning
 >   sprocket). Bar 3.6 × 14 stadium at |y| 93.5–97.1, ~8 g per side. Width: boss + idler
 >   nyloc reach |y| ~100–101 → **overall ~200** (not ~194).
+>   Amendment (Ben, 2026-11-08): **outboard boss removed; the dowel hole is blind from the
+>   inboard face (0.8 mm skin outboard).** The frames print outer face down, and the Ø10 × 3
+>   boss was the only thing on the bed: the whole 5,746 mm² outer face floated 3 mm and was
+>   supported. Now the outer face is flat on the bed (no support). The dowel presses in from
+>   inboard, can't walk out outboard, and grips 2.8 mm (was 6.6). Outboard width now set by
+>   the idler nyloc only.
 >   Rev (tick 66, Q22 F2): each bar is now a **side plate** (2.4 PET-CF, rounded rectangle
 >   x −69.3…59.7, z −10…38, r 8) over the belt loop's window, so the lug ↔ pocket nips are
 >   behind it (kid safety, `docs/cad/loop/S2_pinch.md`). 19.1 g per side.

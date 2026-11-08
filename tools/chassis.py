@@ -32,7 +32,35 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 import board_outline as pcb_outline  # noqa: E402  (the reflex PCB's notched edge, one source)
 
 # ---------------------------------------------------------------- plate (06 §1, §4)
-PLATE_L, PLATE_W, PLATE_T = 170.0, 110.0, 4.0
+PLATE_L, PLATE_W, PLATE_T = 170.0, 110.0, 6.0
+# Rev 2 (Ben 2026-11-08, 06 §4.1 amendment): flat 6 mm plate, nothing below its belly (it
+# prints belly down with no support), stiffness from the thickness plus TOP_POCKETS cut
+# from the top where nothing rests. Rev 1 was 4 mm with 2.4 x 4 ribs and insert under-bosses
+# below (to z -8): printed ribs down, every cell between the ribs drew support.
+BOTTOM_RIBS = False
+POCKET_D = 3.0  # top pockets' depth (floor 3 mm)
+POCKET_R = 3.0  # their plan corner radius
+# From an offline keep-out map (2026-11-08): the contact footprints at z 0..1 of the mount
+# feet, the carriages over their travel, the bulkhead and the canopy, plus the plate's own
+# posts / standoffs / jack blocks / openings, each grown by a 2.4 web, and a 3 mm edge band.
+# Cells between the old rib lines (x -60/-40/-20/0/20/45/66, y 0/+-21.5/+-36.5/+-47), 1.2
+# off each line, shrunk until clear. (x0, x1, y0, y1)
+TOP_POCKETS = (
+    (-73.3, -61.2, -12.8, -1.2),
+    (-73.3, -61.2, 1.2, 12.8),
+    (-58.8, -41.2, -20.3, -1.2),
+    (-58.8, -43.2, 1.2, 20.3),
+    (-38.8, -21.2, -18.8, -1.2),
+    (-38.8, -21.2, 1.2, 11.8),
+    (-18.8, -1.2, -20.3, -1.2),
+    (-18.8, -1.2, 1.2, 20.3),
+    (1.2, 18.8, -18.8, -1.2),
+    (1.2, 18.8, 1.2, 11.8),
+    (22.7, 43.8, -45.8, -37.7),
+    (22.7, 43.8, 37.7, 45.8),
+    (46.2, 62.3, -45.8, -37.7),
+    (46.2, 62.3, 37.7, 45.8),
+)
 # Ben (2026-11-06): the 45° front chamfers are gone. The bulkhead and its cheeks span
 # |y| 52 at x 82-85 and hung over the cut corner (an unfinished-looking gap under the
 # face). Square front corners with a small plan radius (kid-safety r >= 1; E1 family 3).
@@ -201,7 +229,8 @@ INS_HOLE_PC = 4.0  # TBD: RB-CPN-003@PC
 # displaced melt, floor 1.3 (>= the 1.2 wall rule)
 MOUNT_INS_DEPTH = 6.7
 CLR_M3, CBORE_M3, CBORE_DEPTH = 3.4, 6.5, 2.0
-UNDER_BOSS_Z = -8.0  # plate 4 + 4 mm under-boss for the motor-mount inserts (07 F2)
+UNDER_BOSS_Z = -8.0  # rev 1: plate 4 + 4 mm under-boss for the motor-mount inserts (07 F2)
+PLATE_BOTTOM = UNDER_BOSS_Z if BOTTOM_RIBS else -PLATE_T  # lowest point of the plate
 RIB_T, RIB_H = 1.2, 3.6  # 07 §1: rib <= 3 x thickness tall
 # W3: the plate's grid ribs 1.2 x 3.6 -> 2.4 x 4.0: bottoms at -8 with the load ribs and
 # insert bosses (no clearance lost), stiffer, and wide enough to round r 1.0 (a 1.2 rib
@@ -296,6 +325,13 @@ def shape_prof(s: tuple) -> str:
     if s[0] == "rect":
         _, x0, x1, y0, y1 = s
         return f"M {x0} {y0} L {x1} {y0} L {x1} {y1} L {x0} {y1}"
+    if s[0] == "rrect":  # rounded rectangle, corner radius r; arcs CCW (centre, end)
+        _, x0, x1, y0, y1, r = s
+        return (
+            f"M {x0 + r} {y0} L {x1 - r} {y0} A {x1 - r} {y0 + r} {x1} {y0 + r} "
+            f"L {x1} {y1 - r} A {x1 - r} {y1 - r} {x1 - r} {y1} L {x0 + r} {y1} "
+            f"A {x0 + r} {y1 - r} {x0} {y1 - r} L {x0} {y0 + r} A {x0 + r} {y0 + r} {x0 + r} {y0}"
+        )
     if s[0] == "slot":
         _, xa, ya, xb, yb, r = s
         if ya == yb:  # along X
@@ -317,6 +353,10 @@ def shape_mask(s: tuple, X, Y):
     if s[0] == "rect":
         _, x0, x1, y0, y1 = s
         return (X >= x0) & (X <= x1) & (Y >= y0) & (Y <= y1)
+    if s[0] == "rrect":
+        _, x0, x1, y0, y1, r = s
+        cx, cy = np.clip(X, x0 + r, x1 - r), np.clip(Y, y0 + r, y1 - r)
+        return (X >= x0) & (X <= x1) & (Y >= y0) & (Y <= y1) & ((X - cx) ** 2 + (Y - cy) ** 2 <= r * r)
     if s[0] == "circle":
         _, cx, cy, r = s
         return (X - cx) ** 2 + (Y - cy) ** 2 <= r * r
@@ -337,11 +377,18 @@ def plate_features() -> list[tuple[str, tuple, float, float]]:
     cut: list[tuple[str, tuple, float, float]] = []
     # motor-mount inserts: under-boss, sized down where a plate edge is close
     for x, y in mount_holes():
-        r = min(INS_BOSS / 2, round(edge_room(x, y) - 0.04, 2))
-        add.append(("add", ("circle", x, y, r), UNDER_BOSS_Z, -PLATE_T))
-        cut.append(("cut", ("circle", x, y, INS_HOLE / 2), -MOUNT_INS_DEPTH, 0.0))
-    # bottom ribs
-    for y, (lx0, lx1) in LONG_RIBS:
+        if BOTTOM_RIBS:
+            r = min(INS_BOSS / 2, round(edge_room(x, y) - 0.04, 2))
+            add.append(("add", ("circle", x, y, r), UNDER_BOSS_Z, -PLATE_T))
+            cut.append(("cut", ("circle", x, y, INS_HOLE / 2), -MOUNT_INS_DEPTH, 0.0))
+        else:  # rev 2: the 5.7 insert in a 6 mm plate: hole through, insert flush with the top
+            cut.append(("all", ("circle", x, y, INS_HOLE / 2), 0, 0))
+    # rev 2: pockets in the top where nothing rests (TOP_POCKETS)
+    if not BOTTOM_RIBS:
+        for x0, x1, y0, y1 in TOP_POCKETS:
+            cut.append(("cut", ("rrect", x0, x1, y0, y1, POCKET_R), -POCKET_D, 0.1))
+    # bottom ribs (rev 1)
+    for y, (lx0, lx1) in LONG_RIBS if BOTTOM_RIBS else ():
         add.append(
             (
                 "add",
@@ -350,14 +397,14 @@ def plate_features() -> list[tuple[str, tuple, float, float]]:
                 -PLATE_T,
             )
         )
-    if LOAD_RIBS:
+    if LOAD_RIBS and BOTTOM_RIBS:
         for y, (x0, x1) in LOAD_RIBS_YX:
             for sgn in (-1, 1):
                 y0, y1 = sorted(
                     (sgn * (y - LOAD_RIB_T / 2), sgn * (y + LOAD_RIB_T / 2))
                 )
                 add.append(("add", ("rect", x0, x1, y0, y1), LOAD_RIB_Z, -PLATE_T))
-    for x in CROSS_RIBS_X:
+    for x in CROSS_RIBS_X if BOTTOM_RIBS else ():
         # W3: the x -60 rib ran through the follower guide/clamp slots (x -75..-45), which
         # cut it into 0.6-1 mm slivers (no use, and no fillet would take them): stop it inside
         ys = CROSS_RIBS_Y if x > -40 else (-26.0, 26.0)
@@ -436,7 +483,7 @@ def plate_features() -> list[tuple[str, tuple, float, float]]:
         (
             "cut",
             ("circle", kx, ky, CBORE_M3 / 2),
-            -PLATE_T - PLATE_RIB_H,
+            -PLATE_T - 0.1,
             -PLATE_T + CBORE_DEPTH,
         )
     )
@@ -575,11 +622,21 @@ def plate_lines(plate: str) -> list[str]:
     # S1a2 + W3: every bottom face at z -8 (grid ribs, load ribs, insert bosses, now one
     # level) rounded r 1.0, inner loops included (the grid's cells). Edge length from a
     # raster of that footprint (belly_edge_length).
-    dvb = (1 - math.pi / 4) * PLATE_EDGE_R**2 * belly_edge_length()
-    lines.append(
-        f"filletface|{PLATE_EDGE_R}|-1|{UNDER_BOSS_Z}|{-hx} {-hy} {hx} {hy}|any|{-dvb:.2f} {0.15 * dvb:.2f}|all"
-    )
-    vol -= dvb
+    if BOTTOM_RIBS:
+        dvb = (1 - math.pi / 4) * PLATE_EDGE_R**2 * belly_edge_length()
+        lines.append(
+            f"filletface|{PLATE_EDGE_R}|-1|{UNDER_BOSS_Z}|{-hx} {-hy} {hx} {hy}|any|{-dvb:.2f} {0.15 * dvb:.2f}|all"
+        )
+        vol -= dvb
+    else:
+        # rev 2: r 1.0 round every top pocket's floor edge (concave, 07 fil_in; PET-CF is
+        # notch-sensitive): adds (1 - pi/4) r^2 per mm of floor edge
+        per = sum(2 * ((x1 - x0) + (y1 - y0)) - (8 - 2 * math.pi) * POCKET_R for x0, x1, y0, y1 in TOP_POCKETS)
+        dvf = (1 - math.pi / 4) * PLATE_EDGE_R**2 * per
+        lines.append(
+            f"filletface|{PLATE_EDGE_R}|1|{-POCKET_D}|{-hx} {-hy} {hx} {hy}|any|{dvf:.2f} {0.15 * dvf:.2f}|all"
+        )
+        vol += dvf
     # S1a3: r 1.0 on the slot and hole edges in the belly (z -4), loop by loop (not the
     # rib roots, which are concave and one sits 1.05 mm from a counterbore). Edge lengths
     # by hand: guide slots 2 x (2 x 40 + 2 pi 2.35) + clamp slot (2 x 10 + 2 pi 1.7) per
@@ -627,7 +684,7 @@ def plate_lines(plate: str) -> list[str]:
     # their S1 peaks are singular and SF is judged on converged measures (07 §3).
     lines += [
         PART_LABELS["plate"],
-        f"expect|vol {vol:.1f} {vol * 0.004:.1f}|box {-hx} {hx} {-hy} {hy} {UNDER_BOSS_Z} {DECK_Z} 0.01",
+        f"expect|vol {vol:.1f} {vol * 0.004:.1f}|box {-hx} {hx} {-hy} {hy} {PLATE_BOTTOM} {DECK_Z} 0.01",
         "save",
     ]
     return lines
@@ -1069,7 +1126,7 @@ HERO_VIEWS = (
 #   reversed. Checked by ray-casting exported test walls, tick 78. No hyphen: the reversed
 #   string with "-" cut nothing, twice)
 PART_LABELS = {
-    "plate": "text|front|11.5 -6.75|-4.5 -3.4|4|RB-001 r1|mirror",
+    "plate": f"text|front|11.5 -6.75|{-PLATE_T - 0.5} {-PLATE_T + 0.6}|4|RB-001 r2|mirror",  # rev 2
     "canopy": f"text|top|-10 -40|50.9 51.8|4|{'RB 004 r1'[::-1]}|mirror|180",
     # deck underside (faces the plate), clear cell x -15.5..15.5, y -21..-13.5 (STL scan)
     "deck": "text|front|11.5 -19.35|-3.5 -2.4|4|RB-003 r1|mirror",
@@ -1384,7 +1441,7 @@ def speaker_module_lines(path: str) -> list[str]:
 
 
 def coupon_slide_strip_lines(path: str) -> list[str]:
-    L, W, T = 52.0, 60.0, PLATE_T
+    L, W, T = 52.0, 60.0, 4.0  # rev-1 plate thickness: the coupon stays as printed
     sx0, sx1 = 5.0, 5.0 + RAIL_L + TRAVEL  # rail length + travel, like the plate
     half = (GUIDE_Y[1] - GUIDE_Y[0]) / 2  # 5.5
     vol = L * W * T
@@ -2241,7 +2298,7 @@ def fea_plate_mounts_lines(path: str) -> list[str]:
         *plate[:-2],
         *emit_ops(mount_ops_chassis(+1)),
         *emit_ops(mount_ops_chassis(-1)),
-        f"expect|vol {vol:.1f} {vol * 0.006:.1f}|box {-hx} {hx} {-hy} {hy} {UNDER_BOSS_Z} {max(DECK_Z, MM_TOP)} 0.01",
+        f"expect|vol {vol:.1f} {vol * 0.006:.1f}|box {-hx} {hx} {-hy} {hy} {PLATE_BOTTOM} {max(DECK_Z, MM_TOP)} 0.01",
         "save",
     ]
 
@@ -3615,8 +3672,11 @@ TF_GAP, TF_T, TF_H = (
 # r 8 (E1). 3.6 -> 2.4 thick (a 48-tall plate is far stiffer in tension than the bar).
 TF_PLATE_Z, TF_PLATE_R = (-10.0, 38.0), 8.0
 TF_SLOT = (dt.TRAVEL, 3.4)  # +- travel round the taut station, M3 clearance
-TF_BOSS = (5.0, 3.0)  # dowel boss r, height outboard
+TF_BOSS = (5.0, 0.0)  # dowel boss r, height outboard. 3 -> 0 (Ben 2026-11-08): the frames print
+# outer face down and stood on this boss, floating the whole face 3 mm (all of it supported)
 TF_DOWEL = 3.95  # Ø4 h8 dowel press hole (07 press fits: tune on the coupon)
+TF_DOWEL_SKIN = 0.8  # blind from the inboard face: the dowel presses in from inboard and can't
+# walk out outboard; press grip TF_T - skin = 2.8 (was 6.6 through frame + boss)
 
 
 def trackframe_geom() -> dict:
@@ -3635,7 +3695,7 @@ def trackframe_geom() -> dict:
     vol = (
         area * TF_T
         + math.pi * br * br * bh
-        - math.pi * (TF_DOWEL / 2) ** 2 * (TF_T + bh)
+        - math.pi * (TF_DOWEL / 2) ** 2 * (TF_T + bh - TF_DOWEL_SKIN)
         - slot * TF_T
     )
     return {
@@ -3734,7 +3794,7 @@ def trackframe_lines(path: str, side: int) -> list[str]:
 
     ya, yb = ys(y0, y1)
     ba, bb = ys(y1, y1 + bh)
-    da, db = ys(y0 - 0.1, y1 + bh + 0.1)
+    da, db = ys(y0 - 0.1, y1 + bh - TF_DOWEL_SKIN)  # blind: TF_DOWEL_SKIN left outboard
     vol = g["vol"]
     # S2c (tick 67): r 1.0 round the plate's outline on its OUTER face (the edge a hand
     # meets); straight runs + the four r 8 corners (torus segments)
@@ -3747,7 +3807,7 @@ def trackframe_lines(path: str, side: int) -> list[str]:
     return [
         f"part|{path}",
         f"prof|{ya} {yb}|{plate()}|boss|top",
-        f"cyl|y|{xs} {z}|{ba} {bb}|{br}|boss",
+        *([f"cyl|y|{xs} {z}|{ba} {bb}|{br}|boss"] if bh > 0 else []),
         f"cyl|y|{xs} {z}|{da} {db}|{TF_DOWEL / 2}|cut",
         f"prof|{ya - 0.1} {yb + 0.1}|{stadium(xi - tr, xi + tr, sw / 2)}|cut|top",
         *road_axle_carrier(side)[0],

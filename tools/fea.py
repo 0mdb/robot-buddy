@@ -62,6 +62,7 @@ STALL_TORQUE = 0.25  # N*m, Yahboom 1:48 TT [assumption]
 # TRACK_T stays 20 N until the set-up spring-scale reading (08 designs for 10 N).
 GEAR_R = chassis.dt.pitch_radius()
 AXLE_F = 2 * TRACK_T + STALL_TORQUE / (GEAR_R / 1000)  # both runs + tight-side excess
+INS_R = chassis.INS_HOLE / 2  # heat-set pockets (4.1 since the 2026-11-08 coupon): FEA selects them by radius
 STACK_MASS = 0.26  # kg: Pi 5 + NVMe + UPS HAT + 2 x 18650 [assumption]
 SHOCK_G = 10.0  # quasi-static bump/drop factor on the deck [assumption]
 
@@ -84,10 +85,10 @@ def s1a() -> dict:
         "part": r"\CAD\parts\RB-PRT-001_base_plate.SLDPRT",
         "lines": [
             "discard_open",
-            "fix cyl 1 0 0 2.0 0.05",  # jack-screw insert bores (only X-axis cylinders of r 2)
-            f"remote left {gx:.2f} {gy:.2f} {gz:.2f} cyl 0 0 1 2.0 0.05 box 40 0 -9 80 60 1",
-            f"remote right {gx:.2f} {-gy:.2f} {gz:.2f} cyl 0 0 1 2.0 0.05 box 40 -60 -9 80 0 1",
-            "disp mounts cyl 0 0 1 2.0 0.05 box 40 -60 -9 80 60 1",
+            f"fix cyl 1 0 0 {INS_R} 0.05",  # jack-screw insert bores (only X-axis cylinders of the insert r)
+            f"remote left {gx:.2f} {gy:.2f} {gz:.2f} cyl 0 0 1 {INS_R} 0.05 box 40 0 -9 80 60 1",
+            f"remote right {gx:.2f} {-gy:.2f} {gz:.2f} cyl 0 0 1 {INS_R} 0.05 box 40 -60 -9 80 0 1",
+            f"disp mounts cyl 0 0 1 {INS_R} 0.05 box 40 -60 -9 80 60 1",
             "probe pockets 38 -60 -9 82 60 1",
             "probe jackstops -40 -45 -1 -26 45 11",
             "probe midplate -20 -50 -9 35 50 1",
@@ -110,8 +111,8 @@ def s1b() -> dict:
         "part": r"\CAD\parts\RB-PRT-001_base_plate.SLDPRT",
         "lines": [
             "discard_open",
-            "fix cyl 1 0 0 2.0 0.05",
-            "fix cyl 0 0 1 2.0 0.05 box 40 -60 -9 80 60 1",
+            f"fix cyl 1 0 0 {INS_R} 0.05",
+            f"fix cyl 0 0 1 {INS_R} 0.05 box 40 -60 -9 80 60 1",
             f"load deck plane 0 0 1 {chassis.DECK_Z}",
             f"disp deck plane 0 0 1 {chassis.DECK_Z}",
             "probe posts -77 -30 -1 37 30 25",
@@ -328,7 +329,7 @@ def s5(canopy: bool = False) -> dict:
         "lines": [
             "discard_open",
             "fix plane 0 0 1 0",  # foot underside on the plate
-            "fix cyl 0 0 1 2.0 0.05",  # foot + knee-pad insert pockets (F1)
+            f"fix cyl 0 0 1 {INS_R} 0.05",  # foot + knee-pad insert pockets (F1)
             *extra,
             f"remote screen {scr[0]:.3f} {scr[1]:.3f} {scr[2]:.3f} cyl {ax} 2.0 0.05",
             f"load bezel plane {n[0]:.9f} 0 {n[2]:.9f} {d:.4f}",
@@ -357,7 +358,7 @@ def s1m() -> dict:
         chassis.MOUNT_HOLE[1] + chassis.mount_ty()
     )  # |y| of the motor faces: -28 + 60.4 = 32.4
     ins = chassis.INS_HOLE / 2
-    lines = ["discard_open", "fix cyl 1 0 0 2.0 0.05"]
+    lines = ["discard_open", f"fix cyl 1 0 0 {INS_R} 0.05"]
     for name, sgn in (("left", 1), ("right", -1)):
         y0, y1 = sorted((sgn * (face - 7.5), sgn * (face + 0.5)))
         lines += [

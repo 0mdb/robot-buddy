@@ -45,7 +45,7 @@ EXCLUDE = (
     "*.LOG",
     "PerformanceLog.txt",
     # Solver scratch (<part>-<study>-<id>.EXT): left behind when SOLIDWORKS dies mid-study
-    *(f"*.{e}" for e in ("DSP", "EFF", "ELF", "GEN", "IDA", "LCD", "LDS", "MAS", "OUT", "STE", "STG")),
+    *(f"*.{e}" for e in ("CNT", "DSP", "EFF", "ELF", "GEN", "IDA", "LCD", "LDS", "MAS", "OUT", "STE", "STG")),
 )
 
 
