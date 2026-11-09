@@ -44,25 +44,25 @@
   "up": "+z"
  },
  "RB-PRT-001_base_plate": {
-  "cad_g": 110.84580888549496,
-  "cm3": 98.45,
-  "grams": 127.0,
+  "cad_g": 112.8864297900392,
+  "cm3": 100.31,
+  "grams": 129.4,
   "mat": "PET-CF",
   "mismatch": [],
   "qty": 1,
   "support": true,
-  "time": "4h 40m 14s",
+  "time": "4h 45m 46s",
   "up": "+z"
  },
  "RB-PRT-002_bulkhead": {
-  "cad_g": 44.70741490936999,
-  "cm3": 34.31,
-  "grams": 44.25,
+  "cad_g": 48.523102150094054,
+  "cm3": 37.03,
+  "grams": 47.76,
   "mat": "PET-CF",
   "mismatch": [],
   "qty": 1,
   "support": false,
-  "time": "1h 35m 59s",
+  "time": "1h 44m 29s",
   "up": "-x"
  },
  "RB-PRT-003_pi_deck": {
@@ -88,25 +88,25 @@
   "up": "+x"
  },
  "RB-PRT-010_motor_mount_R": {
-  "cad_g": 14.037096919049874,
+  "cad_g": 14.010630604186286,
   "cm3": 10.48,
   "grams": 13.52,
   "mat": "PET-CF",
   "mismatch": [],
   "qty": 1,
   "support": false,
-  "time": "32m 18s",
+  "time": "32m 34s",
   "up": "+z"
  },
  "RB-PRT-011_motor_mount_L": {
-  "cad_g": 14.037100951650823,
+  "cad_g": 14.012057094935312,
   "cm3": 10.48,
   "grams": 13.52,
   "mat": "PET-CF",
   "mismatch": [],
   "qty": 1,
   "support": false,
-  "time": "32m 12s",
+  "time": "32m 28s",
   "up": "+z"
  },
  "RB-PRT-020_sprocket": {
@@ -165,9 +165,9 @@
   "up": "+z"
  },
  "RB-PRT-030_carriage_L": {
-  "cad_g": 11.435345041162195,
+  "cad_g": 11.430445978825796,
   "cm3": 7.5,
-  "grams": 9.68,
+  "grams": 9.67,
   "mat": "PET-CF",
   "mismatch": [],
   "qty": 1,
@@ -176,14 +176,14 @@
   "up": "-x"
  },
  "RB-PRT-031_carriage_R": {
-  "cad_g": 11.435345041162195,
-  "cm3": 7.5,
+  "cad_g": 11.430445978825796,
+  "cm3": 7.49,
   "grams": 9.67,
   "mat": "PET-CF",
   "mismatch": [],
   "qty": 1,
   "support": false,
-  "time": "25m 29s",
+  "time": "25m 28s",
   "up": "-x"
  },
  "RB-PRT-040_trackframe_L": {

@@ -177,8 +177,11 @@ ROT_X180 = [1, 0, 0, 0, -1, 0, 0, 0, -1]
 
 
 # ------------------------------------------------------ plate features (06 §4)
-# Inserts: Ruthex M3 x 5.7 placeholder geometry until the coupon (07 §4.2).
-INS_HOLE, INS_DEPTH, INS_BOSS = 4.0, 7.2, 9.2
+# Inserts: M3 x 5.7 x 4.6 (07 §4.2). Hole from the PET-CF ladder coupon (Ben 2026-11-08):
+# 4.1 seats square, no spin at 0.30 N·m. PC parts (canopy) stay on the 4.0 placeholder until
+# the PC ladder is pressed.
+INS_HOLE, INS_DEPTH, INS_BOSS = 4.1, 7.2, 9.2
+INS_HOLE_PC = 4.0  # TBD: RB-CPN-003@PC
 # D5 (tick 45): the plate's motor-mount pockets sit in an 8 mm stack (plate 4 + boss 4), so
 # 7.2 left a 0.8 mm floor a hot insert can push through; 6.7 = the 5.7 insert + 1.0 for the
 # displaced melt, floor 1.3 (>= the 1.2 wall rule)
@@ -209,7 +212,7 @@ AXLE_X_MID, TRAVEL = (
 GUIDE_Y, CLAMP_Y = (30.5, 41.5), 36.0  # carriage guide slots and clamp slot, |y|
 # D5c: guide slots 31 / 41 -> 30.5 / 41.5: the webs to the clamp slot were 0.95 mm (0.86
 # after S1a3's fillets), now 1.45; the carriage rails follow GUIDE_Y
-GUIDE_W = 4.7  # 4.0 rail + 0.35/side slip (05)
+GUIDE_W = 4.5  # 4.0 rail + 0.25/side; slide coupon RB-CPN-001 (Ben 2026-11-08, 05 amendment)
 RAIL_L = 20.0  # TBD with the carriage design
 JACK_BLOCK_X, JACK_BLOCK_Y, JACK_BLOCK_Z = (-38.0, -28.0), (31.0, 42.0), (0.0, 10.0)
 JACK_Y, JACK_Z = 36.5, 5.0  # F4b: M3 jack screw in an insert along X
@@ -1237,11 +1240,11 @@ def rebuild_manifest(win: str) -> list[str]:
 
 
 # D6 (tick 89): the follower's slide fit. The carriage's two 4.0 x 3.6 rails (11 apart,
-# CAR_RAIL_W/D) run in the plate's 4.7 guide slots (GUIDE_W: 0.35/side) with an M3 clamp
+# CAR_RAIL_W/D) run in the plate's guide slots (GUIDE_W, 4.7 when printed; 4.5 after) with an M3 clamp
 # slot between. The strip carries three slot pairs, 4.5 / 4.7 / 4.9 wide, each with its
 # clamp slot and its width engraved; the rail stub is the carriage foot section. Slide it in
 # each pair: the narrowest that slides freely over the full travel sets GUIDE_W.
-CPN_SLIDE_W = (4.5, GUIDE_W, 4.9)
+CPN_SLIDE_W = (4.5, 4.7, 4.9)  # as printed; 4.5 won (GUIDE_W)
 
 
 def _stadium(x0: float, x1: float, y: float, r: float) -> str:
@@ -1406,6 +1409,7 @@ def coupon_slide_rail_lines(path: str) -> list[str]:
 # seats square with no spin at the §4.3 torque. That replaces INS_HOLE / CORE_INS_D.
 CPN_INS_STEP = (-0.3, -0.2, -0.1, 0.0, 0.1, 0.2, 0.3)
 CPN_INS_PITCH, CPN_INS_X0 = 12.0, 7.0
+CPN_INS_BASE = 4.0  # ladder centre, fixed so the coupon stays as printed
 CPN_M25_DEPTH = 5.0
 
 
@@ -1422,7 +1426,7 @@ def coupon_insert_ladder_lines(path: str) -> list[str]:
     lines = [f"part|{path}", f"box|0 {L:g}|0 {W:g}|0 {tb:g}", f"box|0 {L:g}|0 {yb:g}|{tb:g} {hb:g}"]
     for k, dd in enumerate(CPN_INS_STEP):
         x = CPN_INS_X0 + CPN_INS_PITCH * k
-        d3, d25 = INS_HOLE + dd, CORE_INS_D + dd
+        d3, d25 = CPN_INS_BASE + dd, CORE_INS_D + dd
         lines += [
             f"cyl|z|{x:g} {ya:g}|{tb:g} {za:g}|{INS_BOSS / 2:g}|boss",
             f"cyl|z|{x:g} {yB:g}|{tb:g} {zb:g}|{CORE_BOSS_D / 2:g}|boss",
@@ -1430,7 +1434,7 @@ def coupon_insert_ladder_lines(path: str) -> list[str]:
         vol += math.pi * ((INS_BOSS / 2) ** 2 * (za - tb) + (CORE_BOSS_D / 2) ** 2 * (zb - tb))
     for k, dd in enumerate(CPN_INS_STEP):
         x = CPN_INS_X0 + CPN_INS_PITCH * k
-        d3, d25 = INS_HOLE + dd, CORE_INS_D + dd
+        d3, d25 = CPN_INS_BASE + dd, CORE_INS_D + dd
         lines += [
             f"cyl|y|{x:g} {hz:g}|-0.1 {INS_DEPTH:g}|{d3 / 2:g}|cut",
             f"cyl|z|{x:g} {ya:g}|{za - INS_DEPTH:g} {za + 0.1:g}|{d3 / 2:g}|cut",
@@ -2234,7 +2238,7 @@ CAR_FOOT_Y = (
 CAR_RAIL_W, CAR_RAIL_D = (
     4.0,
     3.6,
-)  # 4.0 in the 4.7 slots (0.35/side); stops 0.4 above the belly
+)  # 4.0 in the 4.5 slots (0.25/side, coupon); stops 0.4 above the belly
 CAR_PED = (
     10.0,
     40.0,
@@ -2977,7 +2981,7 @@ def canopy_features() -> dict:
     dd = bx - (CAN_X0 + CAN_T)
     seg = r * r * math.acos(dd / r) - dd * math.sqrt(r * r - dd * dd)
     boss = 2 * (math.pi * r * r - seg) * bh
-    pockets = 2 * math.pi * (INS_HOLE / 2) ** 2 * INS_DEPTH
+    pockets = 2 * math.pi * (INS_HOLE_PC / 2) ** 2 * INS_DEPTH
     ribs = canopy_ribs()
     rt_, rd_ = CAN_RIB
     ky, kt, kz = CAN_KEEL
@@ -3337,7 +3341,7 @@ def canopy_lines(path: str) -> list[str]:
         f"prof|0 {CAN_Z0}|{canopy_rear_wall()['prof']}",
         *[f"cyl|z|{bx} {sg * by}|0 {bh}|{INS_BOSS / 2}|boss" for sg in (-1, 1)],
         *[
-            f"cyl|z|{bx} {sg * by}|-0.1 {INS_DEPTH}|{INS_HOLE / 2}|cut"
+            f"cyl|z|{bx} {sg * by}|-0.1 {INS_DEPTH}|{INS_HOLE_PC / 2}|cut"
             for sg in (-1, 1)
         ],
         f"fillet|{CAN_EDGE_R}|y|{canopy_hood_edge()[1]}|1|{-f['hood_edge']:.2f} {0.25 * f['hood_edge']:.2f}",

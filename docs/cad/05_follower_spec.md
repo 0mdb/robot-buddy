@@ -55,6 +55,8 @@ outboard end. The tread wraps the wheel on the open outboard side.
 | Bottom (bed) edge | **0.5 mm × 45° chamfer**; print rails-down |
 | Flanges | inner gap = tread width **+1.0 mm**; ~2 mm thick, stand 2–3 mm proud of the running surface |
 
+> Amendment (2026-11-08, Ben, slide coupon RB-CPN-001 in PET-CF): rails slide freely over the full travel in the **4.5** slots, so slip **0.35 → 0.25 mm/side** (`GUIDE_W` 4.7 → 4.5). 4.5 was the narrowest rung, so the true limit may be tighter; 0.25 is kept as margin for the coated/dusty case.
+
 **Tilt note:** a single cantilevered bearing can let the wheel cock slightly
 under tread load. If rev 1 wobbles, add a **second 624** spaced on the shank
 (the 55 mm bolt has length to spare) — size the hub deep enough to accept it.
