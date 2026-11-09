@@ -13,6 +13,8 @@ from the file that owns it:
   supervisor/config.py         governor thresholds, tick rate
   supervisor/core/state.py     the mode table
   supervisor/core/tick_loop.py teleop TTL
+  docs/power.md                pack configuration, cross-checked against the
+                               UPS monitor's discharge curve in code
 
 Buddy differs from Scout in ways that are pure data, which is the point — it has a
 face and voice AI where Scout has a camera and gimbal, its range governor is stepped
@@ -55,8 +57,15 @@ MODE_COLORS = {
     "ERROR": "warn",
 }
 
-# SOURCE: README.md hardware table — 2S LiPo. Not represented in code.
-PACK = {"series": 2, "parallel": 1, "chem": "lipo"}
+# The pack is parsed from docs/power.md, not copied. The copy that was here said
+# "2S LiPo" (from the README) while power.md and the UPS monitor both say 2S 18650
+# Li-ion — the same drift that hit Scout's generator, invisible to --check.
+POWER_DOC = REPO_ROOT / "docs" / "power.md"
+# "2× 18650 Li-ion in series (2S, ..." in the Battery section, and
+# "2× 18650 Li-ion (2S, 7.4 V nom)" in the topology diagram.
+CELLS_RE = re.compile(r"(\d+)×\s*\d{5}\s+(Li-ion|LiPo|LiFePO4)\b[^(\n]*\((\d+)S\b")
+# Full-charge cell voltage per chemistry, for the cross-check against code.
+FULL_CELL_MV = {"li-ion": 4200, "lipo": 4200, "lifepo4": 3650}
 
 # Client-side display threshold before the HUD says LINK_DEGRADED. Display only.
 WARN_MS = 150
@@ -85,6 +94,60 @@ def _require(consts: dict[str, float], name: str) -> float:
     return consts[name]
 
 
+def _section(text: str, heading: str) -> str:
+    m = re.search(
+        rf"^## {re.escape(heading)}\b.*?(?=^## |\Z)", text, re.MULTILINE | re.DOTALL
+    )
+    if m is None:
+        sys.exit(
+            f"{POWER_DOC.name} has no '## {heading}' section — update tools/emit_manifest.py"
+        )
+    return m.group(0)
+
+
+def _pack() -> dict[str, int | str]:
+    """Read the pack from docs/power.md and check it against the code that depends on it.
+
+    The Battery section is authoritative; the topology diagram must agree. power.md also
+    says the cell count is "a software-visible fact": `WaveshareUpsBMonitor`'s SoC curve
+    is calibrated to it. So the curve's full-charge point must equal series × full-cell
+    voltage — changing the doc without re-deriving the curve fails here.
+    """
+    if not POWER_DOC.is_file():
+        sys.exit(f"missing power doc: {POWER_DOC}")
+    text = POWER_DOC.read_text()
+    found = CELLS_RE.findall(_section(text, "Battery"))
+    if len(found) != 1:
+        sys.exit(
+            f"{POWER_DOC.name} Battery section: expected one '<N>× <cell> <chem> ... (<S>S' "
+            f"statement, found {len(found)} — update tools/emit_manifest.py"
+        )
+    count, chem, series = int(found[0][0]), found[0][1].lower(), int(found[0][2])
+    topo = CELLS_RE.findall(_section(text, "Topology"))
+    if not topo or (int(topo[0][0]), topo[0][1].lower(), int(topo[0][2])) != (
+        count,
+        chem,
+        series,
+    ):
+        sys.exit(
+            f"{POWER_DOC.name} disagrees with itself: Battery says {count}× {chem} {series}S, "
+            f"topology says {topo[0] if topo else 'nothing'}. Reconcile before emitting."
+        )
+    if series < 1 or count % series:
+        sys.exit(f"{POWER_DOC.name}: {count} cells do not divide into {series}S")
+
+    from supervisor.devices.power_monitor import _SOC_CURVE
+
+    full_mv = _SOC_CURVE[0][0]
+    want = series * FULL_CELL_MV[chem]
+    if full_mv != want:
+        sys.exit(
+            f"power_monitor._SOC_CURVE starts at {full_mv} mV but {series}S {chem} is full at "
+            f"{want} mV. power.md and the SoC curve disagree — re-derive the curve."
+        )
+    return {"series": series, "parallel": count // series, "chem": chem}
+
+
 def _teleop_ttl_s() -> float:
     """Read the tick loop's teleop TTL from its own signature, not a copy."""
     from supervisor.core.tick_loop import TickLoop
@@ -105,6 +168,7 @@ def build() -> tuple[str, list[str]]:
     reflex = _parse_designated(REFLEX_CONFIG)
     safety = SafetyConfig()
     control = ControlConfig()
+    pack = _pack()
     warnings: list[str] = []
 
     mcu_v = int(_require(reflex, "max_v_mm_s"))
@@ -141,7 +205,7 @@ def build() -> tuple[str, list[str]]:
     add("range_forward  = true")
     add(
         'cell_voltages  = {{ series = {series}, parallel = {parallel}, chem = "{chem}" }}'.format(
-            **PACK
+            **pack
         )
     )
     add("# Buddy has these where Scout has a gimbal and a camera. No client branches:")

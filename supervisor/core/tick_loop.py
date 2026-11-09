@@ -302,6 +302,24 @@ class TickLoop:
             return 10
         return int(self._param_registry.get_value("power.soc_critical_pct", 10))
 
+    def estop(self) -> bool:
+        """Latch E-STOP on the reflex MCU. Returns False if the link is down.
+
+        The latch lives on the MCU: the fault comes back in telemetry, the state machine goes
+        to ERROR, and only `clear_error()` releases it. The teleop latch is zeroed too, through
+        the same seam every teleop source uses, so the next tick sends zero even before the
+        MCU's fault arrives. Idempotent — safe to call at any rate.
+
+        One public action for every caller, mirroring Scout's `TickLoop.estop()`. (The HTTP
+        server still reaches `_reflex.send_estop()` directly; same effect, older path.)
+        """
+        self.set_teleop_twist(0, 0)
+        if self._reflex and self._reflex.connected:
+            self._reflex.send_estop()
+            return True
+        log.warning("estop requested but reflex is not connected")
+        return False
+
     def clear_error(self) -> tuple[bool, str]:
         # Send CLEAR_FAULTS to MCU to actually clear hardware fault flags
         if self._reflex and self._reflex.connected:
