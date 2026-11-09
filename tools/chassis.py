@@ -29,7 +29,7 @@ import drivetrain as dt  # noqa: E402  (08: the TPU track system's numbers and w
 import sw  # noqa: E402  (staging/winpath/sync helpers)
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "hardware", "kicad"))
-import board_outline as pcb_outline  # noqa: E402  (the reflex PCB's notched edge, one source)
+import board_outline as pcb_outline  # noqa: E402  (the reflex PCB outline + holes, one source)
 
 # ---------------------------------------------------------------- plate (06 §1, §4)
 PLATE_L, PLATE_W, PLATE_T = 170.0, 110.0, 6.0
@@ -274,7 +274,7 @@ BULK_X = 81.5
 BULK_HOLES_Y = (-22.0, 0.0, 22.0)
 BULK_TAB_Y, BULK_TAB = 11.0, (4.6, 10.4)  # locating-tab slots (X x Y)
 
-# Pi deck posts (F5): clear of the reflex board (x -40..25, |y| <= 30), the mount
+# Pi deck posts (F5): clear of the reflex board (x -40..12.5, |y| <= 23 since 2026-11-09), the mount
 # feet (x >= 27.4, |y| >= 13.4) and the follower carriages (|y| >= 28 aft of x -40).
 DECK_Z = 24.0  # deck underside (06 §3 height table)
 DECK_POSTS = [(30.0, -8.0), (30.0, 8.0), (-70.0, -20.0), (-70.0, 20.0)]
@@ -975,12 +975,13 @@ FACE_LCD_H, FACE_LCD_TOP = (
     8.22,
 )  # backlight/touch outline, offset from the MIC end
 
-# Reflex board (KiCad hardware/kicad/robot-buddy-reflex): 65 x 60, M3 holes at
-# (4,11) (55,11) (4,56) (55,56). Frame: origin at the hole-pattern centre on the
-# PCB's bottom face, KiCad Y flipped. TBD: component heights (12 top, 2 bottom).
-REFLEX_X = (-29.5, 35.5)
-REFLEX_Y = (-26.5, 33.5)
-REFLEX_HOLES = (25.5, 22.5)
+# Reflex board (KiCad hardware/kicad/robot-buddy-reflex), from board_outline.py:
+# 52.5 x 46 since 2026-11-09 (was 65 x 60 with encoder notches), M3 holes 3.5 in from
+# each edge (45.5 x 39 pattern). Frame: origin at the hole-pattern centre on the PCB's
+# bottom face, KiCad Y flipped. TBD: component heights (12 top, 2 bottom).
+REFLEX_X = (-pcb_outline.HOLE_CX, pcb_outline.W - pcb_outline.HOLE_CX)
+REFLEX_Y = (pcb_outline.HOLE_CY - pcb_outline.H, pcb_outline.HOLE_CY)
+REFLEX_HOLES = pcb_outline.HOLE_HALF
 REFLEX_Z = (-2.0, 13.6)
 REFLEX_PAD_R = 4.7  # > the Ø9.2 standoff; overhangs the board edge (holes sit 4.0 in)
 
@@ -1067,20 +1068,13 @@ def reflex_ops() -> tuple[list[str], float]:
         for x, y in corners(*REFLEX_HOLES)
     ]
     ops += [f"cyl|z|{x} {y}|all|1.6|cut" for x, y in corners(*REFLEX_HOLES)]
-    # encoder-socket notches (2026-11-08), from the PCB's own outline (board_outline.py):
-    # KiCad (kx, ky) -> envelope (kx + REFLEX_X[0], REFLEX_Y[1] - ky)
-    nx0, nx1 = (REFLEX_X[0] + v for v in pcb_outline.NOTCH_X)
-    nd = pcb_outline.NOTCH_D
-    for y0, y1 in ((REFLEX_Y[1] - nd, REFLEX_Y[1] + 0.1), (REFLEX_Y[0] - 0.1, REFLEX_Y[0] + nd)):
-        ops.append(
-            f"prof|{REFLEX_Z[0] - 0.1} {REFLEX_Z[1] + 0.1}|M {nx0} {y0} L {nx1} {y0} L {nx1} {y1} L {nx0} {y1}|cut"
-        )
+    # (encoder-socket notches removed 2026-11-09: the 46 mm board spans |y| <= 23, inside
+    # the sockets' |y| 23.9, along its whole length; board_outline.py)
     h = REFLEX_Z[1] - REFLEX_Z[0]
     vol = (
         (REFLEX_X[1] - REFLEX_X[0]) * (REFLEX_Y[1] - REFLEX_Y[0]) * h
         - reflex_pad_area() * -REFLEX_Z[0]
         - 4 * math.pi * 1.6**2 * REFLEX_Z[1]
-        - 2 * (nx1 - nx0) * nd * h
     )
     return ops, vol
 
@@ -1105,10 +1099,10 @@ PI_AT = (
     27.0,
 )  # pattern centre over the plate, standoff feet on the deck top
 REFLEX_AT = (
-    -10.5,
-    -3.5,
+    pcb_outline.REAR_EDGE_CHASSIS_X + pcb_outline.HOLE_CX,  # rear edge (USB-C) stays at x -40
+    0.0,  # board centred on the chassis centreline: |y| <= 23, the encoder sockets at 23.9
     5.0,
-)  # between the motors, x -40..25; 0.7 clear of the encoders
+)  # between the motors, x -40..12.5 (was -40..25 at 65 x 60)
 # board X (short side) -> chassis Z, board Y (MIC end) -> chassis -Y, board Z (screen) -> chassis X
 FACE_BASE = [0, 0, 1, 0, -1, 0, 1, 0, 0]
 
