@@ -58,11 +58,19 @@ LCSC = {
     ("100", "R_0402_1005Metric"): "C25076",
     ("330", "R_0402_1005Metric"): "C25104",
     ("QWIIC 3V3", "JST_SH_BM04B-SRSS-TB_1x04-1MP_P1.00mm_Vertical"): "C160390",
-    ("TCA9554APWR", "TSSOP-16_4.4x5mm_P0.65mm"): "C2863976",
-    # Not yet verified — deliberately absent, so they are reported:
-    #   15k 0402 (R6)      — the v1 BOM's C25765 was for 20k, not 15k
-    #   4.7k 0402 (R16/17) — new in v2 (the X1 I2C pull-ups)
-    #   10u 0402 (C9)      — new in v2 (the X3 +3V3 bulk)
+    (
+        "TCA9554APWR",
+        "TSSOP-16_4.4x5mm_P0.65mm",
+    ): "C2863976",  # TI, TSSOP-16 (LCSC 2026-11-09)
+    # Verified on lcsc.com 2026-11-09, package included:
+    ("15k", "R_0402_1005Metric"): "C25756",  # UNI-ROYAL 0402WGF1502TCE, 1 %, 0402 (R6)
+    (
+        "4.7k",
+        "R_0402_1005Metric",
+    ): "C25900",  # UNI-ROYAL 0402WGF4701TCE, 1 %, 0402 (R16/R17)
+    # Samsung CL05A106MQ5NUNC, 10 uF 6.3 V X5R 0402 (C9 on +3V3: ~half its value left
+    # at 3.3 V DC bias, ample for rail bulk)
+    ("10u", "C_0402_1005Metric"): "C15525",
 }
 
 

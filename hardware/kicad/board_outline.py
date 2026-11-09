@@ -35,6 +35,25 @@ HOLE_HALF = (W / 2 - HOLE_INSET, H / 2 - HOLE_INSET)  # = chassis REFLEX_HOLES
 REAR_EDGE_CHASSIS_X = -40.0
 
 
+# Encoder-plug keep-out (found 2026-11-09, after the shrink). The encoder socket FACES
+# INBOARD (Ben 2026-11-05, docs/cad/loop/QUESTIONS.md): its mating face is at chassis
+# |y| 23.9, so the plug and its cable occupy |y| < 23.9 over chassis x -9..7.8 and
+# z 6.8-20.2, i.e. right above the board's long edges (board top z 6.6). Nothing taller than
+# the bare board may sit in that band. PLUG_DEPTH is PROVISIONAL: plug + cable bend inboard
+# of the socket face is not measured yet (QUESTIONS.md "plug + cable depth"). Measure it,
+# set it here, and pcb_qc.py §5 checks the layout against it.
+SOCKET_X = (31.0, 47.8)  # board x (chassis -9..7.8)
+SOCKET_FACE_Y = 23.9  # chassis |y| of the socket's mating face
+PLUG_DEPTH = 8.0  # mm inboard of the face: PROVISIONAL until measured
+
+
+def plug_keepouts() -> list[tuple[float, float, float, float]]:
+    """(x0, y0, x1, y1) board-coordinate bands the encoder plugs + cables occupy."""
+    edge_in = HOLE_CY - SOCKET_FACE_Y + PLUG_DEPTH  # depth from the board edge
+    x0, x1 = SOCKET_X
+    return [(x0, 0.0, x1, max(0.0, edge_in)), (x0, H - max(0.0, edge_in), x1, H)]
+
+
 def outline() -> list[tuple[float, float]]:
     """Board edge polygon, clockwise on screen (y down), starting top-left."""
     return [(0.0, 0.0), (W, 0.0), (W, H), (0.0, H)]

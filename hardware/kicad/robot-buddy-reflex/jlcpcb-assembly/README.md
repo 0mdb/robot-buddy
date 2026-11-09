@@ -9,9 +9,7 @@ The BOM is derived from the CPL, so the two cannot drift apart (register O1).
 - Gerbers: `../gerbers/robot-buddy-reflex-gerbers.zip`
 
 ## 🔴 Parts still needing an LCSC number
-- 10u (C_0402_1005Metric): C9
-- 15k (R_0402_1005Metric): R6
-- 4.7k (R_0402_1005Metric): R16,R17
+- none
 
 Leave these unset in the cart and let JLC match them, then **verify the package** on
 every one. JLC's matcher will silently return the right value in the wrong package.

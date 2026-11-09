@@ -2,10 +2,10 @@
 
 **Status: all v1 boards SCRAP.** Do not power a v1 board with U2 (TB6612) seated — see E1.
 
-**v2 PCB gates pass, NOT YET ORDERED (2026-11-09, 2nd pass):** §M fixed on the board
-(TB6612 un-mirrored, pad angles, USB-C on the rear edge, encoders on +3V3) and the board
-shrunk to **52.5 × 46** (§M11). Before ordering: the open boxes in §M's sign-off list,
-chiefly the base-plate rebuild (M10) and the C3 height under the Pi deck.
+**v2: DO NOT ORDER: encoder-plug clash (§M12, 2026-11-09).** §M fixed on the board and the
+board shrunk to 52.5 × 46 (§M11), but the encoder sockets face inboard and their plugs land on
+J1/J2, the front screw heads and U2. A relayout around a keep-out is needed, and it waits on
+one measurement (plug + cable depth). Firmware is on v2 (`pin_map.h`, expander driver).
 
 Consolidated list of every v1 defect plus the v2 architecture change, with a
 pre-fab sign-off gate at the end. Mirrors `robot-scout/docs/v2-defect-register.md`.
@@ -152,10 +152,7 @@ Found while doing it, all now encoded in the pipeline:
   is anchored under J9. MH refs hidden.
 
 Still open (not board copper):
-- **Firmware pin map (v1 still):** `pin_map.h` has AIN1/AIN2/BIN1/BIN2/STBY on GPIOs and
-  I²C on GPIO17/18 (the deleted cluster). v2 has SDA = GPIO7, SCL = GPIO8, direction pins
-  on U4, STBY = the e-stop net, and the cable-detect loop on GPIO6. `pcb_qc.py` §3 lists
-  all 8 mismatches. This is the existing TODO "Direction-change sequencing".
+- ~~Firmware pin map (v1 still)~~ **Done 2026-11-09, see M13.**
 - **U2 3D proxy is 26 × 26 × 4** (`robot-scout/hardware/kicad/gen_3d_proxies.py`, written
   to `~/kicad-libs/.../SparkFun_TB6612FNG_v2.step`). The real module is 20.32 × 20.32 and
   ~11 tall on its headers. The renders and `CAD/exports/robot-buddy-reflex.step` show it
@@ -166,7 +163,83 @@ Still open (not board copper):
   `chassis.py` constants changed and `reflex_board_envelope.SLDPRT` needs regenerating.
   Check J1/J2 (on the long edges at chassis x −15.5..3) against the encoder sockets' cable
   exit while there.
-- 3 BOM lines still have no LCSC number (C9 10u, R6 15k, R16/R17 4.7k): already missing before this change.
+- ~~3 BOM lines without an LCSC number~~ **Done 2026-11-09:** R6 15k = C25756 (UNI-ROYAL
+  0402WGF1502TCE), R16/R17 4.7k = C25900, C9 10 µF = C15525 (Samsung CL05A106MQ5NUNC, 6.3 V
+  X5R, about half its value left at 3.3 V bias, ample for rail bulk). U4 C2863976 re-checked:
+  TI TCA9554APWR, TSSOP-16. All 9 BOM lines are now verified on lcsc.com with package =
+  footprint. JLC's own match-review step is still Ben's (C160390/C1525 from the July list).
+
+### M12. 🔴 Encoder plugs land on J1/J2, MH2/MH4 and U2 (found 2026-11-09, blocks the order)
+
+The encoder socket **faces inboard** (Ben 2026-11-05, `docs/cad/loop/QUESTIONS.md`): a
+16.8 × 13.35 block whose mating face is at chassis |y| 23.9, over chassis x −9..7.8 (board
+x 31..47.8) and z 6.8–20.2. The plug and its cable therefore sit at |y| < 23.9, directly over
+the board's long edges (board top z 6.6). M11 cleared the *socket* (board |y| ≤ 23) but not
+the *plug*. Then the M11 placement put J1/J2 on those same edges at board x 24.5..43, to keep
+the motor cables short. J1's housing starts 0.95 mm from the socket face.
+
+What sits in the plug zone (board x 31..47.8) at a given plug + cable depth inboard of the
+socket face:
+
+| depth | parts in the zone |
+|---|---|
+| 5 mm | J1, J2, MH2, MH4 (screw heads) |
+| 8 mm | + U2 (module on headers) |
+| 12 mm | + C3, C9, J5, U4 |
+
+A 6-pin PH-style plug is ≥ 5 mm before the cable even bends, so J1/J2 clash at any realistic
+depth. The plug depth was never measured; it has been an open CAD-loop question since
+11-05 ("plug + cable depth inboard"). cad-loop's 7 mm notch on the 60 mm board was the same
+socket-only clearance, so their layout had the same open question.
+
+Encoded so it can't be lost: `board_outline.py` has `SOCKET_X`, `SOCKET_FACE_Y` and
+`PLUG_DEPTH` (8.0, **provisional**), and `pcb_qc.py` §5 fails while any courtyard sits in
+`plug_keepouts()`. It currently fails on J1, J2, MH2, MH4, U2.
+
+Fix (after the measurement): keep board x ≈ 29.5–49.5 free near both long edges to the
+measured depth. Move J1/J2 out of that band (rear of it, beside U1, or the front edge), move
+the front hole pair out of it, and keep U2 inboard of the zone. The board may need to grow in
+x a little; the chassis allows the front edge to x 25 (old board), and the deck posts are at
+x 30.
+
+### M13. Firmware on v2 (2026-11-09)
+
+- `pin_map.h`: I²C SDA GPIO7 / SCL GPIO8 (shared by the BMI270 via J5 and U4), e-stop
+  `/ESTOP` GPIO13 (HIGH = run) and `/ESTOP_LOOP` GPIO6 (HIGH = cable present). No AIN/BIN/STBY
+  GPIOs: the direction lines are `EXP_BIT_*` on the TCA9554A at 0x38, P0..P3 =
+  AIN1 AIN2 BIN1 BIN2, and STBY is the e-stop net. `pcb_qc.py` §3 checks every GPIO plus the
+  expander bits and address against the netlist (negative-tested: a swapped bit and a moved
+  loop pin are both caught).
+- `i2c_bus.cpp`: one owner for the bus. Recovery is `i2c_master_bus_reset()`, so the IMU's
+  recovery can't delete the expander's device.
+- `expander.cpp`: writes the output latch low **before** making P0–P3 outputs (no glitch out of
+  the R12–R15 pull-down state). Every direction write is read back from the INPUT register.
+- `motor.cpp`: a direction change is **PWM → 0 (short brake), expander write + readback,
+  then the new duty**, under a mutex (control and safety tasks both call in). Direction is
+  left alone at duty 0, so controller dither through zero costs no I²C. Brake is LEDC-only
+  and never waits on the bus. A failed readback holds that side at PWM 0 and raises the new
+  **`Fault::MOTOR_DRV` (bit 7)**. Not BROWNOUT, which the supervisor speaks as
+  "low battery". The supervisor treats MOTOR_DRV as severe (→ ERROR); the dashboard and
+  PROTOCOL.md know it.
+- `app_main.cpp`: an IMU init failure used `store()` on the fault word, which would have
+  wiped a fault `motor_init()` had already raised. Now `fetch_or`.
+- Built (IDF 5.4, no warnings), clang-format + cppcheck clean. **Not run on hardware:** the
+  board isn't built. The TODO acceptance tests (flip sweep without faults; e-stop
+  pressed vs. cable-missing reporting) stay open.
+
+### M14. Height under the Pi deck (2026-11-09)
+
+The deck (x −75..25, |y| ≤ 29.5) covers the whole board, underside at chassis z 24. The board top
+face is at z 6.6, so the headroom is **17.4 mm**. The "12 mm budget" is the CAD envelope
+(`REFLEX_Z`), with 5.4 mm spare above it. Tall parts:
+- **C3:** the radial part is still unpicked (O2). It must be Ø10, 5 mm pitch, ≤ ~16 mm tall, ≥ 10 V
+  (16 V preferred) and low-ESR. A 10 × 20 does not fit. Candidate: Rubycon
+  **16ZLH1000MEFC10X16** (10 × 16, 5 mm pitch, ~28 mΩ, 1.76 A ripple per distributor listings;
+  confirm on the datasheet and re-run the §O ripple numbers against it). 1.4 mm to the deck.
+- **U2** on 8.5 mm female headers: about 11.6 mm. OK.
+- **J9 (JST-VH vertical) and J1/J2/J7 (XH vertical)** with plugs mated and the wires turning
+  toward the cable exits: check in CAD once the M12 relayout is done. No 3D model for J9 in
+  this KiCad install.
 ---
 
 ## E — Electrical (fatal)
@@ -1473,9 +1546,12 @@ No gerbers are generated until every line is checked and initialled.
 - [x] M10: hole pattern comes from `board_outline.py` in both the PCB and `chassis.py`
 - [ ] M10: base plate rebuilt in SolidWorks from the new constants; J1/J2 cable exit checked against the sockets
 - [x] `pcb_qc.py` updated for v2 and passing (except the firmware pin map); stale v1 zip and June PDF removed
-- [ ] `pin_map.h` updated to v2 (`pcb_qc.py` §3 passes)
+- [x] `pin_map.h` updated to v2 (`pcb_qc.py` §3 passes, M13)
 - [ ] U2 3D proxy corrected to 20.32 × 20.32 × 11 and the STEP regenerated
-- [ ] C3 height under the Pi deck (12 mm parts budget): 10 × 12.5 or shorter
+- [x] Headroom measured: 17.4 mm to the deck (M14)
+- [ ] C3 radial part picked: Ø10 × ≤ 16, e.g. 16ZLH1000MEFC10X16, §O ripple re-run
+- [x] All BOM lines have verified LCSC numbers, package = footprint
+- [ ] 🔴 M12: encoder plug + cable depth measured, `PLUG_DEPTH` set, layout clear of `plug_keepouts()` (`pcb_qc.py` §5)
 
 ### Final
 - [x] DRC clean — 0 violations, 0 unconnected, 0 schematic-parity; all three gates pass

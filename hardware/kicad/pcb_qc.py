@@ -297,11 +297,12 @@ FW_NET = {
     "PIN_ENC_L_B": "/ENC_LB",
     "PIN_ENC_R_A": "/ENC_RA",
     "PIN_ENC_R_B": "/ENC_RB",
-    "PIN_IMU_SDA": "/SDA",
-    "PIN_IMU_SCL": "/SCL",
+    "PIN_I2C_SDA": "/SDA",  # shared bus: IMU (via J5) + U4 expander
+    "PIN_I2C_SCL": "/SCL",
     "PIN_RANGE_TRIG": "/TRIG",
     "PIN_RANGE_ECHO": "/ECHO_DIV",
     "PIN_ESTOP_N": "/ESTOP",
+    "PIN_ESTOP_LOOP": "/ESTOP_LOOP",  # E3 cable detect
 }
 fw = dict(re.findall(r"(PIN_\w+)\s*=\s*GPIO_NUM_(\d+)", PIN_MAP.read_text()))
 gpio_net = {}
@@ -320,14 +321,25 @@ for name in ("PIN_AIN1", "PIN_AIN2", "PIN_BIN1", "PIN_BIN2", "PIN_STBY"):
         bad.append(
             f"{name} = GPIO{fw[name]}: v2 has no such GPIO (U4 expander / e-stop net)"
         )
-if "PIN_ESTOP_LOOP" not in fw:
-    bad.append(
-        "PIN_ESTOP_LOOP missing: v2 routes the e-stop cable-detect loop to GPIO6 (E3)"
-    )
+# U4 direction bits: pin_map.h EXP_BIT_* vs the netlist (TCA9554A P0..P3 = pins 4..7)
+_pm = PIN_MAP.read_text()
+_exp = dict(re.findall(r"(EXP_BIT_\w+)\s*=\s*1u\s*<<\s*(\d)", _pm))
+for name, net in (
+    ("EXP_BIT_AIN1", "/AIN1"),
+    ("EXP_BIT_AIN2", "/AIN2"),
+    ("EXP_BIT_BIN1", "/BIN1"),
+    ("EXP_BIT_BIN2", "/BIN2"),
+):
+    bit = _exp.get(name)
+    got = pad_net("U4", str(4 + int(bit))) if bit is not None else "<missing>"
+    if got != net:
+        bad.append(f"{name} = P{bit}: U4 pin carries {got}, want {net}")
+if not re.search(r"EXP_I2C_ADDR\s*=\s*0x38\b", _pm):
+    bad.append("EXP_I2C_ADDR is not 0x38 (TCA9554A, A2..A0 = GND on the board)")
 check(
     not bad and len(fw) >= len(FW_NET),
     S,
-    f"firmware pin_map.h vs board: {len(bad)} mismatch(es)",
+    f"firmware pin_map.h vs board (GPIOs + U4 bits/address): {len(bad)} mismatch(es)",
 )
 for m in bad:
     results.append(("    ", S, m))
@@ -381,6 +393,30 @@ check(
     BO.H <= 46.0,
     S,
     f"board {BO.H:g} wide: |y| <= {BO.H / 2:g}, encoder sockets at |y| 23.9",
+)
+# Encoder plugs: the sockets face inboard, so plug + cable sit over the long edges in
+# board x 31..47.8 (board_outline.plug_keepouts, PLUG_DEPTH provisional until measured).
+_in_zone = []
+for _ref, _f in FP.items():
+    _c = _f.GetCourtyard(pcbnew.F_CrtYd)
+    if not _c.OutlineCount():
+        continue
+    _bb = _c.BBox()
+    _l, _t, _r, _b = (
+        mm(v) for v in (_bb.GetLeft(), _bb.GetTop(), _bb.GetRight(), _bb.GetBottom())
+    )
+    for _x0, _y0, _x1, _y1 in BO.plug_keepouts():
+        if _r > _x0 and _l < _x1 and _b > _y0 and _t < _y1:
+            _in_zone.append(_ref)
+            break
+check(
+    not _in_zone,
+    S,
+    f"encoder plug keep-out (x {BO.SOCKET_X[0]:g}-{BO.SOCKET_X[1]:g}, {BO.PLUG_DEPTH:g} mm inboard of the socket face, "
+    f"PLUG_DEPTH provisional) clear: {sorted(_in_zone) or 'yes'}",
+)
+SIGNOFF.append(
+    "Encoder plug + cable depth inboard of the socket face measured and set as board_outline.PLUG_DEPTH"
 )
 MH = {f"MH{i}": xy for i, xy in enumerate(BO.HOLES, start=1)}
 bad = []
