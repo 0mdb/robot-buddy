@@ -3,7 +3,7 @@
 	(generator "pcbnew")
 	(layer "F.Cu")
 	(uuid "74fa5ad4-5b94-457e-8b0e-99d78f4fb543")
-	(descr "SparkFun Motor Driver - Dual TB6612FNG v2 (w/ Headers). Through-hole female socket for breakout board. 2x8 pins, 2.54mm pitch, 15.24mm row spacing confirmed from Eagle .brd JP1/JP2 placement.")
+	(descr "SparkFun Motor Driver - Dual TB6612FNG v2 (w/ Headers). Through-hole female socket for breakout board. 2x8 pins, 2.54mm pitch, 15.24mm row spacing confirmed from Eagle .brd JP1/JP2 placement. Pinout (2026-11-09, docs/ref/SparkFun_Motor_Driver-TB6612FNG_v11c.brd, chip up, top view): left column VM VCC GND AO1 AO2 BO2 BO1 GND (pads 9-16), right column PWMA AIN2 AIN1 STBY BIN1 BIN2 PWMB GND (pads 1-8).")
 	(tags "TB6612FNG SparkFun motor driver breakout through-hole socket")
 	(property "Reference" "U2"
 		(at 0 -1.5 0)
@@ -96,7 +96,7 @@
 		(uuid "7f186ccd-e131-4932-bb81-d04eb209107e")
 	)
 	(fp_text user "Pin 1 (PWMA)"
-		(at -7.62 -8.89 0)
+		(at 7.62 -8.89 0)
 		(layer "F.SilkS")
 		(uuid "7ec993ee-f422-4765-ad23-b70b1fe4c6b9")
 		(effects
@@ -108,7 +108,7 @@
 		)
 	)
 	(fp_text user "Pin 9 (VM)"
-		(at 7.62 -8.89 0)
+		(at -7.62 -8.89 0)
 		(layer "F.SilkS")
 		(uuid "38062e02-f016-4158-9353-7a70887c1308")
 		(effects
@@ -120,7 +120,7 @@
 		)
 	)
 	(pad "1" thru_hole rect
-		(at -7.62 -8.89)
+		(at 7.62 -8.89)
 		(size 1.7 1.7)
 		(drill 1)
 		(layers "*.Cu" "*.Mask")
@@ -128,7 +128,7 @@
 		(uuid "279a0548-c14b-4e84-bd7c-fb2d768612a4")
 	)
 	(pad "2" thru_hole circle
-		(at -7.62 -6.35)
+		(at 7.62 -6.35)
 		(size 1.7 1.7)
 		(drill 1)
 		(layers "*.Cu" "*.Mask")
@@ -136,7 +136,7 @@
 		(uuid "5d85cdbe-f00f-4129-bd39-b5c2f75a72f5")
 	)
 	(pad "3" thru_hole circle
-		(at -7.62 -3.81)
+		(at 7.62 -3.81)
 		(size 1.7 1.7)
 		(drill 1)
 		(layers "*.Cu" "*.Mask")
@@ -144,7 +144,7 @@
 		(uuid "275bb498-5697-4ed3-b886-d0792f40e22b")
 	)
 	(pad "4" thru_hole circle
-		(at -7.62 -1.27)
+		(at 7.62 -1.27)
 		(size 1.7 1.7)
 		(drill 1)
 		(layers "*.Cu" "*.Mask")
@@ -152,7 +152,7 @@
 		(uuid "a38bf353-4eec-494d-bfbc-1e4069a03fff")
 	)
 	(pad "5" thru_hole circle
-		(at -7.62 1.27)
+		(at 7.62 1.27)
 		(size 1.7 1.7)
 		(drill 1)
 		(layers "*.Cu" "*.Mask")
@@ -160,7 +160,7 @@
 		(uuid "78e80b69-bad0-43f3-aa11-c4bd23d4bab5")
 	)
 	(pad "6" thru_hole circle
-		(at -7.62 3.81)
+		(at 7.62 3.81)
 		(size 1.7 1.7)
 		(drill 1)
 		(layers "*.Cu" "*.Mask")
@@ -168,7 +168,7 @@
 		(uuid "f0135f8b-5875-40b7-ba50-30ba9d2fffff")
 	)
 	(pad "7" thru_hole circle
-		(at -7.62 6.35)
+		(at 7.62 6.35)
 		(size 1.7 1.7)
 		(drill 1)
 		(layers "*.Cu" "*.Mask")
@@ -176,7 +176,7 @@
 		(uuid "603dd162-d93e-4572-a5a4-280da233c320")
 	)
 	(pad "8" thru_hole circle
-		(at -7.62 8.89)
+		(at 7.62 8.89)
 		(size 1.7 1.7)
 		(drill 1)
 		(layers "*.Cu" "*.Mask")
@@ -184,7 +184,7 @@
 		(uuid "3b52367d-3605-48b2-8db8-78eafb2a1b84")
 	)
 	(pad "9" thru_hole circle
-		(at 7.62 -8.89)
+		(at -7.62 -8.89)
 		(size 1.7 1.7)
 		(drill 1)
 		(layers "*.Cu" "*.Mask")
@@ -192,7 +192,7 @@
 		(uuid "6b859c1b-7330-4120-83f6-b350b4ee5a96")
 	)
 	(pad "10" thru_hole circle
-		(at 7.62 -6.35)
+		(at -7.62 -6.35)
 		(size 1.7 1.7)
 		(drill 1)
 		(layers "*.Cu" "*.Mask")
@@ -200,7 +200,7 @@
 		(uuid "1c379317-b71a-49da-a5aa-1d94b92e51b8")
 	)
 	(pad "11" thru_hole circle
-		(at 7.62 -3.81)
+		(at -7.62 -3.81)
 		(size 1.7 1.7)
 		(drill 1)
 		(layers "*.Cu" "*.Mask")
@@ -208,7 +208,7 @@
 		(uuid "3b4995fd-aec0-4b63-93b8-4eab76035d6b")
 	)
 	(pad "12" thru_hole circle
-		(at 7.62 -1.27)
+		(at -7.62 -1.27)
 		(size 1.7 1.7)
 		(drill 1)
 		(layers "*.Cu" "*.Mask")
@@ -216,7 +216,7 @@
 		(uuid "3fa6a406-1635-4cb2-99ad-2214a1488c42")
 	)
 	(pad "13" thru_hole circle
-		(at 7.62 1.27)
+		(at -7.62 1.27)
 		(size 1.7 1.7)
 		(drill 1)
 		(layers "*.Cu" "*.Mask")
@@ -224,7 +224,7 @@
 		(uuid "972e43ce-16da-44d3-9cf4-ff4e06f49eb4")
 	)
 	(pad "14" thru_hole circle
-		(at 7.62 3.81)
+		(at -7.62 3.81)
 		(size 1.7 1.7)
 		(drill 1)
 		(layers "*.Cu" "*.Mask")
@@ -232,7 +232,7 @@
 		(uuid "672e54b4-79f8-44b0-b185-aae10ae02864")
 	)
 	(pad "15" thru_hole circle
-		(at 7.62 6.35)
+		(at -7.62 6.35)
 		(size 1.7 1.7)
 		(drill 1)
 		(layers "*.Cu" "*.Mask")
@@ -240,7 +240,7 @@
 		(uuid "b15e9388-515d-4ee0-a4e9-d553374ffd6a")
 	)
 	(pad "16" thru_hole circle
-		(at 7.62 8.89)
+		(at -7.62 8.89)
 		(size 1.7 1.7)
 		(drill 1)
 		(layers "*.Cu" "*.Mask")

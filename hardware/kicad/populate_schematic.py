@@ -249,7 +249,7 @@ U1R = {
 # Symbol center: (215, 97.79)
 # Symbol pin layout (sx=-12.7 left, sx=+12.7 right, y=+8.89 top step -2.54):
 #   Left  pin 1 PWMA → 8 GND  (sx=-12.7, y from +8.89 down)
-#   Right pin 9 VM   → 16 VM2 (sx=+12.7, y from +8.89 down)
+#   Right pin 9 VM   → 16 GND2 (sx=+12.7, y from +8.89 down)
 # ========================================================================
 U2X, U2Y = 215.0, 97.79
 
@@ -281,12 +281,16 @@ U2P = {
     # Right column (sx=+12.7, angle=180 → wires extend further right)
     "VM": u2_pin(12.7, 8.89),  # pin 9
     "VCC": u2_pin(12.7, 6.35),  # pin 10
-    "AO1": u2_pin(12.7, 3.81),  # pin 11
-    "AO2": u2_pin(12.7, 1.27),  # pin 12
-    "GND2": u2_pin(12.7, -1.27),  # pin 13  (motor GND on breakout)
+    # 2026-11-09: SparkFun order (docs/ref/SparkFun_Motor_Driver-TB6612FNG_v11c.brd JP1):
+    # VM VCC GND A01 A02 B02 B01 GND. The June symbol had AO1 AO2 GND BO2 BO1 VM2 here, which
+    # put +BATT on the breakout's GND pin (a dead short) and the A outputs a pin off.
+    # The symbol in ~/kicad-libs/symbols/robot-projects.kicad_sym needs the same pin names.
+    "GND3": u2_pin(12.7, 3.81),  # pin 11
+    "AO1": u2_pin(12.7, 1.27),  # pin 12
+    "AO2": u2_pin(12.7, -1.27),  # pin 13
     "BO2": u2_pin(12.7, -3.81),  # pin 14
     "BO1": u2_pin(12.7, -6.35),  # pin 15
-    "VM2": u2_pin(12.7, -8.89),  # pin 16  (second VM on breakout)
+    "GND2": u2_pin(12.7, -8.89),  # pin 16
 }
 
 
@@ -769,7 +773,8 @@ s.schematicSymbols.append(
     )
 )
 
-# ── U3: 74LVC1G125 level shifter (3.3V GPIO42 → 5V NeoPixel data) ─────────
+# ── U3: 74AHCT1G125 level shifter (value; 74LVC1G125 symbol, same pinout. 2026-11-09: LVC at
+#    5 V needs VIH 3.5 V, the ESP32 drives 3.3; AHCT takes 2.0 V) (3.3V GPIO42 → 5V NeoPixel data) ─────────
 U3X, U3Y = 215.0, 45.0
 u3_p = u3_pins(U3X, U3Y)
 s.schematicSymbols.append(
@@ -779,7 +784,7 @@ s.schematicSymbols.append(
         U3X,
         U3Y,
         "U3",
-        "74LVC1G125",
+        "74AHCT1G125",
         FP_SOT235,
         "Single buffer/driver, 3-state. 3.3V→5V level shift for NeoPixel data.",
     )
@@ -828,9 +833,9 @@ s.schematicSymbols.append(make_pwr("+3V3", *U1L["3"]))
 # SparkFun TB6612FNG v2 power pins
 s.schematicSymbols.append(make_pwr("+3V3", *U2P["VCC"]))  # pin 10
 s.schematicSymbols.append(make_pwr("+BATT", *U2P["VM"]))  # pin 9
-s.schematicSymbols.append(make_pwr("+BATT", *U2P["VM2"]))  # pin 16
 s.schematicSymbols.append(make_pwr("GND", *U2P["GND"]))  # pin 8
-s.schematicSymbols.append(make_pwr("GND", *U2P["GND2"]))  # pin 13 (motor GND)
+s.schematicSymbols.append(make_pwr("GND", *U2P["GND3"]))  # pin 11
+s.schematicSymbols.append(make_pwr("GND", *U2P["GND2"]))  # pin 16
 
 # Resistor / capacitor power pins (GND at bottom = y+3.81, power at top = y-3.81)
 s.schematicSymbols.append(make_pwr("GND", R1X, R1Y + 3.81))  # R1 bottom
@@ -863,12 +868,13 @@ s.schematicSymbols.append(make_pwr("+3V3", *j5_p[1]))
 s.schematicSymbols.append(make_pwr("+5V", *j6_p[0]))
 s.schematicSymbols.append(make_pwr("GND", *j6_p[3]))
 
-# J1 Motor A: pin3=+5V (encoder power), pin4=GND
-s.schematicSymbols.append(make_pwr("+5V", *j1_p[2]))
+# J1 Motor A: pin3=+3V3 (encoder power), pin4=GND. 2026-11-09: was +5V; the encoder's A/B
+# outputs go straight to non-5V-tolerant GPIO9-12, so power it at 3.3 V (Yahboom: 3.3-5 V).
+s.schematicSymbols.append(make_pwr("+3V3", *j1_p[2]))
 s.schematicSymbols.append(make_pwr("GND", *j1_p[3]))
 
-# J2 Motor B: pin3=+5V (encoder power), pin4=GND
-s.schematicSymbols.append(make_pwr("+5V", *j2_p[2]))
+# J2 Motor B: pin3=+3V3 (encoder power), pin4=GND
+s.schematicSymbols.append(make_pwr("+3V3", *j2_p[2]))
 s.schematicSymbols.append(make_pwr("GND", *j2_p[3]))
 
 # J7 E-stop: pin2=GND

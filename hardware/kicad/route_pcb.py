@@ -37,7 +37,7 @@ MOTOR_W = (
     0.40  # mm  (matches Power class; motor traces are short, widen manually if needed)
 )
 SIGNAL_W = 0.25  # mm
-PASSES = 10
+PASSES = int(os.environ.get("RB_PASSES", "10"))
 
 # ── Step 1: Export DSN ────────────────────────────────────────────────────────
 print("Exporting DSN...")
@@ -183,6 +183,10 @@ b3 = pcbnew.LoadBoard(PCB)
 # Add a GND fill zone on B.Cu to match the B.Cu GND plane declared in the DSN.
 # freerouting routes GND pads to the B.Cu plane; without a KiCad zone here those
 # B.Cu-only GND pads remain floating after SES import.
+# Re-running on a routed board (existing tracks become seeds) must not stack a second zone.
+for _z in list(b3.Zones()):
+    if _z.GetLayer() == pcbnew.B_Cu and _z.GetNetname() == "GND":
+        b3.Remove(_z)
 _gnd_zone = pcbnew.ZONE(b3)
 _gnd_zone.SetLayer(pcbnew.B_Cu)
 _gnd_net = b3.FindNet("GND")
@@ -205,6 +209,52 @@ except Exception as e:
     print(f"  Zone fill skipped: {e}")
 
 b3.Save(PCB)
+
+# ── Step 6b: Finishing patches for the 2026-11-09 placement ─────────────────
+# freerouting stops once it thinks every net is joined, but leaves a few sub-nets apart on
+# this board. Each patch names two pads it must join and is laid only if they aren't joined
+# already (connectivity incl. zones), so a re-route that finds its own path skips it.
+# Paths were picked from the routed copper; pcb_qc.py (DRC) re-checks them.
+PATCHES = [
+    # +3V3: U2-VCC/J2/C5 group to the U1/R4/J1/J5 group, F.Cu between J1/J2's pads and the
+    # right edge (pads to x 63.12, edge 65: track 63.7-64.1). Not B.Cu: ENC_RB detours round
+    # J2-5 at x 63.45 there.
+    ("+3V3", ("J1", "3"), ("J2", "3"), pcbnew.F_Cu,
+     [(62.15, 12.0), (63.9, 12.0), (63.9, 37.0), (62.15, 37.0)]),
+    # +5V to J6 (HC-SR04 VCC): B.Cu down the rear edge, x 1.0 (edge 0.5, MH1 hole from x 2.4).
+    ("+5V", ("J6", "1"), ("J9", "1"), pcbnew.B_Cu,
+     [(5.0, 3.0), (1.0, 7.0), (1.0, 34.5), (1.5, 36.5)]),
+    # +5V: C7/C6 to the R10/U3 run, F.Cu under R11 (pad bottom 51.25) and above the notch
+    # edge (y 53; copper <= 52.5).
+    ("+5V", ("C7", "1"), ("R10", "1"), pcbnew.F_Cu,
+     [(33.0, 50.98), (32.2, 51.78), (27.49, 51.78), (26.72, 51.01)]),
+]
+bp = pcbnew.LoadBoard(PCB)
+bp.BuildConnectivity()
+_pp = {(fp.GetReference(), p.GetNumber()): p for fp in bp.GetFootprints() for p in fp.Pads()}
+_laid = 0
+for _net, _a, _b, _layer, _pts in PATCHES:
+    _joined = {
+        (i.GetParentFootprint().GetReference(), i.GetNumber())
+        for i in bp.GetConnectivity().GetConnectedItems(_pp[_a])
+        if i.Type() == pcbnew.PCB_PAD_T
+    }
+    if _b in _joined:
+        print(f"  {_net} {_a}-{_b}: already joined")
+        continue
+    for (x1, y1), (x2, y2) in zip(_pts, _pts[1:]):
+        _t = pcbnew.PCB_TRACK(bp)
+        _t.SetLayer(_layer)
+        _t.SetNet(bp.FindNet(_net))
+        _t.SetWidth(pcbnew.FromMM(POWER_W))
+        _t.SetStart(pcbnew.VECTOR2I(pcbnew.FromMM(OX + x1), pcbnew.FromMM(OY + y1)))
+        _t.SetEnd(pcbnew.VECTOR2I(pcbnew.FromMM(OX + x2), pcbnew.FromMM(OY + y2)))
+        bp.Add(_t)
+    _laid += 1
+    print(f"  {_net} {_a}-{_b}: patched on {bp.GetLayerName(_layer)}")
+if _laid:
+    pcbnew.ZONE_FILLER(bp).Fill(bp.Zones())
+bp.Save(PCB)
 
 # ── Step 7: Manual +3V3 patch (R4-1 and U2-10) ───────────────────────────────
 # freerouting consistently misses these two pads because the narrow window
@@ -230,6 +280,10 @@ _src = {
 }
 if {("R4", "1"), ("U2", "10")} <= _src:
     print("  +3V3 already reaches R4-1 and U2-10: patch not needed")
+elif not os.environ.get("RB_3V3_PATCH"):
+    # The patch below is laid for the 2026-11-08 placement (U1 at (9, 16), rot 0); since the
+    # 2026-11-09 re-place it would land in the wrong spot. Opt in only after re-deriving it.
+    print("  WARNING: +3V3 misses R4-1/U2-10 and the patch is off (RB_3V3_PATCH): route by hand")
 elif _3v3_net:
     _patch_segs = [
         # y 21.40 (2026-11-08, KiCad 10 pads): U1 pad 19 bottom 20.88 -> >= 21.205; pad 20

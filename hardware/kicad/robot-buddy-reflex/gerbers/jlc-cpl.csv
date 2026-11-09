@@ -1,0 +1,18 @@
+Designator,Mid X,Mid Y,Layer,Rotation
+C1,30.000mm,-23.500mm,Top,90
+C2,12.500mm,-37.000mm,Top,90
+C4,30.000mm,-38.500mm,Top,90
+C5,30.000mm,-41.500mm,Top,90
+C7,33.000mm,-50.500mm,Top,90
+R1,30.000mm,-33.000mm,Top,90
+R2,30.000mm,-35.500mm,Top,90
+R3,30.000mm,-26.000mm,Top,90
+R4,30.000mm,-21.000mm,Top,90
+R5,15.000mm,-37.000mm,Top,90
+R6,17.500mm,-37.000mm,Top,90
+R7,20.000mm,-37.000mm,Top,90
+R8,7.500mm,-37.000mm,Top,90
+R9,10.000mm,-37.000mm,Top,90
+R10,25.000mm,-52.000mm,Top,90
+R11,29.000mm,-50.500mm,Top,90
+U3,29.000mm,-46.000mm,Top,0

@@ -165,6 +165,11 @@ def place(ref, value, fp_id, x, y, angle=0):
     fp.properties["Reference"] = ref
     fp.properties["Value"] = value
     for pad in fp.pads:
+        # A pad's (at x y angle) in a .kicad_pcb is its absolute orientation, footprint rotation
+        # included; kiutils doesn't add it. Without this, rotated parts keep unrotated pads
+        # (harmless on the near-square JST pads; U1's 2.76 x 1.5 pads overlap at angle 90).
+        if angle:
+            pad.position.angle = ((pad.position.angle or 0) + angle) % 360
         net = make_net_obj(ref, str(pad.number))
         if net:
             pad.net = net
@@ -178,26 +183,37 @@ def place(ref, value, fp_id, x, y, angle=0):
 #  0        10       20    28.5               51   55      65
 #  +-MH1-J6(SR04)-J7(Est)-+   (encoder notch)  +-MH2--------+
 #  |                      +--------------------+   J1(MtrA) |
-# J8(pwr)  [R8R9C2]    [U1 ESP32]  [R1R2R3]  [U2 TB6612]      |
-# J9(uart) [R5R6R7]    [       ]   [R4,C1 ]  [C4C5]   C3  J2(MtrB)|
-#          J10(LED)          U3  C6         +--------------------+
-#  +-MH3--J5(Qwiic)-J11(Neo)-+   (encoder notch)  +-MH4--------+
+# USB=[U1 ESP32, rot 90 ]   [R4,C1,R3]  [U2 TB6612, rot 180] |
+#     [  USB-C at x 0  ]    [R1R2C4C5]  [                  ] J2(MtrB)
+# J9(uart) [R8R9C2R5R6R7]      U3  C6  J11                     |
+#          C3          +--------------------+             J10 |
+#  +-MH3--J5(Qwiic)-J8(pwr)-+   (encoder notch)  +-MH4--------+
 #  60 mm tall; notches x 28.5-50, 7 deep (board_outline.py, 2026-11-08)
+#  2026-11-09 (order QC): U1 turned so its USB-C (the Pi link, USB-Serial-JTAG) exits the
+#  rear edge (KiCad x 0 = chassis x -40, the open bay; R2c). J8 moved to the bottom edge, the
+#  left passives to a row under U1. U2 turned 180: the corrected SparkFun pinout puts the
+#  VM/motor row on the footprint's left (chip up), so it now faces J1/J2.
 # ════════════════════════════════════════════════════════════════════
 
 # ── Main ICs ─────────────────────────────────────────────────────────────
-#   U1: ESP32-S3-Zero flat-mount (18×23.5mm, top-left-origin footprint)
-#   (9,16) keeps module center at ~(18,28) — same physical position as the old Socket
+#   U1: ESP32-S3-Zero flat-mount (18×23.5mm, top-left-origin footprint, USB-C at the pad-1
+#   end, ~1.4 proud of the module edge: STEP render 2026-11-09). angle 90 maps local (x, y)
+#   to (y, -x): the module spans x U1_X..U1_X+23.5, y U1_Y-18..U1_Y, USB-C end at x U1_X.
+#   U1_X 0: module end flush with the rear edge, so the receptacle overhangs and a plug seats.
+#   U1_Y 33: module y 15-33, clear of MH1's head (4, 11; r 2.9) with J9 below it on the edge.
+U1_X, U1_Y = 0.0, 33.0
 place(
     "U1",
     "Waveshare_ESP32-S3-Zero",
     "robot-projects:Waveshare_ESP32-S3-Zero_FlatMount",
-    9,
-    16,
+    U1_X,
+    U1_Y,
+    90,
 )
 
-#   U2: SparkFun TB6612FNG v2 Socket (courtyard ±13mm × ±13mm)
-place("U2", "SparkFun_TB6612FNG_v2", "robot-projects:SparkFun_TB6612FNG_v2", 46, 28)
+#   U2: SparkFun TB6612FNG v2 Socket (courtyard ±13mm × ±13mm). angle 180: VM/AO/BO row
+#   (pads 9-16) at x 53.62 beside J1/J2, PWMA..PWMB row (pads 1-8) at x 38.38 toward U1.
+place("U2", "SparkFun_TB6612FNG_v2", "robot-projects:SparkFun_TB6612FNG_v2", 46, 28, 180)
 
 # ── Right-edge connectors (angle=90 → pads along +Y, housing exits →) ────────
 #   Courtyard extends 2.45mm ABOVE and 9.95mm (4-pin) / 4.95mm (2-pin) BELOW placement y.
@@ -240,12 +256,13 @@ place("J7", "E-Stop", "Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical", 22,
 #   At angle=270: pad1 at (x,y), pad2 at (x, y-2.5)
 #   x=1.5: housing exits left (front at x=-1.35), pads at x=1.5 inside board
 #   Courtyard right edge = 1.5+3.9=5.4 → clears left passives at x=6.5
+#   J9 under U1 on the rear edge: pads y 36.5-44, courtyard 33.5-47 (U1 ends at 33).
 place(
-    "J8", "PWR In", "Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical", 1.5, 20, 270
+    "J9", "UART/Pi", "Connector_JST:JST_XH_B4B-XH-A_1x04_P2.50mm_Vertical", 1.5, 36.5, 270
 )
-place(
-    "J9", "UART/Pi", "Connector_JST:JST_XH_B4B-XH-A_1x04_P2.50mm_Vertical", 1.5, 34, 270
-)
+#   J8 (2026-11-09) on the bottom edge between J5 and the notch, housing front at the edge
+#   (angle 180 mirrors J7): pads (24, 57) and (21.5, 57), courtyard ~18.5-27 x 53-59.9.
+place("J8", "PWR In", "Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical", 24, 57, 180)
 
 # ── Bottom-edge Qwiic (angle=0, adjust orientation in KiCad if needed) ───────
 place(
@@ -270,14 +287,14 @@ place("C1", "100n", "Capacitor_SMD:C_0402_1005Metric", 30, 23.5, 90)  # ESTOP de
 #   Battery sense divider: R8 (top, +BATT→BAT_SENSE), R9 (bot, BAT_SENSE→GND)
 #   HC-SR04 echo divider: R5 (top, ECHO_IN→MID), R6 (bot, MID→GND),
 #                         R7 (series ESD, MID→ECHO_DIV)
-# x=6.5: crtyd right=7.235 → clears U1 crtyd left (7.5) by 0.265mm
-#         crtyd left=5.765  → clears J8/J9 crtyd right (5.4) by 0.365mm
-place("R8", "100k", "Resistor_SMD:R_0402_1005Metric", 6.5, 22, 90)  # bat top
-place("R9", "47k", "Resistor_SMD:R_0402_1005Metric", 6.5, 25, 90)  # bat bot
-place("C2", "100n", "Capacitor_SMD:C_0402_1005Metric", 6.5, 28, 90)  # bat filter
-place("R5", "10k", "Resistor_SMD:R_0402_1005Metric", 6.5, 31, 90)  # echo div top
-place("R6", "20k", "Resistor_SMD:R_0402_1005Metric", 6.5, 34, 90)  # echo div bot
-place("R7", "100", "Resistor_SMD:R_0402_1005Metric", 6.5, 37, 90)  # echo ESD
+# 2026-11-09: a row under U1 (module ends y 33), right of J9 (courtyard x <= 4.4), above C3.
+_ROW_Y = 37.0
+place("R8", "100k", "Resistor_SMD:R_0402_1005Metric", 7.5, _ROW_Y, 90)  # bat top
+place("R9", "47k", "Resistor_SMD:R_0402_1005Metric", 10.0, _ROW_Y, 90)  # bat bot
+place("C2", "100n", "Capacitor_SMD:C_0402_1005Metric", 12.5, _ROW_Y, 90)  # bat filter
+place("R5", "10k", "Resistor_SMD:R_0402_1005Metric", 15.0, _ROW_Y, 90)  # echo div top
+place("R6", "20k", "Resistor_SMD:R_0402_1005Metric", 17.5, _ROW_Y, 90)  # echo div bot
+place("R7", "100", "Resistor_SMD:R_0402_1005Metric", 20.0, _ROW_Y, 90)  # echo ESD
 
 # ── Capacitors: VM bulk + rail decoupling ─────────────────────────────────────
 #   C3 1000µF polarized THT: below U2 on VM/VBAT rail (back-EMF bulk)
@@ -297,7 +314,7 @@ place("C5", "100n", "Capacitor_SMD:C_0402_1005Metric", 30, 41.5, 90)
 #   Shifted +5mm right vs initial placement to clear SDA Qwiic via at (19.16, 55.80)
 #   that conflicted with J10 pin 1 at old (20, 57). New J10 at (25, 57) gives ~4mm
 #   clearance from the SDA routing zone.
-place("U3", "74LVC1G125", "Package_TO_SOT_SMD:SOT-23-5", 29, 46)
+place("U3", "74AHCT1G125", "Package_TO_SOT_SMD:SOT-23-5", 29, 46)
 place("R10", "330", "Resistor_SMD:R_0402_1005Metric", 25, 52, 90)
 place("R11", "330", "Resistor_SMD:R_0402_1005Metric", 29, 50.5, 90)  # 52 -> 50.5: notch edge at y 53
 place("C7", "100n", "Capacitor_SMD:C_0402_1005Metric", 33, 50.5, 90)  # 52 -> 50.5: notch edge at y 53
