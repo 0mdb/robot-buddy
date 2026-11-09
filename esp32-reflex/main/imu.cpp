@@ -1,6 +1,7 @@
 #include "imu.h"
 #include "bmi270_config.h"
 #include "config.h"
+#include "i2c_bus.h"
 #include "pin_map.h"
 #include "shared_state.h"
 
@@ -112,99 +113,25 @@ static constexpr float GYRO_SENS_DPS_TABLE[] = {
 static float s_accel_sens_g = ACCEL_SENS_TABLE[ACC_RANGE_2G];
 static float s_gyro_sens_rad = GYRO_SENS_DPS_TABLE[GYR_RANGE_500] * (M_PI / 180.0f);
 
-// ---- I²C driver state ----
-static i2c_master_bus_handle_t s_bus = nullptr;
+// ---- I²C device on the shared bus (i2c_bus.cpp; the TCA9554A expander shares it) ----
 static i2c_master_dev_handle_t s_dev = nullptr;
-
-// ---- I²C bus recovery ----
-// If SDA is stuck low (slave holding it), bit-bang SCL to clock out the
-// stuck slave, then issue a STOP condition, then re-init the driver.
-
-static constexpr int RECOVERY_CLK_PULSES = 9;
-static constexpr int RECOVERY_HALF_PERIOD_US = 5; // ~100 kHz
-
-static void i2c_bus_recover()
-{
-    ESP_LOGW(TAG, "attempting I²C bus recovery...");
-
-    if (s_dev) {
-        i2c_master_bus_rm_device(s_dev);
-        s_dev = nullptr;
-    }
-    if (s_bus) {
-        i2c_del_master_bus(s_bus);
-        s_bus = nullptr;
-    }
-
-    gpio_config_t scl_cfg = {};
-    scl_cfg.pin_bit_mask = 1ULL << PIN_IMU_SCL;
-    scl_cfg.mode = GPIO_MODE_INPUT_OUTPUT_OD;
-    scl_cfg.pull_up_en = GPIO_PULLUP_ENABLE;
-    gpio_config(&scl_cfg);
-
-    gpio_config_t sda_cfg = {};
-    sda_cfg.pin_bit_mask = 1ULL << PIN_IMU_SDA;
-    sda_cfg.mode = GPIO_MODE_INPUT_OUTPUT_OD;
-    sda_cfg.pull_up_en = GPIO_PULLUP_ENABLE;
-    gpio_config(&sda_cfg);
-
-    gpio_set_level(PIN_IMU_SDA, 1);
-
-    for (int i = 0; i < RECOVERY_CLK_PULSES; i++) {
-        gpio_set_level(PIN_IMU_SCL, 0);
-        ets_delay_us(RECOVERY_HALF_PERIOD_US);
-        gpio_set_level(PIN_IMU_SCL, 1);
-        ets_delay_us(RECOVERY_HALF_PERIOD_US);
-
-        if (gpio_get_level(PIN_IMU_SDA) == 1) {
-            ESP_LOGI(TAG, "SDA released after %d clocks", i + 1);
-            break;
-        }
-    }
-
-    // Generate STOP: SDA low → SCL high → SDA high
-    gpio_set_level(PIN_IMU_SDA, 0);
-    ets_delay_us(RECOVERY_HALF_PERIOD_US);
-    gpio_set_level(PIN_IMU_SCL, 1);
-    ets_delay_us(RECOVERY_HALF_PERIOD_US);
-    gpio_set_level(PIN_IMU_SDA, 1);
-    ets_delay_us(RECOVERY_HALF_PERIOD_US);
-
-    gpio_reset_pin(PIN_IMU_SCL);
-    gpio_reset_pin(PIN_IMU_SDA);
-
-    ESP_LOGI(TAG, "bus recovery complete, will re-init driver");
-}
-
-// ---- I²C init / reinit ----
 
 static bool i2c_driver_init()
 {
-    i2c_master_bus_config_t bus_cfg = {};
-    bus_cfg.i2c_port = I2C_NUM_1;
-    bus_cfg.sda_io_num = PIN_IMU_SDA;
-    bus_cfg.scl_io_num = PIN_IMU_SCL;
-    bus_cfg.clk_source = I2C_CLK_SRC_DEFAULT;
-    bus_cfg.glitch_ignore_cnt = 7;
-    bus_cfg.flags.enable_internal_pullup = true;
-
-    esp_err_t err = i2c_new_master_bus(&bus_cfg, &s_bus);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "i2c_new_master_bus failed: %s", esp_err_to_name(err));
-        return false;
-    }
+    if (!i2c_bus_init()) return false;
+    if (s_dev) return true;
 
     i2c_device_config_t dev_cfg = {};
     dev_cfg.dev_addr_length = I2C_ADDR_BIT_LEN_7;
     dev_cfg.device_address = BMI270_ADDR;
     dev_cfg.scl_speed_hz = 400000; // 400 kHz fast mode
 
-    err = i2c_master_bus_add_device(s_bus, &dev_cfg, &s_dev);
+    esp_err_t err = i2c_master_bus_add_device(i2c_bus_handle(), &dev_cfg, &s_dev);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "i2c_master_bus_add_device failed: %s", esp_err_to_name(err));
+        s_dev = nullptr;
         return false;
     }
-
     return true;
 }
 

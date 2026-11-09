@@ -10,6 +10,7 @@ export const FAULT_NAMES: Record<number, string> = {
   4: 'IMU_FAIL',
   5: 'BROWNOUT',
   6: 'OBSTACLE',
+  7: 'MOTOR_DRV',
 }
 
 export function decodeFaults(flags: number): string[] {

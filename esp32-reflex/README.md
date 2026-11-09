@@ -8,7 +8,7 @@ Design goal: **deterministic motion control** with reliable feedback, smooth sta
 
 ## Framework
 - ESP-IDF (FreeRTOS)
-- Motors: LEDC PWM + GPIO direction into TB6612FNG
+- Motors: LEDC PWM into TB6612FNG; direction lines via a TCA9554A I²C expander (v2 board), sequenced PWM→0 / write / readback / restore (`motor.cpp`, `expander.cpp`)
 - Encoders: PCNT (quadrature) for each wheel
 - Control loop: 100–200 Hz speed PID (closed-loop)
 - Transport: USB serial (binary protocol)
@@ -134,7 +134,7 @@ Faults force stop or limit mode depending on severity.
 ---
 
 ## Completed
-- [x] Motor driver pinout + open-loop control (LEDC PWM + GPIO direction into TB6612FNG)
+- [x] Motor driver pinout + open-loop control (LEDC PWM + direction into TB6612FNG; v2: direction via the TCA9554A expander)
 - [x] Encoders with PCNT (quadrature, per wheel) + wheel speed measurement
 - [x] Per-wheel FF+PI speed control @ 100 Hz
 - [x] Acceleration limiting / ramping (kid-safe, power-safe)

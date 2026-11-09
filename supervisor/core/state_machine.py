@@ -18,7 +18,7 @@ from supervisor.core.state import Mode, MOTION_MODES
 log = logging.getLogger(__name__)
 
 # Faults that force ERROR mode
-_SEVERE_FAULTS = Fault.ESTOP | Fault.TILT | Fault.BROWNOUT
+_SEVERE_FAULTS = Fault.ESTOP | Fault.TILT | Fault.BROWNOUT | Fault.MOTOR_DRV
 
 
 class SupervisorSM:

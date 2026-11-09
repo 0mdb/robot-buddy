@@ -69,6 +69,7 @@ class Fault(IntEnum):
     IMU_FAIL = 1 << 4
     BROWNOUT = 1 << 5
     OBSTACLE = 1 << 6
+    MOTOR_DRV = 1 << 7  # v2: direction expander missing / write failed (motor.cpp)
 
 
 class RangeStatus(IntEnum):

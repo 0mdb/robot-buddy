@@ -42,6 +42,7 @@ Command IDs: `0x10–0x1F` | Telemetry IDs: `0x80`
 | 4   | IMU_FAIL    |
 | 5   | BROWNOUT    |
 | 6   | OBSTACLE    |
+| 7   | MOTOR_DRV   |
 
 ## Face MCU Protocol (v3)
 

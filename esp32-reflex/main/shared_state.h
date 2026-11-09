@@ -16,6 +16,9 @@ enum class Fault : uint16_t {
     IMU_FAIL = 1 << 4,
     BROWNOUT = 1 << 5,
     OBSTACLE = 1 << 6,
+    // v2 board: the TCA9554A carrying the TB6612 direction lines is missing, or a
+    // direction write did not read back (motor.cpp). That side is held at PWM 0.
+    MOTOR_DRV = 1 << 7,
 };
 
 inline uint16_t operator|(Fault a, Fault b)

@@ -136,7 +136,8 @@ extern "C" void app_main()
         xTaskCreatePinnedToCore(imu_task, "imu", 4096, nullptr, 8, nullptr, 0);
     } else {
         ESP_LOGE(TAG, "IMU init FAILED — continuing without gyro");
-        g_fault_flags.store(static_cast<uint16_t>(Fault::IMU_FAIL), std::memory_order_relaxed);
+        // fetch_or, not store: motor_init() may already have raised a fault
+        g_fault_flags.fetch_or(static_cast<uint16_t>(Fault::IMU_FAIL), std::memory_order_relaxed);
     }
 
     if (range_init()) {

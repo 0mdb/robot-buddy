@@ -1,6 +1,8 @@
 idf_component_register(
     SRCS "app_main.cpp"
          "motor.cpp"
+         "i2c_bus.cpp"
+         "expander.cpp"
          "encoder.cpp"
          "imu.cpp"
          "protocol.cpp"

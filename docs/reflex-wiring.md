@@ -1,148 +1,90 @@
 # Reflex MCU Wiring Diagram
 
-## ESP32-S3 WROOM Breakout — Finalized Pin Map
+## Waveshare ESP32-S3-Zero on robot-buddy-reflex v2: pin map
 
-> **Source of truth**: `esp32-reflex/main/pin_map.h`
-> This document mirrors the firmware. If they disagree, the firmware wins.
+> **Source of truth**: `esp32-reflex/main/pin_map.h` and the schematic. `hardware/kicad/pcb_qc.py`
+> §3 checks every `PIN_*` (and the expander bits/address) against the netlist. This page
+> mirrors them (rewritten 2026-11-09 for v2, register M13). If they disagree, the code
+> and the schematic win.
 
-### Reserved Pins (DO NOT USE)
+The module is soldered flat with its **perimeter pads only** (no underside cluster), so
+GPIO14-18 and GPIO38-42/45 are not available. Pads 1-9 run along one long side, 18-26
+along the other; the USB-C (the Pi link, USB-Serial-JTAG) is flush with the board's rear edge.
 
-| GPIO | Function | Rule |
-|------|----------|------|
-| 0 | Boot strap | No runtime logic |
-| 19, 20 | USB D+/D- | Leave alone |
-| 35, 36, 37 | PSRAM (octal) | Leave alone |
-| 43, 44 | UART0 TX/RX | Leave alone (console) |
-| 45 | VSPI | Fine but unused |
-| 48 | WS2812 onboard LED | Avoid unless intentional |
+| U1 pad | GPIO | Net | Use |
+|---|---|---|---|
+| 1 | 5V | +5V | module supply (from J9) |
+| 2 | GND | GND | |
+| 3 | 3V3 | +3V3 | module LDO out: U2 VCC, U4, encoders, J5, J7 |
+| 4 | GPIO1 | — | free |
+| 5 | GPIO2 | ECHO_DIV | HC-SR04 echo via R5/R6 divider + R7 |
+| 6 | GPIO3 | TRIG | HC-SR04 trigger |
+| 7 | GPIO4 | PWMA | left motor PWM (R1 100k pull-down) |
+| 8 | GPIO5 | PWMB | right motor PWM (R2 100k pull-down) |
+| 9 | GPIO6 | ESTOP_LOOP | e-stop cable detect (R18 pull-down) |
+| 18 | GPIO43 | UART_TX | J9 pin 3 → Pi RX |
+| 19 | GPIO44 | UART_RX | J9 pin 4 ← Pi TX |
+| 20 | GPIO13 | ESTOP | e-stop sense, HIGH = run (R4 pull-down); also TB6612 STBY |
+| 21 | GPIO12 | ENC_RB | right encoder B |
+| 22 | GPIO11 | ENC_RA | right encoder A |
+| 23 | GPIO10 | ENC_LB | left encoder B |
+| 24 | GPIO9 | ENC_LA | left encoder A |
+| 25 | GPIO8 | SCL | shared I²C (R17 4.7k pull-up) |
+| 26 | GPIO7 | SDA | shared I²C (R16 4.7k pull-up) |
 
-
-> ⚠ **Partially updated for the v2 board (2026-08-06).** The e-stop, battery-sense
-> and passive-BOM sections below are current. Other sections still describe v1 —
-> notably the direction pins, which moved from GPIO13/15/16 to the **TCA9554A
-> expander (U4)**. The authoritative sources are the schematic and
-> `docs/v2-defect-register.md`; treat anything here that contradicts them as stale.
-
----
-
-### Wiring Diagram
-
-```
-                    ESP32-S3 WROOM BREAKOUT
-                    ┌────────────────────┐
-                    │                    │
-              3V3 ──┤ 3V3          GND  ├── GND (common)
-                    │                    │
-   [VBAT ÷] ─────── ┤ GPIO1   ADC1_CH0  ├                    ← Battery sense (future)
-   [Echo ÷] ─────── ┤ GPIO2   ADC1_CH1  ├                    ← Ultrasonic echo (5V÷3.3V)
-                    │                    │
-   TB6612 PWMA ──── ┤ GPIO4    LEDC_CH0 ├ ←── 100k pulldown  ← Left motor PWM
-   TB6612 PWMB ──── ┤ GPIO5    LEDC_CH1 ├ ←── 100k pulldown  ← Right motor PWM
-   TB6612 AIN1 ──── ┤ GPIO6             ├                    ← Left fwd direction
-   TB6612 AIN2 ──── ┤ GPIO7             ├                    ← Left rev direction
-   TB6612 STBY ──── ┤ GPIO8             ├ ←── 100k pulldown  ← Motor enable (active HIGH)
-                    │                    │
-   Enc Left A ───── ┤ GPIO9             ├                    ← Left encoder ch A
-   Enc Left B ───── ┤ GPIO10            ├                    ← Left encoder ch B
-   Enc Right A ──── ┤ GPIO11            ├                    ← Right encoder ch A
-   Enc Right B ──── ┤ GPIO12            ├                    ← Right encoder ch B
-                    │                    │
-   E-Stop (J7.2) ── ┤ GPIO13            ├ ←── 10k pull-DOWN  ← LOW = stopped (fail-safe)
-   E-Stop loop ──── ┤ GPIO6             ├ ←── 10k pull-DOWN  ← LOW = cable missing
-                    │                    │
-   TB6612 BIN1 ──── ┤ GPIO15            ├                    ← Right fwd direction
-   TB6612 BIN2 ──── ┤ GPIO16            ├                    ← Right rev direction
-                    │                    │
-   BMI270 SDA ───── ┤ GPIO17  I2C1_SDA  ├                    ← Qwiic (2.2k on breakout)
-   BMI270 SCL ───── ┤ GPIO18  I2C1_SCL  ├                    ← Qwiic (2.2k on breakout)
-                    │                    │
-   Range TRIG ───── ┤ GPIO21            ├                    ← Ultrasonic trigger (10µs)
-                    │                    │
-                    │       USB-C        │
-                    │    (GPIO19/20)     │
-                    └────────┬───────────┘
-                             │
-                         To Pi / PC
-```
+**I²C bus (I2C_NUM_1, 400 kHz, `i2c_bus.cpp`):** BMI270 at 0x68 (via Qwiic J5) and the
+TCA9554A at 0x38 (U4). One owner; recovery resets the bus without deleting either device.
 
 ---
 
-### Motor Driver — TB6612FNG
+### Motor driver: TB6612FNG module (U2) + TCA9554A expander (U4)
 
 ```
-                         TB6612FNG
-                    ┌──────────────────┐
-   ESP32 GPIO4 ───→│ PWMA        AOUT1├───→ Left Motor +
-   ESP32 GPIO6 ───→│ AIN1        AOUT2├───→ Left Motor -
-   ESP32 GPIO7 ───→│ AIN2             │
-                    │                  │
-   ESP32 GPIO5 ───→│ PWMB        BOUT1├───→ Right Motor +
-   ESP32 GPIO15 ──→│ BIN1        BOUT2├───→ Right Motor -
-   ESP32 GPIO16 ──→│ BIN2             │
-                    │                  │
-   ESP32 GPIO8 ───→│ STBY         VCC ├───→ 3.3V (logic)
-        GND ──────→│ GND          VM  ├───→ +5V (from the Pi HAT via J9; A3)
-                    └──────────────────┘
+   ESP32 GPIO4 ─────────────→ PWMA            AO1/AO2 ──→ J1 MOTOR L (pins 1, 2)
+   ESP32 GPIO5 ─────────────→ PWMB            BO1/BO2 ──→ J2 MOTOR R (pins 1, 2)
+   U4 P0 ───────────────────→ AIN1
+   U4 P1 ───────────────────→ AIN2            VM  ←── +5V (In2 plane; C3 1000 µF at the pin)
+   U4 P2 ───────────────────→ BIN1            VCC ←── +3V3
+   U4 P3 ───────────────────→ BIN2
+   /ESTOP (J7 NC switch) ───→ STBY            (hardware kill: no firmware in the path)
 
-   Direction truth table:
-     IN1=1, IN2=0 → Forward
-     IN1=0, IN2=1 → Reverse
-     IN1=1, IN2=1 → Short brake
-     IN1=0, IN2=0 → Coast
+   U4 = TCA9554APWR, A2..A0 = GND (0x38). P0-P3 have R12-R15 100k pull-downs: the expander
+   powers up with every port an input, so all four lines sit LOW until firmware drives them.
+```
 
-   Boot safety: 100k pulldown on PWMA (GPIO4), PWMB (GPIO5), STBY (GPIO8)
-   ensures motors are OFF until firmware explicitly enables them.
+Direction truth table: IN1=1 IN2=0 forward, IN1=0 IN2=1 reverse, IN1=IN2=1 short brake,
+IN1=IN2=0 off. PWM low = short brake.
+
+**Direction changes are sequenced** (`motor.cpp`): that side's PWM → 0 (short brake), write
+the expander, read the INPUT port back, then restore the duty. The write is an I²C
+transaction (~0.1 ms), and VM has only 0.5 V of margin, so flipping with PWM live is a
+brownout risk. A failed readback holds the side at PWM 0 and raises `Fault::MOTOR_DRV`
+(bit 7). Brake is PWM-only and never waits on the bus.
+
+Footprint: the module is plugged in chip-up on 2×8 female headers. The footprint was a
+mirror image until 2026-11-09 (register M1); seating a module on a v1 board shorts the supply.
+
+---
+
+### IMU: SparkFun Qwiic BMI270 (via J5)
+
+```
+   J5 (JST-SH, Qwiic):  1 GND   2 +3V3   3 SDA (GPIO7)   4 SCL (GPIO8)
+   ADR jumper default = 0x68. Shares the bus with U4 (0x38).
+   Pull-ups: R16/R17 4.7k on the reflex board (the breakout's own 2.2k are in parallel).
 ```
 
 ---
 
-### IMU — SparkFun Qwiic BMI270
+### Ultrasonic range sensor: HC-SR04 (J6)
 
 ```
-   SparkFun Qwiic BMI270 Breakout
-   ┌────────────────────────────┐
-   │  Qwiic connector (JST-SH) │
-   │  ┌──────┐                  │
-   │  │ BLK  │ GND ─────────── │───→ GND
-   │  │ RED  │ 3V3 ─────────── │───→ 3.3V
-   │  │ BLU  │ SDA ─────────── │───→ ESP32 GPIO17
-   │  │ YEL  │ SCL ─────────── │───→ ESP32 GPIO18
-   │  └──────┘                  │
-   │                            │
-   │  ADR jumper: default = 0x68 (SDO→GND)               │
-   │  Cut center + bridge to VDDIO pad for 0x69           │
-   │                            │
-   │  Onboard: 2.2k pullups on SDA/SCL (no external needed)│
-   └────────────────────────────┘
+   J6:  1 +5V   2 TRIG (GPIO3, 3.3 V drive is enough for the sensor)   3 ECHO_IN   4 GND
 
-   I2C bus: I2C_NUM_1, 400 kHz fast mode
-   Firmware address: 0x68 (verify with I2C scan in Phase 1)
-```
-
----
-
-### Ultrasonic Range Sensor — HC-SR04
-
-```
-                    HC-SR04
-                ┌──────────────┐
-    5V ────────→│ VCC          │
-    GND ───────→│ GND          │
-                │              │
-   ESP32 GPIO21 ←──│ TRIG     │   (direct 3.3V → 5V tolerant input)
-                │              │
-                │ ECHO ────────│───┐
-                └──────────────┘   │
-                                   │     5V → 3.3V voltage divider
-                             10k   ├──── ┤
-                                   │     │
-                      ESP32 GPIO2 ←┤     │     Optional: 100-330 ohm
-                                   │     │     series resistor before GPIO2
-                             20k   ├──── ┤     for ESD protection
-                                   │
-                                  GND
-
-   Divider output: 5V × 20k/(10k+20k) = 3.33V (safe for ESP32)
+   ECHO_IN ── R5 10k ──┬── R7 100R ── GPIO2 (ECHO_DIV)
+                       R6 15k
+                       GND
+   Divider output: 5 V × 15k / 25k = 3.0 V.
 ```
 
 ---
@@ -197,7 +139,6 @@ sees cell voltage; battery telemetry comes from the HAT's INA219 on the Pi's
 | 1x 15k (R6) | divider node → GND | echo divider (bottom) — was 20k, see X5 |
 | 1x 100R (R7) | divider node → GPIO2 | ESD series protection |
 | 2x 4.7k (R16,R17) | SDA→+3V3, SCL→+3V3 | I²C pull-ups (X1) |
-| 1x 330R (R10) | +5V → LED_A | power LED series |
 | 1x 100nF (C1) | ESTOP → GND | e-stop debounce |
 | 4x 100nF (C4,C5,C7,C8) | rail / U4 decoupling | |
 | 1x 10µF (C9) | +3V3 → GND | +3V3 bulk (X3) |
@@ -206,25 +147,15 @@ sees cell voltage; battery telemetry comes from the HAT's INA219 on the Pi's
 
 ---
 
-### Power Distribution
+### Power Distribution (v2, register A3)
 
 ```
-   2S LiPo (6.0–8.4V)
-          │
-          ├──→ TB6612FNG VM (motor power, direct)
-          │
-          ├──→ Voltage divider → GPIO1 (battery sense)
-          │
-          ├──→ 5V Buck Regulator
-          │         │
-          │         ├──→ HC-SR04 VCC (5V)
-          │         │
-          │         └──→ 3.3V LDO (or ESP32 breakout onboard regulator)
-          │                  │
-          │                  ├──→ ESP32-S3 3.3V
-          │                  ├──→ TB6612FNG VCC (logic, 3.3V)
-          │                  ├──→ SparkFun BMI270 3V3
-          │                  └──→ E-stop pullup
-          │
-          └──→ GND (common ground for everything)
+   Pi UPS HAT 5 V ──→ J9 pin 1 (+5V), pin 2 GND (JST-VH)
+                        │
+                        ├── In2.Cu +5V plane ──→ TB6612 VM (C3 1000 µF at the pin), C6 100 µF
+                        ├── U1 5V pad ──→ module LDO ──→ +3V3: TB6612 VCC, U4, encoders,
+                        │                                       J5 (BMI270), J7 e-stop loop
+                        └── J6 HC-SR04 VCC
+   GND: In1.Cu + B.Cu planes.  No pack input, no battery sense (battery telemetry is the
+   HAT's INA219 on the Pi, docs/power.md).
 ```

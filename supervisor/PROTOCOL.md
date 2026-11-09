@@ -569,6 +569,7 @@ MCU echoes `cmd_seq_last_applied` + `t_cmd_applied_us` in every telemetry packet
 | 4 | IMU_FAIL | IMU sensor error |
 | 5 | BROWNOUT | Low battery |
 | 6 | OBSTACLE | Range < 250mm |
+| 7 | MOTOR_DRV | Motor driver direction expander missing or a direction write failed readback (v2 board); that side held at PWM 0. Latches until CLEAR_FAULTS |
 
 **Mood IDs (u8):**
 | ID | Name | ID | Name |
