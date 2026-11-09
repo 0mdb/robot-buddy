@@ -55,14 +55,14 @@
   "up": "+z"
  },
  "RB-PRT-002_bulkhead": {
-  "cad_g": 48.523102150094054,
-  "cm3": 37.03,
-  "grams": 47.76,
+  "cad_g": 62.78437729793348,
+  "cm3": 46.01,
+  "grams": 59.35,
   "mat": "PET-CF",
   "mismatch": [],
   "qty": 1,
   "support": false,
-  "time": "1h 44m 29s",
+  "time": "2h 9m 12s",
   "up": "-x"
  },
  "RB-PRT-003_pi_deck": {
@@ -77,14 +77,14 @@
   "up": "+z"
  },
  "RB-PRT-004_canopy": {
-  "cad_g": 118.53063849014232,
-  "cm3": 119.84,
-  "grams": 143.81,
+  "cad_g": 114.53068670110171,
+  "cm3": 93.68,
+  "grams": 112.41,
   "mat": "PC",
   "mismatch": [],
   "qty": 1,
   "support": true,
-  "time": "6h 4m 1s",
+  "time": "3h 59m 15s",
   "up": "+x"
  },
  "RB-PRT-010_motor_mount_R": {
@@ -162,6 +162,17 @@
   "qty": 8,
   "support": false,
   "time": "13m 1s",
+  "up": "+z"
+ },
+ "RB-PRT-023_idler_spacer": {
+  "cad_g": 0.5726392926880748,
+  "cm3": 0.42,
+  "grams": 0.55,
+  "mat": "PET-CF",
+  "mismatch": [],
+  "qty": 2,
+  "support": false,
+  "time": "8m 21s",
   "up": "+z"
  },
  "RB-PRT-030_carriage_L": {

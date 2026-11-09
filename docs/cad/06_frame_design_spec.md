@@ -196,6 +196,33 @@ board and any off-board TB6612 now go aft, between the carriages (x −85…−4
 >   the two lugs (S5c) it passes: 7.0 MPa / 0.27 mm.** The canopy (P6) must therefore
 >   hold the lugs at least that stiffly. Q13 asks Ben which S5 restraint is the criterion.
 
+> Amendment (Ben, 2026-11-09): **foot, head height, camera, HC-SR04.**
+> - **Foot front** follows the wall's 15° above z 6.3 (it stood 2.4 proud of the wall at
+>   its top; now ~1.6). Fully flush is impossible: the F1 pockets (x 81.5, Ø4.1 × 7.2)
+>   keep `BH_FOOT_SKIN` 1.2 in front of them, and moving them aft hits the motor-mount
+>   feet (0.7 behind the foot).
+> - **Head +4 mm:** `BH_H` 126 → 130, `BH_TOP` 127.9 → 131.9 (the canopy follows). The
+>   camera board must sit above the face board, whose edge-entry plugs (speaker, I2C, IO)
+>   stand on its back along the top edge (ES3C28P drawing; Ben). Canopy S5k / S8 re-run
+>   on PC: pass.
+> - **Camera:** Arducam IMX708 75° = Raspberry Pi Camera Module 3 geometry (RPi
+>   mechanical drawing). Lens at z 117; the Ø5.75 barrel passes through a Ø6.2 hole (tip
+>   at the face: full 75°, no vignetting) and the lens block bears on the wall's back
+>   face. 4 × Ø4.4 bosses take **M2 × 5 thread-forming** screws (F16). FFC connector at the
+>   top (image rotation in software), 2.4 mm under the roof for its fold; 200 mm cable.
+>   Envelope `camera_module3_envelope`.
+> - **HC-SR04:** Ben's off-the-shelf holder (`CAD/Sensorgehäuse_Sensorhalter_
+>   Ultraschallsensor_HC-SR04.3mf`) merged into the wall 1:1 (front plate with 2 × Ø17
+>   and the crystal slot, 46 × 21 PCB pocket with its 0.67 snap ridges), replacing the
+>   Ø16.6 sleeves. Its front stands 4.85 proud of the face (the right motor mount allows
+>   the PCB back no further aft than ~76); the box is trimmed at x 74.5 (its ears
+>   dropped), upside down so the pins (bent straight back, Ben) sit at the top. r 2 on its
+>   outer edges, r 0.5 on the hole edges. 4 × **M1.6 × 6 thread-forming** from behind into
+>   corner bosses (F17); no screws face forward. Envelope `hcsr04_envelope`: the Dupont
+>   plug's tail touches the right mount's upright by ~0.5 (2.3 mm³) — route the wires
+>   inboard, use a short / right-angle plug or solder them.
+> - S5 / S5c to re-run on this bulkhead.
+
 ## 6. Canopy (piece 3)
 
 - ASA white: heat-stable over the Pi 5 (PLA softens around 55–60 °C) and tougher when dropped. PLA only for bolt-on accents.
@@ -292,6 +319,15 @@ board and any off-board TB6612 now go aft, between the carriages (x −85…−4
 >   bosses under the hood ceiling, r 0.5 rims, no collars (Q27's collars retired). The lugs
 >   move 4.9 aft and their tops 2 lower to meet them.
 > - Bulkhead 48.6 → 55.5 g, canopy → 113.6 g. S5c 5.34 MPa / 0.13 mm, S5k 7.66 / 0.25 mm.
+
+> Amendment (loop P6m4, 2026-11-08, Ben: "start P6m4"): face details and the seam.
+> - Screen window corners **r 2.4** in the face plane (the AA corner, 1 mm in, stays clear up to r 3.4); the r 1 face-side round follows them.
+> - Seam: **r 0.5 edge break on both seam edges** (cap back, cowl front): sides, r 8 corners and top, a ~1 mm V shadow line that hides print mismatch. Cap side flanges' bottom ends **r 1** (back, outer and inner edges).
+> - Foot ledge: top front edge **r 2** (was r 1; it stands 2.5 proud of the wall there); vertical front corners stay r 1.
+> - Fix found on the way: the cut that opens the cowl's front end had square top corners, 8.77 from the r 8 corner's axis, so they broke through the 1.8 skin (a 0.8 deep notch at both front top corners, 0.5 long). The cut's corners now follow the shell's inner r 6.2.
+> - Masses: bulkhead 55.4 g, canopy 113.6 g. S5c 6.15 MPa / bezel 0.13 mm (gate 11.7 / 0.5).
+
+> Amendment (P6m4b, 2026-11-09, Ben: boss showing through the cowl top): the front mic-disc boss (x 26.25, on the rise to the hood) is an 8 x 8 column whose top follows the roof 0.3 into the skin; a flat Ø8 top broke 0.37 mm out of the outer skin. The rear two stay Ø8.
 
 ## 7. Drivetrain parts
 

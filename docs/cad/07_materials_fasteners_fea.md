@@ -233,6 +233,13 @@ before ordering (screw engagement ≥ 1.3 d, tip ≥ 0.5 mm short of the pocket 
 > 2 mm key (head top ~25 mm in). Medium threadlocker on the steel thread only. Tighten
 > snug (~0.2 N·m): it bears on a printed web.
 
+> Amendment (Ben, 2026-11-09, 06 §5): **new F16, camera → bulkhead: M2 × 5 thread-forming
+> (for plastics), 4 per robot**, through the Camera Module 3's Ø2.2 holes into Ø4.4 bosses
+> (Ø1.7 pilot, 5 deep): PCB 1.12 + 3.9 engaged. **New F17, HC-SR04 → bulkhead: M1.6 × 6
+> thread-forming, 4 per robot**, through its Ø1.8 holes (42 × 17; M2 doesn't pass) into
+> Ø3.2 corner bosses (Ø1.3 pilot, 5 deep), backing up the holder's snap fit. **F12** above
+> is stale: the speaker clamp (P7) uses 2 × M3 inserts, not M2.5.
+
 > Amendment (2026-11-08, plate rev 2, 06 §4.1): the plate is 6 mm (was 4), so every screw
 > up from the belly is 2 mm longer: **F1** bulkhead foot M3 × 8 → **× 10** (low head, DIN 7984),
 > **F4** carriage clamp M3 × 12 → **× 14**, **F9 rear** canopy M3 × 10 → **× 12**. **F2**
@@ -240,6 +247,17 @@ before ordering (screw engagement ≥ 1.3 d, tip ≥ 0.5 mm short of the pocket 
 > from the top; screw length unchanged.
 
 > Amendment (loop P6, 2026-10-31): F9's two **rear** joints turn round: **M3 × 10 button head up from the belly through Ø3.4 plate holes at (−80.4, ±12) into M3 inserts in two Ø9.2 bosses on the canopy's rear apron** (pocket 7.2, 6 mm engaged), instead of inserts in plate rear posts with the head on the canopy. Why: E1 §3, no screw heads on the faces a child sees, and the plate keeps no posts. The two **front** joints are unchanged (M3 × 8 flanged button down through the hood ceiling into the bulkhead lugs); those heads sit on the hood top behind the head, visible from above (open point for E2).
+
+> Amendment (2026-11-09, Ben): F4's idler axle gets a clamped stack (05 amendment of the same
+> date): printed spacer **RB-PRT-023** ×2 between the 624 inner races, and **DIN 988 4 × 8 ×
+> 0.5 shim rings ×6** (1 at the carriage boss + 2 at the frame plate per idler; buy a pack of
+> 10+ for the head-side make-up if the shoulder runs over 53.5).
+
+> Amendment (2026-11-09; ordered the same day: uxcell 4 × 8 bearing steel ×100, due 11-10): the track-frame plate's sprocket-end pin
+> (06 P2o) is a **Ø4 h8 × 8 mm steel dowel pin ×2**. Stack: 2.8 grip in the plate's blind
+> 3.95 hole (3.6 plate − 0.8 skin) + 1.0 gap + 4.2 into the sprocket's outboard 624 (of 5).
+> Not × 10: it would run 1.2 past the bearing into the sprocket hub (clearance to the M2.5
+> clamp screw head unchecked).
 
 **Totals (per robot, +20 % spares when ordering):** M3 inserts ~34 (F1, F2, F5, F7, F8,
 F9, F10, F11), M2.5 inserts 4 (F12); M3 × 6 ×12, M3 × 8 ×15, M3 × 8 button ×4,

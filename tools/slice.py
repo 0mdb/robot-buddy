@@ -118,7 +118,7 @@ PARTS = {
         "+x",
         1,
         True,
-        "rear wall on the bed (Q26 a, Ben 2026-11-02): cross ribs 45° (tick 95); the hood back wall still needs support until its ramp",
+        "rear wall on the bed (Q26 a, Ben 2026-11-02): cross ribs 45° (tick 95). P6m2: the hump is all <= 45°; the ~10 g of support left is under the rear edge rounds at the bed (off: 100 g / 3h35)",
     ),
     "RB-PRT-010_motor_mount_R": ("PET-CF", "+z", 1, False, "foot down"),
     "RB-PRT-011_motor_mount_L": ("PET-CF", "+z", 1, False, "foot down"),
@@ -145,6 +145,7 @@ PARTS = {
     "RB-PRT-060_speaker_clamp": ("PET-CF", "+x", 1, False, "flat, pad up"),
     "RB-PRT-061_speaker_gasket": ("TPU", "+x", 1, False, "flat ring, 1 mm"),
     "RB-PRT-062_mic_washer": ("TPU", "+z", 6, False, "flat, 1 mm; 2 per mic-disc screw"),
+    "RB-PRT-023_idler_spacer": ("PET-CF", "+z", 2, False, "standing; between the idler's 624 inner races, 13.0 long"),
     # T13 (tick 84): the belts and the 08 §7 test pieces, from drivetrain.py's exports
     # (CAD/exports/rnd/drivetrain, SRC below). qty 0 = test piece, not in the robot total.
     "belt_shrink0.56": ("TPU", "+z", 2, False, "upright ring, lugs in (belt_print.md); 0.56 % shrink"),

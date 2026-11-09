@@ -1223,9 +1223,14 @@ def rebuild_manifest(win: str) -> list[str]:
         *speaker_clamp_lines(cad + r"\parts\RB-PRT-060_speaker_clamp.SLDPRT"),
         *speaker_gasket_lines(cad + r"\parts\RB-PRT-061_speaker_gasket.SLDPRT"),
         *speaker_module_lines(cad + r"\library\speaker_module_envelope.SLDPRT"),
+        # 2026-11-09: Camera Module 3 envelope (on the bulkhead's camera bosses)
+        *camera_module_lines(cad + r"\library\camera_module3_envelope.SLDPRT"),
+        *hcsr04_lines(cad + r"\library\hcsr04_envelope.SLDPRT"),
         # P6m2 (2026-11-08): the mic disc envelope + its TPU washers (the disc hangs in the canopy's hump)
         *mic_disc_lines(cad + r"\library\mic_disc_envelope.SLDPRT"),
         *mic_washer_lines(cad + r"\parts\RB-PRT-062_mic_washer.SLDPRT"),
+        # 2026-11-09 (Ben): spacer between the idler's two 624 inner races
+        *idler_spacer_lines(cad + r"\parts\RB-PRT-023_idler_spacer.SLDPRT"),
         # P9 (tick 99): XVF3800 core-board envelope (on the deck's wall)
         *core_board_lines(cad + r"\library\xvf_core_envelope.SLDPRT"),
         # D6 (tick 89): follower-slide fit coupon (not in the assembly, not in the robot mass)
@@ -1275,12 +1280,18 @@ def rebuild_manifest(win: str) -> list[str]:
         f"comp|spk_clamp|{cad}\\parts\\RB-PRT-060_speaker_clamp.SLDPRT|{row(*speaker_tilt())}",
         f"comp|spk_gasket|{cad}\\parts\\RB-PRT-061_speaker_gasket.SLDPRT|{row(*speaker_tilt())}",
         f"comp|spk_module|{cad}\\library\\speaker_module_envelope.SLDPRT|{row(*speaker_tilt())}",
+        f"comp|camera|{cad}\\library\\camera_module3_envelope.SLDPRT|{row(*speaker_tilt())}",
+        f"comp|hcsr04|{cad}\\library\\hcsr04_envelope.SLDPRT|{row(*speaker_tilt())}",
         f"comp|mic_disc|{cad}\\library\\mic_disc_envelope.SLDPRT|{row(ROT_I, (0, 0, 0))}",
         f"comp|xvf_core|{cad}\\library\\xvf_core_envelope.SLDPRT|{row(ROT_I, (0, 0, 0))}",
         *[
             f"comp|mic_washer_{i}{tag}|{cad}\\parts\\RB-PRT-062_mic_washer.SLDPRT|{row(ROT_I, (hx, hy, z))}"
             for i, (hx, hy) in enumerate(mic_geom()["holes"])
             for tag, z in (("a", MIC_PLANE - MIC_WASHER[2]), ("b", mic_geom()["zb"] - MIC_WASHER[2]))
+        ],
+        *[
+            f"comp|idler_spacer_{sd}|{cad}\\parts\\RB-PRT-023_idler_spacer.SLDPRT|{row(*wheel_at(dt.belt_fit()['x_fit'], s, idler_z()))}"
+            for sd, s in (("L", +1), ("R", -1))
         ],
         "interfere",
         "asmsave",
@@ -1316,6 +1327,7 @@ def rebuild_manifest(win: str) -> list[str]:
                 (cad + r"\parts\RB-PRT-060_speaker_clamp.SLDPRT", "RB-PRT-060_speaker_clamp"),
                 (cad + r"\parts\RB-PRT-061_speaker_gasket.SLDPRT", "RB-PRT-061_speaker_gasket"),
                 (cad + r"\parts\RB-PRT-062_mic_washer.SLDPRT", "RB-PRT-062_mic_washer"),
+                (cad + r"\parts\RB-PRT-023_idler_spacer.SLDPRT", "RB-PRT-023_idler_spacer"),
                 (cad + r"\parts\RB-CPN-001_slide_strip.SLDPRT", "RB-CPN-001_slide_strip"),
                 (cad + r"\parts\RB-CPN-002_slide_rail.SLDPRT", "RB-CPN-002_slide_rail"),
                 (cad + r"\parts\RB-CPN-003_insert_ladder.SLDPRT", "RB-CPN-003_insert_ladder"),
@@ -1446,6 +1458,60 @@ def speaker_module_lines(path: str) -> list[str]:
     ]
 
 
+def camera_module_lines(path: str) -> list[str]:
+    """Camera Module 3 envelope (interference only), in the bulkhead's pre-tilt frame like the
+    speaker module (placed with speaker_tilt()): PCB, lens block, barrel and the FFC
+    connector, each 0.02 off the faces it bears on so touching doesn't read as interference."""
+    x0 = BH_XF - BH_T
+    cy, cz, _ = BH_CAM
+    w, h, t = CAM_PCB
+    zb = cz - CAM_LENS_UP
+    xf = x0 - CAM_BLOCK_D - 0.02  # PCB front
+    cw, chh, cd = CAM_CONN
+    hb = CAM_BLOCK / 2
+    xbf = x0 - 0.02  # block front
+    lines = [
+        f"part|{path}",
+        f"box|{xf - t:.3f} {xf:.3f}|{cy - w / 2} {cy + w / 2}|{zb:.3f} {zb + h:.3f}",
+        f"box|{xf:.3f} {xbf:.3f}|{cy - hb} {cy + hb}|{cz - hb} {cz + hb}",
+        f"cyl|x|{cy} {cz}|{xbf - 0.1:.3f} {xbf + CAM_BARREL_L:.3f}|{CAM_BARREL_R}|boss",
+        f"box|{xf - t - cd:.3f} {xf - t:.3f}|{cy - cw / 2} {cy + cw / 2}|{zb + h - chh:.3f} {zb + h:.3f}",
+    ]
+    v = w * h * t + CAM_BLOCK**2 * (xbf - xf) + math.pi * CAM_BARREL_R**2 * CAM_BARREL_L + cw * chh * cd
+    lines += [
+        f"expect|vol {v:.1f} {v * 0.01:.1f}|box {xf - t - cd:.2f} {xbf + CAM_BARREL_L:.2f} {cy - w / 2:.2f} {cy + w / 2:.2f} {zb:.2f} {zb + h:.2f} 0.05",
+        "save",
+    ]
+    return lines
+
+
+def hcsr04_lines(path: str) -> list[str]:
+    """HC-SR04 envelope (interference only), pre-tilt frame, seated in the merged holder: PCB
+    45 x 20 x 1.6 (front on the pocket step), two Ø16 x 13 cans, a 1.5 back-parts zone kept
+    1 mm off the long edges (the snap ridges), and the header bent straight back with a
+    Dupont plug (2.54 x 10.2, 4.7 + 14 long) at the top (upside down)."""
+    xf = SR_FRONT - 12.25 - 0.02  # PCB front
+    xb = xf - 1.6
+    yc, zc = sr_map(31.0, 12.0)  # centred in the pocket (zh 1.5 .. 22.5); the cans sit 0.5 off it
+    # 19.6 tall: the PCB's edges pass the snap ridges (0.17 a side) by design
+    lines = [f"part|{path}", f"box|{xb:.3f} {xf:.3f}|{yc - 22.5} {yc + 22.5}|{zc - 9.8} {zc + 9.8}"]
+    v = 45 * 19.6 * 1.6
+    for xh, zh in SR_HOLES:
+        hy, hz = sr_map(xh, zh)
+        lines.append(f"cyl|x|{hy} {hz}|{xf - 0.1:.3f} {xf + 13:.3f}|8.0|boss")
+        v += math.pi * 64 * 13
+    lines.append(f"box|{xb - 1.5:.3f} {xb + 0.1:.3f}|{yc - 21.5} {yc + 21.5}|{zc - 9} {zc + 9}")
+    v += 43 * 18 * 1.5
+    py, pz = sr_map(31.0, 4.5)
+    lines.append(f"box|{xb - 18.7:.3f} {xb - 1.5 + 0.1:.3f}|{py - 5.1} {py + 5.1}|{pz - 1.27} {pz + 1.27}")
+    v += 10.2 * 2.54 * 17.2
+    lines += [
+        f"expect|vol {v:.1f} {v * 0.01:.1f}|box {xb - 18.7:.2f} {xf + 13:.2f} {yc - 22.5:.2f} {yc + 22.5:.2f} {zc - 9.8:.2f} {zc + 9.8:.2f} 0.05",
+        "save",
+    ]
+    return lines
+
+
 def coupon_slide_strip_lines(path: str) -> list[str]:
     L, W, T = 52.0, 60.0, 4.0  # rev-1 plate thickness: the coupon stays as printed
     sx0, sx1 = 5.0, 5.0 + RAIL_L + TRAVEL  # rail length + travel, like the plate
@@ -1569,7 +1635,7 @@ def envelope_lines(pi: str, face: str, reflex: str) -> list[str]:
 # lower band, face board behind a window, camera lens above (Q6 default). The face
 # board sits BEHIND the wall: its LCD stack bears on the wall's back face, the window
 # shows the active area, M3 x 5 screws go through the PCB into inserts in 4.3 standoffs.
-BH_XF, BH_T, BH_W, BH_H, BH_TILT = 85.0, 3.0, 106.0, 126.0, 15.0
+BH_XF, BH_T, BH_W, BH_H, BH_TILT = 85.0, 3.0, 106.0, 130.0, 15.0  # BH_H 126 -> 130 (2026-11-09, Ben: room for the camera over the face board)
 BH_PIVOT = (BH_XF - BH_T, 0.0, 0.0)
 # P6m3 (Ben 2026-11-08): the bulkhead is the robot's whole FRONT CAP. Full canopy width
 # (BH_W = 2 x CAN_HW) up to the hood top (BH_TOP = BH_H + CAN_LUG_GAP + CAN_T), with a
@@ -1580,9 +1646,10 @@ BH_PIVOT = (BH_XF - BH_T, 0.0, 0.0)
 # (was the S2a cheeks: it closes the finger gap to the belts the same way).
 BH_W0 = 94.0  # the tick-1 wall width: the inner side flanges and the BH_RIB_Z rib keep it
 BH_W_LOW = 104.0  # below the skirt line
-BH_TOP = 127.9  # = BH_H + CAN_LUG_GAP + CAN_T (asserted in the canopy section)
+BH_TOP = 131.9  # = BH_H + CAN_LUG_GAP + CAN_T (asserted in the canopy section)
 CAP_D, CAP_T, CAP_R = 9.0, 3.0, 8.0  # cap depth to the seam, flange / plate thickness, outer round
 BH_FACE_Z = 77.0  # face-board centre height (pre-tilt)
+BH_WIN_R = 2.4  # P6m4: window corner radius; the AA corner (1 mm in from each side) stays clear up to r 3.4
 FACE_AA = (43.2, 57.6)  # active area (board X, board Y)
 FACE_AA_CY = (FACE_H / 2 - 11.12) - FACE_AA[
     1
@@ -1601,7 +1668,134 @@ BH_SONAR_Y, BH_SONAR_Z, BH_SONAR_PITCH, BH_SONAR_R = (
     26.0,
     8.3,
 )  # HC-SR04 Ø16
-BH_SLEEVE_R, BH_SLEEVE_L = 9.8, 6.0
+# HC-SR04 holder (2026-11-09, Ben): his off-the-shelf "Sensorgehäuse Ultraschallsensor HC-SR04"
+# (CAD/Sensorgehäuse_Sensorhalter_Ultraschallsensor_HC-SR04.3mf; the sensor snaps in from the
+# back and "fits really well") merged into the wall 1:1, read off its mesh. Holder frame: xh
+# along its length (0..62, sensor centre 31), yh = depth from its front face, zh across
+# (0..25, centre 12.5; crystal slot up, pin slot down). Front plate yh 0..2.25 with two Ø17
+# holes at xh 18 / 44 and a 9 x 4 crystal slot (zh 17.5..21.5); a 50 x 25 box (3 / 2.5 walls)
+# behind it; from yh 12.25 the PCB pocket 46 x 21 (the PCB's front face seats on that step),
+# with a 0.67 snap ridge on its long sides at the PCB's back face (yh 13.75) ramping out to
+# yh 17.75. Its mounting ears (yh 10..20.4) are dropped: the wall holds it.
+# Placement: the right motor mount stands within 73.7 (pre-tilt x) behind the left
+# transducer, so the PCB back can't be further aft than ~75.5 (1.5 solder-joint clearance
+# plus 0.3): the holder's front sits 4.35 proud of the wall face and the box is trimmed at
+# x 74 (the ridge's ramp is cut to 1.6 of its 4). Upside down (zh -> -z), so the 4-pin
+# header (bent straight back, Ben) is at the top, clear of the mount. 4 x M1.6 x 6 thread-
+# forming screws from behind through the PCB's Ø1.8 holes (42 x 17) into corner bosses.
+SR_FRONT = 89.85  # holder front face, pre-tilt x (= PCB front 77.6 + 12.25; build 11: 0.5 further forward cleared the mount)
+SR_TRIM = 74.5  # holder cut off behind this x
+SR_HOLES = ((18.0, 12.5), (44.0, 12.5))  # transducer holes (xh, zh), Ø17
+SR_HOLE_R = 8.5
+SR_PCB_HOLES = ((10.0, 4.0), (52.0, 4.0), (10.0, 21.0), (52.0, 21.0))  # 42 x 17 about (31, 12.5)
+SR_BOSS_R, SR_PILOT_R, SR_PILOT_D = 1.6, 0.65, 5.0
+
+
+def sr_map(xh: float, zh: float) -> tuple[float, float]:
+    """Holder (xh, zh) -> pre-tilt chassis (y, z): centred on BH_SONAR_Y/Z, upside down."""
+    return BH_SONAR_Y - (xh - 31.0), BH_SONAR_Z - (zh - 12.5)
+
+
+def sr_box(xh0: float, xh1: float, yh0: float, yh1: float, zh0: float, zh1: float) -> tuple:
+    ya, za = sr_map(xh0, zh0)
+    yb, zb = sr_map(xh1, zh1)
+    return ("box", SR_FRONT - yh1, SR_FRONT - yh0, min(ya, yb), max(ya, yb), min(za, zb), max(za, zb))
+
+
+SR_EDGE_R, SR_HOLE_EDGE_R = 2.0, 0.5  # holder: outer edges round (Ben 2026-11-09), hole/slot front edges
+
+
+def sonar_holder_rounds() -> list[tuple[str, float]]:
+    """(manifest line, dvol): r SR_EDGE_R on the protruding holder's 8 outer edges (the front
+    face's perimeter and the 4 corner edges back to the wall face), then r SR_HOLE_EDGE_R on
+    the front face's inner loops (2 x Ø17, the crystal slot). Pre-tilt, picked by edge
+    midpoints."""
+    xf, xw = SR_FRONT, BH_XF
+    ya, za = sr_map(56.0, 25.0)
+    yb, zb = sr_map(6.0, 0.0)
+    y0, y1, z0, z1 = min(ya, yb), max(ya, yb), min(za, zb), max(za, zb)
+    ym, zm, xm = (y0 + y1) / 2, (z0 + z1) / 2, (xf + xw) / 2
+    e = 0.3
+    bx = [
+        f"{xf - e} {ym - 2} {z0 - e} {xf + e} {ym + 2} {z0 + e}",
+        f"{xf - e} {ym - 2} {z1 - e} {xf + e} {ym + 2} {z1 + e}",
+        f"{xf - e} {y0 - e} {zm - 2} {xf + e} {y0 + e} {zm + 2}",
+        f"{xf - e} {y1 - e} {zm - 2} {xf + e} {y1 + e} {zm + 2}",
+    ]
+    for yy in (y0, y1):
+        for zz in (z0, z1):
+            bx.append(f"{xm - 2.5} {yy - e} {zz - e} {xm + 3.5} {yy + e} {zz + e}")
+    q = 1 - math.pi / 4
+    L = 2 * (y1 - y0) + 2 * (z1 - z0) + 4 * (xf - xw)
+    dv = q * SR_EDGE_R**2 * L
+    out = [(f"fillet|{SR_EDGE_R}|any|{';'.join(bx)}|8|{-dv:.2f} {0.35 * dv + 2:.2f}", -dv)]
+    per = 2 * 2 * math.pi * SR_HOLE_R + 2 * 5.0 + 2 * math.pi * 2.0
+    dvh = q * SR_HOLE_EDGE_R**2 * per
+    out.append(
+        (
+            f"filletface|{SR_HOLE_EDGE_R}|x:1|{xf}|{y0} {z0} {y1} {z1}|1|{-dvh:.2f} {0.3 * dvh + 1:.2f}"
+            f"|loops:{y0} {z0} {y1} {z1}",
+            -dvh,
+        )
+    )
+    return out
+
+
+def sonar_holder_features() -> list[tuple]:
+    """(op, shape) list for the merged holder, pre-tilt (see the SR_* note)."""
+    x0, x1 = BH_XF - BH_T, BH_XF
+    yt = SR_FRONT - SR_TRIM  # trim depth
+    f: list[tuple] = []
+    # The outboard end (xh 56 -> y -47) stands 2 mm onto the front cap's r 8 side round (the
+    # face is flat to |y| 45); it is merged after the rounds (bulkhead_lines), so that round
+    # still rolls down the lower plate, and the end keeps its full 3 mm wall.
+    f.append(("add", sr_box(6, 56, 0, 2.25, 0, 25)))  # front plate
+    for a in ((6, 9, 0, 25), (53, 56, 0, 25), (9, 53, 0, 2.5), (9, 53, 21.5, 25)):  # box to the pocket
+        f.append(("add", sr_box(a[0], a[1], 2.25, 12.25, a[2], a[3])))
+    for a in ((6, 8, 0, 25), (54, 56, 0, 25), (8, 54, 0, 1.5), (8, 54, 22.5, 25)):  # pocket walls
+        f.append(("add", sr_box(a[0], a[1], 12.25, yt, a[2], a[3])))
+    f.append(("add", sr_box(26.5, 35.5, 2.25, 9.0, 16.5, 17.5)))  # crystal-channel shelf
+    # snap ridges on the pocket's long sides, truncated at the trim
+    rz = 0.67 * (1 - (yt - 13.75) / 4.0)
+    ya, _ = sr_map(8.0, 0.0)
+    yb, _ = sr_map(54.0, 0.0)
+    for zw, sgn in ((1.5, 1), (22.5, -1)):
+        za_ = sr_map(31.0, zw)[1]
+        zt_ = sr_map(31.0, zw + sgn * 0.67)[1]
+        zr_ = sr_map(31.0, zw + sgn * rz)[1]
+        poly = [(SR_FRONT - 13.75, za_), (SR_FRONT - 13.75, zt_), (SR_TRIM, zr_), (SR_TRIM, za_)]
+        f.append(("add", ("prismy", poly, min(ya, yb), max(ya, yb))))
+    # M1.6 bosses in the box's corners, PCB front (yh 12.25) forward 6, each in a corner
+    # column from the front plate back to the PCB (the wall's corner blocks are kept for
+    # them; a column leaves no stray face in the wall's front plane)
+    for xh, zh in SR_PCB_HOLES:
+        by, bz = sr_map(xh, zh)
+        f.append(("add", ("cylx", by, bz, SR_FRONT - 12.25, SR_FRONT - 6.25, SR_BOSS_R)))
+    for xh0, xh1 in ((9.0, 11.6), (50.4, 53.0)):
+        for zh0, zh1 in ((2.5, 5.6), (19.4, 21.5)):
+            f.append(("add", sr_box(xh0, xh1, 2.25, 12.25, zh0, zh1)))
+    # cuts: the wall inside the box (corners and the crystal shelf kept), the front holes,
+    # the crystal slot, the pilots
+    xa, xb = x0 - 0.1, x1 + 0.1
+    for xh0, xh1, zh0, zh1 in (
+        (11.6, 50.4, 2.5, 16.5), (9, 11.6, 5.6, 16.5), (50.4, 53, 5.6, 16.5),  # below the shelf
+        (9, 26.5, 16.5, 19.4), (35.5, 53, 16.5, 19.4), (11.6, 50.4, 19.4, 21.5),  # beside / above
+        (26.5, 35.5, 17.5, 19.4),
+    ):
+        _, bx0, bx1, by0, by1, bz0, bz1 = sr_box(xh0, xh1, 0, 1, zh0, zh1)
+        f.append(("cut", ("box", xa, xb, by0, by1, bz0, bz1)))
+    for xh, zh in SR_HOLES:
+        hy, hz = sr_map(xh, zh)
+        f.append(("cut", ("cylx", hy, hz, SR_FRONT - 2.35, SR_FRONT + 0.1, SR_HOLE_R)))
+    f.append(("cut", sr_box(28.5, 33.5, -0.1, 9.0, 17.5, 21.5)))  # crystal slot + channel
+    for xc in (28.5, 33.5):
+        cy_, cz_ = sr_map(xc, 19.5)
+        f.append(("cut", ("cylx", cy_, cz_, SR_FRONT - 9.0, SR_FRONT + 0.1, 2.0)))
+    for xh, zh in SR_PCB_HOLES:
+        by, bz = sr_map(xh, zh)
+        f.append(("cut", ("cylx", by, bz, SR_FRONT - 12.35, SR_FRONT - 12.25 + SR_PILOT_D, SR_PILOT_R)))
+    return f
+
 BH_SPK = (
     16.0,
     26.0,
@@ -1633,11 +1827,24 @@ SPK_CLAMP_T = 1.6  # clamp plate (P7)
 SPK_NOTCH_Y, SPK_NOTCH_Z = 25.6, (21.0, 28.0)  # tick 93: clamp notch round the left mount's end stop (25.9 still touched: 0.0 mm3)
 SPK_GASKET_BAND = 2.0  # gasket ring width (P8)
 SPK_BOSS_Y, SPK_BOSS_Z = (9.0, 23.0), 26.0 + 15.0 + 0.3 + 1.6 + 4.6 - 0.6  # above the pocket, 0.6 into the rim (tangent contact gave a null boss)
-BH_CAM = (
-    0.0,
-    113.0,
-    4.5,
-)  # lens hole y, z, r (Pi Camera Module 3, Q6 default) 🟡 no bosses yet
+# Camera (2026-11-09, Ben): Arducam IMX708 75° AF = Raspberry Pi Camera Module 3 standard
+# geometry (RPi mechanical drawing): PCB 25 x 23.862 x 1.12, 4 x Ø2.2 at 21 x 12.5 (2.0 in
+# from the sides and the bottom edge, pads Ø4.75), lens centred across, 14.4 up from the
+# bottom edge; lens block 10.8 square x 3.875 off the PCB front, barrel Ø5.75 x 3.105
+# beyond it; FFC connector 19.61 x 5.71 x 3.2 on the back at the top edge (image rotation
+# is software). The barrel passes through the wall (tip at the face: the full 75° with no
+# vignetting) and the block bears on the back face, which locates the camera; 4 x M2 x 5
+# thread-forming screws through the PCB into printed bosses. Its PCB (x 76.9-78) sits 0.8
+# in front of the face board's edge-entry plugs (top edge, back side, x <= 76.1) and above
+# the board's top (z 102): that needs the lens at z 117, hence BH_H 130.
+BH_CAM = (0.0, 117.0, 3.1)  # lens hole y, z, r: the Ø5.75 barrel + 0.22/side
+CAM_PCB = (25.0, 23.862, 1.12)  # width (y), height (z), thickness
+CAM_LENS_UP = 14.4  # lens centre above the PCB's bottom edge
+CAM_HOLES = ((-10.5, 0.1), (10.5, 0.1), (-10.5, -12.4), (10.5, -12.4))  # (dy, dz) from the lens
+CAM_BLOCK, CAM_BLOCK_D = 10.8, 3.875  # lens block side, depth off the PCB front
+CAM_BARREL_R, CAM_BARREL_L = 5.75 / 2, 3.105
+CAM_CONN = (19.61, 5.71, 3.2)  # FFC connector: width (y), height (z), depth behind the PCB
+CAM_BOSS_R, CAM_PILOT_R, CAM_PILOT_D = 2.2, 0.85, 5.0  # Ø4.4 (pads Ø4.75), M2 thread-forming pilot Ø1.7
 BH_LUG_Y, BH_LUG_Z = 38.0, (112.0, BH_H - 2.0)  # canopy screw lugs (F9) behind the wall top; P6m3: tops 2 lower, under the canopy's 2 mm screw bosses
 BH_FLANGE = (
     FACE_FRONT,
@@ -1650,6 +1857,22 @@ BH_FOOT = (
     (0.0, 9.0),
 )  # chassis box; x >= 78.5 clears the mount feet
 BH_FLANGE_GAP = 0.3  # side-flange bottoms clear the plate (2026-11-06)
+# 2026-11-09 (Ben): the foot's vertical front stood 2.4 proud of the tilted wall at its top.
+# Flush is impossible: the F1 pockets (BULK_X, Ø4.1 x 7.2) would break the wall's plane, and
+# moving them aft hits the motor-mount feet (0.7 mm behind the foot). So the front goes to
+# the wall's 15° above the pockets, BH_FOOT_SKIN in front of each pocket's top edge.
+BH_FOOT_SKIN = 1.2
+
+
+def bh_foot_slope() -> tuple[float, float, float]:
+    """(x0, z_kink, x_top): the foot's sloped front is x = x0 - z tan(BH_TILT); it leaves the
+    vertical face at z_kink and meets the foot top at x_top."""
+    t = math.tan(math.radians(BH_TILT))
+    (_, fx1), _, (_, fz1) = BH_FOOT
+    x0 = BULK_X + INS_HOLE / 2 + BH_FOOT_SKIN + INS_DEPTH * t
+    return x0, (x0 - fx1) / t, x0 - fz1 * t
+
+
 BH_TAB = (4.0, 9.8, 3.6)  # into the 4.6 x 10.4 plate slots (0.3/side)
 # Knee gusset (P1b): the only clear slot behind the lower band is between the sonar
 # sleeves (y <= 0.8) and the speaker (y >= 4); it stays below the face board (z <= 44).
@@ -1734,10 +1957,8 @@ def bulkhead_features() -> tuple[list[tuple], list[tuple]]:
     face_holes = [(BH_FACE_Y - by, BH_FACE_Z + bx) for bx, by in corners(*FACE_HOLES)]
     for y, z in face_holes:
         pre.append(("add", ("cylx", y, z, x0 - BH_STANDOFF_L, x0 + 0.5, BH_STANDOFF_R)))
-    # sonar sleeves
-    sonar = [(BH_SONAR_Y + d * BH_SONAR_PITCH / 2, BH_SONAR_Z) for d in (-1, 1)]
-    for y, z in sonar:
-        pre.append(("add", ("cylx", y, z, x0 - BH_SLEEVE_L, x0 + 0.5, BH_SLEEVE_R)))
+    # (HC-SR04 holder: merged after the front cap's rounds, see bulkhead_lines; it stood in
+    # the r 8 side round's way and stopped it rolling down the lower plate)
     # canopy lugs (vertical before the tilt). Q27 (a) (Ben 2026-11-02, tick 94): BH_LUG_AFT
     # further from the wall, joined to it by a web, so the hood screws clear the hood's front
     # edge and can sit in counterbored collars
@@ -1750,20 +1971,13 @@ def bulkhead_features() -> tuple[list[tuple], list[tuple]]:
     # (S2a side cheeks: replaced by the full-width plate, P6m3)
     # cuts
     aw, ah = FACE_AA[1] + 2.0, FACE_AA[0] + 2.0  # window: AA + 1 mm all round
-    pre.append(
-        (
-            "cut",
-            (
-                "box",
-                x0 - 0.1,
-                x1 + 0.1,
-                -aw / 2,
-                aw / 2,
-                BH_FACE_Z - ah / 2,
-                BH_FACE_Z + ah / 2,
-            ),
-        )
-    )
+    # P6m4: corners r BH_WIN_R in the face plane (two crossed boxes + four corner cylinders)
+    wr = BH_WIN_R
+    for hy, hz in ((aw / 2, ah / 2 - wr), (aw / 2 - wr, ah / 2)):
+        pre.append(("cut", ("box", x0 - 0.1, x1 + 0.1, -hy, hy, BH_FACE_Z - hz, BH_FACE_Z + hz)))
+    for sy in (-1, 1):
+        for sz in (-1, 1):
+            pre.append(("cut", ("cylx", sy * (aw / 2 - wr), BH_FACE_Z + sz * (ah / 2 - wr), x0 - 0.1, x1 + 0.1, wr)))
     for y, z in face_holes:
         pre.append(
             (
@@ -1777,10 +1991,6 @@ def bulkhead_features() -> tuple[list[tuple], list[tuple]]:
                     INS_HOLE / 2,
                 ),
             )
-        )
-    for y, z in sonar:
-        pre.append(
-            ("cut", ("cylx", y, z, x0 - BH_SLEEVE_L - 0.1, x1 + 0.1, BH_SONAR_R))
         )
     sy, sz, sr = BH_SPK
     # D2 (tick 77): full-radius ends (box + two Ø2 end cylinders), same overall length;
@@ -1806,6 +2016,12 @@ def bulkhead_features() -> tuple[list[tuple], list[tuple]]:
             pre.append(("cut", ("cylx", ye, sz + dz, x0 - 0.1, x1 + 0.1, sr_end)))
     cy, cz, cr = BH_CAM
     pre.append(("cut", ("cylx", cy, cz, x0 - 0.1, x1 + 0.1, cr)))
+    # camera bosses (2026-11-09): from the wall's back face to the PCB front, which sits
+    # CAM_BLOCK_D behind it (the lens block bears on the wall)
+    xc = x0 - CAM_BLOCK_D
+    for dy, dz in CAM_HOLES:
+        pre.append(("add", ("cylx", cy + dy, cz + dz, xc, x0 + 0.5, CAM_BOSS_R)))
+        pre.append(("cut", ("cylx", cy + dy, cz + dz, xc - 0.1, xc + CAM_PILOT_D, CAM_PILOT_R)))
     # P7 (tick 92, Q25 (a) Ben 2026-11-02): pocket for a pre-boxed micro speaker on the back
     # face, behind the grille's inboard half: a 1.6 rim standing SPK_DEPTH off the face round
     # the module + gasket, and two M3 insert bosses above it for the clamp plate's screws
@@ -1848,6 +2064,11 @@ def bulkhead_features() -> tuple[list[tuple], list[tuple]]:
     # post-tilt, chassis frame: foot, tabs, foot insert pockets (F1)
     (fx0, fx1), (fy0, fy1), (fz0, fz1) = BH_FOOT
     post: list[tuple] = [("add", ("box", fx0, fx1, fy0, fy1, fz0, fz1))]
+    # 2026-11-09: the front slopes at the wall's angle above the F1 pockets (bh_foot_slope)
+    sx0, szk, _ = bh_foot_slope()
+    st, za, zb = math.tan(math.radians(BH_TILT)), szk - 0.3, fz1 + 0.3
+    wedge = [(sx0 - za * st, za), (fx1 + 1.0, za), (fx1 + 1.0, zb), (sx0 - zb * st, zb)]
+    post.append(("cut", ("prismy", wedge, fy0 - 0.5, fy1 + 0.5)))
     # 2026-11-06: the tilt swings the side flanges' bottoms ~1 mm under the plate top at
     # |y| 45-47, x ~78; the old front chamfer had no plate there. Trim them to BH_FLANGE_GAP
     # over the plate, outboard of the tabs (|y| <= 15.9) and the foot (29.5): a flat at z 0
@@ -1934,6 +2155,7 @@ def bulkhead_volume_numeric(step: float = 0.2) -> tuple[float, list[float]]:
     import numpy as np
 
     pre, post = bulkhead_features()
+    pre = pre + sonar_holder_features()  # applied after the rounds in the build
     xs = np.arange(30.0 + step / 2, 90.0, step)  # tick 94: the lugs moved aft reach x 38.6
     yh = BH_W / 2 + 1
     ys = np.arange(-yh + step / 2, yh, step)
@@ -2031,6 +2253,54 @@ def cap_round_lines() -> list[str]:
     ]
 
 
+SEAM_R = 0.5  # P6m4: edge break on both seam edges (cap back, canopy front): a 1 mm V shadow line
+FLANGE_END_R = 1.0  # P6m4: the cap side flanges' bottom ends (kid rule r >= 1)
+FOOT_TOP_R = 2.0  # P6m4: foot ledge top front edge (it stands 2.5 proud of the wall there)
+
+
+def seam_break_lines(xs: float, z_low: float) -> list[tuple[str, float]]:
+    """(manifest line, dvol) for r SEAM_R on the five outer edges of a seam face in the
+    pre-tilt frame (plane x = xs): both sides (|y| BH_W/2, from z_low up to the r CAP_R
+    corners), the two r CAP_R corner arcs and the top (z BH_TOP). Picked by their end-vertex
+    midpoints ("vmid"); the inner edges and the bottom ends are left alone."""
+    hy, zt, r = BH_W / 2, BH_TOP, CAP_R
+    zc = zt - r
+    zs = (z_low + zc) / 2
+    am = r * (1 - 1 / 2)  # arc chord midpoint, r/2 in from both tangents
+    boxes = [f"{xs - 0.2:.3f} -1 {zt - 0.1:.3f} {xs + 0.2:.3f} 1 {zt + 0.1:.3f}"]
+    for sy in (-1, 1):
+        boxes.append(f"{xs - 0.2:.3f} {sy * hy - 0.1:.3f} {zs - 2:.3f} {xs + 0.2:.3f} {sy * hy + 0.1:.3f} {zs + 2:.3f}")
+        ya, za = sy * (hy - am), zt - am
+        boxes.append(f"{xs - 0.2:.3f} {ya - 0.4:.3f} {za - 0.4:.3f} {xs + 0.2:.3f} {ya + 0.4:.3f} {za + 0.4:.3f}")
+    L = 2 * (zc - z_low) + math.pi * r + 2 * (hy - r)
+    dv = -(1 - math.pi / 4) * SEAM_R**2 * L
+    return [(f"fillet|{SEAM_R}|vmid|{';'.join(boxes)}|5|{dv:.2f} {abs(dv) * 0.2 + 1:.2f}", dv)]
+
+
+def _flange_end_edges() -> list[str]:
+    """Edge boxes (vmid) on the cap side flanges' bottom face (pre-tilt z = cap_z_low):
+    the back edge (seam plane), the outer edge (|y| BH_W/2, back to the r CAP_R round)
+    and the inner edge (|y| BH_W/2 - CAP_T, back to the plate's back face)."""
+    zl, xs = cap_z_low(), BH_XF - CAP_D
+    hy, x0 = BH_W / 2, BH_XF - BH_T
+    out = []
+    for sy in (-1, 1):
+        for x, y in ((xs, sy * (hy - CAP_T / 2)), ((xs + BH_XF - CAP_R) / 2, sy * hy), ((xs + x0) / 2, sy * (hy - CAP_T))):
+            out.append(f"{x - 0.3:.3f} {y - 0.3:.3f} {zl - 0.1:.3f} {x + 0.3:.3f} {y + 0.3:.3f} {zl + 0.1:.3f}")
+    return out
+
+
+def flange_end_dv() -> float:
+    xs, x0 = BH_XF - CAP_D, BH_XF - BH_T
+    L = CAP_T + (BH_XF - CAP_R - xs) + (x0 - xs)
+    return -(1 - math.pi / 4) * FLANGE_END_R**2 * 2 * L
+
+
+def flange_end_line() -> str:
+    dv = flange_end_dv()
+    return f"fillet|{FLANGE_END_R}|vmid|{';'.join(_flange_end_edges())}|6|{dv:.2f} {abs(dv) * 0.4 + 1:.2f}"
+
+
 def bulkhead_lines(path: str) -> list[str]:
     pre, post = bulkhead_features()
 
@@ -2058,7 +2328,7 @@ def bulkhead_lines(path: str) -> list[str]:
     # (inner loops whose centre is at y <= 10; the speaker-grille slots at y 24 are 2 mm
     # wide and would round right through)
     aw, ah = FACE_AA[1] + 2.0, FACE_AA[0] + 2.0
-    face_len = 2 * (aw + ah) + 2 * math.pi * 2 * BH_SONAR_R + 2 * math.pi * BH_CAM[2]
+    face_len = 2 * (aw + ah) - (8 - 2 * math.pi) * BH_WIN_R + 2 * math.pi * BH_CAM[2]
     dvf = (1 - math.pi / 4) * PLATE_EDGE_R**2 * face_len
     lines.append(
         f"filletface|{PLATE_EDGE_R}|x:1|{BH_XF}|-50 -5 50 130|1|{-dvf:.2f} {0.15 * dvf:.2f}|loops:-45 10 10 125"
@@ -2086,6 +2356,15 @@ def bulkhead_lines(path: str) -> list[str]:
     lines.append(
         f"fillet|{PLATE_EDGE_R}|z|{';'.join(lo['boxes'])}|2|{lo['dv_r1']:.2f} {abs(lo['dv_r1']) * 0.25 + 1:.2f}"
     )
+    # P6m4: seam edge break and flange ends (edge audit 2026-11-08), pre-tilt
+    for ln_, _ in seam_break_lines(BH_XF - CAP_D, cap_z_low()):
+        lines.append(ln_)
+    lines.append(flange_end_line())
+    # 2026-11-09: the merged HC-SR04 holder, after the cap rounds (pre-tilt frame)
+    sr = sonar_holder_features()
+    lines += [emit(op, sh) for op, sh in sr if op == "add"]
+    lines += [emit(op, sh) for op, sh in sr if op == "cut"]
+    lines += [ln for ln, _ in sonar_holder_rounds()]
     lines.append(f"rotbody|{BH_PIVOT[0]} {BH_PIVOT[1]} {BH_PIVOT[2]}|y|{-BH_TILT}")
     for op, sh in post:
         if op == "trim":  # applied last, after the side-face rounds (below)
@@ -2101,22 +2380,37 @@ def bulkhead_lines(path: str) -> list[str]:
         * PLATE_EDGE_R**2
         * (
             2 * (FACE_AA[1] + FACE_AA[0] + 4.0)
-            + 2 * math.pi * 2 * BH_SONAR_R
+            - (8 - 2 * math.pi) * BH_WIN_R
             + 2 * math.pi * BH_CAM[2]
         )
     )  # S1b2 front-face opening rounds
     vol += cap_round_dv()  # P6m3 cap rounds (outer removes, inner adds; incl. the lower corners)
     vol += cap_lower_corner()["dv_r1"]  # r 1 where the lower corners meet the back face
+    vol += sum(dv for _, dv in seam_break_lines(BH_XF - CAP_D, cap_z_low())) + flange_end_dv()
     # P-kid (tick 87): r 1.0 on the foot's exposed front: its top front edge (x BH_XF, z top,
     # along y; the foot stands ~2.4 proud of the tilted wall there) and the two vertical
     # front corners (|y| foot half-width). One feature; the bottom edge sits on the plate
     q = (1 - math.pi / 4) * PLATE_EDGE_R**2
     (fx0, fx1), (fy0, fy1), (fz0, fz1) = BH_FOOT
-    dvft = q * ((fy1 - fy0) + 2 * (fz1 - fz0))
+    # P6m4: the top front edge goes to r FOOT_TOP_R (the ledge read square), first and alone.
+    # 2026-11-09: that edge is now the sloped face's top (x_top), 105° inside, not 90°
+    _, szk, sxt = bh_foot_slope()
+    ia = math.radians(90 + BH_TILT)
+    dvtop = (1 / math.tan(ia / 2) - (math.pi - ia) / 2) * FOOT_TOP_R**2 * (fy1 - fy0)
     lines.append(
-        f"fillet|{PLATE_EDGE_R}|any|{fx1 - 0.1} {fy0 - 0.1} {(fz0 + fz1) / 2 - 0.1} {fx1 + 0.1} {fy1 + 0.1} {fz1 + 0.1}|3|{-dvft:.2f} {0.25 * dvft:.2f}"
+        f"fillet|{FOOT_TOP_R}|y|{sxt - 0.1} {fy0 - 0.1} {fz1 - 0.1} {sxt + 0.1} {fy1 + 0.1} {fz1 + 0.1}|1|{-dvtop:.2f} {0.15 * dvtop:.2f}"
     )
-    vol -= dvft
+    # r 1 on the front corners: the vertical edges (z 0..kink) and the sloped ones above
+    sl = (fz1 - szk) / math.cos(math.radians(BH_TILT)) - FOOT_TOP_R / math.tan(ia / 2)
+    dvft = q * 2 * (szk - fz0 + sl)
+    xm, zm = (fx1 + sxt) / 2, (szk + fz1 - 1.0) / 2
+    cb = []
+    for yy in (fy0, fy1):
+        cb.append(f"{fx1 - 0.1} {yy - 0.1} {fz0} {fx1 + 0.1} {yy + 0.1} {szk}")
+        cb.append(f"{xm - 0.6} {yy - 0.1} {zm - 1.2} {xm + 0.6} {yy + 0.1} {zm + 1.2}")
+    lines.append(f"fillet|{PLATE_EDGE_R}|any|{';'.join(cb)}|4|{-dvft:.2f} {0.3 * dvft + 0.5:.2f}")
+    vol -= dvft + dvtop
+    vol += sum(dv for _, dv in sonar_holder_rounds())
     lines += [emit("cut", sh) for op, sh in post if op == "trim"]
     # P6m3: the top is the cap's r 8 front-top round after the tilt (the voxel box has no rounds)
     s15, c15 = math.sin(math.radians(BH_TILT)), math.cos(math.radians(BH_TILT))
@@ -3167,6 +3461,48 @@ def canopy_top_round_boxes(h: float = 0.6) -> list[str]:
     return [f"{x - h:.3f} {y - h:.3f} {z - h:.3f} {x + h:.3f} {y + h:.3f} {z + h:.3f}" for x, y, z in pts]
 
 
+def front_cut_corner_area() -> float:
+    """Per top corner of the front opening: the area (y-z, pre-tilt) inside the old square
+    corner, outside the inner r CAP_R - CAN_T round and inside the outer r CAP_R round
+    (both about (BH_W/2 - CAP_R, BH_TOP - CAP_R)): shell the P6m4 cut no longer removes."""
+    ri, ro = CAP_R - CAN_T, CAP_R
+    n, a = 400, 0.0
+    h = (CAN_WIN_HW - (BH_W / 2 - CAP_R)) / n
+    for i in range(n):
+        for j in range(n):
+            u, v = (i + 0.5) * h, (j + 0.5) * h
+            if ri * ri < u * u + v * v <= ro * ro:
+                a += h * h
+    return a
+
+
+def front_cut_lines(x0p: float, x1p: float, zw: float) -> list[str]:
+    """P6m4: the cut that opens the canopy's front end (a slab x0p..x1p round the front wall,
+    pre-tilt), with its top corners on the shell's inner r CAP_R - CAN_T round instead of
+    square: the square corners (8.77 from the round's axis) broke through the outer r CAP_R
+    skin, a 0.8 deep notch at both front top corners. Two crossed boxes + two corner
+    cylinders, in the wall frame."""
+    piv = f"{BH_PIVOT[0]} {BH_PIVOT[1]} {BH_PIVOT[2]}"
+    hi, ri = CAN_WIN_HW, CAP_R - CAN_T
+    yc, zc = BH_W / 2 - CAP_R, BH_TOP - CAP_R
+    assert abs(yc + ri - hi) < 1e-9 and abs(zc + ri - zw) < 1e-6, (yc + ri, hi, zc + ri, zw)
+    return [
+        f"rotbody|{piv}|y|{BH_TILT}",
+        f"prof|{x0p:.4f} {x1p:.4f}|{_right_rect(-hi, hi, 20.0, zc)}|cut|right",
+        f"prof|{x0p:.4f} {x1p:.4f}|{_right_rect(-yc, yc, 20.0, zw)}|cut|right",
+        *[f"cyl|x|{sg * yc} {zc}|{x0p:.4f} {x1p:.4f}|{ri}|cut" for sg in (-1, 1)],
+        f"rotbody|{piv}|y|{-BH_TILT}",
+    ]
+
+
+def canopy_seam() -> dict:
+    """P6m4: r SEAM_R on the canopy's front-end outer edges (the seam face, pre-tilt plane
+    x = BH_XF - CAP_D - CAP_GAP), turned into the wall frame like hood_screw()."""
+    piv = f"{BH_PIVOT[0]} {BH_PIVOT[1]} {BH_PIVOT[2]}"
+    (ln, dv), = seam_break_lines(BH_XF - CAP_D - CAP_GAP, cap_z_low())
+    return {"lines": [f"rotbody|{piv}|y|{BH_TILT}", ln, f"rotbody|{piv}|y|{-BH_TILT}"], "vol": dv}
+
+
 def hood_screw() -> dict:
     """P6m3 (Ben: flush top screws): per lug a boss under the hood ceiling (the lug top sits
     CAN_LUG_GAP under it), an M3 clearance hole and a flat counterbore whose rim is flush
@@ -3386,6 +3722,7 @@ def canopy_features() -> dict:
     s, c_ = math.sin(math.radians(BH_TILT)), math.cos(math.radians(BH_TILT))
     zp0 = (CAN_Z0 - s * (xm - BH_PIVOT[0])) / c_
     win = CAN_T * 2 * CAN_WIN_HW * (BH_H + CAN_LUG_GAP - zp0)
+    win -= CAN_T * 2 * front_cut_corner_area()  # P6m4: the cut's top corners follow the inner round
     # lug holes: lug axis on the wall's (tilted) z, at mid-ceiling
     lug_x = bh_lug_x()
     hx, hz = _pre2ch(lug_x, BH_H + CAN_LUG_GAP + CAN_T / 2)
@@ -3537,14 +3874,33 @@ def canopy_mic_lines() -> tuple[list[str], float]:
     for hx, hy in g["holes"]:
         zin, zout = chain_z(hx, CAN_T), chain_z(hx)
         assert MIC_PLANE + pl + 0.6 <= zout, (hx, zout)  # 0.6 skin over the insert pocket
-        lines.append(f"cyl|z|{hx:.4f} {hy:.4f}|{MIC_PLANE:.3f} {zin + 0.3:.3f}|{rb}|boss")
+        out_min = min(chain_z(hx + rb * (k / 20 - 1)) for k in range(41))
+        if zin + 0.3 <= out_min - 0.6:
+            lines.append(f"cyl|z|{hx:.4f} {hy:.4f}|{MIC_PLANE:.3f} {zin + 0.3:.3f}|{rb}|boss")
+            v = math.pi * rb * rb * (zin - MIC_PLANE)
+        else:
+            # P6m4b: on the rise to the hood (x 26) a flat top at the centre's roof height
+            # broke 0.37 out of the outer skin at the boss's rear edge. Square column, top
+            # following the roof 0.3 into the skin; volume to the inner surface.
+            x0, x1 = hx - rb, hx + rb
+            top = chain_clip(chain_offset(CAN_T - 0.3), x0, x1)
+            lines.append(_prism_y([(x0, MIC_PLANE), (x1, MIC_PLANE), top[-1]["p1"],
+                                   *chain_entries(top, reverse=True)], hy - rb, hy + rb, "boss"))
+            n = 80
+            v = sum(chain_z(x0 + (i + 0.5) * 2 * rb / n, CAN_T) - MIC_PLANE for i in range(n)) * 2 * rb / n * 2 * rb
         lines.append(f"cyl|z|{hx:.4f} {hy:.4f}|{MIC_PLANE - 0.1:.3f} {MIC_PLANE + pl:.3f}|{pd / 2}|cut")
-        v = math.pi * rb * rb * (zin - MIC_PLANE)
         rib_bot = chain_z(hx, CAN_T + dep)
+        sq = not lines[-2].startswith("cyl")
+
+        def strip(d: float) -> float:
+            if sq:  # square column: the strip's width inside it, times its side
+                return max(0.0, min(d + t / 2, rb) - max(d - t / 2, -rb)) * 2 * rb
+            return _strip_circle(d, t, rb)
+
         for y in CAN_RIBS_Y:
-            v -= _strip_circle(abs(hy - y), t, rb) * (zin - max(rib_bot, MIC_PLANE))
+            v -= strip(abs(hy - y)) * (zin - max(rib_bot, MIC_PLANE))
         for x in CAN_RIBS_X:
-            v -= _strip_circle(abs(hx - x), t, rb) * (zin - max(rib_bot, MIC_PLANE))
+            v -= strip(abs(hx - x)) * (zin - max(rib_bot, MIC_PLANE))
         v -= math.pi * (pd / 2) ** 2 * pl
         vol += v
     for mx, my in g["mics"]:
@@ -3553,6 +3909,37 @@ def canopy_mic_lines() -> tuple[list[str], float]:
         lines.append(f"cyl|z|{mx:.4f} {my:.4f}|{MIC_PLANE - reach - 0.1:.3f} {zout + 0.5:.3f}|{tp / 2}|cut")
         vol += math.pi * (to / 2) ** 2 * (zin - MIC_PLANE + reach) - math.pi * (tp / 2) ** 2 * (zout - MIC_PLANE + reach)
     return lines, vol
+
+
+# Idler axle stack (2026-11-09, Ben: "add the spacer and shims"). The idler's two 624s sit
+# flush with the hub tube's ends (wheel frame z 0..5 and 18..23) with 13 mm of free shoulder
+# between their inner races; the carriage boss stops 0.5 short of the inner bearing and the
+# track-frame plate stands 1.0 off the outer one. Clamped stack on the Ø4 shoulder, head
+# (inboard) -> carriage boss -> 0.5 shim -> 624 -> this spacer -> 624 -> 2 x 0.5 shim ->
+# frame plate -> M3 nyloc: only the outer races and the wheel turn (05 "Spin").
+IDLER_SPACER = (8.0, 5.8, 4.2, 0.6)  # body Ø, end-land Ø (on the inner race only: 624 d1 ~6.1), bore, land height
+IDLER_SHIM = (4.0, 8.0, 0.5)  # DIN 988 shim ring, bought: 1 at the boss + 2 at the frame per idler
+
+
+def idler_spacer_lines(path: str) -> list[str]:
+    """Spacer between the idler's two 624 inner races, in the wheel part frame (z from the
+    bed / outboard face): z 5..18, so it sits in place with wheel_at(). Ø8 body, Ø5.8 x 0.6
+    lands at each end, Ø4.2 bore (slip on the shoulder). Prints standing (+z)."""
+    do, dl, di, h = IDLER_SPACER
+    z0 = dt.BRG_W
+    z1 = dt.BELT_W / 2  # inner bearing's outboard face (tube end BELT_W/2 + BRG_W, less BRG_W)
+    L = z1 - z0
+    assert abs(L - 13.0) < 1e-9, L
+    v = math.pi / 4 * (do * do * (L - 2 * h) + dl * dl * 2 * h - di * di * L)
+    return [
+        f"part|{path}",
+        f"cyl|z|0 0|{z0 + h:.3f} {z1 - h:.3f}|{do / 2}|boss",
+        f"cyl|z|0 0|{z0:.3f} {z0 + h + 0.1:.3f}|{dl / 2}|boss",
+        f"cyl|z|0 0|{z1 - h - 0.1:.3f} {z1:.3f}|{dl / 2}|boss",
+        f"cyl|z|0 0|{z0 - 0.1:.3f} {z1 + 0.1:.3f}|{di / 2}|cut",
+        f"expect|vol {v:.2f} {v * 0.02:.2f}|box {-do / 2} {do / 2} {-do / 2} {do / 2} {z0} {z1} 0.05",
+        "save",
+    ]
 
 
 def mic_washer_lines(path: str) -> list[str]:
@@ -3636,7 +4023,6 @@ def canopy_lines(path: str) -> list[str]:
     xsm = BH_XF - CAP_D - CAP_GAP
     x0p, x1p = xsm - CAN_T - 0.5, xsm + 0.5
     zw = BH_H + CAN_LUG_GAP
-    win = [_pre2ch(x0p, 20.0), _pre2ch(x0p, zw), _pre2ch(x1p, zw), _pre2ch(x1p, 20.0)]
     hx, _ = f["lug_hole"]
     bx, by, bh = CAN_BOSS
     lines = [
@@ -3651,7 +4037,7 @@ def canopy_lines(path: str) -> list[str]:
         # seam: a square cowl corner against the cap's r 8.)
         f"fillet|{rt}|vmid|{';'.join(canopy_top_round_boxes())}|{len(canopy_top_round_boxes())}|{tol(o['top'] + o['hood'])}",
         f"shell|{CAN_T}|z:-1|{CAN_Z0}|{a[0] - 1} {-hw - 1} {fp[0] + 1} {hw + 1}|1|{-f['v_in']:.1f} {0.04 * (f['v_out'] - f['v_in']):.1f}",
-        prismy(win, -CAN_WIN_HW, CAN_WIN_HW, "cut"),
+        *front_cut_lines(x0p, x1p, zw),
         *hood_screw()["lines"],
         *[
             prismy(canopy_rib_profile(), y0, y1, "boss")
@@ -3705,8 +4091,9 @@ def canopy_lines(path: str) -> list[str]:
         *canopy_vents()[0],
         *canopy_rear_edges()[1],
         *canopy_mic_lines()[0],
+        *canopy_seam()["lines"],
         PART_LABELS["canopy"],
-        f"expect|vol {f['vol'] + hood_screw()['vol'] + canopy_mic_lines()[1]:.1f} {f['vol'] * 0.03:.1f}|box {CAN_X0} {fp[0]:.2f} {-hw} {hw} {-CAN_TAB[2]} {e[1]:.2f} 0.5",
+        f"expect|vol {f['vol'] + hood_screw()['vol'] + canopy_mic_lines()[1] + canopy_seam()['vol']:.1f} {f['vol'] * 0.03:.1f}|box {CAN_X0} {fp[0]:.2f} {-hw} {hw} {-CAN_TAB[2]} {e[1]:.2f} 0.5",
         "save",
     ]
     return lines
@@ -3743,7 +4130,7 @@ def canopy_fea_lines(path: str) -> list[str]:
     assert body[-1] == "save" and body[-2].startswith("expect|vol ")
     hx, hy, hr, hh = CAN_HEEL
     z0, z1, pad = canopy_heel()
-    vol = canopy_features()["vol"] + pad + hood_screw()["vol"] + canopy_mic_lines()[1]
+    vol = canopy_features()["vol"] + pad + hood_screw()["vol"] + canopy_mic_lines()[1] + canopy_seam()["vol"]
     head, rest = body[-2].split("|box ")
     return [
         *body[:-2],
@@ -4132,6 +4519,7 @@ PART_MATERIAL = {
     "RB-PRT-011": "PET-CF",
     "RB-PRT-020": "PET-CF",
     "RB-PRT-021": "PET-CF",
+    "RB-PRT-023": "PET-CF",  # idler spacer x 2 (2026-11-09)
     "RB-PRT-022": "PET-CF",  # road-wheel disc x 8 (P13b; PA6-CF candidate, M6)
 }
 

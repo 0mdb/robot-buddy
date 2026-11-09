@@ -415,7 +415,7 @@ def s8() -> dict:
             f"load heel plane 0 0 1 {top}",
             f"disp heel plane 0 0 1 {top}",
             "probe top -86 -54 80 35 54 113",  # P6m2: crown, ramp and hump roof (apex 111.9)
-            "probe hood 30 -54 90 75 54 125",
+            f"probe hood 30 -54 90 75 54 {chassis.canopy_profile()[4][1] + 3:.0f}",  # hood top E + 3 (head +4, 2026-11-09)
             "probe rear -86 -54 -1 -70 54 40",
             "hotspots 5",
             "mesh 1.0 0.05",
@@ -449,7 +449,7 @@ def s5k() -> dict:
             f"fix plane 1 0 0 {chassis.CAN_TAB[1][1]}",
             f"load lugs cyl {CAN_LUG_AX} {chassis.CAN_LUG_HOLE / 2} 0.02",
             f"disp lugs cyl {CAN_LUG_AX} {chassis.CAN_LUG_HOLE / 2} 0.02",
-            "probe hood 30 -54 90 75 54 125",
+            f"probe hood 30 -54 90 75 54 {chassis.canopy_profile()[4][1] + 3:.0f}",  # hood top E + 3 (head +4, 2026-11-09)
             "hotspots 3",
             "mesh 1.5 0.08",
             f"case poke lugs:{F[0]:.3f},{F[1]:.3f},{F[2]:.3f}",

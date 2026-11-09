@@ -61,6 +61,19 @@ outboard end. The tread wraps the wheel on the open outboard side.
 under tread load. If rev 1 wobbles, add a **second 624** spaced on the shank
 (the 55 mm bolt has length to spare) — size the hub deep enough to accept it.
 
+> Amendment (2026-11-09, Ben: "add the spacer and shims"): the two-bearing idler (08) had no
+> axial stack: 0.5 mm from the carriage boss to the inner 624, 13 mm of bare shoulder between
+> the two inner races, 1.0 mm from the outer 624 to the track-frame plate. Stack now, inboard
+> to outboard on the Ø4 shoulder: **head → carriage boss (y 40..69) → 0.5 shim → 624 →
+> spacer RB-PRT-023 (13.0, printed) → 624 → 2 × 0.5 shim → frame plate → M3 nyloc.** Only
+> the outer races and the wheel turn. Spacer: Ø8 body (clears the hub's Ø10 middle bore),
+> Ø5.8 × 0.6 end lands so it bears on the inner races only, Ø4.2 bore. Shims: **DIN 988
+> 4 × 8 × 0.5** stainless, 3 per idler (OD 8, not ≤ 7: no 4 × 7 is commonly sold; the
+> 624-2RS seals sit recessed in the outer race, so check the wheel spins freely once
+> tightened). Head to shoulder step = 53.5 mm (boss inboard face to the plate's inner face);
+> a longer shoulder takes the difference as extra 0.5 shims under the head. Build check: if
+> the wheel drags after tightening, the spacer is long; sand 0.1 at a time.
+
 ## Hardware BOM (per follower — ×2 for the robot, buy spares)
 
 | # | Item | Spec | Source (Amazon.ca) |

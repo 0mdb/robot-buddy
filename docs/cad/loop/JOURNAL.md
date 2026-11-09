@@ -676,3 +676,26 @@ Newest at the bottom. One entry per tick.
 - Studies: **S5c 5.34 MPa / bezel 0.13 mm** (5.81 / 0.16), **S5k 7.66 MPa / lugs 0.25 mm** (9.97 / 0.61), **S8 25.4 MPa (SF 2.45 on PC) / heel 1.13 mm** (19.3 pre-hump: +31 %, the heel now on the hump roof, peak at a Ø1.2 port at the pad's edge; inside the gate, accepted as Ben's redesign), S5 standalone 48.7 / 6.5 mm (reported, Q13). All equilibrium checks ok. fea S5's screen/standoff selections → INS_R (Ø4.1 inserts).
 - Not done: edge audit, slicing (canopy rear-down without support; bulkhead orientation with the new flanges), screen-window corners and the foot ledge (still square), Ben's look. Bulkhead print on hold (Ben).
 - Look: `shots/1-P6m2/` (hump), `shots/1-P6m3/` (cap: sheet, seam profile).
+
+## Tick 105: P6m4 face details (2026-11-08, ~21:30-22:30)
+
+- Ben: "start P6m4 when the sprocket rebuild is done". Peer (robot-buddy-20) handed SolidWorks over after its spoked sprocket.
+- Window corners r 2.4 (`BH_WIN_R`: crossed boxes + corner cylinders); seam edge break r 0.5 (`seam_break_lines`, 5 vmid edges on the cap's back face pre-tilt; the same on the cowl's front face inside a +15/-15 rotbody); cap flange ends r 1 (`flange_end_line`, 6 vmid edges); foot top front edge r 2 (`FOOT_TOP_R`), vertical corners r 1 after it.
+- The cowl's seam pick found 3 of 5 edges: its front-end outline was split because the square front-opening cut broke through the r 8 skin at the top corners (notch 0.8 deep). `front_cut_lines` now cuts with r 6.2 corners (the shell's inner round); +7.6 mm2 x 1.8 per corner in the volume.
+- swbuild: the expect-box check falls back to `IBody2.GetExtremePoint` when `GetPartBox` misses (bulkhead read Y 53.42 for a true 53.00 round the rotated toroidal rounds). Engine change, so a full rebuild (8 m 46 s).
+- BUILD OK, 0 interferences. Bulkhead 55.4 g, canopy 113.6 g, printed 761.5 g (now incl. the peer's spoked sprockets), CoG (0.5, -0.5, 22.7).
+- Edge audit (accessible sharp): bulkhead 401 -> 215 mm (left: the lower front band at z 0, as before); canopy 707 -> 430 mm (the 90 @ (43, 0, 120) is the cowl's front end against the hood ceiling, inside the cap).
+- S5c 6.15 MPa (5.34; same spot, the lug foot at the fixture) / bezel 0.13 mm (=). +15 % on the peak at a restraint corner with the displacement unchanged: read as mesh noise; inside the gate (11.7).
+- Look: `shots/1-P6m4/` (sheet + heroes).
+
+## Tick 106: P6m4b mic boss through the roof
+
+- Ben (2026-11-09, screenshot): a sliver of the front mic-disc boss (x 26.25, y 0) showed through the cowl top. Its flat top (centre roof inner + 0.3 = 111.19) sat on the rise to the hood, where the outer skin at the boss's rear edge is 110.82: 0.37 out. In since P6m2.
+- `canopy_mic_lines`: a boss whose flat top would come within 0.6 of the outer skin anywhere over its footprint becomes an 8 x 8 column (y prism) with its top following the roof 0.3 into the skin. Only the front boss qualifies; the two rear bosses and the 4 port tubes stay round (>= 1.4 under the skin).
+- BUILD OK; the STL has nothing above the outer chain at x 18..34; a y-section shows the skin whole over the column. Canopy 113.8 g; re-sliced 110.4 g / 3h56.
+
+## Tick 107: idler axle stack (spacer + shims)
+
+- Ben asked what fills the gaps beside the sprocket and the idler. Sprocket: nothing; its inboard face sits 1.5 off the gearbox (shaft tip on the web, M2.5 clamp), outboard 1.0 to the frame plate. Idler: 0.5 (carriage boss -> inner 624), 13 between the inner races, 1.0 (outer 624 -> frame plate), so nothing clamped the inner races (05 "Spin").
+- New printed part **RB-PRT-023 idler spacer** (PET-CF x2): Ø8 body, Ø5.8 x 0.6 lands on the inner races, Ø4.2 bore, 13.0 long, modelled in the wheel frame and placed in both idlers for the interference check. Bought: DIN 988 4 x 8 x 0.5 shims, 1 at the boss + 2 at the frame per idler. 05 and 07 F4 amended. slice.py entry added.
+- Track-frame sprocket pin: Ø4 h8 × 8 dowel ×2 (Ben has none yet): 07 amendment + TODO buy item with the shims.

@@ -357,7 +357,24 @@ class SwBuild
                 double[] got = { b[0] * 1e3, b[3] * 1e3, b[1] * 1e3, b[4] * 1e3, b[2] * 1e3, b[5] * 1e3 };
                 double worst = 0;
                 for (int i = 0; i < 6; i++) worst = Math.Max(worst, Math.Abs(got[i] - v[i]));
-                Check("box", worst <= v[6], string.Format(ci, "worst axis error {0:F3} mm", worst));
+                string how = "part box";
+                if (worst > v[6])
+                {
+                    // P6m4: GetPartBox can be loose round rotated toroidal rounds (bulkhead
+                    // Y 53.42 for a true 53.00); retry with the body's exact extreme points
+                    IBody2 bd = (IBody2)bodies[0];
+                    double[][] dirs = { new[] { -1.0, 0, 0 }, new[] { 1.0, 0, 0 }, new[] { 0, -1.0, 0 }, new[] { 0, 1.0, 0 }, new[] { 0, 0, -1.0 }, new[] { 0, 0, 1.0 } };
+                    worst = 0;
+                    for (int i = 0; i < 6; i++)
+                    {
+                        double ex, ey, ez;
+                        bd.GetExtremePoint(dirs[i][0], dirs[i][1], dirs[i][2], out ex, out ey, out ez);
+                        got[i] = (i < 2 ? ex : i < 4 ? ey : ez) * 1e3;
+                        worst = Math.Max(worst, Math.Abs(got[i] - v[i]));
+                    }
+                    how = "extreme points";
+                }
+                Check("box", worst <= v[6], string.Format(ci, "worst axis error {0:F3} mm ({1}: {2:F2} {3:F2} {4:F2} {5:F2} {6:F2} {7:F2})", worst, how, got[0], got[1], got[2], got[3], got[4], got[5]));
             }
         }
     }
