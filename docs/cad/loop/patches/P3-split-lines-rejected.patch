@@ -1,0 +1,153 @@
+diff --git a/tools/chassis.py b/tools/chassis.py
+index e53c459..9b8283d 100644
+--- a/tools/chassis.py
++++ b/tools/chassis.py
+@@ -416,6 +416,24 @@ def plate_volume_numeric(step: float = 0.1) -> float:
+     return vol
+ 
+ 
++def mount_footprint(side: int) -> list[tuple[float, float]]:
++    """Where mount v2 touches the plate (foot + upright base + end stop), chassis frame.
++    Right = Rz180 of the part frame, left = its X-mirror at identity: x = tx - x_part,
++    y = side * (y_part + ty)."""
++    xa, xb = MM_X
++    part = [
++        (-30.4, -47.0),
++        (xb, -47.0),
++        (xb, MM_FACE),
++        (xa, MM_FACE),
++        (xa, -8.9),
++        (-19.9, -8.9),
++        (-30.4, -18.7),
++    ]
++    tx, ty = mount_tx(), mount_ty()
++    return [(tx - x, side * (y + ty)) for x, y in part]
++
++
+ def plate_lines(plate: str) -> list[str]:
+     lines = [f"part|{plate}"]
+     for op, s, z0, z1 in plate_features():
+@@ -430,6 +448,15 @@ def plate_lines(plate: str) -> list[str]:
+             lines.append(f"prof|{z0} {z1}|{shape_prof(s)}|{op}")
+     for sgn in (-1, 1):
+         lines.append(f"cyl|x|{sgn * JACK_Y} {JACK_Z}|all|{INS_HOLE / 2}|cut")
++    # P3: the motor-mount footprints as split lines on the top face (FEA load areas)
++    for sgn in (-1, 1):
++        fp = mount_footprint(sgn)
++        segs = "M " + " L ".join(f"{x:.3f} {y:.3f}" for x, y in fp)
++        at = (
++            mount_tx() + 5.0,
++            sgn * (-40.0 + mount_ty()),
++        )  # a point inside, off the pockets
++        lines.append(f"split|{segs}|{at[0]:.3f} {at[1]:.3f}")
+     hx, hy = PLATE_L / 2, PLATE_W / 2
+     vol = plate_volume_numeric()
+     lines += [
+diff --git a/tools/fea.py b/tools/fea.py
+index a8be508..e0a3390 100644
+--- a/tools/fea.py
++++ b/tools/fea.py
+@@ -60,6 +60,10 @@ def s1a() -> dict:
+             "fix cyl 1 0 0 2.0 0.05",  # jack-screw insert bores (only X-axis cylinders of r 2)
+             f"remote left {gx:.2f} {gy:.2f} {gz:.2f} cyl 0 0 1 2.0 0.05 box 40 0 -9 80 60 1",
+             f"remote right {gx:.2f} {-gy:.2f} {gz:.2f} cyl 0 0 1 2.0 0.05 box 40 -60 -9 80 0 1",
++            # P3: + the mount footprint (split face on the top), where the foot bears
++            f"remote left {gx:.2f} {gy:.2f} {gz:.2f} plane 0 0 1 0 box 25 10 -1 80 55 1",
++            f"remote right {gx:.2f} {-gy:.2f} {gz:.2f} plane 0 0 1 0 box 25 -55 -1 80 -10 1",
++            "hotspots 5",
+             "disp mounts cyl 0 0 1 2.0 0.05 box 40 -60 -9 80 60 1",
+             "probe pockets 38 -60 -9 82 60 1",
+             "probe jackstops -40 -45 -1 -26 45 11",
+diff --git a/tools/swbuild.cs b/tools/swbuild.cs
+index 0901b9f..76f84bc 100644
+--- a/tools/swbuild.cs
++++ b/tools/swbuild.cs
+@@ -34,6 +34,10 @@
+ //                                             loop: "c R" circle, or "p r0 r1 .. rn-1" a
+ //                                             polyline through radii at equal angles from
+ //                                             theta = 0 (tools/drivetrain.py's polar curves)
++//   split|<segs>|x y                          split line: a closed profile on Front (z = 0)
++//                                             projected onto the face through (x, y, 0);
++//                                             no geometry change, just a face boundary
++//                                             (FEA load / fixture areas)
+ //   stl|<doc.SLDPRT>|<out.stl>                binary STL, mm, fine, in the part's own
+ //                                             coordinates (not shifted to positive space)
+ //   rotbody|px py pz|y|deg                    rotate every solid body about the axis
+@@ -119,6 +123,7 @@ class SwBuild
+                 case "stl": Stl(f[1], f[2]); break;
+                 case "fillet": Fillet(f); break;
+                 case "ring": Ring(f); break;
++                case "split": Split(f); break;
+                 default: Check("command " + f[0], false, "unknown"); break;
+             }
+             if (failures > 0 && f[0] != "expect") break;   // stop at the first broken step
+@@ -484,6 +489,69 @@ class SwBuild
+         After("ring z " + f[1] + " " + tag + (cut ? " cut" : ""), Extrude(z[0], z[1], cut, false));
+     }
+ 
++    static int FaceCount()
++    {
++        int n = 0;
++        foreach (object bo in (object[])((IPartDoc)doc).GetBodies2((int)swBodyType_e.swSolidBody, true))
++            n += ((IBody2)bo).GetFaceCount();
++        return n;
++    }
++
++    static void Split(string[] f)
++    {
++        int before = FaceCount();
++        double v0 = PartVolume();
++        // the sketch must sit OFF the face it splits (a coplanar sketch projects to nothing):
++        // a reference plane 1 mm above Front, sketch there, project down
++        doc.ClearSelection2(true);
++        doc.Extension.SelectByID2("Front Plane", "PLANE", 0, 0, 0, false, 0, null, 0);
++        IFeature rp = (IFeature)doc.FeatureManager.InsertRefPlane(
++            (int)swRefPlaneReferenceConstraints_e.swRefPlaneReferenceConstraint_Distance, M(1.0), 0, 0, 0, 0);
++        if (rp == null) { Check("split ref plane", false, "InsertRefPlane null"); return; }
++        doc.ClearSelection2(true);
++        rp.Select2(false, 0);
++        doc.SketchManager.InsertSketch(true);
++        doc.SketchManager.AddToDB = true;
++        ISketchManager sm = doc.SketchManager;
++        string[] t = f[1].Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
++        double px = 0, py = 0, sx = 0, sy = 0;
++        for (int i = 0; i < t.Length; )
++        {
++            if (t[i] == "M") { px = sx = double.Parse(t[i + 1], ci); py = sy = double.Parse(t[i + 2], ci); i += 3; }
++            else { double x = double.Parse(t[i + 1], ci), y = double.Parse(t[i + 2], ci);
++                   sm.CreateLine(M(px), M(py), 0, M(x), M(y), 0); px = x; py = y; i += 3; }
++        }
++        sm.CreateLine(M(px), M(py), 0, M(sx), M(sy), 0);
++        CloseSketch();
++        IFeature sk = (IFeature)doc.FeatureByPositionReverse(0);
++        double[] at = Nums(f[2]);
++        // the face to split: the planar face at z = 0 (normal +Z) that contains (x, y);
++        // SelectByID2 at a point on the sketch plane picks the sketch region instead
++        IFace2 target = null;
++        foreach (object bo in (object[])((IPartDoc)doc).GetBodies2((int)swBodyType_e.swSolidBody, true))
++            foreach (object fo in (object[])((IBody2)bo).GetFaces())
++            {
++                IFace2 fc = (IFace2)fo;
++                ISurface su = (ISurface)fc.GetSurface();
++                if (!su.IsPlane()) continue;
++                double[] pp = (double[])su.PlaneParams;
++                if (Math.Abs(Math.Abs(pp[2]) - 1) > 1e-9 || Math.Abs(pp[5]) > 1e-9) continue;
++                double[] q = (double[])fc.GetClosestPointOn(M(at[0]), M(at[1]), 0);
++                if (q != null && Math.Abs(q[0] - M(at[0])) < 1e-7 && Math.Abs(q[1] - M(at[1])) < 1e-7 && Math.Abs(q[2]) < 1e-7) { target = fc; break; }
++            }
++        doc.ClearSelection2(true);
++        bool s1 = doc.Extension.SelectByID2(sk.Name, "SKETCH", 0, 0, 0, false, 0, null, 0);
++        bool s2 = target != null && ((IEntity)target).Select2(true, 0);
++        doc.InsertSplitLineProject(false, false);   // IModelDoc2, returns void: face count is the check
++        IFeature last = (IFeature)doc.FeatureByPositionReverse(0);
++        Console.WriteLine("    split: last feature " + last.Name + " [" + last.GetTypeName2() + "]");
++        doc.ClearSelection2(true);
++        doc.EditRebuild3();
++        int after = FaceCount();
++        Check("split at (" + f[2] + ")", after > before && Math.Abs(PartVolume() - v0) < 0.01,
++            string.Format(ci, "sketch sel {0} face sel {1}, faces {2} -> {3}", s1, s2, before, after));
++    }
++
+     static void Stl(string path, string outPath)
+     {
+         int e = 0, w = 0;

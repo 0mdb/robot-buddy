@@ -2,12 +2,99 @@
 
 **Status: all v1 boards SCRAP.** Do not power a v1 board with U2 (TB6612) seated — see E1.
 
+**v2 is NOT orderable (2026-11-09):** the TB6612 footprint is still mirrored, so seating
+U2 shorts +5V to GND. See §M, which also lists four other manufacturing findings that are
+still open on v2.
+
 Consolidated list of every v1 defect plus the v2 architecture change, with a
 pre-fab sign-off gate at the end. Mirrors `robot-scout/docs/v2-defect-register.md`.
 
 Verified 2026-08-06 against `hardware/kicad/robot-buddy-reflex/robot-buddy-reflex.kicad_pcb`,
 `docs/ref/SparkFun_Motor_Driver-TB6612FNG_v11c.{sch,brd}`, and the Waveshare
 ESP32-S3-Zero STEP.
+
+---
+
+## M — Manufacturing findings from the first order, checked against v2 (2026-11-09)
+
+The `cad-loop` branch (merged 2026-11-09) ran an order-QC pass after the first
+fabricated order (the June/July v1 boards) came back with **footprint/pinout and
+silk/mask problems**. It fixed them **on the v1 design** (+BATT, NeoPixel U3/J11,
+J8, the full-cluster ESP32 footprint) in `600b271` and `b28f8e7`, and added the
+encoder-socket notches to the outline.
+
+**Those layout fixes were not taken in the merge.** The v2 design (I²C
+expander, no +BATT, no NeoPixels, NoCluster U1, MH2 moved, MH5 added) has diverged
+too far for the v1 board, schematic, gerbers or generator edits to apply. Git
+auto-merged pieces of them into the v2 scripts, which would have produced a
+mismatched board. The merge keeps the v2 pipeline (`layout_pcb.py`, `route_pcb.py`,
+`populate_schematic.py`, `make_fab.py`, board/sch/gerbers) as-is, and brings in
+cad-loop's standalone tools:
+
+- `hardware/kicad/board_outline.py`: the notched outline (`NOTCH_X = (28.5, 50)`, 7 deep)
+- `hardware/kicad/pcb_qc.py` + `gerber_check.py`: order QC against the SparkFun `.brd`,
+  the Waveshare STEP, `pin_map.h`, chassis mechanics and the fab zip. **Written for v1:**
+  it crashes on v2 (`KeyError: 'U3'`) and expects J8/J11/U3. It needs a v2 pass
+  before it can be a gate.
+- `hardware/kicad/fab_export.py`: cad-loop's fab exporter. It **clears `gerbers/`**
+  and overlaps `make_fab.py`. Use `make_fab.py` for v2 and do not run this one on the
+  live tree.
+
+cad-loop's v1 versions of the board, its footprint copies (`hardware/kicad/lib/`) and
+its generator edits stay in git at `origin/cad-loop` (`600b271`, `b28f8e7`) for
+porting.
+
+Status of each manufacturing finding on the v2 board, verified 2026-11-09:
+
+| # | Finding on the manufactured v1 boards | v2 status |
+|---|---|---|
+| M1 | **TB6612 footprint is a mirror image of the SparkFun breakout** (pin 16 on a breakout GND = dead short; AO1/AO2/GND shuffled) | 🔴 **OPEN: only half fixed.** E1 fixed the *pin order within each column* in the symbol. The footprint geometry in `~/kicad-libs/.../SparkFun_TB6612FNG_v2.kicad_mod` is still mirrored. See M1 below. |
+| M2 | Silkscreen printed on pads (517 px at 400 dpi in the June zip) | ✅ v2 `make_fab.py` plots with `--subtract-soldermask`; `gerber_check.py` on the v2 zip: **0 px** top and bottom. The stale `jlcpcb-assembly/robot-buddy-reflex-gerbers.zip` (2026-07-20, still v1) shows 231 px. **Delete it** so nobody orders from it (see O1). |
+| M3 | PTH and NPTH merged in one drill file | ✅ v2 zip has separate `PTH.drl` / `NPTH.drl` (`--excellon-separate-th`). The stale `jlcpcb-assembly` zip still has the merged `robot-buddy-reflex.drl`. |
+| M4 | THT pads dropped unconnected rings, so the B.Cu GND pour reached into pad mask openings (J8 pin 1 +BATT could solder-bridge to GND) | ✅ No foreign pour inside any PTH pad opening on F.Cu or B.Cu (checked against the filled zones). `keep_end_layers` is set on all THT pads. |
+| M5 | Rotated footprints: kiutils doesn't add the footprint angle to pads, so pad copper stays unrotated | 🔴 **OPEN in v2.** Every footprint at 90°/270° has unrotated pads. R5 (0402 at 90°): pad 0.54 × 0.64, should be 0.64 × 0.54. J1/J2 XH at 90°: 1.7 × 1.95, should be 1.95 × 1.7. DRC can't see it because the pads stay clear of each other, but the copper and paste don't match the part's terminals. Port cad-loop's `layout_pcb.py` pad-angle fix (`600b271`) and regenerate. |
+| M6 | USB-C (the Pi link, USB-Serial-JTAG: `usb_rx.h`) faced a side edge, behind J6/J7 | 🔴 **OPEN in v2.** U1 sits at (9, 16), angle 0. The USB-C end faces the top edge, 16 mm inboard, behind J6/J7/MH1. R2c requires it flush on the rear edge (KiCad x 0). |
+| M7 | Encoders powered from +5V, with A/B wired directly to non-5V-tolerant GPIO | 🔴 **OPEN in v2.** J1.3 / J2.3 are `+5V`; ENC_* go straight to U1.21–24 with no divider. Power them from +3V3 (the encoder is rated 3.3–5 V). |
+| M8 | Encoder-socket notches (board x 28.5–50, 7 deep, both long edges) | 🔴 **OPEN in v2.** The v2 outline is a plain 65 × 60 rectangle. It also conflicts with v2's own **MH2 at (44.5, 4)**, which falls inside the top notch. |
+| M9 | 74LVC1G125 can't take 3.3 V in at 5 V supply → AHCT | ✅ Moot: U3/NeoPixels deleted in v2 (A0). |
+
+### M1. 🔴 TB6612 footprint is mirrored: the E1 fix verified order, not handedness
+
+SparkFun's `.brd`, JP1 at (2.54, 1.27) R90 and JP2 at (17.78, 19.05) R270, viewed
+chip-up from the top: **left column VM, VCC, GND, AO1, AO2, BO2, BO1, GND; right column
+PWMA, AIN2, AIN1, STBY, BIN1, BIN2, PWMB, GND, with VM across from PWMA.**
+
+The v2 footprint has pad 1 (PWMA) at (−7.62, −8.89) and pad 9 (VM) at (+7.62, −8.89).
+That puts PWMA top-**left** and VM top-**right**, a left-right mirror. No rotation of the
+real module matches it. E1 said "our footprint is Eagle rotated 180°". It is Eagle
+*mirrored*. The check that "the left row pins down the 180° mapping" only verified the
+order *within* each column, and a mirror preserves that order.
+
+What happens with the real module seated chip-up in v2 (orientation matching the silk):
+pad 9 (`+5V`) lands on a module **GND** pin, so the HAT's 5V rail is shorted the moment it
+is powered. Pad 16 (`GND`) lands on VM, and VCC/PWM/direction are all on wrong pins. This
+repeats E1's failure mode on the 5V rail instead of the pack.
+
+cad-loop's fix (`600b271`): swap the two pad columns in the footprint (pads 9–16 to
+x −7.62, pads 1–8 to x +7.62), then place U2 at 180° so the VM/motor row faces J1/J2.
+For v2, apply the column swap at the source, `~/kicad-libs/footprints/robot-projects.pretty/SparkFun_TB6612FNG_v2.kicad_mod`.
+Then re-place U2, keeping C3 at pad 9 (E2), and regenerate. Pad numbering and the symbol
+need no change: pads 9–16 = VM VCC GND AO1 AO2 BO2 BO1 GND is already right.
+
+**Gate:** check handedness, not just order. Use a cross product of VM→PWMA × VM→VCC,
+or `pcb_qc.py` §2, which compares against the `.brd` geometry.
+
+### M10. Mechanical knock-ons of the v2 hole moves (found in the same review)
+
+The chassis base plate (`tools/chassis.py`: `REFLEX_HOLES = (25.5, 22.5)`, 4 corner
+standoffs, Ø9.2 bosses) still expects M3 holes at board (4,11), (55,11), (4,56) and
+(55,56). v2 moved MH2 to (44.5, 4) and added MH5 at (60.5, 24.5), so:
+- No standoff under MH2 or MH5.
+- The standoff at (55, 11) sits under **C3's THT leads**: pad 2 is at (53.62, 9.6),
+  inside the Ø9.2 boss.
+- MH2 is inside the encoder notch (M8).
+The board's hole pattern and the base plate have to be settled together. The notch
+probably forces MH2 back toward (55, 11), which reopens the C3-at-pad-9 problem (E2).
 
 ---
 
@@ -1305,6 +1392,16 @@ No gerbers are generated until every line is checked and initialled.
       negative-tested by injecting an orphan flash (detected, exit 1).
 - [ ] JLC BOM match review: every line shows the intended **Package**, not just a
       valid C-number (the wrong-package auto-match is silent)
+
+### Manufacturing findings (§M, 2026-11-09)
+- [ ] M1 — TB6612 footprint un-mirrored at source; handedness checked against the `.brd`
+- [ ] M5 — rotated footprints carry the angle on their pads (port the cad-loop fix)
+- [ ] M6 — U1 USB-C flush on the rear edge, plug path clear
+- [ ] M7 — J1.3/J2.3 encoder supply on +3V3
+- [ ] M8 — encoder notches in the outline (`board_outline.py`)
+- [ ] M10 — hole pattern agreed with `tools/chassis.py` base plate; nothing under C3's leads
+- [ ] `pcb_qc.py` updated for v2 and passing; stale `jlcpcb-assembly/*gerbers.zip` and the
+      June `gerbers/robot-buddy-reflex-drl_map.pdf` (still zipped by `make_fab.py`) removed
 
 ### Final
 - [x] DRC clean — 0 violations, 0 unconnected, 0 schematic-parity; all three gates pass

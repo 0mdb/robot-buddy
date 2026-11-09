@@ -19,10 +19,11 @@ __pycache__/
 .vscode/
 .idea/
 
-# Claude Code
-.claude/
-CLAUDE.md
-SKILL.md
+# Claude Code — skills, hooks and shared settings are versioned; local overrides are not
+.claude/*
+!.claude/skills/
+!.claude/hooks/
+!.claude/settings.json
 
 # Build artifacts
 build/
@@ -33,6 +34,10 @@ node_modules/
 sdkconfig
 sdkconfig.old
 
+# KiCad — per-user project state + router logs
+*.kicad_prl
+hardware/kicad/logs/
+
 # Wake word training (large generated data)
 training/.venv/
 training/openWakeWord/
@@ -40,7 +45,7 @@ training/piper-sample-generator/
 training/data/
 training/output/
 
-# SolidWorks — lock / temp / backup cruft (authored on Windows, rsynced in)
+# SolidWorks — lock / temp / backup cruft (tools/sw.py pull excludes these too)
 ~$*
 *.~*
 *.SLDBAK
@@ -56,3 +61,18 @@ _autosave-*
 ~*.lck
 fp-info-cache
 hardware/kicad/logs/
+
+# Vendor CAD — raw downloads stay out of git (re-fetch per CAD/library/README.md).
+# The vendors' native SLDPRT/SLDASM ARE tracked (LFS): assemblies reference them.
+CAD/library/vendor/**/*.[Ss][Tt][Ee][Pp]
+CAD/library/vendor/**/*.[Ss][Tt][Ll]
+CAD/library/vendor/RaspberryPi5/RENDERS/
+CAD/library/vendor/RaspberryPi5/Photo/
+
+# SolidWorks Simulation results written next to studied parts (tools/fea.py)
+CAD/**/*.CWR
+CAD/**/*.gsz
+CAD/**/*.LOG
+CAD/**/PerformanceLog.txt
+CAD/**/*-BenchMark-Solver.txt
+CAD/exports/print/*.gcode

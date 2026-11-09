@@ -1,0 +1,64 @@
+diff --git a/tools/chassis.py b/tools/chassis.py
+index 3443057..a327e3e 100644
+--- a/tools/chassis.py
++++ b/tools/chassis.py
+@@ -1019,8 +1019,8 @@ MM_STOP_T = 3.0  # end stop at the gearbox end (Ben's gusset)
+ MM_GUSSETS = (
+     -18.2,
+     -3.9,
+-    12.0,
+-)  # inboard, between the foot screws (x -25.2, -11.2, 3.5)
++    8.6,
++)  # between the foot screws; 8.6 keeps the r2 fillet off the x 14.5 inserts
+ MM_GUSSET_T, MM_GUSSET_Y, MM_GUSSET_Z = 2.4, -45.5, 20.0
+ MM_CHAMFER = 3.6  # root chamfer on the inboard side (stands in for a fillet until T7)
+ MM_INS_DEPTH = MM_T  # M3 inserts through the upright, pressed from the motor face (F3)
+@@ -1158,15 +1158,47 @@ def emit_ops(ops: list[tuple]) -> list[str]:
+     return out
+ 
+ 
++MM_ROOT_R = 2.0  # 07 §1 fil_in at load roots
++
++
++def mount_v2_fillets(mirror: bool) -> list[tuple]:
++    """(r, axis, box, n, dvol, tol): the vertical gusset-to-upright root edges (S2's
++    unconverged gusset peak). Each runs from the root-chamfer top to the gusset's
++    hypotenuse; a concave 90° fillet adds (1 - pi/4) r² per mm of edge."""
++    yi = MM_FACE - MM_T
++    z_lo = MM_FOOT_T + MM_CHAMFER  # root chamfer meets the upright face here
++    slope = (MM_GUSSET_Z - MM_FOOT_T) / ((yi + 0.6) - MM_GUSSET_Y)
++    z_hi = MM_GUSSET_Z - 0.6 * slope  # gusset hypotenuse at the upright face
++    length = z_hi - z_lo
++    r = MM_ROOT_R
++    out = []
++    for gx in MM_GUSSETS:
++        x0, x1 = gx - MM_GUSSET_T / 2 - 0.1, gx + MM_GUSSET_T / 2 + 0.1
++        if mirror:
++            x0, x1 = -x1, -x0
++        box = (x0, yi - 0.1, z_lo - 0.5, x1, yi + 0.1, z_hi + 0.5)
++        dv = 2 * (1 - math.pi / 4) * r * r * length
++        out.append((r, "z", box, 2, dv, 0.3 * dv))
++    return out
++
++
+ def mount_v2_lines(path: str, mirror: bool) -> list[str]:
+     ops = mount_v2_features(mirror)
+     vol, bb = solid_volume_numeric(
+         ops, ((-36.0, 36.0), (-50.0, -5.0), (-1.0, MM_TOP + 1.0))
+     )
++    fil = mount_v2_fillets(mirror)
++    fil_lines = [
++        f"fillet|{r}|{ax}|{' '.join(f'{v:.2f}' for v in box)}|{n}|{dv:.2f} {tol:.2f}"
++        for r, ax, box, n, dv, tol in fil
++    ]
++    vol += sum(f[4] for f in fil)
++    tol = vol * 0.01 + sum(f[5] for f in fil)
+     return [
+         f"part|{path}",
+         *emit_ops(ops),
+-        f"expect|vol {vol:.1f} {vol * 0.01:.1f}|box {' '.join(f'{v:.2f}' for v in bb)} 0.35",
++        *fil_lines,
++        f"expect|vol {vol:.1f} {tol:.1f}|box {' '.join(f'{v:.2f}' for v in bb)} 0.35",
+         "save",
+     ]
+ 

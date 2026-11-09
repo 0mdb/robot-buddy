@@ -1,0 +1,104 @@
+# 2026-11-06: front corners square, rear corners closed (tick 101)
+
+- **What changed:** the plate's 45° front chamfers are gone. The corners are square now, rounded r 3 in plan so they aren't sharp. The canopy's rear apron is now a full-width rear wall down to the plate. It runs round both R20 corners and stops 1 mm behind where the carriages reach at full tension travel. Look: `shots/hero/rear_quarter.png`, `three_quarter.png`; plate and canopy alone in `shots/1-P15/`.
+- **Still open:** a 5.6 mm sliver per rear corner, between the wall's end and the belt, behind the track. Closing it means moving the carriages, which reach |y| 53.
+- **Knock-on:** the tilted bulkhead's side flanges used to hang over the chamfer and would have hit the square corners. They're trimmed to 0.3 mm above the plate (flush at z 0 doubled the S5c stress in the FEA fixture).
+- **Numbers:** 0 interferences. Robot 728.5 g printed (+5.7: plate +2.0, canopy +3.6). Studies, all inside the gates (MPa): S1a 11.8 (+3.4 %) · S1b 3.20 · S1m 9.01 · S5c 5.81 · S8 19.3 / heel 1.15 mm · S5k 9.97 (+5.3 %) / lugs 0.61 mm. S8 and S5k now hold the wider wall foot, which is slightly optimistic.
+- **Housekeeping:** C: had filled to 508 MB with old Simulation results. That's why S8/S5k failed and probably why SolidWorks crashed. I deleted 660 files (~93 GB, you OK'd it), and `fea.py` now deletes each study's results once it has read them.
+- **M3 inserts (Ben, later 2026-11-06):** 5.7 long, Ø4.6 knurl, Ø3.9 small end. That's exactly what the model already assumed (hole 4.0, pocket 7.2 / 6.7, boss 9.2), so nothing moves. 07 §4.2 amended.
+- **Insert test print (D6, RB-CPN-003):** M3 horizontal + vertical rows Ø3.7–4.3, M2.5 row Ø3.3–3.9, sizes engraved. `.3mf` for PET-CF (23.6 g, 55 min) and PC (19.5 g, 59 min). Look first: `shots/D6-inserts/`.
+- **Need from you:** the Flex board measurements (`flex_measure.md`); encoder socket height + plug depth; Q28/Q29/Q23 + HAT heights.
+
+# 2026-11-05: your parts built in (ticks 97–100), review pass clean
+
+- **Review pass (after tick 100):** all 12 studies re-run on today's geometry, all equal to their accepted values and inside the gates: S1a 11.4 · S1b 3.45 · S1d 9.00 · S1e 10.8 / 1.16 mm · S1m 9.22 · S2 6.36 · S6 6.50 · S9 12.2 / 0.35 mm · S5c 5.72 · S5k 9.47 · S8 19.3 / 1.16 mm (MPa). Only new sharp edges: the 4 mic port rims (Ø1.2, left sharp). Robot 722.8 g printed, 0 interferences. Nothing else can move until the items under "Need from you".
+
+- **Speaker pocket → the Same Sky you ordered (tick 97):** 6.45 deep for 0.3 preload, stadium TPU gasket, clamp pad on the magnet only, lead notch. S5c 5.72 MPa (was 5.78).
+- **Mic disc under the canopy ribs (tick 98, Q30 b):** 3 bosses + TPU washers, 4 Ø1.2 ports on the top (the only visible change: `shots/1-P6d-mic/hero_top_t98.png`). The disc is wider than the keels, so each keel has a window; the first windows cost S8 +39 %. Shrunk to what the board really has there (STEP: ≤ 0.6 mm parts) and doubled the keel over them: **S8 19.3 MPa (+8.9 %, SF 3.2), heel 1.16 mm, S5k 9.47**. Canopy 120.9 g, printed 709.1 g, 0 interferences.
+- **Core board (P9, tick 99, Q31 default):** a 1 mm voxel map says it only fits on edge; it stands in the right (−y) side bay outboard of the Pi on a wall that's part of the Pi deck, 3 × M2.5 × 6 into M2.5 × 4 inserts, USB-C pointing down into the pocket between the carriage and motor (**right-angle USB-C cable**). 0 interferences, S1b =, deck 18.8 → 30.3 g (printed 720.7 g). Look: `shots/1-P9/deck_wall_t99.png`. Q31: side bay confirmed (Ben).
+- **Core-board wall in a drop (P9b, tick 100):** new study S1e, board at 20 g each way. The bare wall was strong enough but swung 1.95 mm toward the canopy (the board's parts have 2.0). So no lightening window: 3 small ribs + a 45° top chord on the wall's inboard side (+2.1 g): **1.16 mm, 10.8 MPa (SF 3.2)**, Pi-deck study S1d unchanged. Deck 32.4 g, printed 722.8 g. Look: `shots/1-P9/deck_wall_ribs_t100.png`. Worth a sideways drop on the prototype.
+- **Need from you:** Encoder socket height + plug depth (clash check vs the reflex board, 0.7 mm away). Check the disc's thickness when it arrives (STEP 1.5, DXF 1.2).
+
+# Leg 3 finished (2026-11-03 01:45 MST): every unblocked item done, review pass accepts no change
+
+**Stop condition met** (STATE.md): the leg-3 list is done except what waits on you (below), and a full review pass on the final geometry (all 11 studies + the edge audit) matched every accepted value. **Nothing is print-ready until you've looked** (eyes before electrons): start with `docs/cad/loop/shots/hero/` (three-quarter, face, rear, top).
+
+**Robot now:** 707.1 g printed (+ belts), 0 interferences. Studies: S1a 11.4 · S1b 3.45 · S1d 9.05 · S1m 9.22 · S2 6.20 · S6 6.50 · S9 12.2 / 0.35 mm · S5c 5.78 · S5k 9.38 · S8 17.7 / 1.16 mm (MPa).
+
+**Waiting on you:** Q28 (frame +34 g, default keep), Q29 (hood ramp, default keep the step), Q23 + UPS HAT heights (charge jack / switch, cell ribs), mic-disc dims (seat + grommets), XVF3800 board (P9), M3 insert OD × length (insert ladder coupon), the micro-speaker part (🟡 30 × 20 × 6), encoder connector (R2b strain relief).
+
+# Summary: CAD loop leg 3 (from tick 68, 2026-11-01 11:00 MST; no stop time)
+
+Order (Ben): P13 road wheels → P7/P8 → canopy P6d/f/e → T4 slicing → P10/E4 → polish.
+**Nothing is print-ready yet** (your call). Coupons/test pieces are ready (below).
+
+## Since leg 2, biggest first
+1. **08 rev 1 is finally in `cad-loop` (P13a, tick 68).** 81fd640 (road wheels, idler 3 mm
+   below the TT shaft) had never been cherry-picked. Now: belt on the 4-wheel path (400 mm),
+   idler/carriage/track-frame slot at z 10.5, taut station −57.18, wheels turned so every lug
+   near them clears its pocket. **0 interferences.**
+2. **Carriage clamp insert flipped** (found by S6 after the drop: 22.95 MPa, the axle-bolt
+   head sat in the clamp boss): insert pressed up from the foot's underside, screw M3 × 12 →
+   **M3 × 10**. **S6 7.57 → 6.50 MPa (SF 5.4)**, carriage 12.3 → 11.4 g.
+3. **Tread → `belt_bars_stagger`** (your call): 1.5 mm bars split at the centre, halves
+   staggered half a pitch, spacing jittered ±15 %; 57.2 g. 08 amended.
+4. **Road wheels (P13b, tick 69):** `RB-PRT-022_road_disc` 3.4 g × 8 placed on both axles per side, 0 interferences. Hangers next.
+5. **Canopy rear-wall vents (P6d, tick 71):** 2 × 13 vertical slots (intake under the HAT,
+   exhaust above it), canopy 114.2 → 112.8 g PC. S8 25.1 MPa / 1.63 mm (< 1.7), S5k lugs 0.77 mm:
+   both within 2–3 % of before. Look: `shots/1-P6d/canopy_right.png`.
+6. **Headless slicing (T4, tick 72):** `just cad-slice` → `CAD/exports/print/<part>.3mf` (settings
+   inside: 4 walls, 40 % gyroid, Engineering Plate) + `sliced.json`. **13 parts 623 g filament, 26.2 h.**
+   The canopy printed open side down is 186 g / 9.5 h on tree support (113 g of part): P6f next.
+   Bambu's PC preset says density 1.04; overridden to 1.20.
+7. **Canopy crown (P6f, tick 74):** top is a 2.5 mm arc front-to-back (no big flat), ribs follow it at
+   constant 4 mm depth. **S8 22.8 MPa (SF 2.72, better than flat 25.1), heel 1.43 mm**; S5k unchanged.
+   Canopy 114.8 g (+2.0). Took four runs: a micron step where flat-bottom cross ribs met curved
+   lengthwise ribs read as 83 MPa; FEA hotspots now print the peak node's xyz. Look: `shots/1-P6f/canopy_right.png`.
+8. **Canopy edges (P6e, tick 75):** outer front corners r 1; the canopy is now in the kid-safety edge audit.
+   **Q27** (new): the hood-top screw heads can't be recessed where they are (flange already overhangs the
+   hood's front edge); default = lugs 3 mm aft + counterbored collar.
+9. **Hero renders (E4, tick 76):** `shots/hero/` (three-quarter, face at a 5-year-old's eye height, rear, top),
+   re-rendered every rebuild. Start here for the look.
+10. **Part numbers (R3, ticks 78–79):** plate, canopy, deck, both track frames carry "RB-0xx r1" cut 0.6 deep on a
+    hidden face (each checked by ray-casting the STL from the reading side). Speaker grille slots now round-ended (D2).
+11. **Overnight polish (ticks 80–83):** part numbers on both mounts; the S1b +16 % after the labels is mesh
+    noise at the jack block's square root (no-label A/B = 3.20); rounding that root (r 2) made S1m/S1a/S1b
+    worse (+33/+27/+15 %), **rejected**. **M6:** PA6-CF coupon set in 08 §7, `just cad-slice --mat PA6-CF`
+    uses your fpv250 preset (idler 28.5 g, road disc 2.5 g). SW rebuilds have slowed to ~45 min: a restart may help.
+12. **Kid-safety edges (ticks 85–88):** canopy vent slots + apron corners, bulkhead grille slots + foot front,
+    plate tongue slots. Accessible sharp edges: canopy 1,205 → 405 mm, bulkhead 684 → 236 mm (the rest sits on/in
+    other parts). All studies unchanged. **Part cache**: unchanged parts aren't rebuilt (SW rebuilds had reached ~1 h).
+13. **Your answers built (ticks 91–93):** road axles on the track frame (S9 passes after a 3.6 mm plate: +34 g, Q28);
+    speaker pocket + clamp + gasket for a boxed micro speaker, grille re-centred on it (S5c better: 6.1 MPa).
+    Module dims are a 🟡 30 × 20 × 6 placeholder: send the part you'll buy.
+14. **Q26–Q27 built (ticks 94–95):** hood screws now sit in counterbored collars (lugs 3 mm aft); canopy prints rear
+    wall down with 45° rib undersides: **143.8 g / 6 h 04** (was 186 g / 9.5 h) and S8 improved (22.5 → 17.7 MPa).
+    **Q29 (new):** the remaining support sits under the hood's back wall; an outside ramp fixes it but changes the look.
+15. Backlog: PA6-CF wheel coupons (Fiberon PA6-CF20 in stock); **M3** insert ladder
+   ported from fpv250 (its PA6-CF result is M2 Ø3.4 × 5.5; buddy is M3).
+
+Printed total **663.1 g** (incl. belts 117 g, road discs 27 g), CoG (−0.3, 0.0, 22.6). Review-pass studies from
+leg 2 stand except S6 (now 6.50).
+
+## Answered 2026-11-02 (Ben): Q24 (a) frame carries road axles · Q25 (a) boxed micro speaker · Q26 (a) canopy rear wall down · Q27 (a) lugs 3 mm aft + counterbore. The loop builds them next (P13c/d, P7, P6f undersides, P6e screw heads).
+
+## Open, for you
+- **Q29 hood ramp:** remaining canopy support is under the hood back wall; an outside 45° ramp changes the silhouette. Default: keep the step.
+- **Q28 frame mass:** frame-carried road axles cost +34 g (3.6 mm frame plate); default keep.
+- ~~Q27~~ built.
+- **Q27 hood-top screw heads:** flange overhangs the hood front edge; default lugs 3 mm aft + counterbored collar (bulkhead change).
+- **Q26 canopy print orientation:** rear wall on the bed = 149 g / 6.8 h (vs 186 g / 9.5 h as modelled, 83 g of support inside); S8 still SF 2.23 on the datasheet Z strength. Default: rear wall down + 45° rib undersides.
+- **Q24 road-wheel axles:** the plate-edge hanger doesn't fit; default = the track frame carries them. P13c/d wait.
+- **Q25 speaker:** the CE40P-8 hits the left motor mount 8 mm behind the wall; default = a pre-boxed 8 Ω micro speaker. P7 waits.
+- **M3 inserts:** knurl OD + length of the M3 inserts in hand (sizes the ladder coupon).
+- **Q21 belt stretch:** lugs bind past 1.71 %; the strip-creep test decides (CLR 0.75 ready).
+- **P6i / E1:** S5c with the real canopy ≈ 0.7 mm vs 0.5 (you said accept); hood edge r 1 not r 3.
+- Measurements: encoder-motor connector (R2b), UPS HAT ports + heights (P6d, Q23), track tension.
+
+## Print first (cheap, settles numbers)
+`python3 tools/drivetrain.py build -o CAD/exports/rnd/drivetrain` (now also writes
+`belt_bars_stagger`), then `belt_strip150` + `belt_lug6` in TPU 85A, the coupons (TT bore,
+624 seats, 684, band slice) in PET-CF **and PA6-CF** (M6). See `docs/cad/belt_print.md`.
+
+## Next
+P6f orientation (Q26) → P6e → P10/E4; P6d rest needs your numbers → T4 slicing; P13c/d and P7 once Q24/Q25 are answered.

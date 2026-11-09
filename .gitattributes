@@ -24,3 +24,16 @@
 # If native CAD churns and the repo bloats, switch these to Git LFS:
 #   git lfs install && git lfs track "*.SLDPRT" "*.SLDASM" "*.SLDDRW" "*.STEP" "*.3MF"
 # (that rewrites the lines above with filter=lfs — do it before committing large parts)
+
+# Git LFS — CAD we author lives in LFS (decided 2026-10-30). Scoped to CAD/ and
+# docs/ref/ so the KiCad STEP export under hardware/ stays a plain git blob.
+CAD/**/*.SLDPRT   filter=lfs diff=lfs merge=lfs -text
+CAD/**/*.SLDASM   filter=lfs diff=lfs merge=lfs -text
+CAD/**/*.SLDDRW   filter=lfs diff=lfs merge=lfs -text
+CAD/**/*.PRTDOT   filter=lfs diff=lfs merge=lfs -text
+CAD/**/*.ASMDOT   filter=lfs diff=lfs merge=lfs -text
+CAD/**/*.DRWDOT   filter=lfs diff=lfs merge=lfs -text
+CAD/**/*.[Ss][Tt][Ee][Pp] filter=lfs diff=lfs merge=lfs -text
+CAD/**/*.[Ss][Tt][Ll]     filter=lfs diff=lfs merge=lfs -text
+CAD/**/*.3[Mm][Ff]        filter=lfs diff=lfs merge=lfs -text
+docs/ref/*.stp    filter=lfs diff=lfs merge=lfs -text

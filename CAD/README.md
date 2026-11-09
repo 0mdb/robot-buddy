@@ -1,8 +1,9 @@
 # CAD — robot-buddy mechanical
 
 SolidWorks source + neutral exports for the robot's printed and machined parts.
-Design rules: **`docs/print-dfm.md`**. (Material choices track robot-scout's
-`docs/print-bom.md` — same printer, same filament palette.)
+Design rules: **`docs/print-dfm.md`**. Material-per-part + filament inventory:
+**`docs/print-bom.md`** (same printer + palette as robot-scout, plus PLA cosmetic
+parts since buddy is indoor).
 
 ## Structure
 
@@ -24,28 +25,32 @@ CAD/
   design slip/adjust fits at **0.3–0.4 mm** per side, precision on hardware
   (bearings/bushings), not on printed features.
 
-## Workflow (Ubuntu dev ⇄ Windows SolidWorks)
+## Workflow (repo is master, SolidWorks driven from WSL) — since 2026-10-30
 
-Software/firmware work happens on Ubuntu; **SolidWorks and slicing run on
-Windows**. The working store is the FreeNAS share, and the repo holds a synced
-snapshot:
+The repo's `CAD/` is the source of truth. SolidWorks can't open `\\wsl.localhost\`
+paths, so it works on a mirror at `C:\Users\Ben\robot-buddy-sw\CAD`:
 
-1. **Author** in SolidWorks on Windows against the NAS share:
-   `smb://freenas2.local/dev/Robots/robot-buddy/CAD/`
-2. **Slice** on Windows (Bambu Studio / Orca) → P2S, **0.6 mm hardened** nozzle
-   (0.4 for detail). Export print-ready 3MF/STL into `exports/`.
-3. **Sync into the repo** on the Ubuntu box (mount the share, then rsync):
-   ```bash
-   # mount the SMB share (adjust mount point), then:
-   rsync -av --delete /mnt/freenas2/dev/Robots/robot-buddy/CAD/ ~/robot-buddy/CAD/
-   ```
-4. **Commit** from Ubuntu. `.gitattributes` marks SolidWorks/STEP/3MF files
-   binary; `.gitignore` drops SW lock/temp/backup cruft (`~$*`, `*.SLDBAK`, …).
+```bash
+just cad-push        # repo -> mirror
+just cad-probe       # SolidWorks running and reachable?
+# author in SolidWorks against C:\Users\Ben\robot-buddy-sw\CAD\..., Save, close the docs
+just cad-pull -n     # preview what comes back
+just cad-pull        # mirror -> repo, then commit
+```
 
-## Versioning note
+Both directions skip any file that is newer on the receiving side. Scripted
+work (C#/VBScript over COM) follows `.claude/skills/solidworks/SKILL.md` and
+`docs/cad/solidworks-api.md`. List what an assembly references with
+`python3 tools/sw.py refs CAD/assemblies/<name>.SLDASM`.
 
-Native SW files are committed as plain binary for now (NAS remains the live
-working store; the repo is the versioned snapshot beside the firmware). If the
-native files start bloating history, switch to Git LFS — see the commented
-`git lfs track` line in `.gitattributes`. Do the LFS switch *before* committing
-large parts, not after.
+Slice on Windows (Bambu Studio / Orca) for the P2S with a **0.6 mm hardened** nozzle
+(0.4 for detail), and export print-ready 3MF/STL into `exports/`.
+
+The NAS share (`smb://freenas2.local/dev/Robots/robot-buddy/CAD/`) was the
+working store until 2026-10-30. It is now a backup only; don't author there.
+
+## Versioning
+
+Authored CAD (SLDPRT/SLDASM/SLDDRW, STEP/STL/3MF under `CAD/`) is in **Git
+LFS** (`.gitattributes`). Run `git lfs install` once per clone. Vendor raw
+downloads are gitignored; see `library/README.md`.
