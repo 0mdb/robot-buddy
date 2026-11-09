@@ -255,6 +255,9 @@ def build() -> tuple[str, list[str]]:
         add(f'label = "{mode.name}"')
         add(f'color = "{MODE_COLORS.get(mode.name, "text_primary")}"')
         add(f"motion = {'true' if mode in MOTION_MODES else 'false'}")
+        # The one mode a client may ask to return to: disarm, and leaving ERROR (via the
+        # robot's own recovery). Vantage CONTROL.md §8a — the client never names it.
+        add(f"rest = {'true' if mode is Mode.IDLE else 'false'}")
 
     return "\n".join(lines) + "\n", warnings
 

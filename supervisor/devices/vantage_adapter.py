@@ -53,6 +53,7 @@ log = logging.getLogger(__name__)
 
 # Wire value per mode: declaration order, exactly as tools/emit_manifest.py enumerates it.
 _MODE_VALUES = {m: i for i, m in enumerate(Mode)}
+_MODES_BY_VALUE = list(Mode)
 
 # E-STOP arrives level-encoded at up to 100 Hz; the MCU latch makes repeats harmless, but there
 # is no reason to put 100 commands/s on the USB link. Same refire as Scout.
@@ -235,6 +236,36 @@ class BuddyAdapter:
             frame, speed_max_mms=self._max_v, yaw_rate_max_mrads=self._max_w
         )
         self._tick.set_teleop_twist(v, wz)
+
+    def request_mode(self, mode: int, armed: bool) -> None:
+        """A client's mode request, once per request (Vantage `CONTROL.md` §8a).
+
+        Through the robot's own state machine, which may refuse — the HTTP API's path. Entering
+        a motion mode needs an armed frame; asking for IDLE (stopping) does not. Out of ERROR,
+        IDLE means `clear_error()`, the same recovery the dashboard's clear button runs, so
+        leaving a fault is always an explicit operator request.
+        """
+        if not 0 <= mode < len(_MODES_BY_VALUE):
+            log.warning("vantage: request for unknown mode value %d ignored", mode)
+            return
+        target = _MODES_BY_VALUE[mode]
+        if target in MOTION_MODES and not armed:
+            log.info(
+                "vantage: %s refused — request came from a disarmed client",
+                target.value,
+            )
+            return
+        current = self._tick.robot.mode
+        if current == Mode.ERROR and target == Mode.IDLE:
+            ok, reason = self._tick.clear_error()
+        else:
+            ok, reason = self._tick.request_mode(target.value)
+        log.info(
+            "vantage: request %s from %s: %s",
+            target.value,
+            current.value,
+            "ok" if ok else f"refused ({reason})",
+        )
 
     def estop(self) -> None:
         """Fire Buddy's E-STOP. Also called directly by the bridge for a valid frame holding

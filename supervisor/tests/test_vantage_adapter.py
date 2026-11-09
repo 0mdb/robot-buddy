@@ -45,6 +45,8 @@ class FakeTick:
         self.robot = RobotState()
         self.twists: list[tuple[int, int]] = []
         self.estops = 0
+        self.requests: list[str] = []
+        self.clears = 0
 
     def set_teleop_twist(self, v_mm_s: int, w_mrad_s: int) -> None:
         self.twists.append((v_mm_s, w_mrad_s))
@@ -52,6 +54,24 @@ class FakeTick:
     def estop(self) -> bool:
         self.estops += 1
         return True
+
+    # The state machine itself, so the adapter is tested against Buddy's real transition table.
+    def request_mode(self, target: str) -> tuple[bool, str]:
+        from supervisor.core.state_machine import SupervisorSM
+
+        sm = SupervisorSM()
+        sm._mode = self.robot.mode
+        ok, why = sm.request_mode(Mode(target), True, self.robot.fault_flags)
+        self.robot.mode = sm.mode
+        self.requests.append(target)
+        return ok, why
+
+    def clear_error(self) -> tuple[bool, str]:
+        self.clears += 1
+        if self.robot.mode != Mode.ERROR:
+            return False, "not in ERROR mode"
+        self.robot.mode = Mode.IDLE
+        return True, "ok"
 
 
 class Registry:
@@ -309,3 +329,55 @@ def test_tickloop_estop_zeroes_teleop_and_reaches_the_mcu_when_it_can(
     assert reflex.sent == (1 if connected else 0)
     t = loop._behavior._teleop_twist
     assert (t.v_mm_s, t.w_mrad_s) == (0, 0), "zeroed even when the MCU is unreachable"
+
+
+# ── Mode requests (Vantage CONTROL.md §8a) ──────────────────────────────────────────────
+
+
+def _v(mode: Mode) -> int:
+    return list(Mode).index(mode)
+
+
+def test_armed_request_enters_teleop_through_the_state_machine(rig) -> None:
+    adapter, tick, _, _ = rig
+    tick.robot.mode = Mode.IDLE
+    adapter.request_mode(_v(Mode.TELEOP), armed=True)
+    assert tick.robot.mode == Mode.TELEOP
+
+
+def test_disarmed_client_cannot_enter_a_motion_mode(rig) -> None:
+    adapter, tick, _, _ = rig
+    tick.robot.mode = Mode.IDLE
+    adapter.request_mode(_v(Mode.TELEOP), armed=False)
+    assert tick.robot.mode == Mode.IDLE and tick.requests == []
+
+
+def test_any_client_may_ask_to_stop(rig) -> None:
+    adapter, tick, _, _ = rig
+    tick.robot.mode = Mode.TELEOP
+    adapter.request_mode(_v(Mode.IDLE), armed=False)
+    assert tick.robot.mode == Mode.IDLE
+
+
+def test_idle_out_of_error_is_the_robots_own_recovery(rig) -> None:
+    adapter, tick, _, _ = rig
+    tick.robot.mode = Mode.ERROR
+    adapter.request_mode(_v(Mode.IDLE), armed=False)
+    assert tick.clears == 1 and tick.robot.mode == Mode.IDLE
+
+
+def test_the_state_machine_may_refuse(rig) -> None:
+    adapter, tick, _, _ = rig
+    tick.robot.mode = Mode.ERROR
+    adapter.request_mode(_v(Mode.TELEOP), armed=True)
+    assert tick.robot.mode == Mode.ERROR, "ERROR is left only by recovery"
+    tick.robot.mode = Mode.TELEOP
+    adapter.request_mode(_v(Mode.WANDER), armed=True)
+    assert tick.robot.mode == Mode.TELEOP, "Buddy enters WANDER only from IDLE"
+
+
+def test_unknown_mode_value_is_ignored(rig) -> None:
+    adapter, tick, _, _ = rig
+    tick.robot.mode = Mode.IDLE
+    adapter.request_mode(250, armed=True)
+    assert tick.robot.mode == Mode.IDLE and tick.requests == []
