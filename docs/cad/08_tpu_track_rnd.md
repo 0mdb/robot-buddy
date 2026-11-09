@@ -132,6 +132,14 @@ tube with the TT double-D (Ø5.4 / 3.7, clearance from the coupon) over its last
 19.5 mm off the gearbox face (kit ~39)** (R2). `sprocket_outrigger` has a 624 pocket in
 the outboard face for P2o.
 
+> Amendment (Ben, 2026-11-08): **sprocket 624 seat = the idler's.** Pressing the 624 into the
+> first print split the hub from the web: the pocket was a plain Ø13.1 "slip" circle, which
+> prints undersize (a full-circle press), in a 0.95 mm wall (tube r 7.5). Now 3 crush ribs at
+> 0.15 (`SPROCKET_CRUSH`, the 624 coupon's 2 notches; the idlers pressed fine), a 3 mm wall
+> (r 9.55) over the pocket and its shoulder, web 3 → 4 mm. The D-bore end is unchanged. The
+> bearing stays: it is the track frame's front pin (06 §7 P2o), which closes belt tension
+> through the frame (S1m increment ~0.09 mm) and carries the road axles (S9). +2.1 cm³.
+
 **Idler.** Same rim, hub = **two 624s** (outboard face + just past the centre plane), with
 crush ribs (Q14). Open inboard side: the carriage's journal boss reaches in to the hub
 tube. `idler_1brg` is the 05-style single-bearing variant.

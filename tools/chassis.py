@@ -1215,7 +1215,7 @@ def rebuild_manifest(win: str) -> list[str]:
         *carriage_lines(car_r, mirror=True),
         *mount_v2_lines(mount_r, mirror=False),
         *mount_v2_lines(mount_l, mirror=True),
-        *wheel_lines(sprocket, dt.sprocket_layers(True)),
+        *wheel_lines(sprocket, dt.sprocket_layers(True), SPROCKET_SPOKES),
         *wheel_lines(idler, dt.idler_layers(2)),
         *wheel_lines(road, dt.road_wheel_layers()),
         *road_axle_lines(road_axle),
@@ -2540,8 +2540,61 @@ def ring_lines(layers: list) -> list[str]:
     ]
 
 
-def wheel_lines(path: str, layers: list) -> list[str]:
+# Sprocket spokes (Ben 2026-11-08, with the 624 seat fix): radial webs from the hub tube to
+# the rim over the full height above the bed-face web, so the D-bore end and the rim's
+# inboard disc are tied to each other, not only through the hub tube down to the 4 mm web
+# (the one joint that split when the 624 was pressed). Each ends 0.4 into the rim wall, at
+# its inner radius per zone: under the band (lug pockets just outside) it stops in the
+# band wall. Not on the idler: the carriage's journal boss enters its open inboard side.
+SPROCKET_SPOKES = (6, 2.0)  # count, thickness
+SPOKE_R_IN, SPOKE_SINK = 7.0, 0.4  # start inside the r 7.5 tube; reach into the rim wall
+
+
+def spoke_lines(layers: list, n: int, w: float) -> tuple[list[str], float]:
+    """Prof bosses for n radial spokes (part frame, axis z) and the volume they add, from the
+    wheel's own layers: per layer, spoke = r from max(SPOKE_R_IN, hub outer) .. rim inner."""
+    z_web = layers[0][1]  # the bed-face web's top (one solid annulus below it)
+    zones = []  # (z0, z1, r_hub_outer, r_rim_inner, under the band?)
+    r_out = max(float(ann[-1][1].max()) for _, _, ann in layers)  # running-disc radius
+    for z0, z1, ann in layers:
+        if z0 < z_web - 1e-9 or len(ann) < 2:
+            continue
+        hub_o = float(ann[0][1].max())
+        rim_i = float(ann[-1][0].min())
+        band = float(ann[-1][1].max()) < r_out - 1e-6  # the band's outer is the pocket floor
+        zones.append((z0, z1, hub_o, rim_i, band))
+    r_disc = max(ri for _, _, _, ri, band in zones if not band)  # rim inner under the discs
+    # one extrude per run: under the band stop in its wall (lug pockets just outside); off
+    # the band (discs and the 45° ramp: solid rim outward) run to the disc's inner wall
+    lines, vol = [], 0.0
+    spans = []
+    for z0, z1, ho, ri, band in zones:
+        r1 = (ri if band else r_disc) + SPOKE_SINK
+        if spans and abs(spans[-1][3] - r1) < 1e-6:
+            spans[-1][1] = z1
+        else:
+            spans.append([z0, z1, ho, r1])
+    for z0, z1, _, r1 in spans:
+        for k in range(n):
+            a = 2 * math.pi * k / n
+            dx, dy, nx, ny = math.cos(a), math.sin(a), -math.sin(a), math.cos(a)
+            pts = [
+                (SPOKE_R_IN * dx + w / 2 * nx, SPOKE_R_IN * dy + w / 2 * ny),
+                (r1 * dx + w / 2 * nx, r1 * dy + w / 2 * ny),
+                (r1 * dx - w / 2 * nx, r1 * dy - w / 2 * ny),
+                (SPOKE_R_IN * dx - w / 2 * nx, SPOKE_R_IN * dy - w / 2 * ny),
+            ]
+            path = "M " + " L ".join(f"{x:.4f} {y:.4f}" for x, y in pts)
+            lines.append(f"prof|{z0 - 0.05:.3f} {z1:.3f}|{path}")
+    for z0, z1, ho, ri, _ in zones:  # new material: between the hub's and the rim's surfaces
+        vol += n * w * max(0.0, ri - max(SPOKE_R_IN, ho)) * (z1 - z0)
+    return lines, vol
+
+
+def wheel_lines(path: str, layers: list, spokes: tuple[int, float] | None = None) -> list[str]:
     vol = dt.check(dt.mesh(layers))[1]
+    sp, dvs = spoke_lines(layers, *spokes) if spokes else ([], 0.0)
+    vol += dvs
     r = max(float(ro.max()) for _, _, ann in layers for _, ro in ann)
     # S1c (kid safety): r 1.0 on the outboard rim, the running disc's outer edge on the bed
     # face (part z 0), the wheel edge a hand meets from the side: (1 - pi/4) r² x 2 pi R
@@ -2551,6 +2604,7 @@ def wheel_lines(path: str, layers: list) -> list[str]:
     return [
         f"part|{path}",
         *ring_lines(layers),
+        *sp,
         f"filletface|{PLATE_EDGE_R}|-1|0.0|{-r - 1} {-r - 1} {r + 1} {r + 1}|1|{-dvr:.2f} {0.1 * dvr:.2f}",
         f"expect|vol {vol:.1f} {vol * 0.003:.1f}|box {-r:.3f} {r:.3f} {-r:.3f} {r:.3f} 0 {layers[-1][1]:g} 0.05",
         "save",

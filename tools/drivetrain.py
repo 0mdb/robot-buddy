@@ -90,6 +90,7 @@ TT_ENGAGE = 8.0  # TBD: shaft length into the hub (measure; drawing ~9)
 TUBE_R = 7.5  # sprocket hub tube
 BRG_D, BRG_W = 13.1, 5.0  # 624 slip pocket (05)
 BRG_SHOULDER_R = 5.0  # bears on the outer race only (624 outer race ID ~10.3)
+SPROCKET_CRUSH = 0.15  # sprocket's outboard 624: crush-rib interference, as the idler
 SCREW_R = 3.0  # M2 retaining screw + driver access along the axis
 
 # material, loads
@@ -399,12 +400,17 @@ def sprocket_layers(outrigger: bool = True, m: int = N_TEETH * 48) -> list:
     """Drive sprocket. Bed face = outboard. Inboard face (Z = BELT_W) sits SIDE_GAP off
     the gearbox; the D-bore takes the TT shaft from that end. With `outrigger`, a 624
     pocket on the outboard face takes the outboard support of Q4(a)/P2o."""
-    pocket, shoulder = circle(BRG_D / 2, m), circle(BRG_SHOULDER_R, m)
+    # 2026-11-08 (Ben): pressing the 624 split the hub from the web. The pocket was a plain
+    # Ø13.1 "slip" circle (prints undersize: a full-circle press) in a 0.95 mm wall (tube
+    # r 7.5). Now the idler's seat, which pressed fine: 3 crush ribs at SPROCKET_CRUSH (the
+    # 624 coupon: 2 notches = 0.15), a 3 mm wall over the pocket + shoulder, web 3 -> 4.
+    pocket, shoulder = crush(BRG_D / 2, m, SPROCKET_CRUSH), circle(BRG_SHOULDER_R, m)
     tube = circle(SCREW_R, m)
-    web_t = 3.0
+    web_t = 4.0 if outrigger else 3.0
+    brg_tube_r = BRG_D / 2 + 3.0  # as the idler (05: >= 3 mm round the bearing)
     hub = []
     if outrigger:
-        hub += [(0.0, BRG_W, pocket, TUBE_R), (BRG_W, BRG_W + 1.5, shoulder, TUBE_R)]
+        hub += [(0.0, BRG_W, pocket, brg_tube_r), (BRG_W, BRG_W + 1.5, shoulder, brg_tube_r)]
         z = BRG_W + 1.5
     else:
         z = 0.0

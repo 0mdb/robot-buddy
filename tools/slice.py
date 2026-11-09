@@ -398,6 +398,13 @@ PLATES = {
         "RB-PRT-020_sprocket",
         "RB-PRT-021_idler",
     ],
+    "sprockets": [  # 2026-11-08: reprint after the 624 seat fix (crush ribs, 3 mm wall)
+        "RB-PRT-020_sprocket",
+    ],
+    "mounts": [  # the motor mounts after the foot-hole move (y -38.9 -> -41.5)
+        "RB-PRT-010_motor_mount_R",
+        "RB-PRT-011_motor_mount_L",
+    ],
     "frames": [  # Ben 2026-11-08: printable while the mounts wait for the foot-hole move
         "RB-PRT-040_trackframe_L",
         "RB-PRT-041_trackframe_R",
