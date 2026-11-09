@@ -536,7 +536,9 @@ class SwBuild
     {
         double r = double.Parse(f[1], ci);
         string ax = f[2];
-        double[] b = Nums(f[3]);
+        // P6m3: several boxes, ';'-separated: an edge is picked if its midpoint is in any
+        var boxes = new List<double[]>();
+        foreach (string sb in f[3].Split(';')) boxes.Add(Nums(sb));
         int want = int.Parse(f[4], ci);
         double[] dv = Nums(f[5]);
         object[] bodies = (object[])((IPartDoc)doc).GetBodies2((int)swBodyType_e.swSolidBody, true);
@@ -547,11 +549,19 @@ class SwBuild
                 IEdge e = (IEdge)eo;
                 ICurve c = (ICurve)e.GetCurve();
                 if (c == null) continue;
-                if (ax == "curve")
+                if (ax == "curve" || ax == "vmid")
                 {
+                    // P6m3: "vmid" = the midpoint of the edge's two end vertices (predictable
+                    // for arcs, unlike EdgeMid's parameter midpoint); EdgeMid if it has none
                     double[] q = EdgeMid(e);
+                    if (ax == "vmid" && e.GetStartVertex() != null && e.GetEndVertex() != null)
+                    {
+                        double[] ev0 = (double[])((IVertex)e.GetStartVertex()).GetPoint(), ev1 = (double[])((IVertex)e.GetEndVertex()).GetPoint();
+                        q = new[] { (ev0[0] + ev1[0]) / 2, (ev0[1] + ev1[1]) / 2, (ev0[2] + ev1[2]) / 2 };
+                    }
                     double qx = q[0] * 1e3, qy = q[1] * 1e3, qz = q[2] * 1e3;
-                    if (qx >= b[0] && qy >= b[1] && qz >= b[2] && qx <= b[3] && qy <= b[4] && qz <= b[5]) picked.Add(e);
+                    foreach (double[] bb in boxes)
+                        if (qx >= bb[0] && qy >= bb[1] && qz >= bb[2] && qx <= bb[3] && qy <= bb[4] && qz <= bb[5]) { picked.Add(e); break; }
                     continue;
                 }
                 if (!c.IsLine()) continue;
@@ -566,7 +576,10 @@ class SwBuild
                     if (Math.Abs(Math.Abs(along) / len - 1) > 1e-6) continue;
                 }
                 double mx = (p0[0] + p1[0]) * 500, my = (p0[1] + p1[1]) * 500, mz = (p0[2] + p1[2]) * 500;
-                if (mx < b[0] || my < b[1] || mz < b[2] || mx > b[3] || my > b[4] || mz > b[5]) continue;
+                bool inAny = false;
+                foreach (double[] bb in boxes)
+                    if (mx >= bb[0] && my >= bb[1] && mz >= bb[2] && mx <= bb[3] && my <= bb[4] && mz <= bb[5]) { inAny = true; break; }
+                if (!inAny) continue;
                 picked.Add(e);
             }
         if (picked.Count != want)
@@ -730,8 +743,12 @@ class SwBuild
         doc.ClearSelection2(true);
         int nsel = 0;
         foreach (IEdge e in picked) if (((IEntity)e).Select2(true, 1)) nsel++;
+        // P6m2: a last field "prop" = tangent propagation (a top whose side edges are a
+        // tangent chain of arcs and lines: pick the first face's edges, SolidWorks follows)
+        int opts = (int)swFeatureFilletOptions_e.swFeatureFilletUniformRadius;
+        if (f[f.Length - 1] == "prop") opts |= (int)swFeatureFilletOptions_e.swFeatureFilletPropagate;
         IFeature fil = (IFeature)doc.FeatureManager.FeatureFillet3(
-            (int)swFeatureFilletOptions_e.swFeatureFilletUniformRadius, M(r), 0.0, 0.0,
+            opts, M(r), 0.0, 0.0,
             (int)swFeatureFilletType_e.swFeatureFilletType_Simple,
             (int)swFilletOverFlowType_e.swFilletOverFlowType_Default,
             (int)swFeatureFilletProfileType_e.swFeatureFilletCircular,

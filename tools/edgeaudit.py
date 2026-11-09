@@ -68,10 +68,8 @@ def _wheel(p: np.ndarray, n: np.ndarray) -> np.ndarray:
 
 
 def _canopy_outline() -> np.ndarray:
-    """Outer side profile (XZ) with the crowned top sampled, closed."""
-    a, b, c, d, e, f = chassis.canopy_profile()
-    top = [(x, chassis.can_top_z(x)) for x in np.linspace(b[0], c[0], 60)]
-    return np.array([a, *top, d, e, f, a], float)
+    """Outer side profile (XZ) with the top chain (crown, hump, slope to D) sampled, closed."""
+    return np.array([*chassis.canopy_side_poly(), chassis.canopy_profile()[0]], float)
 
 
 def _canopy(p: np.ndarray, n: np.ndarray) -> np.ndarray:

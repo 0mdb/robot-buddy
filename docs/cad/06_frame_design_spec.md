@@ -238,6 +238,61 @@ board and any off-board TB6612 now go aft, between the carriages (x −85…−4
 > edge (56.5), behind the track; the carriages (|y| to 53) rule out closing it further.
 > Canopy 120.9 → 124.5 g.
 
+> Amendment (loop P6m, 2026-11-07, Ben): **mic disc → a separate mic pod on the canopy
+> top** (`RB-PRT-005_mic_pod`, PC, generated `pod_lines()` in `tools/chassis.py`), so the
+> mics sit at the robot's highest point instead of 27 mm under the head (audio §4.1 amendment).
+> - Round cap Ø77.6 (disc Ø72.5 + 0.75 + 1.8 wall), centre (−5, 0): front 0.6 behind the
+>   hood's back wall (x 34.4), clear of the hood screw collars. Roof 1.8 at **z 123.5** (hood
+>   front top edge 123.54), r 3 outer edge. Rim cut to the canopy's crown + 0.5 gap.
+> - Under the roof: 3 spokes (full diameters at 0/60/120°, 1.6 × 3.8), 3 Ø8 bosses with
+>   M2.5 × 4 inserts (on the 0/120/240° spokes), 4 port tubes; all end at z 117.9.
+>   Prints **roof down**, no support (every inner feature hangs from the roof).
+> - Canopy, per disc hole: an Ø8 boss under the skin down to z 89.5 (3.5 over the Pi stack)
+>   with an Ø5 counterbore to the head seat (z 91.9), an Ø7 post on the skin up to z 114.4,
+>   Ø2.9 clearance through. FPC slot 15 × 4 at (−12, −23). Disc rotation unchanged (0° hole
+>   on the y 0 rib): the only pattern (searched over x and rotation) that keeps every screw
+>   head off the keels.
+> - Removed: tick 98's keel windows + doublers, the 3 hanging bosses and 4 tubes under the
+>   ribs. Canopy 124.5 → 124.7 g; pod 24.3 g; printed total 728.5 → 752.9 g; CoG z 23.3 → 26.3.
+> - Why a separate part: built into the canopy (printed rear wall down), the pod's back
+>   wall would be an unsupported ceiling and its inside would need support that can't come out.
+> - Studies: see the loop journal (P6m) and 07 F10.
+
+> Amendment (loop P6m2, 2026-11-08, Ben): **the pod becomes part of the canopy.** Ben: a
+> streamlined, sturdy body and a well-protected mic over optimal mic placement; the top still
+> beats the front (people speak down to it). Replaces P6m's RB-PRT-005, its posts and the
+> M2.5 × 30 screws.
+> - The canopy's top in side view is one tangent chain: the crown to a **45° ramp** (x −58 to
+>   −52), a **hump roof crowned 1.5** at **z 110** (ends; x −42 to 20), and a **45° slope**
+>   from the roof up to the hood's back top edge D, which replaces the hood's 25 mm back step
+>   (Q29: the step's support goes). Rounds in the profile: r 12 (ramp foot), r 15 (ramp top),
+>   r 10 (roof to slope); r 8 down both side edges of the whole chain. Full width (|y| 53).
+> - Inside, open to the canopy. The disc (Ø72.5) hangs under the roof: per hole an
+>   **M2.5 × 8 SHCS** up through a TPU washer, the disc and a TPU washer into an M2.5 × 4
+>   insert in a roof boss (Ø8, bottoms at z 104.2); 4 port tubes with Ø1.2 ports through the
+>   roof. It goes in from below with the canopy off; the FPC drops straight down (no slot).
+> - Ribs: the lengthwise ribs (y 0, ±15) follow the top from the rear seam to x 32 on the
+>   slope, 4 deep (under the roof their bottoms are 1.0 over the disc); cross ribs at x −62,
+>   −40, −18, 3 (through the ±27 roof bosses, clear of the port tubes); keels end at x −27,
+>   aft of the disc.
+> - Prints rear wall down as before: both 45° faces and the roof need no support; the ports
+>   print as horizontal Ø1.2 holes.
+
+> Amendment (loop P6m3, 2026-11-08, Ben): **the bulkhead is the robot's rounded front cap**
+> (Ben: the face plate looked angular and the canopy framed it; everything round, the body
+> blending into the face). §5's wall becomes:
+> - Full canopy width (106) up to the hood top (pre-tilt z 127.9), with 3 mm return flanges
+>   9 mm deep (front face to the seam) along the top and both sides down to the skirt line;
+>   **r 8** on its front edges and top corners (the canopy's side/hood rounds), r 5 inside.
+>   Below the skirt line the plate is 104 wide (replaces the S2a cheeks); the r 8 corner runs
+>   on down to the plate as an r 8 plan arc through the 3 mm plate, r 1 on its back edge.
+> - The canopy's front is now a flush seam 0.1 behind the cap's flanges: no lips, no frame
+>   (the front opening is the full width between the side walls); hood 17.5 deep (was 15).
+> - Hood screws (F9 front pair) **flush**: counterbores square to the hood top over 2 mm
+>   bosses under the hood ceiling, r 0.5 rims, no collars (Q27's collars retired). The lugs
+>   move 4.9 aft and their tops 2 lower to meet them.
+> - Bulkhead 48.6 → 55.5 g, canopy → 113.6 g. S5c 5.34 MPa / 0.13 mm, S5k 7.66 / 0.25 mm.
+
 ## 7. Drivetrain parts
 
 **Motor mounts L/R:** keep the current L-bracket (`TT_Motor_Mount_L` + its mirror
@@ -248,6 +303,13 @@ pattern in 04 §1; upright 3 mm wall, 23 mm tall, motor holes Ø3.0 at 18 mm; si
 with a wire window. **No root fillet between upright and foot yet**: add ≥ 2 mm after the
 S2 study (07 §3) confirms the hot spot. **Print on its side** so the L's root isn't a layer line;
 teardrop the horizontal motor-screw holes; ≥ 2 mm fillet at the inside corner. PET-CF.
+> Amendment (Ben, 2026-11-08): **foot holes (−25.2, −38.9), (−11.2, −38.9), (3.5, −38.9) →
+> y −41.5** (`MOUNT_FOOT_HOLES`, one source for the mount's holes and the plate's inserts).
+> At −38.9 the two inside the upright's run (x −11.2, 3.5) sat under the 3.6 root chamfer
+> (toe y −37.6): an M3 head (Ø5.5) or washer (Ø7) landed on the slope and couldn't seat.
+> At −41.5 the head edge is at −38.75 and the washer's at −38.0, clear; 3.8 mm stays to the
+> foot's outer edge. Chamfer and gussets unchanged. The plate's insert holes move with them
+> (chassis |y| 21.5 → 18.9).
 
 > Amendment (loop P2, 2026-10-30): **motor mount v2 is generated** (`RB-PRT-010` right,
 > `RB-PRT-011` left = X-mirror placed at identity) in Ben's part frame, so the plate's 4-hole

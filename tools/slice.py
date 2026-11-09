@@ -398,6 +398,12 @@ PLATES = {
         "RB-PRT-020_sprocket",
         "RB-PRT-021_idler",
     ],
+    "frames": [  # Ben 2026-11-08: printable while the mounts wait for the foot-hole move
+        "RB-PRT-040_trackframe_L",
+        "RB-PRT-041_trackframe_R",
+        "RB-PRT-030_carriage_L",
+        "RB-PRT-031_carriage_R",
+    ],
     "stable_a": [  # support on: the track frames' blades
         "RB-PRT-040_trackframe_L",
         "RB-PRT-041_trackframe_R",

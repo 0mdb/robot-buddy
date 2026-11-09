@@ -107,6 +107,12 @@ MOUNT_HOLE = (14.5, -28.0, 13.5)  # hole-pair midpoint on the motor-side face
 # the plate and foot (323 / 197 mm³); 13.5 clears both and gives the lower insert 2.4 mm
 # of wall under it.
 MOUNT_FOOT_Y = (-47.0, -8.9)  # foot extent across the upright
+# Foot screw holes (mount part frame), one source for the mount's clearance holes and the
+# plate's insert holes. Ben 2026-11-08: the three at y -38.9 sat under the upright's 3.6 root
+# chamfer (toe y -37.6): an M3 head (r 2.75) or washer (r 3.5) at -38.9 landed on the slope at
+# x -11.2 and 3.5. Moved out to y -41.5: head edge -38.75, washer -38.0, clear of the toe;
+# 3.8 mm from the hole edge to the foot's outer edge (y -47). The chamfer stays (S2's root).
+MOUNT_FOOT_HOLES = ((-11.2, -41.5), (-25.2, -41.5), (3.5, -41.5), (-25.2, -23.0))
 
 # Placement. The motor sits on the upright's +Y side with the shaft pointing +Y
 # (outboard) and the gearbox end toward the part's -X (stopped by the gusset at
@@ -301,7 +307,7 @@ LOAD_RIBS_YX = ((36.5, (-42.0, 72.0)), (47.0, (-78.0, 70.0)))
 
 def mount_holes() -> list[tuple[float, float]]:
     """Motor-mount foot holes in chassis coordinates, both sides (06 §7)."""
-    foot = [(-11.2, -38.9), (-25.2, -38.9), (3.5, -38.9), (-25.2, -23.0)]
+    foot = MOUNT_FOOT_HOLES
     tx, ty = mount_tx(), mount_ty()
     right = [(-x + tx, -y - ty) for x, y in foot]  # TT_Motor_Mount_L, Rz180
     left = [(-x + tx, y + ty) for x, y in foot]  # mirror part, Ry180
@@ -1217,7 +1223,7 @@ def rebuild_manifest(win: str) -> list[str]:
         *speaker_clamp_lines(cad + r"\parts\RB-PRT-060_speaker_clamp.SLDPRT"),
         *speaker_gasket_lines(cad + r"\parts\RB-PRT-061_speaker_gasket.SLDPRT"),
         *speaker_module_lines(cad + r"\library\speaker_module_envelope.SLDPRT"),
-        # P6d / P8 (tick 98, Q30 b): mic disc envelope + its TPU washers
+        # P6m2 (2026-11-08): the mic disc envelope + its TPU washers (the disc hangs in the canopy's hump)
         *mic_disc_lines(cad + r"\library\mic_disc_envelope.SLDPRT"),
         *mic_washer_lines(cad + r"\parts\RB-PRT-062_mic_washer.SLDPRT"),
         # P9 (tick 99): XVF3800 core-board envelope (on the deck's wall)
@@ -1563,8 +1569,19 @@ def envelope_lines(pi: str, face: str, reflex: str) -> list[str]:
 # lower band, face board behind a window, camera lens above (Q6 default). The face
 # board sits BEHIND the wall: its LCD stack bears on the wall's back face, the window
 # shows the active area, M3 x 5 screws go through the PCB into inserts in 4.3 standoffs.
-BH_XF, BH_T, BH_W, BH_H, BH_TILT = 85.0, 3.0, 94.0, 126.0, 15.0
+BH_XF, BH_T, BH_W, BH_H, BH_TILT = 85.0, 3.0, 106.0, 126.0, 15.0
 BH_PIVOT = (BH_XF - BH_T, 0.0, 0.0)
+# P6m3 (Ben 2026-11-08): the bulkhead is the robot's whole FRONT CAP. Full canopy width
+# (BH_W = 2 x CAN_HW) up to the hood top (BH_TOP = BH_H + CAN_LUG_GAP + CAN_T), with a
+# CAP_T return flange CAP_D deep (front face to the seam) along its top and both sides down
+# to the canopy's skirt line; r CAP_R on its front edges and top corners, the same r 8 as the
+# canopy's side and hood rounds, so the canopy runs into it flush; r CAP_R - CAP_T inside
+# keeps the 3 mm shell round the bends. Below the skirt line the plate is BH_W_LOW wide
+# (was the S2a cheeks: it closes the finger gap to the belts the same way).
+BH_W0 = 94.0  # the tick-1 wall width: the inner side flanges and the BH_RIB_Z rib keep it
+BH_W_LOW = 104.0  # below the skirt line
+BH_TOP = 127.9  # = BH_H + CAN_LUG_GAP + CAN_T (asserted in the canopy section)
+CAP_D, CAP_T, CAP_R = 9.0, 3.0, 8.0  # cap depth to the seam, flange / plate thickness, outer round
 BH_FACE_Z = 77.0  # face-board centre height (pre-tilt)
 FACE_AA = (43.2, 57.6)  # active area (board X, board Y)
 FACE_AA_CY = (FACE_H / 2 - 11.12) - FACE_AA[
@@ -1621,7 +1638,7 @@ BH_CAM = (
     113.0,
     4.5,
 )  # lens hole y, z, r (Pi Camera Module 3, Q6 default) 🟡 no bosses yet
-BH_LUG_Y, BH_LUG_Z = 38.0, (112.0, BH_H)  # canopy screw lugs (F9) behind the wall top
+BH_LUG_Y, BH_LUG_Z = 38.0, (112.0, BH_H - 2.0)  # canopy screw lugs (F9) behind the wall top; P6m3: tops 2 lower, under the canopy's 2 mm screw bosses
 BH_FLANGE = (
     FACE_FRONT,
     1.8,
@@ -1655,8 +1672,16 @@ def _rotate_y(p, deg: float, pivot):
     return out + pivot
 
 
-BH_LUG_AFT = 3.0  # Q27 (a): lugs 3 mm aft of the tick-47 position
+BH_LUG_AFT = 7.9  # Q27 (a): lugs 3 mm aft of the tick-47 position; P6m3: 4.9 more, so the flush hood screws sit on the hood's flat behind the front cap (axis 11.5 behind the wall's back face)
 BH_LUG_WEB = INS_BOSS  # web from each lug back to the wall, as wide as the lug (tick 94: a 4 mm web put S5c at 8.14 MPa on its side face)
+
+
+def cap_z_low() -> float:
+    """Pre-tilt z of the cap's flange bottoms: the flange's back edge (the seam, x_pre
+    BH_XF - CAP_D) lands on the canopy's skirt line (chassis z CAN_Z0)."""
+    dx = (BH_XF - CAP_D) - BH_PIVOT[0]
+    s, c = math.sin(math.radians(BH_TILT)), math.cos(math.radians(BH_TILT))
+    return (CAN_Z0 - s * dx) / c
 
 
 def bh_lug_x() -> float:
@@ -1676,12 +1701,21 @@ def bulkhead_features() -> tuple[list[tuple], list[tuple]]:
     post-tilt features (chassis frame). Each: (op, shape) with op 'add' | 'cut'.
     Shapes: ('box', x0, x1, y0, y1, z0, z1), ('cylx', y, z, x0, x1, r), ('cylz', x, y, z0, z1, r)."""
     x0, x1 = BH_XF - BH_T, BH_XF
-    hw = BH_W / 2
-    pre: list[tuple] = [("add", ("box", x0, x1, -hw, hw, 0.0, BH_H))]
+    hw = BH_W0 / 2
+    zl, xs_ = cap_z_low(), BH_XF - CAP_D
+    ch = BH_W / 2
+    # P6m3 front cap: the plate (narrower below the skirt line), the top and side return flanges
+    pre: list[tuple] = [
+        ("add", ("box", x0, x1, -BH_W_LOW / 2, BH_W_LOW / 2, 0.0, zl)),
+        ("add", ("box", x0, x1, -ch, ch, zl, BH_TOP)),
+        ("add", ("box", xs_, x0, -ch, ch, BH_TOP - CAP_T, BH_TOP)),
+    ]
+    for sgn in (-1, 1):
+        pre.append(("add", ("box", xs_, x0, *sorted((sgn * ch, sgn * (ch - CAP_T))), zl, BH_TOP)))
     fd, ft = BH_FLANGE
-    for sgn in (-1, 1):  # side flanges
+    for sgn in (-1, 1):  # inner side flanges (tick 1), now only below the skirt line
         ys = sorted((sgn * hw, sgn * (hw - ft)))
-        pre.append(("add", ("box", x0 - fd, x0, *ys, 0.0, BH_H)))
+        pre.append(("add", ("box", x0 - fd, x0, *ys, 0.0, zl)))
     pre.append(
         (
             "add",
@@ -1713,11 +1747,7 @@ def bulkhead_features() -> tuple[list[tuple], list[tuple]]:
         pre.append(
             ("add", ("box", lug_x, x0 + 0.5, sgn * BH_LUG_Y - BH_LUG_WEB / 2, sgn * BH_LUG_Y + BH_LUG_WEB / 2, *BH_LUG_Z))
         )
-    # S2a side cheeks (pre-tilt: the wall's thickness, beyond its sides)
-    cw, ch = BH_CHEEK
-    for sgn in (-1, 1):
-        ys_ = sorted((sgn * hw, sgn * (hw + cw)))
-        pre.append(("add", ("box", x0, x1, *ys_, 0.0, ch)))
+    # (S2a side cheeks: replaced by the full-width plate, P6m3)
     # cuts
     aw, ah = FACE_AA[1] + 2.0, FACE_AA[0] + 2.0  # window: AA + 1 mm all round
     pre.append(
@@ -1824,7 +1854,7 @@ def bulkhead_features() -> tuple[list[tuple], list[tuple]]:
     # would bear on the plate, and S5's "fix plane z 0" bonded it (S5c 5.72 -> 9.91 MPa at
     # the flange root). The foot stays the only seat.
     for sgn in (-1, 1):
-        ys = sorted((sgn * (fy1 + 0.5), sgn * (BH_W / 2 + BH_CHEEK[0] + 1)))
+        ys = sorted((sgn * (fy1 + 0.5), sgn * (BH_W / 2 + 1)))
         post.append(("trim", ("box", fx0 - 15.0, BH_XF + 1.0, *ys, -5.0, BH_FLANGE_GAP)))
     tw, th, td = BH_TAB
     for sgn in (-1, 1):
@@ -1905,9 +1935,9 @@ def bulkhead_volume_numeric(step: float = 0.2) -> tuple[float, list[float]]:
 
     pre, post = bulkhead_features()
     xs = np.arange(30.0 + step / 2, 90.0, step)  # tick 94: the lugs moved aft reach x 38.6
-    yh = BH_W / 2 + BH_CHEEK[0] + 1  # S2a: the cheeks reach |y| BH_W / 2 + 5
+    yh = BH_W / 2 + 1
     ys = np.arange(-yh + step / 2, yh, step)
-    zs = np.arange(-5.0 + step / 2, BH_H + 2, step)
+    zs = np.arange(-5.0 + step / 2, BH_TOP + 2, step)
     X, Y = np.meshgrid(xs, ys, indexing="ij")
     vol, lo, hi = 0.0, [1e9] * 3, [-1e9] * 3
     for z in zs:
@@ -1940,6 +1970,65 @@ BH_SIDE_EDGE = 266.6  # S1b: edge length round one outer side face (STL, tick 32
 # which would reach the motor mounts at x 77.8) continued sideways to |y| 52 from the bottom
 # to z 30 (pre-tilt height 31.1). Leaves 4.5 to the belt.
 BH_CHEEK = (5.0, 31.1)
+
+
+def _cap_round_sets() -> list[tuple[float, list[str], float]]:
+    """(radius, edge boxes, dvol) for the cap's outer and inner rounds (pre-tilt frame).
+    Each set: the front-top edge, both front-side edges, both top-side edges; a 3-edge
+    corner removes (adds) 0.168 r³ less than the three strips counted to the vertex."""
+    zl, xs_ = cap_z_low(), BH_XF - CAP_D
+    out = []
+    for r, xf, hy, zt, sgn in (
+        (CAP_R, BH_XF, BH_W / 2, BH_TOP, -1.0),
+        (CAP_R - CAP_T, BH_XF - CAP_T, BH_W / 2 - CAP_T, BH_TOP - CAP_T, 1.0),
+    ):
+        zm = (zl + zt) / 2
+        xm = (xs_ + xf) / 2
+        boxes = [f"{xf - 0.1:.3f} -1 {zt - 0.1:.3f} {xf + 0.1:.3f} 1 {zt + 0.1:.3f}"]
+        for sy in (-1, 1):
+            boxes.append(f"{xf - 0.1:.3f} {sy * hy - 0.1:.3f} {zm - 1:.3f} {xf + 0.1:.3f} {sy * hy + 0.1:.3f} {zm + 1:.3f}")
+            boxes.append(f"{xm - 0.5:.3f} {sy * hy - 0.1:.3f} {zt - 0.1:.3f} {xm + 0.5:.3f} {sy * hy + 0.1:.3f} {zt + 0.1:.3f}")
+        q = (1 - math.pi / 4) * r * r
+        L = 2 * hy + 2 * (zt - zl) + 2 * (xf - xs_)
+        over = 3 * (1 - math.pi / 4) - (1 - math.pi / 6)  # strips vs the vertex blend, per r³ (0.167)
+        dv = sgn * (q * L - 2 * over * r**3)
+        if sgn < 0:
+            dv += cap_lower_corner()["dv_lower"]  # the outer round runs on down the lower plate
+        out.append((r, boxes, dv))
+    return out
+
+
+def cap_lower_corner() -> dict:
+    """The r CAP_R front-side round continued down the lower plate (0 .. skirt line): plan
+    area it removes per side (plate x BH_XF - BH_T .. BH_XF, out to BH_W_LOW / 2), the
+    edge where its arc meets the back face, and the r 1 there."""
+    r, xf, x0 = CAP_R, BH_XF, BH_XF - BH_T
+    cy, cx = BH_W / 2 - r, xf - r  # round's axis (the upper corner's)
+    yl = BH_W_LOW / 2
+    n, area = 400, 0.0
+    for k in range(n):
+        x = x0 + (k + 0.5) * BH_T / n
+        ym = cy + math.sqrt(max(r * r - (x - cx) ** 2, 0.0))
+        area += max(0.0, yl - min(ym, yl)) * BH_T / n
+    yb = cy + math.sqrt(r * r - (x0 - cx) ** 2)  # arc meets the back face here
+    zl = cap_z_low()
+    alpha = 180.0 - math.degrees(math.acos(-(x0 - cx) / r))  # wedge between the arc and the back face
+    # SolidWorks removes 107.4 mm3 here (P6m3 build), not the 62.6 of the plane-wedge formula
+    # for this ~51° edge: the round also runs onto the trimmed bottom; use the measured ratio
+    dv_r1 = -2 * _round_area(alpha, PLATE_EDGE_R) * zl * (107.44 / 62.63)
+    boxes = [f"{x0 - 0.3:.3f} {sg * yb - 0.3:.3f} {zl / 2 - 1:.3f} {x0 + 0.3:.3f} {sg * yb + 0.3:.3f} {zl / 2 + 1:.3f}" for sg in (-1, 1)]
+    return {"area": area, "yb": yb, "alpha": alpha, "dv_lower": -2 * area * zl, "dv_r1": dv_r1, "boxes": boxes}
+
+
+def cap_round_dv() -> float:
+    return sum(dv for _, _, dv in _cap_round_sets())
+
+
+def cap_round_lines() -> list[str]:
+    return [
+        f"fillet|{r}|any|{';'.join(boxes)}|5|{dv:.1f} {abs(dv) * 0.15 + 5:.1f}"
+        for r, boxes, dv in _cap_round_sets()
+    ]
 
 
 def bulkhead_lines(path: str) -> list[str]:
@@ -1986,11 +2075,16 @@ def bulkhead_lines(path: str) -> list[str]:
         f"filletface|{BH_GRILLE_EDGE_R}|x:1|{BH_XF}|-50 -5 50 130|1|{-dvg:.2f} {0.25 * dvg:.2f}"
         f"|loops:{sy_ - sr_ - 1} {sz_ - sr_ - 1} {sy_ + sr_ + 1} {sz_ + sr_ + 1}"
     )
-    # S1b3 (tick 63): r 1.0 on the wall's top front edge (x BH_XF, z BH_H, along y), the
-    # top of the "head", also pre-tilt. Between the side flanges' ends (|y| BH_W / 2)
-    dvt = (1 - math.pi / 4) * PLATE_EDGE_R**2 * BH_W
+    # P6m3 front cap rounds, pre-tilt: r CAP_R on the outer front-top edge, the two front-side
+    # edges (skirt line to top) and the two top-side edges (front to seam); then r CAP_R -
+    # CAP_T on the matching inner edges, so the shell stays CAP_T round the bends
+    lines += cap_round_lines()
+    # The cap's r 8 front-side rounds carry on down the lower plate (SolidWorks rolls them past
+    # the step at the skirt line, P6m3 build): below it each corner is an r 8 arc in plan
+    # through the 3 mm plate, meeting the back face at ~51°. r 1 on that edge (kid safety).
+    lo = cap_lower_corner()
     lines.append(
-        f"fillet|{PLATE_EDGE_R}|y|{BH_XF - 0.2} {-BH_W / 2 - 0.1} {BH_H - 0.2} {BH_XF + 0.2} {BH_W / 2 + 0.1} {BH_H + 0.2}|1|{-dvt:.2f} {0.2 * dvt:.2f}"
+        f"fillet|{PLATE_EDGE_R}|z|{';'.join(lo['boxes'])}|2|{lo['dv_r1']:.2f} {abs(lo['dv_r1']) * 0.25 + 1:.2f}"
     )
     lines.append(f"rotbody|{BH_PIVOT[0]} {BH_PIVOT[1]} {BH_PIVOT[2]}|y|{-BH_TILT}")
     for op, sh in post:
@@ -2011,30 +2105,12 @@ def bulkhead_lines(path: str) -> list[str]:
             + 2 * math.pi * BH_CAM[2]
         )
     )  # S1b2 front-face opening rounds
-    vol -= (1 - math.pi / 4) * PLATE_EDGE_R**2 * BH_W  # S1b3 top front edge
-    # S1b (kid safety): r 1.0 round the two outer side faces (|y| 47, normals +-y): their
-    # outer loops are the wall's side edges, front, back, top and foot. Edge length per
-    # side, all convex, measured from the generated STL (tick 32): 266.6 mm
-    ys = BH_W / 2
-    # S2a: the cheek covers the side face's front + bottom edge over its height (convex,
-    # out) and adds two concave edges where it meets the side (in): net 266.6 - 2 x 34.1
-    cw, ch = BH_CHEEK
-    q = (1 - math.pi / 4) * PLATE_EDGE_R**2
-    cov = ch + BH_T
-    dvs = q * (BH_SIDE_EDGE - 2 * cov)
-    dvc = q * 2 * (ch + BH_T)  # cheek outer face: its whole outline, convex
-    for sgn in (1, -1):
-        lines.append(
-            f"filletface|{PLATE_EDGE_R}|y:{sgn}|{sgn * ys:.2f}|30 -10 100 130|1|{-dvs:.2f} {0.2 * dvs:.2f}"
-        )
-        vol -= dvs
-        lines.append(
-            f"filletface|{PLATE_EDGE_R}|y:{sgn}|{sgn * (ys + cw):.2f}|30 -10 100 130|1|{-dvc:.2f} {0.2 * dvc:.2f}"
-        )
-        vol -= dvc
+    vol += cap_round_dv()  # P6m3 cap rounds (outer removes, inner adds; incl. the lower corners)
+    vol += cap_lower_corner()["dv_r1"]  # r 1 where the lower corners meet the back face
     # P-kid (tick 87): r 1.0 on the foot's exposed front: its top front edge (x BH_XF, z top,
     # along y; the foot stands ~2.4 proud of the tilted wall there) and the two vertical
     # front corners (|y| foot half-width). One feature; the bottom edge sits on the plate
+    q = (1 - math.pi / 4) * PLATE_EDGE_R**2
     (fx0, fx1), (fy0, fy1), (fz0, fz1) = BH_FOOT
     dvft = q * ((fy1 - fy0) + 2 * (fz1 - fz0))
     lines.append(
@@ -2042,6 +2118,10 @@ def bulkhead_lines(path: str) -> list[str]:
     )
     vol -= dvft
     lines += [emit("cut", sh) for op, sh in post if op == "trim"]
+    # P6m3: the top is the cap's r 8 front-top round after the tilt (the voxel box has no rounds)
+    s15, c15 = math.sin(math.radians(BH_TILT)), math.cos(math.radians(BH_TILT))
+    rx, rz = BH_XF - CAP_R, BH_TOP - CAP_R
+    bb[5] = s15 * (rx - BH_PIVOT[0]) + c15 * rz + CAP_R
     lines += [
         f"expect|vol {vol:.1f} {vol * 0.01:.1f}|box {' '.join(f'{v:.2f}' for v in bb)} 0.35",
         "save",
@@ -2123,7 +2203,7 @@ def mount_v2_features(mirror: bool) -> list[tuple]:
     for dz in (-MOT_HOLE_PITCH / 2, MOT_HOLE_PITCH / 2):
         y0 = MM_FACE - MM_INS_BLIND if dz < 0 else MM_FACE - MM_INS_DEPTH - 0.1
         ops.append(("cut", ("cyly", hx, hz + dz, y0, MM_FACE + 0.1, INS_HOLE / 2)))
-    for x, y in [(-11.2, -38.9), (-25.2, -38.9), (3.5, -38.9), (-25.2, -23.0)]:
+    for x, y in MOUNT_FOOT_HOLES:
         ops.append(("cut", ("cylz", x, y, -0.1, MM_FOOT_T + 0.1, CLR_M3 / 2)))
     if not mirror:
         return ops
@@ -2586,7 +2666,7 @@ CAN_TOP = 95.0  # Ben (tick 49): 93 -> 97 for a 4 mm rib grid; then 97 -> 95 wit
 # inner rounds (x >= -77, |y| <= 45) up to the hood's back wall (x 36.2).
 CAN_RIB = (1.6, 4.0)  # thickness (4 x 0.4 nozzle), depth below the inner ceiling
 CAN_RIBS_Y = (-15.0, 0.0, 15.0)  # ribs along x (the keels replace the +-30 pair)
-CAN_RIBS_X = (-62.0, -42.0, -22.0, -2.0, 18.0)  # ribs along y
+CAN_RIBS_X = (-62.0, -40.0, -18.0, 3.0)  # ribs along y. P6m2: -62 at the ramp foot, the rest under the hump roof, placed through the roof bosses (-18: the +-27 pair) and clear of the port tubes (x -27 / 17)
 # S7 rev 2 (tick 49): ribs alone 19.5 -> 7.0 mm, still the top spanning 106 between the
 # side walls. Two lengthwise inner walls ("keels") just outside the Pi stack (|y| <= 28)
 # halve that span; down to z 75 (clear of the stack's sides by 2.7, of everything below).
@@ -2612,14 +2692,17 @@ CAN_KEEL = (
 )  # |y| centre, thickness, bottom z (75 -> 73 with the top at 95: S8 1.82 mm, keep the 20.2 depth)
 CAN_X0 = -PLATE_L / 2  # rear face flush with the plate's rear edge
 CAN_HOOD_D = (
-    15.0  # hood depth behind the wall's back face (face board 10.6 + lugs 8.2 + room)
+    17.5  # hood depth behind the wall's back face (face board 10.6 + lugs 8.2 + room); P6m3: 15 -> 17.5, the flush screw counterbores clear the round at D
 )
+CAP_GAP = 0.1  # P6m3: canopy front (its seam with the front cap) this far behind the cap's back
+HOOD_BOSS = (5.0, 2.0)  # P6m3: canopy boss under the hood ceiling at each lug: radius, thickness (the lug tops are 2 lower)
+HOOD_CB = (7.5, 1.8)  # flush counterbore square to the hood top: Ø (ISO 7380-2 M3 flange Ø6.9), depth (flange 1.65 + 0.15)
 CAN_R = (
     20.0,
     8.0,
     8.0,
 )  # rear plan corners (= plate R20), hood edges, top edges (E1 8)
-CAN_WIN_HW = BH_W / 2 + 0.3  # front opening: the bulkhead's width + 0.3 per side
+CAN_WIN_HW = CAN_HW - CAN_T  # front opening. P6m3: the whole front between the side walls (the front cap closes it; no lips)
 CAN_APRON_HW = 26.0  # (pre 2026-11-06) rear apron, inside the carriages (|y| >= 28)
 # Ben (2026-11-06): the open rear corners beside the apron showed the carriages and jack
 # blocks. The rear wall now runs to the plate across the full width and round both R20
@@ -2634,7 +2717,8 @@ CAN_BOSS = (
 HOOD_COLLAR_R = 5.5  # Q27 (a): collar round each hood screw (Ø11)
 HOOD_CBORE_D = 7.5  # counterbore for the ISO 7380-2 M3 flange (Ø6.9)
 HOOD_HEAD_SINK = 0.15  # head top under the collar rim
-CAN_LUG_HOLE = 3.9  # vertical hole through the 15° hood ceiling: 3.4 + 1.8 tan 15
+CAN_LUG_HOLE = 3.4  # P6m3: M3 clearance square to the hood top (was a vertical Ø3.9 through the 15° ceiling)
+CAN_LUG_AXIS = (-math.sin(math.radians(BH_TILT)), 0.0, math.cos(math.radians(BH_TILT)))  # the lugs' (tilted) axis
 CAN_LUG_GAP = 0.1  # ceiling over the lug tops (touching on the 15° tilt read as 2 x 0.1 mm3 interference, tick 47); the screws close it
 # P6f (tick 74): crown along x over the body top (E1 §2: no flat panel > 60 x 60; white
 # shows layer lines on flats). An arc through the top's rear and hood ends (both at
@@ -2644,29 +2728,33 @@ CAN_CROWN = 2.5
 CAN_RIB_SINK = 0.5
 CAN_RIB_W45 = 4.5  # P6f (tick 95): cross-rib 45° wedge run (= rib depth + sink)
 
-# P6d mic disc (Q30 b, Ben 2026-11-05): reSpeaker Flex XVF3800 circular-4 (Seeed DXF/STEP,
-# audio-hardware §3) hung UNDER the rib grid, bare (port) face up, on 3 bosses through TPU
-# washers; each mic hears through a Ø1.2 port in a tube from the top skin down to the board
-# (a 1 mm foam ring seals tube to board). The disc is wider than the keel spacing, so each
-# keel gets a window where the board's edge passes. Centre x -30: the four mics land
-# mid-cell (x -52 / -8, |y| 22) and the 0° hole on the y 0 rib.
+# P6m2 (Ben 2026-11-08, replaces the P6m pod RB-PRT-005): the mic disc hangs from a
+# full-width HUMP that is part of the canopy (no separate pod, no posts). Side profile:
+# today's crown up to a 45° ramp, a crowned plateau (the roof) at HUMP_Z, and a 45° slope
+# from the plateau up to the hood's back top edge D, replacing the hood's 25 mm back step
+# (Q29: the support it needed). Every corner of the top is a tangent round (HUMP_BLEND), so
+# the top is one tangent chain from the rear edge to D; its side edges take one r 8 round.
+# The canopy prints rear wall down: both 45° faces and the roof print without support.
+# The disc (reSpeaker Flex XVF3800 circular-4, audio-hardware §3) hangs under the roof: per
+# hole an M2.5 x 8 SHCS up through a TPU washer, the disc and a TPU washer into an M2.5 x 4
+# insert in a roof boss; 4 ports through the roof. Inside it is open to the canopy, so the
+# disc goes in from below with the canopy off and the FPC drops straight down.
+HUMP_Z = 110.0  # roof outer z at the plateau's ends (Ben 2026-11-08)
+HUMP_CROWN = 1.5  # plateau crown (E1 §2: no flat panel > 60 x 60)
+HUMP_XH = -48.0  # ramp top / plateau rear end before the rounds (disc rear edge -41.25)
+HUMP_BLEND = (12.0, 15.0, 10.0)  # top rounds: ramp foot (concave), ramp top (convex), plateau -> slope (concave)
+HUMP_RIB_X1 = 32.0  # lengthwise ribs end on the slope, short of the hood's lugs (x >= 38)
+HUMP_KEEL_X1 = -27.0  # keels end aft of the disc (it reaches |y| 31.5 only at x -22.9..12.9)
 MIC_D, MIC_PCB_T, MIC_COMP_H = 72.5, 1.5, 1.4  # board Ø, thickness, components (down)
 MIC_SQ = 44.0  # mics on a square, at 45° to the hole pattern
 MIC_PCD, MIC_HOLE_ANG = 62.5, (0.0, 120.0, 240.0)  # 3 x Ø3.3 holes
-MIC_CTR = (-30.0, 0.0)
-MIC_PLANE = 90.6  # boss / tube bottoms: comps 0.7 over the stack top (86) with 1 mm washers
+MIC_CTR = (-5.0, 0.0)
 MIC_WASHER = (7.0, 3.0, 1.0)  # TPU 85A washer OD, ID (M2.5 clear), thickness; 2 per hole
 MIC_BOSS_D, MIC_INS = 8.0, (3.6, 5.0)  # M2.5 x 4 insert (Ben: OK): drawn hole, pocket (L + 1)
+MIC_INS_L = 4.0  # the insert's length (thread engagement)
+MIC_PLANE = HUMP_Z - CAN_T - CAN_RIB[1]  # roof-boss and plateau-rib bottoms = the upper washers' tops
 MIC_TUBE = (3.2, 1.2, 0.3)  # port tube OD, port Ø, reach below MIC_PLANE (foam squeeze)
-MIC_WIN = (1.0, 0.5)  # keel window: clearance round the board's edge (x), over/under (z)
-# tick 98b: the first windows (3.9 tall, sized for the full 1.4 component layer) took S8
-# 17.7 -> 24.6 MPa at the window's end. Where the keels cross the board (local ±90°, |y|
-# >= 28.6) the vendor STEP has nothing taller than a 0402 cap (0.585), and only on one side;
-# so the windows drop to 3.1 tall, and the keel's band over each window gets a doubler
-# (2 mm on each face, window ±5 mm, -x end at 45° for the +x print build).
-MIC_COMP_EDGE, MIC_EDGE_Y = 0.6, 28.6  # component height in the keel strips, strip start |y|
-MIC_DBL = (2.0, 5.0)  # doubler width per face, overhang past the window ends
-
+MIC_SCREW_L = 8.0  # M2.5 x 8 SHCS (ISO 4762): washer 1 + disc 1.5 + washer 1 + insert 4 = 7.5
 
 def _pre2ch(xp: float, zp: float) -> tuple[float, float]:
     """Bulkhead pre-tilt (x, z) -> chassis (x, z): the same 15° back tilt as the wall."""
@@ -2695,15 +2783,186 @@ def _crown_area(x0: float, x1: float, inset: float, zref: float, n: int = 400) -
     return sum(can_top_z(x0 + (i + 0.5) * h, inset) - zref for i in range(n)) * h
 
 
+# ------------------------------------------------ P6m2 top chain (crown -> hump -> D)
+_S2 = math.sqrt(0.5)
+_U45, _N45 = (_S2, _S2), (-_S2, _S2)  # 45° faces: direction (+x up), outward normal
+
+
+def _blend(P, u, n, o, R, r, concave, near):
+    """Tangent round of radius r between the line (point P, unit direction u, outward
+    normal n) and the convex circle (o, R) the solid lies inside. Concave: the round's
+    centre is outside the solid (|Q - o| = R + r); convex: inside (R - r). Returns the
+    centre and the tangent points on the line and on the circle (root nearest `near`)."""
+    s = 1.0 if concave else -1.0
+    rq = R + r if concave else R - r
+    bx, bz = P[0] + s * r * n[0] - o[0], P[1] + s * r * n[1] - o[1]
+    bu = bx * u[0] + bz * u[1]
+    sq = math.sqrt(bu * bu - (bx * bx + bz * bz - rq * rq))
+    qs = [(o[0] + bx + t * u[0], o[1] + bz + t * u[1]) for t in (-bu + sq, -bu - sq)]
+    q = min(qs, key=lambda c: math.dist(c, near))
+    tl = (q[0] - s * r * n[0], q[1] - s * r * n[1])
+    k = R / math.dist(q, o)
+    tc = (o[0] + (q[0] - o[0]) * k, o[1] + (q[1] - o[1]) * k)
+    return q, tl, tc
+
+
+def hump_plateau() -> tuple[float, float, float, float]:
+    """(x centre, z centre, radius, x of the slope's foot XS) of the plateau's arc."""
+    d = canopy_profile()[3]
+    xs = d[0] - (d[1] - HUMP_Z)  # 45° from the plateau up to D
+    c, sg = xs - HUMP_XH, HUMP_CROWN
+    r = (c * c / 4 + sg * sg) / (2 * sg)
+    return (HUMP_XH + xs) / 2, HUMP_Z + sg - r, r, xs
+
+
+def hump_chain() -> list[dict]:
+    """The canopy's top in side view, B (rear top) to D (hood back top), as tangent
+    segments: {"k": "arc", "c", "r", "cv" (convex), "p0", "p1"} or {"k": "line", "p0",
+    "p1", "n"}; x rises along it."""
+    p = canopy_profile()
+    b, d = p[1], p[3]
+    xc, zc, rc = canopy_crown()
+    xp, zp, rp, xs = hump_plateau()
+    r1, r2, r3 = HUMP_BLEND
+    # the ramp foot's corner on the crown (for picking the root)
+    x = HUMP_XH - 15.0
+    for _ in range(60):
+        x = HUMP_XH - (HUMP_Z - can_top_z(x))
+    q1, tl1, tc1 = _blend((HUMP_XH, HUMP_Z), _U45, _N45, (xc, zc), rc, r1, True, (x, can_top_z(x)))
+    q2, tl2, tc2 = _blend((HUMP_XH, HUMP_Z), _U45, _N45, (xp, zp), rp, r2, False, (HUMP_XH, HUMP_Z))
+    q3, tl3, tc3 = _blend(d, _U45, _N45, (xp, zp), rp, r3, True, (xs, HUMP_Z))
+    segs = [
+        {"k": "arc", "c": (xc, zc), "r": rc, "cv": True, "p0": b, "p1": tc1},
+        {"k": "arc", "c": q1, "r": r1, "cv": False, "p0": tc1, "p1": tl1},
+        {"k": "line", "p0": tl1, "p1": tl2, "n": _N45},
+        {"k": "arc", "c": q2, "r": r2, "cv": True, "p0": tl2, "p1": tc2},
+        {"k": "arc", "c": (xp, zp), "r": rp, "cv": True, "p0": tc2, "p1": tc3},
+        {"k": "arc", "c": q3, "r": r3, "cv": False, "p0": tc3, "p1": tl3},
+        {"k": "line", "p0": tl3, "p1": d, "n": _N45},
+    ]
+    xs_ = [sg["p0"][0] for sg in segs] + [d[0]]
+    assert all(a < b_ for a, b_ in zip(xs_, xs_[1:])), xs_
+    return segs
+
+
+def _seg_normal(sg: dict, q) -> tuple[float, float]:
+    """Outward unit normal of a chain segment at its point q."""
+    if sg["k"] == "line":
+        return sg["n"]
+    cx, cz = sg["c"]
+    k = 1.0 if sg["cv"] else -1.0
+    return (k * (q[0] - cx) / sg["r"], k * (q[1] - cz) / sg["r"])
+
+
+def chain_offset(ins: float, segs: list[dict] | None = None) -> list[dict]:
+    """The chain moved ins inward (the shell's inside at CAN_T; a rib's top / bottom)."""
+    out = []
+    for sg in segs if segs is not None else hump_chain():
+        n0, n1 = _seg_normal(sg, sg["p0"]), _seg_normal(sg, sg["p1"])
+        q = dict(sg)
+        q["p0"] = (sg["p0"][0] - ins * n0[0], sg["p0"][1] - ins * n0[1])
+        q["p1"] = (sg["p1"][0] - ins * n1[0], sg["p1"][1] - ins * n1[1])
+        if sg["k"] == "arc":
+            q["r"] = sg["r"] - ins if sg["cv"] else sg["r"] + ins
+        out.append(q)
+    return out
+
+
+def _seg_z(sg: dict, x: float) -> float:
+    if sg["k"] == "line":
+        (x0, z0), (x1, z1) = sg["p0"], sg["p1"]
+        return z0 + (x - x0) * (z1 - z0) / (x1 - x0)
+    cx, cz = sg["c"]
+    h = math.sqrt(max(sg["r"] ** 2 - (x - cx) ** 2, 0.0))
+    return cz + h if sg["cv"] else cz - h
+
+
+def chain_z(x: float, ins: float = 0.0) -> float:
+    """z of the top (ins 0) or of the surface ins under it, at x (ends extend their segment)."""
+    segs = chain_offset(ins)
+    for sg in segs:
+        if x <= sg["p1"][0]:
+            return _seg_z(sg, x)
+    return _seg_z(segs[-1], x)
+
+
+def canopy_top_z(x: float) -> float:
+    """Outer top of the canopy at x (edgeaudit, S8's heel pad)."""
+    return chain_z(x)
+
+
+def chain_clip(segs: list[dict], x0: float, x1: float) -> list[dict]:
+    out = []
+    for sg in segs:
+        a, b = max(sg["p0"][0], x0), min(sg["p1"][0], x1)
+        if b - a <= 1e-9:
+            continue
+        q = dict(sg)
+        q["p0"], q["p1"] = (a, _seg_z(sg, a)), (b, _seg_z(sg, b))
+        out.append(q)
+    return out
+
+
+def chain_entries(segs: list[dict], reverse: bool = False) -> list:
+    """_prism_y entries walking the segments (their first point not included)."""
+    out: list = []
+    seq = list(reversed(segs)) if reverse else segs
+    for sg in seq:
+        end = sg["p0"] if reverse else sg["p1"]
+        if sg["k"] == "arc":
+            out.append(("arc", sg["c"][0], sg["c"][1], end[0], end[1]))
+        else:
+            out.append(end)
+    return out
+
+
+def chain_sample(segs: list[dict], step_deg: float = 2.0) -> list[tuple[float, float]]:
+    """Points along the segments (first point included), arcs every step_deg or finer."""
+    pts = [segs[0]["p0"]]
+    for sg in segs:
+        if sg["k"] == "line":
+            pts.append(sg["p1"])
+            continue
+        cx, cz = sg["c"]
+        a0 = math.atan2(sg["p0"][1] - cz, sg["p0"][0] - cx)
+        a1 = math.atan2(sg["p1"][1] - cz, sg["p1"][0] - cx)
+        n = max(2, int(abs(math.degrees(a1 - a0)) / step_deg) + 1)
+        pts += [(cx + sg["r"] * math.cos(a0 + (a1 - a0) * k / n), cz + sg["r"] * math.sin(a0 + (a1 - a0) * k / n)) for k in range(1, n + 1)]
+    return pts
+
+
+def band_profile(x0: float, x1: float, ins_top: float, ins_bot: float) -> list:
+    """Side profile of a strip under the top: between the surfaces ins_top and ins_bot under
+    it, x0..x1 (a lengthwise rib)."""
+    top = chain_clip(chain_offset(ins_top), x0, x1)
+    bot = chain_clip(chain_offset(ins_bot), x0, x1)
+    return [top[0]["p0"], *chain_entries(top), bot[-1]["p1"], *chain_entries(bot, reverse=True)]
+
+
+def _polyline_len(pts, xa: float = -1e9, xb: float = 1e9) -> float:
+    tot = 0.0
+    for (x0, z0), (x1, z1) in zip(pts, pts[1:]):
+        lo, hi = max(min(x0, x1), xa), min(max(x0, x1), xb)
+        if hi <= lo or x1 == x0:
+            continue
+        tot += math.hypot(x1 - x0, z1 - z0) * (hi - lo) / abs(x1 - x0)
+    return tot
+
 def canopy_profile() -> list[tuple[float, float]]:
     """Outer side profile A..F (clockwise in XZ): rear bottom, rear top, hood back foot,
     hood back top, hood front top (on the wall's back-face plane), front bottom."""
     top_pre = (
         BH_H + CAN_LUG_GAP + CAN_T
     )  # hood ceiling just over the wall top / lug tops (z_pre BH_H)
+    assert abs(top_pre - BH_TOP) < 1e-9, (top_pre, BH_TOP)
+    assert abs(BH_W / 2 - CAN_HW) < 1e-9
+    # P6m3: the front (E, F) is the seam with the front cap, CAP_D + CAP_GAP behind the cap's
+    # face; F on the skirt line
+    xsm = BH_XF - CAP_D - CAP_GAP
     xd, zd = _pre2ch(BH_PIVOT[0] - CAN_HOOD_D, top_pre)
-    xe, ze = _pre2ch(BH_PIVOT[0], top_pre)
-    xf = BH_PIVOT[0] - CAN_Z0 * math.tan(math.radians(BH_TILT))
+    xe, ze = _pre2ch(xsm, top_pre)
+    s15, c15 = math.sin(math.radians(BH_TILT)), math.cos(math.radians(BH_TILT))
+    xf, _ = _pre2ch(xsm, (CAN_Z0 - s15 * (xsm - BH_PIVOT[0])) / c15)
     return [
         (CAN_X0, CAN_Z0),
         (CAN_X0, CAN_TOP),
@@ -2753,40 +3012,14 @@ def _round_area(alpha_deg: float, r: float) -> float:
     return r * r * (1 / math.tan(a / 2) - (math.pi - a) / 2)
 
 
-def canopy_outer_volume(p, hw: float, rr: float, rh: float, rt: float) -> dict:
-    """Solid (unshelled) canopy volume and each round's share, analytic (Pappus on the
-    plan-corner arcs; vertex blends ignored, ~r³ each)."""
-    a, b, c, d, e, _ = p
-    q90 = _round_area(90.0, 1.0)
-    # hood back-top edge D: the back face runs down from D, the ceiling up-forward at
-    # BH_TILT, so the solid's interior angle there is 90 + 15 = 105° (tick 47: not 75)
-    alpha_d = 90.0 + math.degrees(math.atan2(e[1] - d[1], e[0] - d[0]))
-    dv = {
-        "rear": -2 * q90 * rr * rr * (b[1] - a[1]),
-        "hood": -(
-            2 * q90 * rh * rh * (d[1] - c[1])
-            + _round_area(alpha_d, rh) * 2 * hw
-            + 2 * q90 * rh * rh * math.dist(d, e)
-        ),
-    }
-    cbar = rt * (10 - 3 * math.pi) / (3 * (4 - math.pi))  # centroid of the round's cut
-    straight = (2 * hw - 2 * rr) + 2 * ((c[0] + rh) - (a[0] + rr))
-    dv["top"] = -(q90 * rt * rt * straight + q90 * rt * rt * math.pi * (rr - cbar))
-    return {"base": _poly_area(p) * 2 * hw, **dv, "alpha_d": alpha_d}
-
-
 def canopy_ribs() -> list[tuple[float, ...]]:
-    """Rib grid boxes (x0, x1, y0, y1, z0, z1) under the body's inner ceiling, inside its
-    inner rounds (r 6.2 at x -77 / |y| 45) and up to the hood's back wall."""
-    t, dep = CAN_RIB
-    zc = CAN_TOP - CAN_T
-    xa = canopy_rear_seam()  # -77.45 (flat: -77)
-    xb = canopy_profile()[2][0] + CAN_T  # hood back wall, inner face
+    """Rib grid plan extents (x0, x1, y0, y1): the lengthwise ribs from the rear seam up the
+    ramp and along the hump roof to HUMP_RIB_X1 on the slope; the cross ribs inside the
+    inner side rounds (|y| 45). Their side profiles follow the top (band_profile)."""
+    t, _ = CAN_RIB
     ya = CAN_HW - CAN_T - (CAN_R[2] - CAN_T)  # 45
-    # z1 = the flat ceiling's height; with the crown the tops follow the arc instead
-    # (canopy_rib_profile / can_top_z) and the bottoms too, CAN_RIB[1] under the ceiling
-    out = [(xa, xb, y - t / 2, y + t / 2, zc - dep, zc) for y in CAN_RIBS_Y]
-    out += [(x - t / 2, x + t / 2, -ya, ya, zc - dep, zc) for x in CAN_RIBS_X]
+    out = [(canopy_rear_seam(), HUMP_RIB_X1, y - t / 2, y + t / 2) for y in CAN_RIBS_Y]
+    out += [(x - t / 2, x + t / 2, -ya, ya) for x in CAN_RIBS_X]
     return out
 
 
@@ -2800,39 +3033,23 @@ def canopy_rear_seam() -> float:
     return xc + (xf - xc) * (R - CAN_T) / (R - CAN_R[2])
 
 
-def _crown_top(x0: float, x1: float) -> list:
-    """Profile pieces from (x0, top) to (x1, top) along the ceiling arc sunk CAN_RIB_SINK
-    into the skin: a start point and one arc entry ("arc", xc, zc, x1, z1)."""
-    xc, zc, _ = canopy_crown()
-    ins = CAN_T - CAN_RIB_SINK
-    return [(x0, can_top_z(x0, ins)), ("arc", xc, zc, x1, can_top_z(x1, ins))]
-
-
 def canopy_cross_rib_profile(x0: float, x1: float) -> list:
-    """Side profile (XZ) of a cross rib x0..x1: top and bottom on the same arcs as the
-    lengthwise ribs (tick 74d: flat-bottomed boxes left a micron step at every crossing
-    and S8 peaked on it, 83.8 MPa at (-22.8, 15.8, 91.69))."""
-    xc, zc, _ = canopy_crown()
-    ib = CAN_T + CAN_RIB[1]
-    # P6f (tick 95, Q26 a: the canopy prints rear wall down, building +x): a 45° wedge on the
-    # rib's -x face, from the rib's bottom edge up to the skin CAN_RIB_W45 further back, so
-    # the 4 mm fin doesn't print as an overhang
-    xw = x0 - CAN_RIB_W45
-    return [
-        *_crown_top(xw, x1),
-        (x1, can_top_z(x1, ib)),
-        ("arc", xc, zc, x0, can_top_z(x0, ib)),
-    ]
+    """Side profile (XZ) of a cross rib x0..x1, constant depth under the top (P6m2: follows
+    the chain). P6f (tick 95, Q26 a: the canopy prints rear wall down, building +x): a 45°
+    wedge on the rib's -x face from its bottom edge up to the skin CAN_RIB_W45 further back,
+    so the 4 mm fin doesn't print as an overhang."""
+    t_top, t_bot = CAN_T - CAN_RIB_SINK, CAN_T + CAN_RIB[1]
+    top = chain_clip(chain_offset(t_top), x0 - CAN_RIB_W45, x1)
+    bot = chain_clip(chain_offset(t_bot), x0, x1)
+    return [top[0]["p0"], *chain_entries(top), bot[-1]["p1"], *chain_entries(bot, reverse=True)]
 
 
 def canopy_rib_profile() -> list:
-    """Side profile (XZ) of the lengthwise ribs: constant depth under the crowned ceiling
-    (tick 74b: flat bottoms made the middle 6.5 deep and moved S8's peak to the rear
-    ceiling panel, 38 MPa). Top sunk CAN_RIB_SINK into the skin, bottom the concentric arc."""
+    """Side profile (XZ) of the lengthwise ribs: constant depth CAN_RIB[1] under the top from
+    the rear seam to HUMP_RIB_X1, top sunk CAN_RIB_SINK into the skin. Under the hump roof
+    the bottoms sit at MIC_PLANE, 1.0 over the disc (the upper washer's thickness)."""
     xa, xb = canopy_ribs()[0][:2]
-    xc, zc, _ = canopy_crown()
-    ib = CAN_T + CAN_RIB[1]
-    return [*_crown_top(xa, xb), (xb, can_top_z(xb, ib)), ("arc", xc, zc, xa, can_top_z(xa, ib))]
+    return band_profile(xa, xb, CAN_T - CAN_RIB_SINK, CAN_T + CAN_RIB[1])
 
 
 def _profile_poly(prof: list, n: int = 60) -> list[tuple[float, float]]:
@@ -2853,102 +3070,85 @@ def _profile_poly(prof: list, n: int = 60) -> list[tuple[float, float]]:
     return out
 
 
-def canopy_keel_profile() -> list[tuple[float, float]]:
-    """Keel side profile (XZ). Rev 3 (tick 49): rev 2's keels (boxes x -77..36.2) ended
-    free at both ends and peaked there (83.7 MPa at x -77). Now tied into the rear wall
-    (x -83.2, chamfered inside the r 6.2 inner round, so no overlap) and tapered up into
-    the ceiling over the last 20 mm before the hood. Built as a Top-plane profile: the
-    same keel as a `box` came out 2.4 thick, not 1.8, inside the canopy (cause unknown)."""
+def canopy_keel_profile() -> list:
+    """Keel side profile (XZ). Rev 3 (tick 49): tied into the rear wall (x -83.2, chamfered
+    inside the r 6.2 inner round). P6m2: the top follows the chain (crown, ramp, hump roof)
+    to HUMP_KEEL_X1, aft of the disc; the end drops at a slope to the keel bottom 20 back.
+    Built as a Top-plane profile (a `box` came out 2.4 thick, not 1.8, tick 49)."""
     _, _, kz = CAN_KEEL
     zc = CAN_TOP - CAN_T
     xr = CAN_X0 + CAN_T  # rear wall inner face
     ri = CAN_R[2] - CAN_T  # inner top round
-    xb = canopy_profile()[2][0] + CAN_T  # hood back wall, inner face
+    x1 = HUMP_KEEL_X1
+    top = chain_clip(chain_offset(CAN_T - CAN_RIB_SINK), canopy_rear_seam(), x1)
     return [
         (xr, kz),
         (xr, zc - ri),
-        *_crown_top(canopy_rear_seam(), xb),  # flat: xr + ri = -77
-        (xb, zc - CAN_RIB[1]),
-        (xb - 20.0, kz),
+        top[0]["p0"],
+        *chain_entries(top),
+        (x1, chain_z(x1, CAN_T + CAN_RIB[1])),
+        (x1 - 20.0, kz),
     ]
 
 
-def canopy_hood_edge() -> tuple[float, str]:
-    """P6e (tick 62): r 1.0 on the hood's front top edge (E, along y), right behind the head.
-    E1 wants r 3 here but the ceiling is 1.8 thick over the window: r 1 is what fits.
-    Returns (volume removed, the fillet's pick box around the line)."""
-    e = canopy_profile()[4]
-    L = 2 * (CAN_HW - CAN_R[1])  # between the hood's r 8 side rounds
-    vol = _round_area(90.0, CAN_EDGE_R) * L
-    box = f"{e[0] - 0.3:.3f} {-CAN_HW:.3f} {e[1] - 0.3:.3f} {e[0] + 0.3:.3f} {CAN_HW:.3f} {e[1] + 0.3:.3f}"
-    return vol, box
+def canopy_top_round_boxes(h: float = 0.6) -> list[str]:
+    """Pick boxes (around each edge's END-VERTEX midpoint, swbuild 'vmid') for the top's single
+    r 8 round, as the edges stand after the r CAN_R[0] plan corners: the rear edge, the two
+    plan arcs, both side edges of each chain segment (the crown's from the plan corner's end),
+    edge D and the hood ceiling's side edges."""
+    p = canopy_profile()
+    a, b, d, e = p[0], p[1], p[3], p[4]
+    rr, hw = CAN_R[0], CAN_HW
+    xc0 = CAN_X0 + rr  # the plan corners end here
+    z0 = can_top_z(xc0)
+    pts = [(a[0], 0.0, b[1]), (d[0], 0.0, d[1])]  # rear edge, edge D
+    for sg in (-1, 1):
+        pts.append(((a[0] + xc0) / 2, sg * (hw - rr / 2), (b[1] + z0) / 2))  # plan arc
+        for k, sgm in enumerate(hump_chain()):
+            (x0, z0_), (x1, z1) = sgm["p0"], sgm["p1"]
+            if k == 0:
+                x0, z0_ = xc0, z0
+            pts.append(((x0 + x1) / 2, sg * hw, (z0_ + z1) / 2))
+        pts.append(((d[0] + e[0]) / 2, sg * hw, (d[1] + e[1]) / 2))  # hood ceiling side edge
+    return [f"{x - h:.3f} {y - h:.3f} {z - h:.3f} {x + h:.3f} {y + h:.3f} {z + h:.3f}" for x, y, z in pts]
 
 
-def canopy_front_corners() -> tuple[float, list[str]]:
-    """P6e (tick 75): r 1.0 on the canopy's outer front corners (front face meets the side
-    face at |y| 53), from the rim round up to the hood's r 8 side round."""
-    e, f = canopy_profile()[4], canopy_profile()[5]
-    tan15 = (f[0] - e[0]) / (e[1] - f[1])
-    z1 = e[1] - CAN_R[1]
-    L = (z1 - CAN_Z0) / math.cos(math.atan(tan15)) - CAN_EDGE_R
-    zm = (CAN_Z0 + z1) / 2
-    xm = f[0] - (zm - CAN_Z0) * tan15
-    boxes = [
-        f"{xm - 0.7:.3f} {s * CAN_HW - 0.3:.3f} {zm - 2:.3f} {xm + 0.7:.3f} {s * CAN_HW + 0.3:.3f} {zm + 2:.3f}"
-        for s in (-1, 1)
-    ]
-    return 2 * _round_area(90.0, CAN_EDGE_R) * L, boxes
-
-
-def hood_collar() -> dict:
-    """Q27 (a) (tick 94): a collar round each hood screw hole with a flat-floored counterbore,
-    so the ISO 7380-2 flange (Ø6.9 x 1.65) seats flat and sits HOOD_HEAD_SINK under the rim.
-    The hood top slopes 15°: the floor is at the surface's high point over the bore."""
-    f = canopy_features()
-    hx, _ = f["lug_hole"]
-    d, e = canopy_profile()[3], canopy_profile()[4]
-    k = (e[1] - d[1]) / (e[0] - d[0])
-
-    def zs(x):
-        return d[1] + (x - d[0]) * k
-
-    R, rc = HOOD_COLLAR_R, HOOD_CBORE_D / 2
-    zf = zs(hx + rc) + 0.05
-    zt = zf + 1.65 + HOOD_HEAD_SINK
-    t_vert = CAN_T * math.sqrt(1 + k * k)  # shell thickness measured along z
-    vol = math.pi * R * R * (zt - zs(hx)) - math.pi * rc * rc * (zt - zf)
-    vol -= math.pi * (CAN_LUG_HOLE / 2) ** 2 * (zf - zs(hx))
-    q = (1 - math.pi / 4) * 1.0**2
-    dvr = q * 2 * math.pi * (R - 0.2234)  # r 1 round the rim's outer edge (torus)
-    return {"hx": hx, "zs": zs, "k": k, "zf": zf, "zt": zt, "t": t_vert, "vol": 2 * (vol - dvr), "dvr": dvr}
-
-
-def hood_collar_lines() -> list[str]:
-    g = hood_collar()
-    hx, zs, zf, zt, t = g["hx"], g["zs"], g["zf"], g["zt"], g["t"]
-    R, rc = HOOD_COLLAR_R, HOOD_CBORE_D / 2
-    zb = zs(hx - R) - 0.5 * t  # inside the shell at the collar's low (rear) side
-    out = []
+def hood_screw() -> dict:
+    """P6m3 (Ben: flush top screws): per lug a boss under the hood ceiling (the lug top sits
+    CAN_LUG_GAP under it), an M3 clearance hole and a flat counterbore whose rim is flush
+    with the hood top, all square to the hood top: the body is turned into the wall's
+    pre-tilt frame (hood top horizontal at BH_TOP), cut, rounded (r 0.5 on the rims) and
+    turned back. Head: ISO 7380-2 M3 flange, 0.15 under the surface."""
+    lx = bh_lug_x()
+    rb, tb = HOOD_BOSS
+    dcb, hcb = HOOD_CB
+    ceil = BH_TOP - CAN_T
+    bz = ceil - tb
+    assert abs(bz - (BH_LUG_Z[1] + CAN_LUG_GAP)) < 1e-9, (bz, BH_LUG_Z)
+    assert lx + rb <= BH_XF - CAP_D - CAP_GAP - 0.4, "screw boss runs into the front cap"
+    piv = f"{BH_PIVOT[0]} {BH_PIVOT[1]} {BH_PIVOT[2]}"
+    lines = [f"rotbody|{piv}|y|{BH_TILT}"]
     for sg in (-1, 1):
         y = sg * BH_LUG_Y
-        out.append(f"cyl|z|{hx:.4f} {y}|{zb:.3f} {zt:.3f}|{R}|boss")
-    # trim what pokes below the ceiling's underside (the hood's inside, over the lug): a
-    # Top-plane prism under the underside line, x hx -+ (R + 1), over each collar's y span
-    xa, xb_ = hx - R - 1, hx + R + 1
-    ua, ub = zs(xa) - t, zs(xb_) - t
-    prof = f"M {xa:.3f} {-ua:.3f} L {xb_:.3f} {-ub:.3f} L {xb_:.3f} {-(ub - 12):.3f} L {xa:.3f} {-(ua - 12):.3f}"
-    for sg in (-1, 1):
-        y0, y1 = sorted((sg * (BH_LUG_Y - R - 1), sg * (BH_LUG_Y + R + 1)))
-        out.append(f"prof|{y0:.3f} {y1:.3f}|{prof}|cut|top")
-    for sg in (-1, 1):
-        y = sg * BH_LUG_Y
-        out.append(f"cyl|z|{hx:.4f} {y}|{zs(hx) - 3:.3f} {zt + 0.1:.3f}|{CAN_LUG_HOLE / 2}|cut")
-        out.append(f"cyl|z|{hx:.4f} {y}|{zf:.3f} {zt + 0.1:.3f}|{rc}|cut")
-        out.append(
-            f"filletface|1.0|1|{zt:.3f}|{hx - R - 1:.3f} {y - R - 1:.3f} {hx + R + 1:.3f} {y + R + 1:.3f}|1"
-            f"|{-g['dvr']:.2f} {0.3 * g['dvr']:.2f}"
-        )
-    return out
+        lines += [
+            f"cyl|z|{lx:.4f} {y}|{bz:.3f} {ceil + 0.3:.3f}|{rb}|boss",
+            f"cyl|z|{lx:.4f} {y}|{bz - 0.1:.3f} {BH_TOP + 0.1:.3f}|{CAN_LUG_HOLE / 2}|cut",
+            f"cyl|z|{lx:.4f} {y}|{BH_TOP - hcb:.3f} {BH_TOP + 0.1:.3f}|{dcb / 2}|cut",
+        ]
+    q = (1 - math.pi / 4) * 0.5**2
+    dvr = 2 * q * 2 * math.pi * (dcb / 2 + 0.11)
+    boxes = ";".join(
+        f"{lx - dcb / 2 - 0.5:.3f} {sg * BH_LUG_Y - dcb / 2 - 0.5:.3f} {BH_TOP - 0.1:.3f} {lx + dcb / 2 + 0.5:.3f} {sg * BH_LUG_Y + dcb / 2 + 0.5:.3f} {BH_TOP + 0.1:.3f}"
+        for sg in (-1, 1)
+    )
+    lines.append(f"fillet|0.5|curve|{boxes}|2|{-dvr:.2f} {0.5 * dvr + 0.5:.2f}")
+    lines.append(f"rotbody|{piv}|y|{-BH_TILT}")
+    vol = 2 * (
+        math.pi * rb * rb * tb
+        - math.pi * (CAN_LUG_HOLE / 2) ** 2 * (tb + CAN_T)
+        - math.pi * ((dcb / 2) ** 2 - (CAN_LUG_HOLE / 2) ** 2) * hcb
+    ) - dvr
+    return {"lines": lines, "vol": vol}
 
 
 def canopy_rear_wall() -> dict:
@@ -2996,7 +3196,7 @@ def canopy_rim_round() -> tuple[float, list[str]]:
     sides = 2 * ((wx0 - (CAN_X0 + rr)) + (xf - wx1))
     cbar = r * (10 - 3 * math.pi) / (3 * (4 - math.pi))
     arcs = 2 * q90 * (rr - cbar) * (rw["phi"] - math.pi / 2)  # end face to the side tangent
-    lips = 2 * (hw - CAN_WIN_HW)  # front-wall bottom edge beside the window (75° wedge)
+    lips = 0.0  # P6m3: the front wall is gone; the side walls' front-end bottoms stay square
     vol = q90 * (rear + sides) + _round_area(75.0, r) * lips + arcs
     zz = f"{z - 0.5} {z + 0.5}"
 
@@ -3025,28 +3225,110 @@ def canopy_rim_round() -> tuple[float, list[str]]:
     # front-wall inner edge (back-face line minus t along the normal), beside the window
     xfi = xf - t / math.cos(math.radians(BH_TILT))
     skips += [box(xfi - 0.6, xfi + 0.6, -60, 60)]
+    # P6m3: the side walls' front-end bottom edges sit on the seam with the cap: square
+    for sg in (-1, 1):
+        skips += [box(xf - 0.6, xf + 0.6, sg * (hw - t / 2) - 1.2, sg * (hw - t / 2) + 1.2)]
     del ai
     return vol, skips
+
+
+def canopy_side_poly(inset: float = 0.0) -> list[tuple[float, float]]:
+    """Side profile as a polygon A, B, top chain (sampled), D, E, F; inset > 0 gives the
+    shell's cavity (every edge but the open bottom moved in)."""
+    p = canopy_profile()
+    poly = [p[0], *chain_sample(hump_chain()), p[4], p[5]]
+    return _inset_profile(poly, inset) if inset else poly
+
+
+def canopy_solid_volume(poly, hw: float, rr: float, rh: float, rt: float) -> dict:
+    """Solid (unshelled) canopy volume and each round's share (P6m2: the top is the chain).
+    rear = the vertical plan corners (r rr, A to B); top = r rt along the top's rear edge,
+    its plan arcs and both side edges from the plan corners to D (one tangent chain); hood =
+    r rh on D (along y) and the hood ceiling's side edges D -> E."""
+    a, b = poly[0], poly[1]
+    d, e = poly[-3], poly[-2]
+    q90 = _round_area(90.0, 1.0)
+    v1 = (d[0] - poly[-4][0], d[1] - poly[-4][1])
+    v2 = (e[0] - d[0], e[1] - d[1])
+    turn = math.degrees(math.atan2(v1[0] * v2[1] - v1[1] * v2[0], v1[0] * v2[0] + v1[1] * v2[1]))
+    alpha_d = 180.0 - abs(turn)
+    cbar = rt * (10 - 3 * math.pi) / (3 * (4 - math.pi))
+    side = _polyline_len(poly[1:-2], a[0] + rr, d[0])
+    return {
+        "base": _poly_area(poly) * 2 * hw,
+        "rear": -2 * q90 * rr * rr * (b[1] - a[1]),
+        "top": -(q90 * rt * rt * (2 * side + (2 * hw - 2 * rr)) + q90 * rt * rt * math.pi * (rr - cbar)),
+        "hood": -(_round_area(alpha_d, rh) * 2 * hw + 2 * q90 * rh * rh * math.dist(d, e)),
+        "alpha_d": alpha_d,
+        "side": side,
+    }
+
+
+def canopy_rib_volumes() -> dict:
+    """Ribs, cross ribs and keels below the inside of the shell (their CAN_RIB_SINK in the
+    skin adds nothing), overlaps taken out once; and the r CAN_ROOT_R root rounds on the
+    two ceiling faces that get them (crown, hump roof)."""
+    t, dep = CAN_RIB
+    ky, kt, kz = CAN_KEEL
+    ins, sink = CAN_T, CAN_RIB_SINK
+    xa, xb = canopy_ribs()[0][:2]
+    ya = canopy_ribs()[-1][3]
+    nY = len(CAN_RIBS_Y)
+    a_rib = _poly_area(_profile_poly(band_profile(xa, xb, ins, ins + dep)))
+    a_x = {}
+    for x in CAN_RIBS_X:
+        prof = canopy_cross_rib_profile(x - t / 2, x + t / 2)
+        a_x[x] = _poly_area(_profile_poly(prof)) - _poly_area(
+            _profile_poly(band_profile(x - t / 2 - CAN_RIB_W45, x + t / 2, ins - sink, ins))
+        )
+    xk1 = HUMP_KEEL_X1
+    a_keel = _poly_area(_profile_poly(canopy_keel_profile())) - _poly_area(
+        _profile_poly(band_profile(canopy_rear_seam(), xk1, ins - sink, ins))
+    )
+    keel_x = [x for x in CAN_RIBS_X if x < xk1]
+    ribs = (
+        nY * t * a_rib
+        + sum(a * 2 * ya for a in a_x.values())
+        - nY * t * sum(a_x.values())  # cross ribs inside the lengthwise ribs
+        + 2 * kt * a_keel
+        - 2 * kt * sum(a_x[x] for x in keel_x)  # cross ribs through the keels
+    )
+    # roots: crown face (rear seam .. its tangent seam into the ramp-foot round) and hump
+    # roof face (between its two tangent seams); concave rounds (1 - pi/4) r² per mm, the
+    # cross ribs' -x roots at 135° on their 45° wedges
+    inner = chain_offset(ins)
+    faces = [(xa, inner[0]["p1"][0]), (inner[4]["p0"][0], inner[4]["p1"][0])]
+    q90 = (1 - math.pi / 4) * CAN_ROOT_R**2
+    q135 = (1 / math.tan(math.radians(67.5)) - math.pi / 8) * CAN_ROOT_R**2
+    per = []
+    for k, (f0, f1) in enumerate(faces):
+        xs_in = [x for x in CAN_RIBS_X if f0 < x < f1]
+        # roof: no lengthwise-rib roots forward of the last cross rib (the ribs run on over
+        # the tangent seam into the slope round, where a root round can't end: P6m2 build)
+        L = (max(xs_in) + t / 2 if k == 1 else f1) - f0
+        v = q90 * nY * 2 * (L - len(xs_in) * t)  # lengthwise ribs
+        kl = max(0.0, min(f1, xk1) - f0)  # keels on this face
+        nk = len([x for x in xs_in if x < xk1])
+        v += q90 * 2 * 2 * max(0.0, kl - nk * t)
+        for x in xs_in:
+            span = 2 * ya - nY * t - (2 * kt if x < xk1 else 0.0)
+            v += (q90 + q135) * span
+        per.append(v)
+    return {"ribs": ribs, "roots": sum(per), "roots_crown": per[0], "roots_roof": per[1], "faces": faces}
 
 
 def canopy_features() -> dict:
     p = canopy_profile()
     rr, rh, rt = CAN_R
-    out = canopy_outer_volume(p, CAN_HW, rr, rh, rt)
-    pin = _inset_profile(p, CAN_T)
-    inn = canopy_outer_volume(pin, CAN_HW - CAN_T, rr - CAN_T, rh - CAN_T, rt - CAN_T)
+    poly = canopy_side_poly()
+    pin = canopy_side_poly(CAN_T)
+    out = canopy_solid_volume(poly, CAN_HW, rr, rh, rt)
+    inn = canopy_solid_volume(pin, CAN_HW - CAN_T, rr - CAN_T, rh - CAN_T, rt - CAN_T)
     v_out = out["base"] + out["rear"] + out["hood"] + out["top"]
     v_in = inn["base"] + inn["rear"] + inn["hood"] + inn["top"]
-    # P6f crown: the segment over the chord, outside and (concentric, r - t) inside
-    crown_out = _crown_area(p[1][0], p[2][0], 0.0, CAN_TOP) * 2 * CAN_HW
-    crown_in = (
-        _crown_area(pin[1][0], pin[2][0], CAN_T, CAN_TOP - CAN_T) * 2 * (CAN_HW - CAN_T)
-    )
-    v_out += crown_out
-    v_in += crown_in
     # front opening: the 1.8 front wall at |y| <= CAN_WIN_HW, from the skirt (z_pre at
     # mid-wall) up to the hood ceiling's underside (z_pre BH_H)
-    xm = BH_PIVOT[0] - CAN_T / 2
+    xm = BH_XF - CAP_D - CAP_GAP - CAN_T / 2
     s, c_ = math.sin(math.radians(BH_TILT)), math.cos(math.radians(BH_TILT))
     zp0 = (CAN_Z0 - s * (xm - BH_PIVOT[0])) / c_
     win = CAN_T * 2 * CAN_WIN_HW * (BH_H + CAN_LUG_GAP - zp0)
@@ -3062,41 +3344,8 @@ def canopy_features() -> dict:
     seg = r * r * math.acos(dd / r) - dd * math.sqrt(r * r - dd * dd)
     boss = 2 * (math.pi * r * r - seg) * bh
     pockets = 2 * math.pi * (INS_HOLE_PC / 2) ** 2 * INS_DEPTH
-    ribs = canopy_ribs()
-    rt_, rd_ = CAN_RIB
-    ky, kt, kz = CAN_KEEL
-    # below the (crowned) ceiling only: the CAN_RIB_SINK into the skin adds nothing
-    zb = ribs[0][4]
-    xa_, xb_, ya_ = ribs[0][0], ribs[0][1], ribs[-1][3]
-    dep = {x: rd_ for x in CAN_RIBS_X}  # cross-rib depth (constant since tick 74b)
-    nY = len(CAN_RIBS_Y)
-    rib_vol = (
-        nY * rt_ * (_crown_area(xa_, xb_, CAN_T, zb - 9) - _crown_area(xa_, xb_, CAN_T + rd_, zb - 9))
-        + sum(rt_ * 2 * ya_ * d for d in dep.values())  # cross ribs
-        + len(CAN_RIBS_X) * (CAN_RIB_W45 * (rd_ + CAN_RIB_SINK) / 2 - CAN_RIB_W45 * CAN_RIB_SINK) * 2 * ya_  # 45° wedges below the ceiling
-        - len(CAN_RIBS_X) * nY * rt_ * CAN_RIB_W45 * rd_ / 2  # wedges through the x-ribs
-        - sum(nY * rt_ * rt_ * d for d in dep.values())  # rib crossings
-        + 2
-        * kt
-        * (
-            _poly_area(_profile_poly(canopy_keel_profile()))
-            - CAN_RIB_SINK * (xb_ - xa_)
-        )
-        - sum(2 * rt_ * kt * d for d in dep.values())  # cross ribs through the keels
-    )
-    # P6g root rounds (concave: + (1 - pi/4) r² per mm), both sides of every rib/keel
-    # root on the ceiling between the crossings, x -77 .. 36.2, |y| <= 45
-    xa, xb = ribs[0][0], ribs[0][1]
-    ya = ribs[-1][3]
-    nxr, nyr = len(CAN_RIBS_Y), len(CAN_RIBS_X)
-    l_x = nxr * 2 * ((xb - xa) - nyr * rt_)  # x-ribs
-    l_y = nyr * 2 * (2 * ya - nxr * rt_ - 2 * kt)  # y-ribs
-    l_k = 2 * 2 * ((xb - xa) - nyr * rt_)  # keels
-    # tick 95: the cross ribs' -x roots now meet the ceiling at 135° (the 45° wedge):
-    # a concave round there adds (cot 67.5° - pi/8) r² per mm instead of (1 - pi/4) r²
-    q90 = (1 - math.pi / 4) * CAN_ROOT_R**2
-    q135 = (1 / math.tan(math.radians(67.5)) - math.pi / 8) * CAN_ROOT_R**2
-    roots = q90 * (l_x + l_y / 2 + l_k) + q135 * l_y / 2
+    rv = canopy_rib_volumes()
+    rib_vol, roots = rv["ribs"], rv["roots"]
     (wx0, wx1), (tx0, tx1), td, _ = CAN_TAB
     tabs = 2 * CAN_T * ((wx1 - wx0) * CAN_Z0 + (tx1 - tx0) * td)
     return {
@@ -3106,7 +3355,6 @@ def canopy_features() -> dict:
         "inn": inn,
         "v_out": v_out,
         "v_in": v_in,
-        "crown": (crown_out, crown_in),
         "win": win,
         "win_zp0": zp0,
         "lug_hole": (hx, hz),
@@ -3116,18 +3364,16 @@ def canopy_features() -> dict:
         "pockets": pockets,
         "ribs": rib_vol,
         "roots": roots,
+        "root_faces": rv["faces"],
+        "roots_crown": rv["roots_crown"],
+        "roots_roof": rv["roots_roof"],
         "tabs": tabs,
         "rim": canopy_rim_round()[0],
-        "hood_edge": canopy_hood_edge()[0],
-        "fcorner": canopy_front_corners()[0],
         "vol": -canopy_rear_edges()[0]
         - canopy_rim_round()[0]
-        - canopy_hood_edge()[0]
-        - canopy_front_corners()[0]
         + v_out
         - v_in
         - win
-        - holes
         + apron
         + boss
         - pockets
@@ -3200,8 +3446,8 @@ def canopy_rear_edges() -> tuple[float, list[str]]:
 
 
 def mic_geom() -> dict:
-    """Mic-disc layout in the chassis frame: hole and mic xy, the board's z span, and the
-    keel windows (x0, x1, z0, z1)."""
+    """Mic-disc layout in the chassis frame (P6m2 hump): hole and mic xy, the board's z
+    span and the lower washers' bottoms (the screw heads' seat)."""
     cx, cy = MIC_CTR
     r = MIC_PCD / 2
     holes = [(cx + r * math.cos(math.radians(a)), cy + r * math.sin(math.radians(a))) for a in MIC_HOLE_ANG]
@@ -3209,71 +3455,49 @@ def mic_geom() -> dict:
     mics = [(cx + sx * h, cy + sy * h) for sx in (-1, 1) for sy in (-1, 1)]
     zt = MIC_PLANE - MIC_WASHER[2]  # board top (port face)
     zb = zt - MIC_PCB_T
-    ky = CAN_KEEL[0] - CAN_KEEL[1] / 2  # keel inner face
-    half = math.sqrt((MIC_D / 2) ** 2 - ky**2) + MIC_WIN[0]
-    win = (cx - half, cx + half, zb - MIC_COMP_EDGE - MIC_WIN[1], zt + MIC_WIN[1])
-    return {"holes": holes, "mics": mics, "zt": zt, "zb": zb, "win": win}
+    seat = zb - MIC_WASHER[2]  # under the lower washer: the SHCS head
+    return {"holes": holes, "mics": mics, "zt": zt, "zb": zb, "seat": seat}
+
+
+def _strip_circle(d: float, w: float, r: float, n: int = 400) -> float:
+    """Area of a circle (radius r) inside a strip of width w whose centre line is d away."""
+    lo, hi = max(d - w / 2, -r), min(d + w / 2, r)
+    if hi <= lo:
+        return 0.0
+    s = (hi - lo) / n
+    return sum(2 * math.sqrt(max(r * r - (lo + (i + 0.5) * s) ** 2, 0.0)) for i in range(n)) * s
 
 
 def canopy_mic_lines() -> tuple[list[str], float]:
-    """P6d (Q30 b): keel windows, 3 insert bosses and 4 port tubes, built after the root
-    rounds (they'd pick up the new loops on the ceiling). Volume: overlaps with ribs, wedges
-    and the root rounds are ignored (a few mm³ against the canopy's 3 % tolerance)."""
+    """P6m2: what the hump roof carries for the disc: 3 bosses with M2.5 x 4 insert pockets
+    from below and 4 port tubes with the Ø1.2 ports through the roof, all from MIC_PLANE up
+    into the roof. Built after the root rounds. Volume: bosses less the rib material already
+    inside them (strip x circle areas; the cross rib's wedge and the root rounds inside are
+    ignored), tubes, less pockets and ports."""
     g = mic_geom()
-    wx0, wx1, wz0, wz1 = g["win"]
-    rw = (wz1 - wz0) / 2
+    t, dep = CAN_RIB
+    rb, (pd, pl) = MIC_BOSS_D / 2, MIC_INS
+    to, tp, reach = MIC_TUBE
     lines: list[str] = []
     vol = 0.0
-    ky, kt, _ = CAN_KEEL
-    for sg in (-1, 1):  # stadium window through each keel: Top plane (x, -z), along y
-        y0, y1 = sg * ky - kt / 2 - 0.1, sg * ky + kt / 2 + 0.1
-        zm = (wz0 + wz1) / 2
-        lines.append(
-            f"prof|{min(y0, y1):.3f} {max(y0, y1):.3f}|M {wx0 + rw:.4f} {-wz0:.4f} L {wx1 - rw:.4f} {-wz0:.4f} "
-            f"a {wx1 - rw:.4f} {-zm:.4f} {wx1 - rw:.4f} {-wz1:.4f} L {wx0 + rw:.4f} {-wz1:.4f} "
-            f"a {wx0 + rw:.4f} {-zm:.4f} {wx0 + rw:.4f} {-wz0:.4f}|cut|top"
-        )
-        vol -= kt * ((wx1 - wx0 - 2 * rw) * 2 * rw + math.pi * rw * rw)
-        # doublers over the window: outboard from the window top, inboard from the boss plane
-        # (the boss-side washers reach |y| 30.56 at z 89.6..90.6); crown-following top
-        dw, dx = MIC_DBL
-        xa, xb = wx0 - dx, wx1 + dx
-        xc, zc, _ = canopy_crown()
-        for face, zd in ((1, wz1), (-1, MIC_PLANE)):
-            yi = sg * ky + face * sg * kt / 2  # keel face
-            yo = yi + face * sg * dw
-            xw = xa - (can_top_z(xa, CAN_T) - zd)  # 45° wedge back to the skin
-            poly = [*_crown_top(xw, xb), (xb, zd), (xa, zd)]
-            pts = [f"M {poly[0][0]:.6f} {-poly[0][1]:.6f}"]
-            px, pz = poly[0]
-            for q in poly[1:]:
-                if q[0] == "arc":
-                    _, qxc, qzc, x1, z1 = q
-                    cr = (px - qxc) * (-z1 + qzc) - (-pz + qzc) * (x1 - qxc)
-                    pts.append(f"{'A' if cr > 0 else 'a'} {qxc:.6f} {-qzc:.6f} {x1:.6f} {-z1:.6f}")
-                    px, pz = x1, z1
-                else:
-                    pts.append(f"L {q[0]:.6f} {-q[1]:.6f}")
-                    px, pz = q
-            lines.append(f"prof|{min(yi, yo):.3f} {max(yi, yo):.3f}|{' '.join(pts)}|boss|top")
-            n = 40  # area under the crown (skin underside), wedge as a triangle
-            hm = sum(can_top_z(xa + (xb - xa) * (i + 0.5) / n, CAN_T) - zd for i in range(n)) / n
-            hw_ = can_top_z(xa, CAN_T) - zd
-            vol += dw * ((xb - xa) * hm + hw_ * hw_ / 2)
-    ins_d, ins_l = MIC_INS
     for hx, hy in g["holes"]:
-        ztop = can_top_z(hx, CAN_T - CAN_RIB_SINK)
-        lines.append(f"cyl|z|{hx:.4f} {hy:.4f}|{MIC_PLANE:.3f} {ztop:.3f}|{MIC_BOSS_D / 2}|boss")
-        lines.append(f"cyl|z|{hx:.4f} {hy:.4f}|{MIC_PLANE - 0.1:.3f} {MIC_PLANE + ins_l:.3f}|{ins_d / 2}|cut")
-        vol += math.pi * (MIC_BOSS_D / 2) ** 2 * (can_top_z(hx, CAN_T) - MIC_PLANE)
-        vol -= math.pi * (ins_d / 2) ** 2 * ins_l
-    to, tp, reach = MIC_TUBE
+        zin, zout = chain_z(hx, CAN_T), chain_z(hx)
+        assert MIC_PLANE + pl + 0.6 <= zout, (hx, zout)  # 0.6 skin over the insert pocket
+        lines.append(f"cyl|z|{hx:.4f} {hy:.4f}|{MIC_PLANE:.3f} {zin + 0.3:.3f}|{rb}|boss")
+        lines.append(f"cyl|z|{hx:.4f} {hy:.4f}|{MIC_PLANE - 0.1:.3f} {MIC_PLANE + pl:.3f}|{pd / 2}|cut")
+        v = math.pi * rb * rb * (zin - MIC_PLANE)
+        rib_bot = chain_z(hx, CAN_T + dep)
+        for y in CAN_RIBS_Y:
+            v -= _strip_circle(abs(hy - y), t, rb) * (zin - max(rib_bot, MIC_PLANE))
+        for x in CAN_RIBS_X:
+            v -= _strip_circle(abs(hx - x), t, rb) * (zin - max(rib_bot, MIC_PLANE))
+        v -= math.pi * (pd / 2) ** 2 * pl
+        vol += v
     for mx, my in g["mics"]:
-        ztop = can_top_z(mx, CAN_T - CAN_RIB_SINK)
-        lines.append(f"cyl|z|{mx:.4f} {my:.4f}|{MIC_PLANE - reach:.3f} {ztop:.3f}|{to / 2}|boss")
-        lines.append(f"cyl|z|{mx:.4f} {my:.4f}|{MIC_PLANE - reach - 0.1:.3f} {can_top_z(mx) + 0.5:.3f}|{tp / 2}|cut")
-        vol += math.pi * (to / 2) ** 2 * (can_top_z(mx, CAN_T) - MIC_PLANE + reach)
-        vol -= math.pi * (tp / 2) ** 2 * (can_top_z(mx) - MIC_PLANE + reach)
+        zin, zout = chain_z(mx, CAN_T), chain_z(mx)
+        lines.append(f"cyl|z|{mx:.4f} {my:.4f}|{MIC_PLANE - reach:.3f} {zin + 0.3:.3f}|{to / 2}|boss")
+        lines.append(f"cyl|z|{mx:.4f} {my:.4f}|{MIC_PLANE - reach - 0.1:.3f} {zout + 0.5:.3f}|{tp / 2}|cut")
+        vol += math.pi * (to / 2) ** 2 * (zin - MIC_PLANE + reach) - math.pi * (tp / 2) ** 2 * (zout - MIC_PLANE + reach)
     return lines, vol
 
 
@@ -3293,34 +3517,41 @@ def mic_washer_lines(path: str) -> list[str]:
 
 def mic_disc_lines(path: str) -> list[str]:
     """Envelope (interference only): the board plus a component layer under it, chassis
-    frame; the component layer is clear round each hole (Ø6 pads; Ø7.4 for the washer)."""
+    frame; the component layer is clear round each hole (Ø6 pads; Ø7.4 for the washer).
+    (P6m: the tick-98 keel strips are gone with the keel windows.)"""
     g = mic_geom()
     cx, cy = MIC_CTR
     r, rc = MIC_D / 2, MIC_WASHER[0] / 2 + 0.2
     v = math.pi * r * r * (MIC_PCB_T + MIC_COMP_H) - 3 * math.pi * (1.65**2 * MIC_PCB_T + rc**2 * MIC_COMP_H)
-
-    def seg(rr: float, d: float) -> float:  # circle area beyond a chord at distance d
-        return rr * rr * math.acos(d / rr) - d * math.sqrt(rr * rr - d * d)
-
-    # keel strips (|y| >= MIC_EDGE_Y): components only MIC_COMP_EDGE tall (tick 98b)
-    ey, dz = MIC_EDGE_Y, MIC_COMP_H - MIC_COMP_EDGE
-    z0, z1 = g["zb"] - MIC_COMP_H, g["zb"] - MIC_COMP_EDGE
-    v -= 2 * dz * seg(r, ey)
-    v += dz * sum(seg(rc, ey - abs(hy)) for _, hy in g["holes"] if ey - abs(hy) < rc)  # overlap
-    strips = [
-        f"prof|{lo:.3f} {hi:.3f}|M {cx - r - 0.5:.3f} {-(z0 - 0.1):.3f} L {cx + r + 0.5:.3f} {-(z0 - 0.1):.3f} "
-        f"L {cx + r + 0.5:.3f} {-z1:.3f} L {cx - r - 0.5:.3f} {-z1:.3f} L {cx - r - 0.5:.3f} {-(z0 - 0.1):.3f}|cut|top"
-        for lo, hi in ((ey, r + 0.5), (-r - 0.5, -ey))
-    ]
     return [
         f"part|{path}",
         f"cyl|z|{cx} {cy}|{g['zb'] - MIC_COMP_H:.3f} {g['zt']:.3f}|{r}|boss",
         *[f"cyl|z|{hx:.4f} {hy:.4f}|{g['zb'] - 0.1:.3f} {g['zt'] + 0.1:.3f}|1.65|cut" for hx, hy in g["holes"]],
         *[f"cyl|z|{hx:.4f} {hy:.4f}|{g['zb'] - MIC_COMP_H - 0.1:.3f} {g['zb']:.3f}|{rc}|cut" for hx, hy in g["holes"]],
-        *strips,
         f"expect|vol {v:.1f} {v * 0.01:.1f}|box {cx - r} {cx + r} {cy - r} {cy + r} {g['zb'] - MIC_COMP_H:.2f} {g['zt']:.2f} 0.05",
         "save",
     ]
+
+
+def _prism_y(poly: list, y0: float, y1: float, kind: str) -> str:
+    """Top plane: sketch (x, -z), extrude +Y. Entries (x, z) or ("arc", xc, zc, x1, z1): a
+    minor arc from the previous point; its sense is taken in sketch coordinates (z -> -z
+    mirrors it)."""
+    x0, z0 = poly[0]
+    toks = [f"M {x0:.6f} {-z0:.6f}"]
+    px, pz = x0, z0
+    for q in poly[1:]:
+        if q[0] == "arc":
+            _, xc, zc, x1, z1 = q
+            cr = (px - xc) * (-z1 + zc) - (-pz + zc) * (x1 - xc)
+            # 6 decimals: a centre rounded to 1e-4 is off-equidistant from the ends by
+            # more than SolidWorks' tolerance at r ~700 and the extrude comes back null
+            toks.append(f"{'A' if cr > 0 else 'a'} {xc:.6f} {-zc:.6f} {x1:.6f} {-z1:.6f}")
+            px, pz = x1, z1
+        else:
+            toks.append(f"L {q[0]:.6f} {-q[1]:.6f}")
+            px, pz = q
+    return f"prof|{y0} {y1}|{' '.join(toks)}|{kind}|top"
 
 
 def canopy_lines(path: str) -> list[str]:
@@ -3330,67 +3561,51 @@ def canopy_lines(path: str) -> list[str]:
     rr, rh, rt = CAN_R
     hw = CAN_HW
     o = f["out"]
-    zc_in = CAN_TOP - CAN_T  # ceiling underside at its ends (crowned: up to + CAN_CROWN)
     xcr, zcr, rcr = canopy_crown()
-    zc_hi = zc_in + CAN_CROWN
+    xpl, zpl, rpl, _ = hump_plateau()
+    chain = hump_chain()
+    (cf0, cf1), (pf0, pf1) = f["root_faces"]  # inner crown face, inner roof face (x spans)
     xr_in = canopy_rear_seam()  # -77.45: tangent seam into the rear inner round
-    xb_in = canopy_profile()[2][0] + CAN_T  # 36.2: ceiling ends at the hood
     yr_in = (
         CAN_HW - CAN_T - (CAN_R[2] - CAN_T)
     )  # 45: tangent seams into the side rounds
 
-    def prismy(poly, y0, y1, kind):  # Top plane: sketch (x, -z), extrude +Y
-        # entries (x, z) or ("arc", xc, zc, x1, z1): a minor arc from the previous point;
-        # its sense is taken in sketch coordinates (z -> -z mirrors it)
-        x0, z0 = poly[0]
-        toks = [f"M {x0:.6f} {-z0:.6f}"]
-        px, pz = x0, z0
-        for q in poly[1:]:
-            if q[0] == "arc":
-                _, xc, zc, x1, z1 = q
-                cr = (px - xc) * (-z1 + zc) - (-pz + zc) * (x1 - xc)
-                # 6 decimals: a centre rounded to 1e-4 is off-equidistant from the ends by
-                # more than SolidWorks' tolerance at r ~700 and the extrude comes back null
-                toks.append(f"{'A' if cr > 0 else 'a'} {xc:.6f} {-zc:.6f} {x1:.6f} {-z1:.6f}")
-                px, pz = x1, z1
-            else:
-                toks.append(f"L {q[0]:.6f} {-q[1]:.6f}")
-                px, pz = q
-        return f"prof|{y0} {y1}|{' '.join(toks)}|{kind}|top"
+    def seam_skip(x0, x1, z0, z1, y0=-CAN_HW - 1, y1=CAN_HW + 1):
+        return f"{x0:.3f} {y0:.3f} {z0:.3f} {x1:.3f} {y1:.3f} {z1:.3f}"
+
+    prismy = _prism_y
 
     def tol(v, k=0.2):
         return f"{v:.1f} {abs(v) * k + 5:.1f}"
 
-    # front opening: a slab round the front wall in the wall's own frame
-    x0p, x1p = BH_PIVOT[0] - CAN_T - 0.5, BH_PIVOT[0] + 0.5
+    # front opening: a slab round the front wall in the wall's own frame (P6m3: at the seam)
+    xsm = BH_XF - CAP_D - CAP_GAP
+    x0p, x1p = xsm - CAN_T - 0.5, xsm + 0.5
     zw = BH_H + CAN_LUG_GAP
     win = [_pre2ch(x0p, 20.0), _pre2ch(x0p, zw), _pre2ch(x1p, zw), _pre2ch(x1p, 20.0)]
     hx, _ = f["lug_hole"]
     bx, by, bh = CAN_BOSS
-    zlo, zhi = e[1] - 12.0, e[1] + 6.0
     lines = [
         f"part|{path}",
-        prismy([a, b, ("arc", xcr, zcr, *c), d, e, fp], -hw, hw, "boss"),
+        prismy([a, b, *chain_entries(chain), e, fp], -hw, hw, "boss"),
         # plan corners at the rear (vertical edges)
         f"fillet|{rr}|z|{a[0] - 0.1} {-hw - 0.1} {a[1]} {a[0] + 0.1} {hw + 0.1} {b[1]}|2|{tol(o['rear'], 0.05)}",
-        # hood: back corners (vertical), back-top edge, ceiling side edges
-        f"fillet|{rh}|any|{c[0] - 0.1} {-hw - 0.1} {c[1] + 0.1} {c[0] + 0.6 * (e[0] - c[0]):.3f} {hw + 0.1} {e[1] + 0.1}|5|{tol(o['hood'])}",
-        # body top: rear edge, plan arcs and side edges; not the concave edge at the hood
-        f"filletface|{rt}|cyl|{rcr:.4f}|{a[0]} {-hw} {c[0]} {hw}|1|{tol(o['top'])}|skip:{c[0] - 0.5} {-hw - 1} {b[1] - 0.5} {c[0] + rh + 0.5} {hw + 1} {b[1] + 0.5}",
+        # P6m3 top: ONE r 8 round on every edge of the top, picked by box (curve mode): the rear
+        # edge, the two plan arcs, both side edges of each chain segment (crown, ramp rounds,
+        # ramp, hump roof, slope), edge D and the hood ceiling's side edges to the seam. (P6m2
+        # propagated from the crown face instead and the hood's side rounds died out before the
+        # seam: a square cowl corner against the cap's r 8.)
+        f"fillet|{rt}|vmid|{';'.join(canopy_top_round_boxes())}|{len(canopy_top_round_boxes())}|{tol(o['top'] + o['hood'])}",
         f"shell|{CAN_T}|z:-1|{CAN_Z0}|{a[0] - 1} {-hw - 1} {fp[0] + 1} {hw + 1}|1|{-f['v_in']:.1f} {0.04 * (f['v_out'] - f['v_in']):.1f}",
         prismy(win, -CAN_WIN_HW, CAN_WIN_HW, "cut"),
-        *[
-            f"cyl|z|{hx:.4f} {sg * BH_LUG_Y}|{zlo:.3f} {zhi:.3f}|{CAN_LUG_HOLE / 2}|cut"
-            for sg in (-1, 1)
-        ],
-        *hood_collar_lines(),
+        *hood_screw()["lines"],
         *[
             prismy(canopy_rib_profile(), y0, y1, "boss")
-            for _, _, y0, y1, _, _ in canopy_ribs()[: len(CAN_RIBS_Y)]
+            for _, _, y0, y1 in canopy_ribs()[: len(CAN_RIBS_Y)]
         ],
         *[
             prismy(canopy_cross_rib_profile(x0, x1), y0, y1, "boss")
-            for x0, x1, y0, y1, _, _ in canopy_ribs()[len(CAN_RIBS_Y) :]
+            for x0, x1, y0, y1 in canopy_ribs()[len(CAN_RIBS_Y) :]
         ],
         *[
             prismy(
@@ -3402,14 +3617,20 @@ def canopy_lines(path: str) -> list[str]:
             for s in (-1, 1)
         ],
         # P6g (Ben): r 1.0 at the rib and keel roots on the ceiling's underside (every cell
-        # face of the grid, outer loops). Not the tangent seams into the inner rounds
-        # (x -77, |y| 45) nor the ceiling's front end at the hood (x 36.2)
-        f"filletface|{CAN_ROOT_R}|cyl|{rcr - CAN_T:.4f}|{CAN_X0} {-CAN_HW} {xb_in + 1:.3f} {CAN_HW}|any"
-        f"|{f['roots']:.1f} {0.15 * f['roots']:.1f}"
-        f"|skip:{CAN_X0 - 1} {-CAN_HW - 1} {zc_in - 0.5:.3f} {xr_in + 0.4:.3f} {CAN_HW + 1} {zc_hi + 0.5:.3f}"
-        f";{xb_in - 0.4:.3f} {-CAN_HW - 1} {zc_in - 0.5:.3f} {xb_in + 1:.3f} {CAN_HW + 1} {zc_hi + 0.5:.3f}"
-        f";{CAN_X0 - 1} {yr_in - 0.4:.3f} {zc_in - 0.5:.3f} {xb_in + 1:.3f} {CAN_HW + 1} {zc_hi + 0.5:.3f}"
-        f";{CAN_X0 - 1} {-CAN_HW - 1} {zc_in - 0.5:.3f} {xb_in + 1:.3f} {-yr_in + 0.4:.3f} {zc_hi + 0.5:.3f}",
+        # face of the grid, outer loops) on the two faces that carry the grid: the crown and
+        # the hump roof (P6m2). Not their tangent seams (rear round, ramp rounds, side rounds).
+        f"filletface|{CAN_ROOT_R}|cyl|{rcr - CAN_T:.4f}|{CAN_X0} {-CAN_HW} {cf1 + 1:.3f} {CAN_HW}|any"
+        f"|{f['roots_crown']:.1f} {0.3 * f['roots_crown'] + 2:.1f}"
+        f"|skip:{seam_skip(CAN_X0 - 1, xr_in + 0.4, 80, 100)}"
+        f";{seam_skip(cf1 - 0.4, cf1 + 1, 80, 100)}"
+        f";{seam_skip(CAN_X0 - 1, cf1 + 1, 80, 100, yr_in - 0.4, CAN_HW + 1)}"
+        f";{seam_skip(CAN_X0 - 1, cf1 + 1, 80, 100, -CAN_HW - 1, -yr_in + 0.4)}",
+        f"filletface|{CAN_ROOT_R}|cyl|{rpl - CAN_T:.4f}|{pf0 - 1:.3f} {-CAN_HW} {pf1 + 1:.3f} {CAN_HW}|any"
+        f"|{f['roots_roof']:.1f} {0.3 * f['roots_roof'] + 2:.1f}"
+        f"|skip:{seam_skip(pf0 - 1, pf0 + 0.4, 100, 115)}"
+        f";{seam_skip(CAN_RIBS_X[-1] + CAN_RIB[0] / 2 + 0.6, pf1 + 1, 100, 115)}"
+        f";{seam_skip(pf0 - 1, pf1 + 1, 100, 115, yr_in - 0.4, CAN_HW + 1)}"
+        f";{seam_skip(pf0 - 1, pf1 + 1, 100, 115, -CAN_HW - 1, -yr_in + 0.4)}",
         *[
             ln
             for sg in (-1, 1)
@@ -3424,22 +3645,14 @@ def canopy_lines(path: str) -> list[str]:
             f"cyl|z|{bx} {sg * by}|-0.1 {INS_DEPTH}|{INS_HOLE_PC / 2}|cut"
             for sg in (-1, 1)
         ],
-        f"fillet|{CAN_EDGE_R}|y|{canopy_hood_edge()[1]}|1|{-f['hood_edge']:.2f} {0.25 * f['hood_edge']:.2f}",
         f"filletface|{CAN_EDGE_R}|z:-1|{CAN_Z0}|{CAN_X0 - 1} {-hw - 1} {fp[0] + 1} {hw + 1}|any"
         f"|{-f['rim']:.2f} {0.25 * f['rim']:.2f}|skip:"
         + ";".join(canopy_rim_round()[1]),
-        # (tick 75: no round on the window lips' edges at y +-47.3: they sit in a 0.3 x 3 slot
-        # beside the bulkhead, which stands 3 proud of the lip face; rounding them raised
-        # S5k 9.5 -> 11.1 MPa at the window's top corner, which won't take a fillet)
-        *[
-            f"fillet|{CAN_EDGE_R}|any|{b}|1|{-f['fcorner'] / 2:.2f} {0.15 * f['fcorner'] / 2:.2f}"
-            for b in canopy_front_corners()[1]
-        ],
         *canopy_vents()[0],
         *canopy_rear_edges()[1],
         *canopy_mic_lines()[0],
         PART_LABELS["canopy"],
-        f"expect|vol {f['vol'] + hood_collar()['vol'] + canopy_mic_lines()[1]:.1f} {f['vol'] * 0.03:.1f}|box {CAN_X0} {fp[0]:.2f} {-hw} {hw} {-CAN_TAB[2]} {hood_collar()['zt']:.2f} 0.5",
+        f"expect|vol {f['vol'] + hood_screw()['vol'] + canopy_mic_lines()[1]:.1f} {f['vol'] * 0.03:.1f}|box {CAN_X0} {fp[0]:.2f} {-hw} {hw} {-CAN_TAB[2]} {e[1]:.2f} 0.5",
         "save",
     ]
     return lines
@@ -3449,25 +3662,25 @@ def canopy_lines(path: str) -> list[str]:
 # the middle of its unsupported span, so the study can load exactly that patch (split
 # lines don't work through the API, tick 12). Not printed.
 CAN_HEEL = (
-    -32.0,
+    -29.0,
     7.5,
     15.0,
     0.5,
-)  # x, y, r, pad height: centred on a rib cell (-42..-22, 0..15)
+)  # x, y, r, pad height. P6m2: on the hump roof, centred on a rib cell (-40..-18, 0..15)
 
 
 def canopy_heel() -> tuple[float, float, float]:
     """S8 pad on the crowned top: (bottom z, flat top z, volume added above the skin).
     Bottom 0.1 under the lowest skin point it covers; top hh over the highest."""
     hx, _, hr, hh = CAN_HEEL
-    zs = [can_top_z(hx + hr * k / 20) for k in range(-20, 21)]
+    zs = [canopy_top_z(hx + hr * k / 20) for k in range(-20, 21)]
     z0, z1 = min(zs) - 0.1, max(zs) + hh
     n, add = 60, 0.0
     for i in range(n):
         for j in range(n):
             u, v = -hr + (i + 0.5) * 2 * hr / n, -hr + (j + 0.5) * 2 * hr / n
             if u * u + v * v <= hr * hr:
-                add += (z1 - can_top_z(hx + u)) * (2 * hr / n) ** 2
+                add += (z1 - canopy_top_z(hx + u)) * (2 * hr / n) ** 2
     return z0, z1, add
 
 
@@ -3476,7 +3689,7 @@ def canopy_fea_lines(path: str) -> list[str]:
     assert body[-1] == "save" and body[-2].startswith("expect|vol ")
     hx, hy, hr, hh = CAN_HEEL
     z0, z1, pad = canopy_heel()
-    vol = canopy_features()["vol"] + pad + hood_collar()["vol"]
+    vol = canopy_features()["vol"] + pad + hood_screw()["vol"] + canopy_mic_lines()[1]
     head, rest = body[-2].split("|box ")
     return [
         *body[:-2],

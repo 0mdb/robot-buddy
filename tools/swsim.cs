@@ -97,7 +97,9 @@ static class SwSim
         int e;
         foreach (IFace2 f in faces)
         {
-            object[] arr = (object[])res.GetStressForEntities(9, 0, null, new object[] { f }, 0, out e);
+            // P6m: a sliver face can come back with no nodes (DBNull): skip it, don't crash
+            object[] arr = res.GetStressForEntities(9, 0, null, new object[] { f }, 0, out e) as object[];
+            if (arr == null) continue;
             double m = MaxPair(arr);
             if (!double.IsNaN(m) && !double.IsInfinity(m)) { ranked.Add(new KeyValuePair<double, IFace2>(m, f)); peakNode[f] = MaxNode(arr); }
         }

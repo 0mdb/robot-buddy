@@ -75,6 +75,11 @@ Baseline at loop start (commit on `cad`): plate rev 1, envelopes, Ben's imported
 - [ ] P8 `[sw]` **Small TPU parts**: mic grommets ×3, speaker gasket, motor-lead strain relief
   **Tick 93:** speaker gasket done (RB-PRT-061). Left: mic grommets (mic-disc dims 🟡), motor-lead strain relief (R2b connector 🟡).
 - [x] P6d-mic `[sw]` (tick 98, Q30 b) mic disc under the rib grid: keel windows (3.1 tall) + doublers, 3 M2.5 bosses, 4 port tubes, TPU washers RB-PRT-062, disc envelope; S8 19.3 (+8.9 %), S5k 9.47
+- [x] P6m `[sw]` *(superseded by P6m2, 2026-11-08: the pod is part of the canopy)* (Ben 2026-11-07) mic pod: disc out from under the ribs into a round pod RB-PRT-005 on the canopy top, roof z 123.5 (level with the head); canopy posts + bosses, keel windows/doublers removed; new studies S8p (pod roof heel) and S8m (canopy via the posts)
+  **Tick 103 (2026-11-08):** built, 0 interferences, 753.8 g. FPC slot → (8, −23) with a rim rib into the cross ribs: S8 37.2 → 21.9 MPa (SF 2.83), heel 0.88 mm; S8p 28.95 (SF 2.14) / 0.44 mm. Left: re-run S8m (crashed in post-processing at 11.6 MPa / 0.32 mm), S5k, S8p on the final geometry; Ben's look (`shots/1-P6m/`, pre-slot-move).
+- [x] P6m2 `[sw]` (Ben 2026-11-08) pod into the canopy: full-width hump (45° ramp, roof z 110 crowned 1.5, 45° slope to the hood), disc hung from the roof, no posts/slot/pod part. **Tick 104.**
+- [x] P6m3 `[sw]` (Ben 2026-11-08) bulkhead = rounded full-width front cap (r 8 to match the canopy, flush seam, flush hood screws). **Tick 104:** S5c 5.34 / 0.13 mm, S5k 7.66 / 0.25, S8 25.4 (SF 2.45). Bulkhead print on hold until Ben's look.
+- [ ] P6m4 `[sw]` face details still square: screen window corners (≤ r 2.4 keeps the AA), the foot ledge below the grille; edge audit + slicing for the new canopy and cap
 - [x] P7b `[sw]` (tick 97) speaker pocket to the ordered Same Sky CMS-30205 (30 × 20 × 5.6, stadium): depth for 0.3 preload, stadium gasket, magnet pad, lead notch
 - [x] P9 `[sw]` (tick 99, Q31 default) XVF3800 core board on edge in the −y side bay, on a wall standing on the Pi deck (3 × M2.5 standoffs, 45° overhang over the motor); voxel layout study
 - [x] P9b `[sw]` deck wall: a drop/handling FEA case (board 30 g, 1 m drop) and lightening window if it passes easily (+11.6 g now)

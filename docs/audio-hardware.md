@@ -173,6 +173,28 @@ On arrival: measure per §7 step 7 (disc, core board, mic port side, Flex speake
   and the speaker (front, below face). Keep **≥ 70 mm from the speaker cone centre**
   to the nearest mic.
 - **Speaker fires forward**, at the child, below the TFT. It never fires up at the mics.
+- > Amendment (2026-11-07, Ben: "put this mic in a position where it can work its best"; CAD
+  > P6m): **the disc moves up into a round mic pod on the canopy top, roof level with the head
+  > top.** Under the canopy top (port inlets z ≈ 97) the head stood ~27 mm higher only ~50 mm
+  > ahead: the front ports could not see a talker in front below ~25° elevation (rear ports
+  > ~15°), so a child sitting on the floor across the room, or lying at robot level, was behind
+  > the head. The pod (RB-PRT-005, Ø77.6, PC) sits right behind the hood, centre (−5, 0); its
+  > roof and the four port inlets are at **z 123.5**, level with the hood's front top edge
+  > (123.54) and 1 mm over the bulkhead top: nothing on the robot is higher, so the view is
+  > clear all round down to the horizon. It also helps DoA ("turn to whoever spoke").
+  > Mics (−27 / 17, ±22); nearest mic to the speaker centre 115 mm (was 112; ≥ 70 holds).
+  > Not round the camera: the disc is solid (the Ø52.5 circle in Seeed's DXF is a layout
+  > line, not a hole), and the camera stays on the bulkhead, its view untouched (the pod is
+  > behind and above the lens). The FPC drops through a 15 × 4 slot in the canopy skin under
+  > the pod (x −12, y −23), then to the core board; its length still waits on K3.
+- > Amendment (2026-11-08, Ben; CAD P6m2): **no pod: the disc hangs under a full-width hump
+  > that is part of the canopy.** Ben: "a streamlined sturdy body and well protected mic, over
+  > optimal placement. The top is still better than the front, most of the time people will
+  > speak down to it." Roof z 110 (crowned 1.5; z 111.3 over the rear mics, 110.5 over the
+  > front), disc centre (−5, 0), mics as before (−27 / 17, ±22). The head top (≈ z 122.5) now
+  > stands ~12 mm over the front ports ~50 mm ahead, so a talker straight ahead below ~13°
+  > elevation is shadowed; accepted. Speaker distance 112–115 (≥ 70 holds). Inside it is open
+  > to the canopy: the FPC drops straight down, no slot. Supersedes RB-PRT-005 above.
 - > Amendment (CAD tick 99, Q31 default): no flat spot fits the 70.5 × 52.2 board. It stands
   > on edge in the right (−y) side bay outboard of the Pi, parts facing the canopy wall, connector
   > edge down, on a wall that is part of the Pi deck (3 × M2.5). The USB-C points down into the
@@ -191,6 +213,25 @@ On arrival: measure per §7 step 7 (disc, core board, mic port side, Flex speake
 > bare board). Seal: a 1 mm closed-cell foam ring between each tube end and the board (tube
 > reaches 0.3 into it). Float: M2.5 × 8 through the board's Ø3.3 holes (0.4 radial clear)
 > with a 1 mm TPU washer each side, into M2.5 inserts in the canopy bosses.
+
+> Amendment (2026-11-07, CAD P6m, mic pod): same scheme, moved into the pod. Each port is
+> a Ø1.2 bore through the pod roof (1.8) and a Ø3.2 tube to 0.3 into the foam ring: **inlet
+> to board 6.6 mm** (tick 98's canopy port was ~7.9 skin-to-board). Still not ≤ 2 mm: the
+> roof needs ribs (the spokes) to take a heel, and the M2.5 insert needs 5.6 of roof + boss
+> above the washer. Helmholtz estimate ≈ 12–13 kHz, above the 8 kHz band. The pod prints
+> **roof down**, so the ports are vertical holes in the first layers and the tube ends (the
+> foam's seal face) are clean top surfaces. **Float and fixing:** one M2.5 × 30 SHCS per
+> disc hole, from inside the canopy: head in a counterbore in a canopy boss → canopy skin →
+> canopy post Ø7 → TPU washer → disc → TPU washer → M2.5 × 4 insert in the pod's roof boss.
+> The same three screws hold the disc and the pod; the disc floats between the washers as
+> before; the pod rim floats 0.5 over the canopy skin.
+>
+> Amendment (2026-11-08, CAD P6m2, hump): the ports go through the hump roof (2.0 skin) into
+> a Ø3.2 tube ending 0.3 into the foam ring: **inlet to board ≈ 8.0 (rear mics) / 7.3
+> (front)**, still not ≤ 2 mm, for the same reasons (roof ribs, insert depth). Fixing: one
+> **M2.5 × 8 SHCS** per disc hole, up from below: head → TPU washer → disc → TPU washer →
+> M2.5 × 4 insert in a roof boss (07 F10). The canopy prints rear wall down, so the ports are
+> horizontal holes in that print: drill them to Ø1.2 after printing if they close up.
 
 - One acoustic port per mic: **Ø1.2 mm through-hole**, port length (canopy wall) **≤ 2 mm**
   so the port resonance stays well above the voice band. Align it to the MEMS port ±0.3 mm.

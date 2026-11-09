@@ -150,6 +150,7 @@ def s1d() -> dict:
     }
 
 
+CAN_LUG_AX = " ".join(f"{v:.9f}" for v in chassis.CAN_LUG_AXIS)  # P6m3: canopy lug holes, square to the hood top
 CORE_KG = 0.030  # XVF3800 core board + the FPC / USB-C plug ends it carries [assumption]
 DROP_G = 20.0  # 07 §3.4 S6: 0.75 m drop as 20 g quasi-static on each heavy mass [assumption]
 
@@ -320,7 +321,7 @@ def s5(canopy: bool = False) -> dict:
     ax = f"{n[0]:.9f} 0 {n[2]:.9f}"
     # with the canopy on, its screws hold the two lugs (pre-tilt axis z -> tilted)
     lug_ax = f"{-math.sin(t):.9f} 0 {math.cos(t):.9f}"
-    extra = [f"fix cyl {lug_ax} 2.0 0.05"] if canopy else []
+    extra = [f"fix cyl {lug_ax} {chassis.INS_HOLE / 2} 0.05"] if canopy else []
     return {
         "name": "S5c" if canopy else "S5",
         "title": "Bulkhead, 50 N poke"
@@ -331,9 +332,9 @@ def s5(canopy: bool = False) -> dict:
             "fix plane 0 0 1 0",  # foot underside on the plate
             f"fix cyl 0 0 1 {INS_R} 0.05",  # foot + knee-pad insert pockets (F1)
             *extra,
-            f"remote screen {scr[0]:.3f} {scr[1]:.3f} {scr[2]:.3f} cyl {ax} 2.0 0.05",
+            f"remote screen {scr[0]:.3f} {scr[1]:.3f} {scr[2]:.3f} cyl {ax} {INS_R} 0.05",
             f"load bezel plane {n[0]:.9f} 0 {n[2]:.9f} {d:.4f}",
-            f"disp standoffs cyl {ax} 2.0 0.05",
+            f"disp standoffs cyl {ax} {INS_R} 0.05",
             f"disp bezel plane {n[0]:.9f} 0 {n[2]:.9f} {d:.4f}",
             "probe foot 76 -48 -4 86 48 12",
             "probe window 40 -32 40 86 32 110",
@@ -390,12 +391,15 @@ def s8() -> dict:
     pushing down) in a rib cell of the flat top. Ben (tick 49) relaxed it from 300 N / SF 3:
     a 1.8 shell held at 4 screws can't take a full heel at SF 3 (rev 3: 3.4 mm, 50.7 MPa).
     Judged SF >= 2 on the XY UTS (the skin and ribs bend along the layers when printed
-    open side down); 300 N is reported by linear scaling as a no-break check (SF >= 1). Held only where it is held: the two lug screws (vertical Ø3.9 holes in the hood
-    ceiling), the two rear insert pockets and the apron/boss feet on the plate (z 0).
+    open side down); 300 N is reported by linear scaling as a no-break check (SF >= 1). Held only where it is held: the two lug screws (P6m3: Ø3.4 holes square to the hood
+    top), the two rear insert pockets and the apron/boss feet on the plate (z 0).
     Limit: the inner ceiling is 5.2 mm over the Pi stack top (86), so < 2.2 mm keeps
     3 mm off the cells (S4 assumed a stack top of 80 and 13 mm; corrected tick 49).
     Top 97 -> 95 (Ben): rib bottoms 3.2 over the stack, so < 1.7 mm keeps 1.5 mm; at
-    300 N (x2) the ribs may touch the HAT top (accepted)."""
+    300 N (x2) the ribs may touch the HAT top (accepted).
+    P6m2 (2026-11-08): the heel moves onto the hump roof (z ~111), the highest flat a child
+    reaches. The disc hangs from the roof and moves with it; its lowest point (~99) is 13 mm
+    over the stack, so the 1.7 mm limit stays (it was set by the ribs over the stack)."""
     hx, hy, hr, hh = chassis.CAN_HEEL
     top = chassis.canopy_heel()[1]  # P6f: flat pad top over the crowned skin
     f = 150.0
@@ -405,12 +409,12 @@ def s8() -> dict:
         "part": r"\CAD\fea\FEA-canopy_S8.SLDPRT",
         "lines": [
             "discard_open",
-            f"fix cyl 0 0 1 {chassis.CAN_LUG_HOLE / 2} 0.05",
-            f"fix cyl 0 0 1 {chassis.INS_HOLE / 2} 0.05",
+            f"fix cyl {CAN_LUG_AX} {chassis.CAN_LUG_HOLE / 2} 0.05",  # P6m3: square to the hood top
+            f"fix cyl 0 0 1 {chassis.INS_HOLE_PC / 2} 0.05",
             "fix plane 0 0 1 0",
             f"load heel plane 0 0 1 {top}",
             f"disp heel plane 0 0 1 {top}",
-            "probe top -86 -54 80 35 54 98.5",  # P6f crown: apex 97.5
+            "probe top -86 -54 80 35 54 113",  # P6m2: crown, ramp and hump roof (apex 111.9)
             "probe hood 30 -54 90 75 54 125",
             "probe rear -86 -54 -1 -70 54 40",
             "hotspots 5",
@@ -438,13 +442,13 @@ def s5k() -> dict:
         "part": r"\CAD\parts\RB-PRT-004_canopy.SLDPRT",
         "lines": [
             "discard_open",
-            f"fix cyl 0 0 1 {chassis.INS_HOLE / 2} 0.02",
+            f"fix cyl 0 0 1 {chassis.INS_HOLE_PC / 2} 0.02",
             "fix plane 0 0 1 0",
             # Q19 tongues bear on their plate slots' ends (both ways, 0.1 lash ignored)
             f"fix plane 1 0 0 {chassis.CAN_TAB[1][0]}",
             f"fix plane 1 0 0 {chassis.CAN_TAB[1][1]}",
-            f"load lugs cyl 0 0 1 {chassis.CAN_LUG_HOLE / 2} 0.02",
-            f"disp lugs cyl 0 0 1 {chassis.CAN_LUG_HOLE / 2} 0.02",
+            f"load lugs cyl {CAN_LUG_AX} {chassis.CAN_LUG_HOLE / 2} 0.02",
+            f"disp lugs cyl {CAN_LUG_AX} {chassis.CAN_LUG_HOLE / 2} 0.02",
             "probe hood 30 -54 90 75 54 125",
             "hotspots 3",
             "mesh 1.5 0.08",
