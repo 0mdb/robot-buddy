@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Read the fab zip the way a fab's importer would (gerbonara, not KiCad) and check it.
 
-    uv run --no-project --with gerbonara==1.5.0 python -I gerber_check.py ZIP OUTDIR
+    uv run --no-project --with gerbonara==1.5.0 python -I gerber_check.py ZIP OUTDIR [W H]
+
+W H: the board size in mm (pcb_qc.py passes board_outline.W/H). Runs isolated (-I), so it
+can't import board_outline itself; without them the outline size is reported, not checked.
 
 Called by pcb_qc.py. Prints "PASS|FAIL|WARN message" lines; exit 1 on FAIL. Writes one
 black-on-white PNG per layer plus sheet.png to OUTDIR (needs ImageMagick's convert/montage).
@@ -16,6 +19,7 @@ from gerbonara import LayerStack
 
 warnings.filterwarnings("ignore")
 zip_path, out = Path(sys.argv[1]), Path(sys.argv[2])
+want_wh = (float(sys.argv[3]), float(sys.argv[4])) if len(sys.argv) > 4 else None
 out.mkdir(parents=True, exist_ok=True)
 fails = 0
 
@@ -47,10 +51,16 @@ drills = list(ls.drill_layers)
 say(len(drills) >= 2, f"drill files read: {[d.original_path.name for d in drills]}")
 
 (ox0, oy0), (ox1, oy1) = ls.outline.bounding_box()
-say(
-    abs((ox1 - ox0) - 65.05) < 0.1 and abs((oy1 - oy0) - 60.05) < 0.1,
-    f"outline {ox1 - ox0:.2f} x {oy1 - oy0:.2f} mm (65 x 60 + line width)",
-)
+if want_wh:
+    say(
+        abs((ox1 - ox0) - want_wh[0] - 0.05) < 0.1
+        and abs((oy1 - oy0) - want_wh[1] - 0.05) < 0.1,
+        f"outline {ox1 - ox0:.2f} x {oy1 - oy0:.2f} mm ({want_wh[0]:g} x {want_wh[1]:g} + line width)",
+    )
+else:
+    print(
+        f"info outline {ox1 - ox0:.2f} x {oy1 - oy0:.2f} mm (no size given, not checked)"
+    )
 tol = 0.01
 for key, layer in sorted(ls.graphic_layers.items()):
     bb = layer.bounding_box()

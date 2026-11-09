@@ -76,3 +76,6 @@ CAD/**/*.LOG
 CAD/**/PerformanceLog.txt
 CAD/**/*-BenchMark-Solver.txt
 CAD/exports/print/*.gcode
+
+# pcb_qc.py review renders (regenerated each run; look, then order)
+hardware/kicad/robot-buddy-reflex/qc/

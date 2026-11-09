@@ -160,9 +160,20 @@ def export_gerbers():
                 ".g2",
                 ".drl",
                 ".gbrjob",
+                # drill maps: KiCad's older PDF map lingered from the June export and
+                # rode along in every zip after the maps went gerberx2 (register §M).
+                ".pdf",
             )
         ):
             os.unlink(os.path.join(GERBER_DIR, f))
+    # The v1 zip that used to live beside the BOM (merged drill, silk on pads, register
+    # O1/M2/M3). The only gerber zip is ../gerbers/; never leave an orderable stale one.
+    _old_zip = os.path.join(ASM_DIR, "robot-buddy-reflex-gerbers.zip")
+    if os.path.exists(_old_zip):
+        os.unlink(_old_zip)
+        print(
+            "          removed stale jlcpcb-assembly/robot-buddy-reflex-gerbers.zip (v1)"
+        )
 
     # --subtract-soldermask is REQUIRED here and is not implied by the board's
     # (subtractmaskfromsilk yes). Verified: plotting F.Silkscreen with the board flag
@@ -210,7 +221,17 @@ def export_gerbers():
     # root_dir has this bug.
     if os.path.exists(ZIP_BASE + ".zip"):
         os.unlink(ZIP_BASE + ".zip")
-    tmp_zip = shutil.make_archive("/tmp/robot-buddy-reflex-gerbers", "zip", GERBER_DIR)
+    # Only fab files, top level only. make_archive(GERBER_DIR) took everything under it,
+    # and pcb_qc.py's review PNGs (then in gerbers/qc/) went to the fab inside the zip
+    # (2026-11-09); gerbonara choked on them reading the zip back.
+    import zipfile as _zf
+
+    tmp_zip = "/tmp/robot-buddy-reflex-gerbers.zip"
+    with _zf.ZipFile(tmp_zip, "w", _zf.ZIP_DEFLATED) as zf:
+        for f in sorted(os.listdir(GERBER_DIR)):
+            full = os.path.join(GERBER_DIR, f)
+            if os.path.isfile(full) and f.endswith((".gbr", ".drl", ".gbrjob")):
+                zf.write(full, f)
     shutil.move(tmp_zip, ZIP_BASE + ".zip")
     return len([f for f in os.listdir(GERBER_DIR) if not f.endswith((".zip", ".md"))])
 
@@ -326,7 +347,16 @@ def expand_refs(field):
 
 
 def write_readme(n_placed, n_lines, missing, excluded, gated):
-    hand = sorted(excluded) + ["U2", "C3", "C6", "J1", "J2", "J6", "J7", "J9", "J10"]
+    hand = sorted(excluded) + [
+        "U2",
+        "C3",
+        "C6",
+        "J1",
+        "J2",
+        "J6",
+        "J7",
+        "J9",
+    ]  # J10 deleted 2026-11-09
     banner = (
         ""
         if gated

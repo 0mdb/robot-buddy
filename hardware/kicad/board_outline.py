@@ -1,35 +1,55 @@
-"""Reflex board outline, shared by layout_pcb.py and route_pcb.py.
+"""Reflex board outline + mounting holes: ONE source for layout_pcb.py, route_pcb.py,
+pcb_qc.py and the chassis (tools/chassis.py imports this as pcb_outline).
 
-KiCad drawing mm: origin at the board's top-left corner, y down.
-Chassis frame (tools/chassis.py, REFLEX_AT): chassis x = board x - 40, chassis y = 30 - board y.
+KiCad drawing mm: origin at the board's top-left corner, y down. x runs rear -> front
+(x 0 is the rear edge, chassis x -40, where the USB-C exits; R2c), y runs left -> right.
 
-Encoder-connector notches (2026-11-08, Ben): the encoder TT motor's socket stands 8.5 mm
-inboard of the mount face (to chassis |y| 23.9), 16.8 x 13.35, centred on the motor axis:
-chassis z 6.8-20.2, 0.2 over the bare PCB (z 5-6.6) and through the parts on it (to 13.6).
-From Ben's photo it starts ~1 mm in from the encoder end: chassis x -9..7.8, board x 31..47.8. Both side edges get a pocket
-over that span; the mounting holes, and the 65 x 60 outline elsewhere, are unchanged.
+2026-11-09 shrink (Ben): 65 x 60 with encoder notches -> 52.5 x 46, no notches.
+The encoder TT socket stands to chassis |y| 23.9 (8.5 mm inboard of the mount face,
+chassis x -9..7.8; Ben's measurement 2026-11-08). A 46 mm board centred on the chassis
+centreline spans |y| <= 23, so it clears the sockets along its whole length. The
+2026-11-08 notches (x 28.5-50, 7 deep) were the same clearance on a 60 mm board.
+Possible because v2 dropped the NeoPixels (U3/J11/R11) and the power LED (J10/R10).
+
+Chassis frame (tools/chassis.py REFLEX_*): origin at the hole-pattern centre on the PCB's
+bottom face, KiCad y flipped: chassis x = REFLEX_AT.x + (kx - HOLE_CX),
+chassis y = REFLEX_AT.y + (HOLE_CY - ky).
 """
 
-W, H = 65.0, 60.0  # overall board, mm
-NOTCH_X = (28.5, 50.0)  # board x span (connector ~31..48 from the photo); 50 not 51: at 51
-# the notch end pinched the routing past the MH2/MH4 screw heads (x 51.75) to 0.25 mm
-NOTCH_D = 7.0  # depth from each long edge: chassis |y| 23.0 (connector inboard face 23.9)
+W, H = 52.5, 46.0  # board, mm
+
+# M3 holes, 4 in a rectangle (the base plate's standoffs are corners() of a symmetric
+# pattern). 3.5 mm in from each edge: the Ø6.2 head keepout stays on the board.
+HOLE_INSET = 3.5
+HOLES = [
+    (HOLE_INSET, HOLE_INSET),
+    (W - HOLE_INSET, HOLE_INSET),
+    (HOLE_INSET, H - HOLE_INSET),
+    (W - HOLE_INSET, H - HOLE_INSET),
+]
+HOLE_CX, HOLE_CY = W / 2, H / 2  # pattern centre (the chassis envelope origin)
+HOLE_HALF = (W / 2 - HOLE_INSET, H / 2 - HOLE_INSET)  # = chassis REFLEX_HOLES
+
+# Rear edge at chassis x -40 (unchanged from the 65 x 60 board: the USB-C plug's bay),
+# board centred on the chassis centreline.
+REAR_EDGE_CHASSIS_X = -40.0
 
 
 def outline() -> list[tuple[float, float]]:
     """Board edge polygon, clockwise on screen (y down), starting top-left."""
-    x0, x1, d = NOTCH_X[0], NOTCH_X[1], NOTCH_D
-    return [
-        (0.0, 0.0), (x0, 0.0), (x0, d), (x1, d), (x1, 0.0), (W, 0.0),
-        (W, H), (x1, H), (x1, H - d), (x0, H - d), (x0, H), (0.0, H),
-    ]
+    return [(0.0, 0.0), (W, 0.0), (W, H), (0.0, H)]
 
 
 def inset(pts: list[tuple[float, float]], d: float) -> list[tuple[float, float]]:
     """Offset a rectilinear polygon inward by d (exact for 90-degree corners)."""
     n = len(pts)
-    area2 = sum(pts[i][0] * pts[(i + 1) % n][1] - pts[(i + 1) % n][0] * pts[i][1] for i in range(n))
-    sgn = 1.0 if area2 > 0 else -1.0  # interior is on the left of each edge when area2 > 0
+    area2 = sum(
+        pts[i][0] * pts[(i + 1) % n][1] - pts[(i + 1) % n][0] * pts[i][1]
+        for i in range(n)
+    )
+    sgn = (
+        1.0 if area2 > 0 else -1.0
+    )  # interior is on the left of each edge when area2 > 0
 
     def normal(a: tuple[float, float], b: tuple[float, float]) -> tuple[float, float]:
         ex, ey = b[0] - a[0], b[1] - a[1]
@@ -46,12 +66,9 @@ def inset(pts: list[tuple[float, float]], d: float) -> list[tuple[float, float]]
 
 def contains(x: float, y: float) -> bool:
     """Point inside the board outline (edges count as inside)."""
-    x0, x1, d = NOTCH_X[0], NOTCH_X[1], NOTCH_D
-    if not (0.0 <= x <= W and 0.0 <= y <= H):
-        return False
-    return not (x0 < x < x1 and (y < d or y > H - d))
+    return 0.0 <= x <= W and 0.0 <= y <= H
 
 
 if __name__ == "__main__":
-    print("outline", outline())
+    print(f"{W} x {H}, holes {HOLES}, pattern {2 * HOLE_HALF[0]} x {2 * HOLE_HALF[1]}")
     print("inset 0.3", [(round(x, 2), round(y, 2)) for x, y in inset(outline(), 0.3)])

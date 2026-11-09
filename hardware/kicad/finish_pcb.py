@@ -534,8 +534,13 @@ def _copper_boxes(board, cu_layer):
     for pad in board.GetPads():
         if pad.IsOnLayer(cu_layer):
             boxes.append(_box(pad))
+    # Vias only, not track segments (2026-11-09). Silk over a mask-covered track prints
+    # fine and DRC's silk_over_copper doesn't flag it; what it flags is exposed copper
+    # (pads, untented vias). Track BOUNDING BOXES were the obstacle here, and one diagonal
+    # run blocks a whole rectangle: on the 52.5 x 46 board that pushed "E-STOP NC" under
+    # C3's can and moved labels around from route to route.
     for trk in board.GetTracks():
-        if trk.IsOnLayer(cu_layer):
+        if trk.GetClass() == "PCB_VIA" and trk.IsOnLayer(cu_layer):
             boxes.append(_box(trk))
     return boxes
 
@@ -562,6 +567,22 @@ def place_silk_fields(board):
     statics = {lyr: _silk_graphic_boxes(board, lyr) for lyr in SILK_LAYERS}
     # fields already placed this run become obstacles for the ones after them
     placed = {lyr: [] for lyr in SILK_LAYERS}
+    # Ink under a module's body is ink nobody reads: U1 is soldered flat over it and U2
+    # (on headers) covers it. On the 52.5 x 46 board (2026-11-09) J9's pin-order label
+    # and "E-STOP NC" were placed under U2. Large non-connector courtyards are obstacles.
+    # Connector housings cover their footprint the same way (U2's ref landed inside J9's
+    # VH outline), and a mounting hole's keepout is a hole and a screw head: all of them,
+    # whatever their size.
+    _bodies = []
+    for fp in board.GetFootprints():
+        cy_ = fp.GetCourtyard(pcbnew.F_CrtYd)
+        if cy_.OutlineCount():
+            bb = cy_.BBox()
+            l_, t_, r_, b_ = bb.GetLeft(), bb.GetTop(), bb.GetRight(), bb.GetBottom()
+            big = (r_ - l_) * (b_ - t_) >= nm(15) * nm(15)
+            if big or fp.GetReference().startswith(("J", "MH")):
+                _bodies.append((l_, t_, r_, b_))
+    statics[pcbnew.F_SilkS] = statics[pcbnew.F_SilkS] + _bodies
 
     fields = []
     for fp in board.GetFootprints():
@@ -574,7 +595,20 @@ def place_silk_fields(board):
         b = fp.GetBoundingBox(False, False)
         return (b.GetRight() - b.GetLeft()) * (b.GetBottom() - b.GetTop())
 
-    fields.sort(key=lambda fv: -_fp_area(fv[0]))
+    # Priority first, then size. Connector Value fields (MOTOR L / MOTOR R, the J9 pin
+    # order) are the labels the register leans on (C2, L3, L4): on the 52.5 x 46 board
+    # (2026-11-09) sorting by area alone let J1's Reference and MH2 take the only clear
+    # spot and left MOTOR L sitting on both. Then module refs, then everything else.
+    def _prio(fv):
+        fp, fld = fv
+        ref = fp.GetReference()
+        if ref.startswith("J") and fld is not None and fld.GetText() == fp.GetValue():
+            return 0
+        if ref.startswith("U"):
+            return 1
+        return 2
+
+    fields.sort(key=lambda fv: (_prio(fv), -_fp_area(fv[0])))
 
     moved = hidden = kept = crowded = 0
     for fp, fld in fields:
@@ -603,9 +637,16 @@ def place_silk_fields(board):
         cands = []
         for step in range(0, 9):
             d = int(h * 0.9 * step) + h
+            # beside the centre too: a long label (J9's pin order) under a wide part
+            # only fits slid along it, not at the centre or a corner
+            qx = (fr - fl) // 4
             cands += [
                 pcbnew.VECTOR2I(cx, ft - d),
                 pcbnew.VECTOR2I(cx, fb + d),
+                pcbnew.VECTOR2I(cx - qx, ft - d),
+                pcbnew.VECTOR2I(cx + qx, ft - d),
+                pcbnew.VECTOR2I(cx - qx, fb + d),
+                pcbnew.VECTOR2I(cx + qx, fb + d),
                 pcbnew.VECTOR2I(fl - d, cy),
                 pcbnew.VECTOR2I(fr + d, cy),
                 pcbnew.VECTOR2I(fl - d, ft - d),
@@ -622,6 +663,13 @@ def place_silk_fields(board):
         orig_angle = fld.GetTextAngle()
         angles = [orig_angle, pcbnew.EDA_ANGLE(90, pcbnew.DEGREES_T)]
 
+        # A passive's Reference must stay next to its part: a "clean" spot 6 mm away
+        # points at the wrong component (R15/U4 on 2026-11-09). First 4 rings only
+        # (~3.5 mm); beyond that it goes to F.Fab below.
+        _rf = fp.GetReference()
+        _near_only = fld.IsReference() and not _rf.startswith("J")
+        if _near_only:
+            cands = cands[: len(cands) * 4 // 9]
         won = False
         for c in cands:
             for ang in angles:
@@ -650,6 +698,18 @@ def place_silk_fields(board):
             # A silk_overlap is a cosmetic warning about ink on ink. An unlabelled
             # motor connector is a wiring error on an assembled robot. Rank
             # accordingly: always place, and let DRC complain.
+            #
+            # EXCEPT a part's Reference (2026-11-09, 52.5 x 46 board). The least-bad
+            # spot for R12/R16/R17 was 6 mm away, printed on U1's module body: hidden once
+            # U1 is soldered, and pointing at the wrong part if not. A label on the wrong
+            # part is worse than none. Part refs (R/C/U, not J) move to F.Fab (the assembly
+            # drawing still carries them); connector Values and refs are always printed.
+            if _near_only:  # parts (not connectors): a far-away ref is worse than none
+                fld.SetTextAngle(orig_angle)
+                fld.SetPosition(origin)
+                fld.SetLayer(pcbnew.F_Fab)
+                hidden += 1
+                continue
             best, best_score = None, None
             for c in cands:
                 for ang in angles:
@@ -834,7 +894,7 @@ def run_pass(name):
         moved, kept, hidden, crowded = place_silk_fields(board)
         msg = (
             f"  Silk fields: {kept} already clear, {moved} relocated, "
-            f"{crowded} placed with overlap, {hidden} hidden"
+            f"{crowded} placed with overlap, {hidden} part refs to F.Fab"
         )
     else:
         raise SystemExit(f"finish_pcb: unknown pass {name!r}")

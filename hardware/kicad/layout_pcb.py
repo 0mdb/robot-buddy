@@ -4,7 +4,7 @@ PCB layout for robot-buddy-reflex.
 Reads schematic netlist, places all footprints at sensible positions with nets
 assigned.  Open the resulting .kicad_pcb in KiCad → route traces, run DRC.
 
-Board outline: 65 × 60 mm
+Board outline: board_outline.py (52.5 × 46 mm since 2026-11-09)
 """
 
 import subprocess
@@ -13,7 +13,7 @@ import xml.etree.ElementTree as ET
 from kiutils.board import Board
 from kiutils.footprint import Footprint
 from kiutils.items.common import Net, Position
-from kiutils.items.gritems import GrRect
+from kiutils.items.gritems import GrLine
 
 PCB = "/home/ben/robot-buddy/hardware/kicad/robot-buddy-reflex/robot-buddy-reflex.kicad_pcb"
 SCH = "/home/ben/robot-buddy/hardware/kicad/robot-buddy-reflex/robot-buddy-reflex.kicad_sch"
@@ -21,8 +21,14 @@ KICAD = "/usr/share/kicad/footprints"
 LOCAL = "/home/ben/kicad-libs/footprints/robot-projects.pretty"
 NETLIST = "/tmp/reflex-netlist.xml"
 
+import os as _os0  # noqa: E402
+import sys as _sys0  # noqa: E402
+
+_sys0.path.insert(0, _os0.path.dirname(_os0.path.abspath(__file__)))
+import board_outline as BO  # noqa: E402
+
 OX, OY = 0.0, 0.0  # board origin in KiCad drawing (at top-left; move after routing)
-W, H = 65.0, 60.0  # board dimensions mm
+W, H = BO.W, BO.H  # board dimensions mm (board_outline.py is the one source)
 
 # ── Regenerate netlist from schematic ────────────────────────────────────
 subprocess.run(
@@ -79,6 +85,12 @@ b.graphicItems.clear()
 # freerouting uses existing tracks as routing seeds; starting from zero causes
 # it to hang indefinitely on this board. Old tracks are re-routed/optimized.
 b.zones.clear()  # zones are rebuilt fresh in the pcbnew section below
+# --fresh: drop the old routing too. Use it after a RE-PLACEMENT: seeds from the previous
+# placement run through where parts now sit, and route_pcb's unshort pass only removes
+# seeds that short, not ones that merely detour. Default (no flag) keeps them as seeds.
+if "--fresh" in _sys0.argv:
+    print(f"  Seeds      : --fresh, dropped {len(b.traceItems)} old track/via items")
+    b.traceItems.clear()
 
 n0 = Net()
 n0.number = 0
@@ -141,6 +153,12 @@ def place(ref, value, fp_id, x, y, angle=0):
     fp.properties["Reference"] = ref
     fp.properties["Value"] = value
     for pad in fp.pads:
+        # A pad's (at x y angle) in a .kicad_pcb is its ABSOLUTE orientation, footprint
+        # rotation included; kiutils doesn't add it. Without this every rotated part kept
+        # unrotated pad copper (0402 at 90: 0.54 x 0.64 instead of 0.64 x 0.54; J1/J2 XH
+        # likewise). DRC can't see it. Register M5; same fix cad-loop made (600b271).
+        if angle:
+            pad.position.angle = ((pad.position.angle or 0) + angle) % 360
         net = make_net_obj(ref, str(pad.number))
         if net:
             pad.net = net
@@ -149,242 +167,171 @@ def place(ref, value, fp_id, x, y, angle=0):
 
 
 # ════════════════════════════════════════════════════════════════════════
-# PLACEMENT MAP  (all mm, PCB origin = top-left of board)
+# PLACEMENT MAP  (all mm, PCB origin = top-left of board; x rear -> front)
 #
-#  0        10       20       30       40       50       60   65
-#  +--J6(SR04)---J7(Estop)------------MH2------C3(1000u)-------+
-#  | MH1                                       |          J1(MtrL)
-#  |         [R5R6R7]  [U1 ESP32]  [R4,C1 ]  [ U2 TB6612 ]     |
-# J9(5V+UART)[  C6   ] [        ]  [R1R2   ]  [           ] J2(MtrR)
-#  |                              [C4C5    ]                   |
-#  |         [expander U4 + pulldowns R12-R17, LED J10]         |
-#  +-MH3--J5(Qwiic)-------------------------------------MH4----+
-#                              65 x 60 mm
+#  0         10        20    24.5               45.3   52.5
+#  +-MH1--[ J9 5V GND TX> RX< ]+[ J1 MOTOR L      ]+--MH2--+   y 0  (chassis left)
+#  |                           |[  U2 TB6612, 180  ]  [J5]  |
+# USB=[ U1 ESP32-S3-Zero, 90 ] |[ ctrl col | motor ]  [J7]  |
+#  |  [ USB-C flush, x 0     ] |[  (PWM/AIN/BIN)   ]        |
+#  |  C4 C7 C5 R5R6R7 R1 R2 C6 | R12-15 [U4] [ C3 1000u ]R4C1|
+#  +-MH3--[ J6 SR04 ]----------+[ J2 MOTOR R      ]+--MH4--+   y 46 (chassis right)
+#                       52.5 x 46 mm  (was 65 x 60 + notches)
 #
-# C3 sits ABOVE U2, not below: its 10mm can on the same X as pad 9 (VM) would
-# otherwise cover pads 9-13. MH2 vacated (55,11) to make that approach possible.
+# 2026-11-09 shrink: board_outline.py has the why (46 mm clears the encoder sockets at
+# |y| 23.9 with no notches). Order QC fixes from cad-loop carried over (register §M):
+# U1 turned 90 so the USB-C (the Pi link) is flush on the rear edge (M6); U2 un-mirrored
+# at the library and turned 180 so its control column faces U1 (M1); pads of rotated
+# parts carry the footprint angle (M5, in place()).
 # ════════════════════════════════════════════════════════════════════
 
 # ── Main ICs ─────────────────────────────────────────────────────────────
-#   U1: ESP32-S3-Zero flat-mount (18×23.5mm, top-left-origin footprint)
-#   (9,16) keeps module center at ~(18,28) — same physical position as the old Socket
+#   U1: ESP32-S3-Zero flat-mount, 18 x 23.5, footprint origin top-left, USB-C at the pad-1
+#   end and ~1.4 proud of the module (cad-loop STEP render). angle 90 maps local (x, y) to
+#   (y, -x): the module spans x 0..23.5, y U1_Y-18..U1_Y, USB-C end flush on the rear edge so
+#   the receptacle overhangs and a plug seats. Pads 1-9 (5V GND 3V3 GP1-6) run along the
+#   bottom side rear->front, pads 18-26 (TX RX GP13-7) along the top side.
+#   The plug's ~12.4 overmold spans y 16.5..29.5 at the rear edge: MH1/MH3 are clear.
+U1_X, U1_Y = 0.0, 32.0
 place(
     "U1",
     "Waveshare_ESP32-S3-Zero",
     "robot-projects:Waveshare_ESP32-S3-Zero_FlatMount_NoCluster",
-    9,
-    16,
-)
-
-#   U2: SparkFun TB6612FNG v2 Socket (courtyard ±13mm × ±13mm)
-place("U2", "SparkFun_TB6612FNG_v2", "robot-projects:SparkFun_TB6612FNG_v2", 46, 28)
-
-# ── Right-edge connectors (angle=90 → pads along +Y, housing exits →) ────────
-#   Courtyard extends 2.45mm ABOVE and 9.95mm (4-pin) / 4.95mm (2-pin) BELOW placement y.
-#   x=62.15: housing front at x=65 (right board edge); body extends left to x=58.75.
-#   MH2/MH4 moved to x=55 so their courtyard right (58.25) clears body left (58.75).
-#   Pad spacing for drill clearance: ≥2.5mm between last pad of upper and first of lower.
-#   6-pin B6B courtyard: 2.45mm above, 14.95mm below placement y (pads span 12.5mm).
-#   J1 at y=17: courtyard 14.55–31.95; J2 at y=35: courtyard 32.55–49.95.
-#   Courtyard overlaps with MH corners and between J1/J2 are expected DRC warnings — pad clearances OK.
-place(
-    "J1",
-    "MOTOR L",
-    "Connector_JST:JST_XH_B6B-XH-A_1x06_P2.50mm_Vertical",
-    62.15,
-    17,
-    90,
-)
-place(
-    "J2",
-    "MOTOR R",
-    # y 42 -> 46.5 to open an 11mm slot between J1 and J2 for MH5 (see below).
-    # Courtyard offset is -15.5..+3.0, so this puts it at y 31.0..49.5 — clear of
-    # MH5's keepout (ends 27.59) and of MH4's (starts 52.90).
-    "Connector_JST:JST_XH_B6B-XH-A_1x06_P2.50mm_Vertical",
-    62.15,
-    46.5,
+    U1_X,
+    U1_Y,
     90,
 )
 
-# ── Top-edge connectors (angle=0 → pads along +X, housing front at y≈0) ─────
-#   Footprint origin = pad1 at (x,y); housing extends from y-2.85 (≈top edge) to y+3.9
+#   U2: SparkFun TB6612FNG module on 2x8 female headers. Footprint = SparkFun's .brd,
+#   chip up (fixed 2026-11-09, register M1). At 180: control column (pads 1-8) at x 27.28,
+#   top->bottom GND PWMB BIN2 BIN1 STBY AIN1 AIN2 PWMA, facing U1 and U4; motor column
+#   (pads 9-16) at x 42.52, top->bottom GND BO1 BO2 AO2 AO1 GND VCC VM. VM (pad 9) at
+#   (42.52, 26.29), bottom-right, so C3 sits right under it.
+U2_X, U2_Y = 34.9, 17.4
 place(
-    "J6",
-    "HC-SR04 5V",
-    "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical",
-    5,
-    3,
-    90,
+    "U2",
+    "SparkFun_TB6612FNG_v2",
+    "robot-projects:SparkFun_TB6612FNG_v2",
+    U2_X,
+    U2_Y,
+    180,
 )
-# J7 is 3-pin as of E3: pin1=+3V3, pin2=ESTOP (through the NC contact), pin3=the
-# cable-detect loop. It grew one pin, so it now spans 5.0mm of pads instead of 2.5mm
-# — still comfortably inside the top-edge gap between J6 (ends x=14.44) and the
-# clear band before U2's courtyard.
-place("J7", "E-STOP NC", "Connector_JST:JST_XH_B3B-XH-A_1x03_P2.50mm_Vertical", 22, 3)
 
-# ── Left-edge connectors (angle=270 → pads along -Y, housing exits ←) ────────
-#   At angle=270: pad1 at (x,y), pad2 at (x, y-2.5)
-#   x=2.0: housing exits left, pads at x=2.0 inside board
-#   Was x=1.5, but the JST-VH pads are 2.7mm square → pad left edge at 0.15mm, against
-#   a 0.5mm board-edge rule (4x copper_edge_clearance). 2.0 puts it at 0.65mm.
-#   Courtyard right edge = 2.0+3.9=5.9 → left passives moved 6.5 → 7.7 to keep clear.
+# ── Motor connectors on the long edges, beside the encoder sockets ──────────
+#   J1 = MOTOR L on the top edge (chassis +y = left), J2 = MOTOR R on the bottom edge.
+#   XH courtyard x -3..15.49, y -2.9..3.94 at angle 0: J1 y 0.05..6.89, J2 y 39.1..45.94.
+place(
+    "J1", "MOTOR L", "Connector_JST:JST_XH_B6B-XH-A_1x06_P2.50mm_Vertical", 27.5, 2.95
+)
+place(
+    "J2", "MOTOR R", "Connector_JST:JST_XH_B6B-XH-A_1x06_P2.50mm_Vertical", 27.5, 42.0
+)
+
+# ── Pi link: J9 top-rear, beside U1's TX/RX pads ─────────────────────────────
 # Value reads pin 1->4 in order, with direction marks resolving L3: ">" means the pin
-# is DRIVEN BY THIS BOARD, "<" means it is driven by the far end. Verified from the
-# netlist rather than the net name: J9.3 /UART_TX lands on U1.18 (TX, GPIO43,
-# pintype=output) and J9.4 /UART_RX on U1.19 (RX, GPIO44, pintype=input). So the board
-# transmits on pin 3 — wire pin 3 to the Pi's RX.
-# "5V+UART Pi" said nothing about direction, which is the whole of defect L3: both ends
-# of a UART call their own pin TX, so the label has to say whose view it is.
+# is DRIVEN BY THIS BOARD, "<" means it is driven by the far end. J9.3 /UART_TX lands on
+# U1.18 (TX, GPIO43, output), J9.4 /UART_RX on U1.19 (RX, GPIO44, input): wire pin 3 to
+# the Pi's RX. At 180 the pins run front->rear: 5V (21.9), GND, TX, RX (10.02), so TX/RX
+# are nearest U1's pads 18/19 (x 1.59/4.13).
 place(
     "J9",
     "5V GND TX> RX<",
     "Connector_JST:JST_VH_B4P-VH_1x04_P3.96mm_Vertical",
-    2.0,
-    34,
-    270,
+    21.9,
+    6,
+    180,
 )
 
-# ── Bottom-edge Qwiic (angle=0, adjust orientation in KiCad if needed) ───────
+# ── HC-SR04 header on the bottom-rear edge, under U1's ECHO/TRIG pads ────────
+place(
+    "J6",
+    "HC-SR04 5V",
+    "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical",
+    8.6,
+    43.5,
+    90,
+)
+
+# ── Front strip (x 45.3..52.5, between MH2 and MH4): Qwiic + E-stop ──────────
 place(
     "J5",
     "QWIIC 3V3",
     "Connector_JST:JST_SH_BM04B-SRSS-TB_1x04-1MP_P1.00mm_Vertical",
-    13,
-    56,
+    49.6,
+    11.5,
+    90,
 )
+# J7 3-pin (E3): pin1=+3V3, pin2=ESTOP (through the NC contact), pin3=cable-detect loop.
+place(
+    "J7",
+    "E-STOP NC",
+    "Connector_JST:JST_XH_B3B-XH-A_1x03_P2.50mm_Vertical",
+    48.5,
+    26,
+    90,
+)
+#   ESTOP: R4 (pad2=ESTOP, pad1=GND) holds it low when the loop is open, C1 debounce;
+#   R18: e-stop cable-detect loop pull-down (E3). All three beside J7.
+place("R4", "10k", "Resistor_SMD:R_0402_1005Metric", 47.5, 30.1, 0)
+place("C1", "100n", "Capacitor_SMD:C_0402_1005Metric", 47.5, 31.4, 0)
+place("R18", "10k", "Resistor_SMD:R_0402_1005Metric", 47.5, 32.7, 0)
 
-# ── Passives in gap between U1 and U2 (x: ~29–38, y: ~20–38) ────────────────
-#   angle=90 → pad1 at top (lower Y), pad2 at bottom (higher Y)
-#   PWMA/PWMB/STBY pulldowns: pad1 = signal, pad2 = GND
-place("R1", "100k", "Resistor_SMD:R_0402_1005Metric", 30, 33.0, 90)  # PWMA pd
-place("R2", "100k", "Resistor_SMD:R_0402_1005Metric", 30, 35.5, 90)  # PWMB pd
-#   ESTOP: R4 pullup (pad1=+3V3, pad2=ESTOP), C1 debounce (pad1=ESTOP, pad2=GND)
-place("R4", "10k", "Resistor_SMD:R_0402_1005Metric", 30, 21.0, 90)  # ESTOP pu
-place("C1", "100n", "Capacitor_SMD:C_0402_1005Metric", 30, 23.5, 90)  # ESTOP debnc
+# ── Under U1 (bottom-rear strip): rail decoupling, echo divider, PWM pull-downs ─
+place("C4", "100n", "Capacitor_SMD:C_0402_1005Metric", 2, 35.5, 90)  # +5V at U1 pad 1
+place("C7", "100n", "Capacitor_SMD:C_0402_1005Metric", 3.5, 35.5, 90)  # +5V
+place(
+    "C5", "100n", "Capacitor_SMD:C_0402_1005Metric", 6.7, 35.5, 90
+)  # +3V3 at U1 pad 3
+#   HC-SR04 echo divider: R5 (top, ECHO_IN->MID), R6 (bot, MID->GND), R7 (series ESD,
+#   MID->ECHO_DIV) between U1's ECHO pad (x 11.75) and J6.
+place("R5", "10k", "Resistor_SMD:R_0402_1005Metric", 11, 35, 90)
+place("R6", "15k", "Resistor_SMD:R_0402_1005Metric", 12.5, 35, 90)
+place("R7", "100", "Resistor_SMD:R_0402_1005Metric", 14, 35, 90)
+#   PWMA/PWMB pull-downs under U1's PWM pads (x 16.83, 19.37): pad1 = signal, pad2 = GND
+place("R1", "100k", "Resistor_SMD:R_0402_1005Metric", 16.8, 34.5, 90)
+place("R2", "100k", "Resistor_SMD:R_0402_1005Metric", 19.4, 34.5, 90)
+#   C6 100uF: +5V bulk. On the solid In2.Cu +5V plane, so position is not critical.
+place("C6", "100µF", "Capacitor_THT:CP_Radial_D5.0mm_P2.00mm", 19.6, 38.5)
 
-# ── Passives left of U1 (x: ~5–9) ────────────────────────────────────────────
-#   Battery sense divider: R8 (top, +BATT→BAT_SENSE), R9 (bot, BAT_SENSE→GND)
-#   HC-SR04 echo divider: R5 (top, ECHO_IN→MID), R6 (bot, MID→GND),
-#                         R7 (series ESD, MID→ECHO_DIV)
-# Echo divider moved out of the left strip to the clear block under J6 (x 15-40,
-# y 7-15). They were at x=6.5, then 7.7 when J9 shifted right for edge clearance,
-# and at 7.7 they sat directly on top of U1's left-hand silk pin labels.
-#
-# This is the better home anyway: R7 is the series ESD resistor on the incoming
-# HC-SR04 echo line, and it now sits ~5mm below J6 instead of 34mm away, so the
-# clamp is near the connector where incoming energy arrives. The divider is a
-# slow ultrasonic pulse, so the extra run to U1 costs nothing.
-#   crtyd x 15.48..16.52 → clears MH1 (7.09) and J7 (19.00) comfortably
-#   y 8.02..14.98        → clears J7 crtyd bottom (6.95) and U1 crtyd top (15.71)
-place("R5", "10k", "Resistor_SMD:R_0402_1005Metric", 16, 9.0, 90)  # echo div top
-place("R6", "15k", "Resistor_SMD:R_0402_1005Metric", 16, 11.5, 90)  # echo div bot
-place("R7", "100", "Resistor_SMD:R_0402_1005Metric", 16, 14.0, 90)  # echo ESD
+# ── VM bulk: C3 right under U2's VM pad ──────────────────────────────────────
+#   C3 1000uF radial THT, hand-soldered (not in the JLC assembly). VM has 0.5 V of margin
+#   (A3), so C3 must be the low-impedance path at 20 kHz (E2). At 180 the footprint (origin
+#   = pad 1) runs pad 2 to the left: pad1 (+) at (42.52, 33.2), 6.9 mm straight below VM pad 9
+#   (42.52, 26.29). Its THT barrels also land on the In2 +5V / In1 GND planes.
+#   NOTE: the can is ~12.5 tall: check against the 12 mm parts budget under the Pi deck.
+place("C3", "1000µF", "Capacitor_THT:CP_Radial_D10.0mm_P5.00mm", 42.52, 33.2, 180)
 
-# ── Capacitors: VM bulk + rail decoupling ─────────────────────────────────────
-#   C3 1000µF polarized radial THT: VM rail bulk (TB6612 back-EMF).
-#   10mm dia, 5mm lead pitch, hand-soldered — NOT part of the JLC assembly.
-#   jlcpcb-assembly/README.md lists it under "What YOU hand-solder (THT / modules)".
-# C3 MUST sit at U2 pad 9 (VM). VM has only 0.5V of margin post-A3, and the ripple
-# analysis only holds if C3 is the low-impedance path at 20kHz — trace inductance
-# between C3 and pad 9 would hand the ripple back to the breakout's small caps.
-# U2 is at (46,28); pad 9 is local (+7.62,-8.89) -> (53.62, 19.11).
-#
-# It was previously at (53.62, 25.0) — the same X as pad 9, but 5.9mm BELOW it, which
-# put the 10mm can squarely on top of U2's right pad column and covered pads 9-13.
-# Unbuildable, and DRC only said "courtyards overlap" + 5x "PTH inside courtyard".
-# Correct answer is the same X but ABOVE the module, rotated 90 so the pads stack
-# vertically: pad1(+) lands at (53.62, 15.09), 4.02mm straight down to pad 9.
-# Fits only because F4 was resolved — the real body is 20.32mm, not the 23mm the
-# footprint used to claim, so U2's courtyard top moved 14.96 -> 17.59.
-# rot 90: footprint-local (x,0) maps to global (0,-x), so local pad1 (-4.2,0) -> +4.2 in Y.
-# y=10.75, not the 10.89 the arithmetic suggests: courtyard bounding boxes include the
-# 0.05mm stroke width, so ±10.41 on U2 actually reaches 17.55 and the two courtyards
-# grazed by 0.04mm. 10.75 leaves 0.10mm and costs 0.14mm of trace.
-# Resulting gaps: MH2 0.49mm left, J1 0.10mm right, U2 0.10mm below.
-# Radial THT restored (was silently swapped to Capacitor_SMD:CP_Elec_10x10.5 in an
-# uncommitted edit). The THT pads are the better answer here anyway: their barrels
-# pass through In2.Cu, so C3's +5V terminal lands ON the +5V plane and its GND
-# terminal on the In1/B.Cu GND planes — the plane IS the connection, and the short
-# surface run to U2 pad 9 is only a secondary path.
-# NOTE the origin of this footprint is PAD 1, not the body centre — courtyard runs
-# y-7.79 .. y+2.79, x 48.33..58.91. y=14.6 leaves 0.16mm to U2's courtyard top
-# (17.55), clears MH2 (ends 47.60) and J1 (starts 59.26), and puts
-# pad 1 (+) at (53.62, 14.60) — 4.51mm from U2 pad 9 (53.62, 19.11).
-place("C3", "1000µF", "Capacitor_THT:CP_Radial_D10.0mm_P5.00mm", 53.62, 14.6, 90)
-#   C4/C5 100nF: VBAT and 3V3 rail decoupling, in center-passive cluster
-place("C4", "100n", "Capacitor_SMD:C_0402_1005Metric", 30, 38.5, 90)
-place("C5", "100n", "Capacitor_SMD:C_0402_1005Metric", 30, 41.5, 90)
+# ── U4 TCA9554A expander + support, under U2's control column ────────────────
+place("U4", "TCA9554APWR", "Package_SO:TSSOP-16_4.4x5mm_P0.65mm", 30.5, 34.0)
+place("R12", "100k", "Resistor_SMD:R_0402_1005Metric", 25.6, 30.0, 90)  # AIN1 pd
+place("R13", "100k", "Resistor_SMD:R_0402_1005Metric", 25.6, 32.0, 90)  # AIN2 pd
+place("R14", "100k", "Resistor_SMD:R_0402_1005Metric", 25.6, 34.0, 90)  # BIN1 pd
+place("R15", "100k", "Resistor_SMD:R_0402_1005Metric", 25.6, 36.0, 90)  # BIN2 pd
+place("R16", "4.7k", "Resistor_SMD:R_0402_1005Metric", 28.2, 29.0)  # SDA pu
+place("R17", "4.7k", "Resistor_SMD:R_0402_1005Metric", 30.3, 29.0)  # SCL pu
+place("C8", "100n", "Capacitor_SMD:C_0402_1005Metric", 32.4, 29.0)  # U4 decoupling
+place("C9", "10u", "Capacitor_SMD:C_0402_1005Metric", 30.5, 38.0)  # +3V3 bulk
 
-# ── NeoPixel + power-LED circuit — bottom-centre cluster (x 25-41, y 46-58) ─────
-#   Shifted +5mm right vs initial placement to clear SDA Qwiic via at (19.16, 55.80)
-#   that conflicted with J10 pin 1 at old (20, 57). New J10 at (25, 57) gives ~4mm
-#   clearance from the SDA routing zone.
-place("R10", "330", "Resistor_SMD:R_0402_1005Metric", 25, 52, 90)
-place("C7", "100n", "Capacitor_SMD:C_0402_1005Metric", 33, 52, 90)
-# C6 = +5V bulk. It used to sit at (4.5, 25) in the left strip, rotated 90 to fit
-# the 9mm between the board edge and U1's left pad column. It fitted, but it was
-# occupying the ONLY clear channel for U1's left-hand silk pin labels, and its own
-# outline crossed its own pads — 12 of the residual silk violations traced back to
-# this one part. The strip is 9mm wide and had to hold J9 (6.25mm of courtyard),
-# C6 (7.19mm) and U1's labels (~1.8mm). It never fitted; it just wasn't DRC-visible.
-#
-# Moved to the empty block below U1 (x 8-24, y 40-53), which nothing else uses.
-# Electrically fine: unlike C3, C6 is bulk on a rail fed by the solid In2.Cu +5V
-# plane, so the plane carries it — this is not the VM node with 0.5V of margin.
-place("C6", "100µF", "Capacitor_THT:CP_Radial_D5.0mm_P2.00mm", 12.5, 45.5, 90)
-place("J10", "LED 5V", "Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical", 25, 57)
-
-# ── M3 mounting holes (3.2mm drill, mechanical — no net connections) ──────────
-#   Positioned to avoid connector drills; minor courtyard touches are OK
-#   TL: (4,11)  TR: (55,11)  BL: (4,56)  BR: (55,56)
-# ── U4 TCA9554A expander + support, in the space the NeoPixel cluster vacated ──
-place("U4", "TCA9554APWR", "Package_SO:TSSOP-16_4.4x5mm_P0.65mm", 33, 46)
-place("R12", "100k", "Resistor_SMD:R_0402_1005Metric", 26, 44, 90)  # AIN1 pd
-place("R13", "100k", "Resistor_SMD:R_0402_1005Metric", 26, 46.5, 90)  # AIN2 pd
-place("R14", "100k", "Resistor_SMD:R_0402_1005Metric", 26, 49, 90)  # BIN1 pd
-place("R15", "100k", "Resistor_SMD:R_0402_1005Metric", 26, 51.5, 90)  # BIN2 pd
-place("R16", "4.7k", "Resistor_SMD:R_0402_1005Metric", 40, 44, 90)  # SDA pu
-# R18: e-stop cable-detect loop pull-down (E3). Sits with the other pull-downs in
-# the expander cluster rather than near J7 — it only has to hold the net low when
-# the harness is absent, so trace length is irrelevant.
-place("R18", "10k", "Resistor_SMD:R_0402_1005Metric", 40, 41.5, 90)
-place("R17", "4.7k", "Resistor_SMD:R_0402_1005Metric", 40, 46.5, 90)  # SCL pu
-place("C8", "100n", "Capacitor_SMD:C_0402_1005Metric", 40, 49, 90)  # U4 decoupling
-place("C9", "10u", "Capacitor_SMD:C_0402_1005Metric", 40, 51.5, 90)  # +3V3 bulk
-
-place("MH1", "MountingHole", "MountingHole:MountingHole_3.2mm_M3_DIN965", 4, 11)
-# MH2 moved (55,11) -> (44.5,4) so C3 can sit directly above U2 pad 9 (VM). At (55,11)
-# it owned x 51.9-58.1 / y 7.9-14.1, which is the ONLY approach to pad 9 from above —
-# with it there the best C3 could manage was an 8.8mm dogleg on a rail with 0.5V of
-# margin. Now 4.02mm, straight down. Keepout x 41.41-47.60 clears C3's courtyard left
-# (48.07) by 0.47mm; an M3 head (Ø6) clears C3's 10mm can by 1.1mm and is reachable.
-# MECHANICAL CONSEQUENCE: the top-right corner (x>48, y<20) has no screw — C3 and J1
-# live there and J1 takes motor-cable pull. The chassis needs a support boss under
-# that corner. A screw is not possible: C3 and J1 fill the region edge to edge.
-place("MH2", "MountingHole", "MountingHole:MountingHole_3.2mm_M3_DIN965", 44.5, 4)
-place("MH3", "MountingHole", "MountingHole:MountingHole_3.2mm_M3_DIN965", 4, 56)
-place("MH4", "MountingHole", "MountingHole:MountingHole_3.2mm_M3_DIN965", 55, 56)
-# MH5: fifth hole on the right edge, between J1 and J2.
-#
-# The right edge is where the mechanical load actually is — J1 and J2 are the motor
-# connectors and both take cable pull, and with four corner holes the nearest support
-# to J1 was ~25mm away. This braces both of them directly.
-#
-# J2 moved y 42 -> 46.5 to open the slot. Before that the J1/J2 courtyard gap was
-# 6.5mm, which fits the 6.19mm keepout but NOT a driver: an M3 head is ~6mm across
-# and would have sat in a 6.5mm slot between two ~11mm-tall connector housings.
-# At y=46.5 the gap is 11mm, leaving 1.4mm to J1 and 3.4mm to J2 around the head.
-#   keepout x 57.41..63.59 → clears U2 courtyard right (56.45) by 0.96mm
-place("MH5", "MountingHole", "MountingHole:MountingHole_3.2mm_M3_DIN965", 60.5, 24.5)
+# ── M3 mounting holes: 4 in a rectangle (board_outline.HOLES; base plate standoffs) ─
+for _i, (_hx, _hy) in enumerate(BO.HOLES, start=1):
+    place(
+        f"MH{_i}", "MountingHole", "MountingHole:MountingHole_3.2mm_M3_DIN965", _hx, _hy
+    )
 
 # ── Board outline (Edge.Cuts) ─────────────────────────────────────────────────
-edge = GrRect()
-edge.start = Position(X=OX, Y=OY)
-edge.end = Position(X=OX + W, Y=OY + H)
-edge.layer = "Edge.Cuts"
-edge.width = 0.05
-b.graphicItems.append(edge)
+# Drawn from board_outline.outline() so the edge, the router boundary, pcb_qc.py and the
+# chassis envelope all come from one polygon.
+_ol = BO.outline()
+for (_x1, _y1), (_x2, _y2) in zip(_ol, _ol[1:] + _ol[:1]):
+    b.graphicItems.append(
+        GrLine(
+            start=Position(X=OX + _x1, Y=OY + _y1),
+            end=Position(X=OX + _x2, Y=OY + _y2),
+            layer="Edge.Cuts",
+            width=0.05,
+            tstamp=str(uuid.uuid4()),
+        )
+    )
 
 # ── Write PCB ────────────────────────────────────────────────────────────────
 b.to_file(PCB)
@@ -412,12 +359,25 @@ def _in_board(x_nm, y_nm):
     ) and _pn.FromMM(_BOARD_OY) <= y_nm <= _pn.FromMM(_BOARD_OY + _BOARD_H)
 
 
+# Reviewed anchors for labels that matter (finish_pcb keeps a field that starts clear and
+# only moves ones that collide). J9's pin order (L3) lands under U2's module wherever the
+# placer's candidate ring puts it; the band under J9 (y 10.3-12.9) is clear and is next to
+# the pins it describes. (x, y, angle) of the Value field.
+_LABEL_AT = {"J9": (16.0, 11.35, 0)}  # 11.0 grazed J9's own housing outline
+
 for fp in _b.GetFootprints():
     pos = fp.GetPosition()
     px, py = pos.x, pos.y
 
     # REF → F.SilkS, positioned just above footprint center, clamped on-board
     ref = fp.Reference()
+    if fp.GetReference().startswith("MH"):
+        # Mounting-hole refs say nothing a hole doesn't, and on the 52.5 x 46 board
+        # (2026-11-09) MH2/MH4's landed on MOTOR L and R18. Hidden, not deleted.
+        ref.SetVisible(False)
+        val = fp.Value()
+        val.SetLayer(_pn.F_Fab)
+        continue
     ry = max(_pn.FromMM(0.5), min(_pn.FromMM(_BOARD_H - 0.5), py - _pn.FromMM(1.5)))
     ref.SetPosition(_pn.VECTOR2I(px, ry))
     ref.SetTextSize(_pn.VECTOR2I(_pn.FromMM(0.7), _pn.FromMM(0.7)))
@@ -429,6 +389,10 @@ for fp in _b.GetFootprints():
     val = fp.Value()
     vy = max(_pn.FromMM(0.5), min(_pn.FromMM(_BOARD_H - 0.5), py + _pn.FromMM(1.0)))
     val.SetPosition(_pn.VECTOR2I(px, vy))
+    if fp.GetReference() in _LABEL_AT:
+        _lx, _ly, _la = _LABEL_AT[fp.GetReference()]
+        val.SetPosition(_pn.VECTOR2I(_pn.FromMM(OX + _lx), _pn.FromMM(OY + _ly)))
+        val.SetTextAngle(_pn.EDA_ANGLE(_la, _pn.DEGREES_T))
     val.SetTextSize(_pn.VECTOR2I(_pn.FromMM(0.7), _pn.FromMM(0.7)))
     val.SetTextThickness(_pn.FromMM(0.1))
     val.SetVisible(True)
@@ -481,6 +445,132 @@ def _add_zone(board, net_name, layer, clearance_mm=_ZONE_CLR_MM):
 
 _add_zone(_b, "GND", _pn.In1_Cu)  # solid GND plane
 _add_zone(_b, "+5V", _pn.In2_Cu)  # solid +5V plane (was +BATT; eliminated in A3)
+
+
+# ── Plane fan-out: every SMD pad on a plane net gets its own stub + via ──────────
+# GND (In1 + B.Cu) and +5V (In2) reach SMD pads only through a via. On the 52.5 x 46 board
+# (2026-11-09) freerouting left a different GND pad unconnected in the strip under U1 on
+# successive runs (C5.2, R2.2, U1.2): the strip is packed and the router gives up on
+# plane drops once the signal stubs box a pad in. Laying the drops here, before routing,
+# makes them part of the placement instead of a routing gamble. The vias go in only on a
+# --fresh run (seeded runs already carry them in their tracks) and DRC checks them after.
+_PLANE_NETS = {
+    "GND": (0.6, 0.3, 0.25),
+    "+5V": (0.8, 0.4, 0.4),
+}  # via dia, drill, stub w
+
+
+def _pad_boxes(board):
+    out = []
+    for fp in board.GetFootprints():
+        for p in fp.Pads():
+            bb = p.GetBoundingBox()
+            # key by (ref, pad number): pad.GetParent() comes back as a bare
+            # BOARD_ITEM_CONTAINER proxy in this pcbnew build (no GetReference)
+            out.append(
+                (
+                    (fp.GetReference(), p.GetNumber()),
+                    bb.GetLeft(),
+                    bb.GetTop(),
+                    bb.GetRight(),
+                    bb.GetBottom(),
+                )
+            )
+    return out
+
+
+def _fanout(board):
+    pads = _pad_boxes(board)
+    vias = []  # (x, y, r) placed so far
+    clr = _pn.FromMM(0.2)
+    edge = _pn.FromMM(0.5)
+    n = 0
+    for fp in board.GetFootprints():
+        ref = fp.GetReference()
+        if ref.startswith(("MH", "U2")):
+            continue
+        for p in fp.Pads():
+            net = p.GetNetname()
+            if net not in _PLANE_NETS or p.GetAttribute() != _pn.PAD_ATTRIB_SMD:
+                continue
+            dia, drill, sw = _PLANE_NETS[net]
+            r = _pn.FromMM(dia / 2)
+            pc = p.GetPosition()
+            fc = fp.GetPosition()
+            # candidate directions: straight away from the footprint centre first, then the
+            # other three axes; distances step out from just clear of the pad
+            dx, dy = pc.x - fc.x, pc.y - fc.y
+            prim = (
+                (1 if dx > 0 else -1, 0)
+                if abs(dx) >= abs(dy)
+                else (0, 1 if dy > 0 else -1)
+            )
+            dirs = [
+                prim,
+                (prim[1], prim[0]),
+                (-prim[1], -prim[0]),
+                (-prim[0], -prim[1]),
+            ]
+            half = (
+                max(p.GetBoundingBox().GetWidth(), p.GetBoundingBox().GetHeight()) // 2
+            )
+            done = False
+            for step in (0.0, 0.25, 0.5, 0.8, 1.2):
+                for ux, uy in dirs:
+                    d = half + r + clr + _pn.FromMM(step)
+                    vx, vy = pc.x + ux * d, pc.y + uy * d
+                    if not (
+                        _pn.FromMM(OX) + edge + r <= vx <= _pn.FromMM(OX + W) - edge - r
+                        and _pn.FromMM(OY) + edge + r
+                        <= vy
+                        <= _pn.FromMM(OY + H) - edge - r
+                    ):
+                        continue
+                    ok = True
+                    for q, lft, t, rr, bt in pads:
+                        if q == (ref, p.GetNumber()):
+                            continue
+                        if (
+                            lft - clr - r < vx < rr + clr + r
+                            and t - clr - r < vy < bt + clr + r
+                        ):
+                            ok = False
+                            break
+                    if ok:
+                        for ox, oy, orr in vias:
+                            if (vx - ox) ** 2 + (vy - oy) ** 2 < (r + orr + clr) ** 2:
+                                ok = False
+                                break
+                    if not ok:
+                        continue
+                    v = _pn.PCB_VIA(board)
+                    v.SetPosition(_pn.VECTOR2I(int(vx), int(vy)))
+                    v.SetWidth(_pn.FromMM(dia))
+                    v.SetDrill(_pn.FromMM(drill))
+                    v.SetNet(p.GetNet())
+                    board.Add(v)
+                    t = _pn.PCB_TRACK(board)
+                    t.SetStart(pc)
+                    t.SetEnd(_pn.VECTOR2I(int(vx), int(vy)))
+                    t.SetWidth(_pn.FromMM(sw))
+                    t.SetLayer(_pn.F_Cu)
+                    t.SetNet(p.GetNet())
+                    board.Add(t)
+                    vias.append((vx, vy, r))
+                    n += 1
+                    done = True
+                    break
+                if done:
+                    break
+            if not done:
+                print(
+                    f"  Fan-out    : NO legal via spot for {ref}.{p.GetNumber()} ({net})"
+                )
+    return n
+
+
+if "--fresh" in _sys0.argv:
+    print(f"  Fan-out    : {_fanout(_b)} plane-net SMD pads given a stub + via")
 
 try:
     _filler = _pn.ZONE_FILLER(_b)
@@ -819,20 +909,13 @@ print("  3. Route → Interactive Router  (or use freerouting via File → Expor
 print("  4. Run DRC (Inspect → Design Rules Checker)")
 print()
 print("Notes:")
-print(
-    f"  Board: {int(W)}×{int(H)}mm (4-layer; origin in drawing at ({int(OX)},{int(OY)}))"
-)
+print(f"  Board: {W:g}×{H:g}mm (4-layer; origin in drawing at ({OX:g},{OY:g}))")
 print("  In1.Cu = GND plane, In2.Cu = +5V plane")
-print(
-    "  U1 flat-mount: BIN1=GPIO38(pad15), BIN2=GPIO39(pad14), SDA=GPIO17(pad17), SCL=GPIO18(pad16)"
-)
-print(
-    "  Cluster pads (10-17) are THT Φ1.43mm — reflow solder from above or hand-inject."
-)
+print("  U1 NoCluster (perimeter pads only); direction pins via the U4 expander (A0).")
 print("  GPIO14/15/16 (pads 27-29) are NOT accessible on this module — schematic NCs.")
 print(
-    "  C3 1000µF SMD, rot 90 ABOVE U2: pad1(+)=+5V at (53.62,14.95) — 4.16mm straight "
-    "down to U2 pad 9 (VM). pad2(-)=GND at (53.62,6.55). Verify polarity."
+    "  C3 1000µF THT at 180 under U2: pad1(+)=+5V at (42.52,33.2), 6.9mm below U2 pad 9 (VM)."
+    " pad2(-)=GND at (37.52,33.2). Verify polarity."
 )
 print(
     "  MH1-MH4: M3 mounting holes (no nets) — minor courtyard overlaps near connectors are OK."

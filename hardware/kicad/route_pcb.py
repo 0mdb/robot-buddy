@@ -26,8 +26,11 @@ SES = "/tmp/reflex-routed.ses"
 # Kept in ~/tools rather than /tmp so it survives a reboot.
 JAR = os.path.expanduser("~/tools/freerouting-2.1.0.jar")
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import board_outline as BO  # noqa: E402
+
 OX, OY = 0.0, 0.0  # board drawing origin (must match layout_pcb.py)
-W, H = 65.0, 60.0  # board dimensions mm (must match layout_pcb.py)
+W, H = BO.W, BO.H  # board dimensions mm (board_outline.py is the one source)
 
 # ── Net classes come from the .kicad_pro, NOT from constants here ─────────────
 # layout_pcb.py writes them; this reads them back. They used to be hardcoded in
@@ -139,6 +142,30 @@ dsn2, _n2 = re.subn(
 )
 print(f"  global clearance -> {_max_clr}um (rule:{_n1} smd_smd:{_n2})")
 
+# Pull the routing boundary in so freerouting honours the board-edge rule.
+#
+# freerouting keeps only its structure clearance (0.2 mm) from the boundary, while KiCad
+# DRC enforces copper_edge_clearance (0.5 mm, board setup). On the 65 x 60 board nothing
+# routed near an edge so it never showed; on the 52.5 x 46 board (2026-11-09) the router
+# ran /SCL 0.28 mm from the front edge past J5 and dropped a GND via 0.43 mm from the rear
+# edge. Inset the boundary by the difference, so router clearance + inset = the DRC rule.
+# Pads themselves are placed >= 0.5 mm in (layout_pcb.py), so none fall outside it.
+_EDGE_CLR_UM = int(round(b.GetDesignSettings().m_CopperEdgeClearance / 1000))
+_edge_inset = max(0, _EDGE_CLR_UM - _max_clr) / 1000.0
+_bnd = BO.inset(BO.outline(), _edge_inset)
+_bnd_path = "  ".join(
+    f"{int(round(x * 1000))} {int(round(-y * 1000))}" for x, y in _bnd + _bnd[:1]
+)
+dsn2, _n5 = re.subn(
+    r"\(boundary\s*\n\s*\(path pcb 0 [^)]*\)",
+    f"(boundary\n      (path pcb 0  {_bnd_path})",
+    dsn2,
+    count=1,
+)
+print(
+    f"  routing boundary inset {_edge_inset:.2f} mm (edge rule {_EDGE_CLR_UM} um): {_n5}"
+)
+
 # Give the keepout circles an explicit centre.
 #
 # KiCad exports mounting-hole keepouts as `(circle F.Cu 3700)` — diameter only. The
@@ -216,17 +243,50 @@ if not os.path.exists(JAR):
 # passes, and the script imports last run's routing while reporting success.
 # Same failure class that fabricated robot-scout-mcu with zero traces: the
 # toolchain reported success for work that did not happen.
-if os.path.exists(SES):
-    os.remove(SES)
-
-result = subprocess.run(
-    ["java", "-jar", JAR, "-de", DSN_CLS, "-do", SES, "-mp", str(PASSES), "-mt", "1"],
-    capture_output=True,
-    text=True,
-)
-for line in (result.stdout + result.stderr).splitlines():
-    if any(k in line for k in ("pass #", "complet", "Saving", "unrouted", "ERROR")):
-        print(" ", line.strip())
+# freerouting is not deterministic: on the 52.5 x 46 board (2026-11-09) the same DSN gave
+# 0 unrouted on one run and 8 on the next. Retry until a run reports none, keeping the
+# best SES seen; the DRC gate at the end decides whether what was imported is good.
+ROUTE_TRIES = int(os.environ.get("RB_ROUTE_TRIES", "6"))
+SES_BEST = SES + ".best"
+_best = None
+for _try in range(1, ROUTE_TRIES + 1):
+    if os.path.exists(SES):
+        os.remove(SES)
+    result = subprocess.run(
+        [
+            "java",
+            "-jar",
+            JAR,
+            "-de",
+            DSN_CLS,
+            "-do",
+            SES,
+            "-mp",
+            str(PASSES),
+            "-mt",
+            "1",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    _out = (result.stdout + result.stderr).splitlines()
+    _final = [ln for ln in _out if "Auto-routing was completed" in ln]
+    for line in _final or [ln for ln in _out if "ERROR" in ln]:
+        print(f"  try {_try}:", line.strip())
+    if result.returncode != 0 or not os.path.exists(SES):
+        continue
+    _m = re.search(r"\((\d+) unrouted", _final[-1]) if _final else None
+    _unrouted = int(_m.group(1)) if _m else (0 if _final else 99)
+    if _best is None or _unrouted < _best:
+        _best = _unrouted
+        os.replace(SES, SES_BEST)
+    if _unrouted == 0:
+        break
+if _best is not None:
+    os.replace(SES_BEST, SES)
+    print(
+        f"  best: {_best} unrouted (freerouting's count; planes connect some of these)"
+    )
 
 if result.returncode != 0:
     print(
@@ -366,4 +426,29 @@ if _res.returncode != 0:
         "Do not export gerbers.",
         file=sys.stderr,
     )
+    sys.exit(1)
+
+# ── Step 8: DRC gate — errors and unconnected items, from KiCad itself ───────────
+# The shared routing gate above passed a board with 8 DRC-unconnected items on
+# 2026-11-09 (it checks the routing it can see, not KiCad's connectivity incl. zones).
+# KiCad's own DRC is the oracle for "routed", so it gets the last word here.
+import json as _json_g  # noqa: E402
+import tempfile as _tmp_g  # noqa: E402
+
+with _tmp_g.TemporaryDirectory() as _td:
+    _rep = os.path.join(_td, "drc.json")
+    subprocess.run(
+        ["kicad-cli", "pcb", "drc", "--format", "json", "-o", _rep, PCB],
+        capture_output=True,
+        text=True,
+    )
+    _d = _json_g.load(open(_rep))
+_errs = [v for v in _d.get("violations", []) if v.get("severity") == "error"]
+_unc = _d.get("unconnected_items", [])
+_warn = [v for v in _d.get("violations", []) if v.get("severity") != "error"]
+print(f"\nDRC: {len(_errs)} errors, {len(_unc)} unconnected, {len(_warn)} warnings")
+for v in (_errs + _unc)[:20]:
+    print("  ", v["type"], [i["description"][:60] for i in v["items"]])
+if _errs or _unc:
+    print("ERROR: DRC gate failed — do not export gerbers.", file=sys.stderr)
     sys.exit(1)

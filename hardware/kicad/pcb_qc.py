@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
-"""Pre-order QC for robot-buddy-reflex. Run after fab_export.py; exits 1 on any FAIL.
+"""Pre-order QC for robot-buddy-reflex. Run after make_fab.py; exits 1 on any FAIL.
 
-    python3 hardware/kicad/fab_export.py && python3 hardware/kicad/pcb_qc.py
+    python3 hardware/kicad/make_fab.py && python3 hardware/kicad/pcb_qc.py
+
+v2 (2026-11-09): expander board (A0), +5V only (A3), no NeoPixels/LED, NoCluster U1,
+52.5 x 46 outline (board_outline.py). fab_export.py was cad-loop's v1 exporter; for v2
+the fab package comes from make_fab.py (gates + gerbers + JLC BOM/CPL).
 
 Written 2026-11-09 after the first order's footprint/pinout and silk/mask problems. Each
 check names its reference; anything a script can't prove is listed under SIGN-OFF for a
@@ -39,7 +43,7 @@ PCB = PROJ / "robot-buddy-reflex.kicad_pcb"
 SCH = PROJ / "robot-buddy-reflex.kicad_sch"
 GERB = PROJ / "gerbers"
 ZIP = GERB / "robot-buddy-reflex-gerbers.zip"
-QCDIR = GERB / "qc"
+QCDIR = PROJ / "qc"  # NOT under gerbers/: that directory is what goes to the fab
 PIN_MAP = ROOT / "esp32-reflex/main/pin_map.h"
 SPARKFUN_BRD = ROOT / "docs/ref/SparkFun_Motor_Driver-TB6612FNG_v11c.brd"
 ESP_STEP = next((ROOT / "docs/ref").glob("ESP32-S3-Zero_v2-*.stp"), None)
@@ -118,11 +122,12 @@ check(
 
 # Parity: only these known differences are allowed.
 #   MH1-4 have no symbol; U1 symbol pins 27-29 (GPIO14-16) have no pad on the module;
-#   J10's value is "LED" in the schematic; empty Description fields.
+#   J9's value carries ">"/"<" (L3) that parity compares escaped; empty Description fields.
 ALLOWED = [
     ("extra_footprint", r"Footprint MH\d"),
+    ("extra_footprint", r"Extra footprint"),  # MH1-4 (no symbol), as reported by 10.0.6
     ("net_conflict", r"No pad found for pin (27|28|29) in schematic"),
-    ("footprint_symbol_mismatch", r"Value \(J10\)"),
+    ("footprint_symbol_mismatch", r"Value \(J9\)"),
     ("footprint_symbol_field_mismatch", r"."),
 ]
 bad = []
@@ -156,7 +161,7 @@ results.append(
 S = "2 U2 TB6612"
 # SparkFun signal name -> our net. Footprint frame: chip up, top view, KiCad y down.
 SF_NET = {
-    "VM": "+BATT",
+    "VM": "+5V",  # A3: no pack input, VM on the HAT's 5 V
     "VCC": "+3V3",
     "GND": "GND",
     "A01": "/AO1",
@@ -166,7 +171,7 @@ SF_NET = {
     "PWMA": "/PWMA",
     "AIN1": "/AIN1",
     "AIN2": "/AIN2",
-    "STBY": "/STBY",
+    "STBY": "/ESTOP",  # A0: STBY tied to the hardware e-stop net
     "BIN1": "/BIN1",
     "BIN2": "/BIN2",
     "PWMB": "/PWMB",
@@ -233,14 +238,6 @@ U1_REF = {
         str(20 + i): (16.62, round(6.67 + 2.54 * i, 2), f"GPIO{13 - i}")
         for i in range(7)
     },
-    "10": (4.87, 14.84, "GPIO45"),
-    "11": (4.87, 16.43, "GPIO42"),
-    "12": (4.87, 18.02, "GPIO41"),
-    "13": (4.87, 19.61, "GPIO40"),
-    "14": (13.22, 14.84, "GPIO39"),
-    "15": (13.22, 16.43, "GPIO38"),
-    "16": (13.22, 18.02, "GPIO18"),
-    "17": (13.22, 19.61, "GPIO17"),
 }
 kicad(
     "sch",
@@ -275,7 +272,11 @@ for num, (x, y, fn) in U1_REF.items():
         r"_\d+$", "", sym
     ):
         bad_fn.append(f"pad {num}: symbol '{sym}', Waveshare {fn}")
-check(not bad_geo, S, f"26 pads at the Waveshare/STEP positions: {len(bad_geo)} off")
+check(
+    not bad_geo,
+    S,
+    f"18 perimeter pads at the Waveshare/STEP positions (NoCluster): {len(bad_geo)} off",
+)
 for m in bad_geo:
     results.append(("    ", S, m))
 check(
@@ -286,14 +287,12 @@ check(
 for m in bad_fn:
     results.append(("    ", S, m))
 
+# v2: AIN1/AIN2/BIN1/BIN2 live on U4 (TCA9554A P0-P3) and STBY is the /ESTOP net, so
+# none of them is a GPIO any more; a PIN_AIN*/PIN_BIN*/PIN_STBY in pin_map.h is a v1
+# leftover and fails below (TODO: "Direction-change sequencing - required by the v2 board").
 FW_NET = {
     "PIN_PWMA": "/PWMA",
     "PIN_PWMB": "/PWMB",
-    "PIN_AIN1": "/AIN1",
-    "PIN_AIN2": "/AIN2",
-    "PIN_BIN1": "/BIN1",
-    "PIN_BIN2": "/BIN2",
-    "PIN_STBY": "/STBY",
     "PIN_ENC_L_A": "/ENC_LA",
     "PIN_ENC_L_B": "/ENC_LB",
     "PIN_ENC_R_A": "/ENC_RA",
@@ -316,6 +315,15 @@ for name, net in FW_NET.items():
     got = gpio_net.get(g, ("<no pad>", "?"))
     if got[0] != net:
         bad.append(f"{name} = GPIO{g}: board net {got[0]} (pad {got[1]}), want {net}")
+for name in ("PIN_AIN1", "PIN_AIN2", "PIN_BIN1", "PIN_BIN2", "PIN_STBY"):
+    if name in fw:
+        bad.append(
+            f"{name} = GPIO{fw[name]}: v2 has no such GPIO (U4 expander / e-stop net)"
+        )
+if "PIN_ESTOP_LOOP" not in fw:
+    bad.append(
+        "PIN_ESTOP_LOOP missing: v2 routes the e-stop cable-detect loop to GPIO6 (E3)"
+    )
 check(
     not bad and len(fw) >= len(FW_NET),
     S,
@@ -323,19 +331,12 @@ check(
 )
 for m in bad:
     results.append(("    ", S, m))
-SIGNOFF.append(
-    "U1 cluster pads 10-17 (module underside): GPIO labels match the module's back silkscreen"
-)
 
 # ── 4 Connector and IC pin tables ────────────────────────────────────────────
 S = "4 pinouts"
 PINS = {  # ref: [net per pad 1..n], reference
     "J5": (["GND", "+3V3", "/SDA", "/SCL"], "Qwiic standard: GND 3V3 SDA SCL"),
     "J6": (["+5V", "/TRIG", "/ECHO_IN", "GND"], "HC-SR04 header: VCC Trig Echo GND"),
-    "U3": (
-        ["GND", "/NEO_DATA", "GND", "/NEO_BUF", "+5V"],
-        "74xG125 SOT-23-5: OE# A GND Y VCC",
-    ),
     "J1": (
         ["/AO1", "/AO2", "+3V3", "GND", "/ENC_LA", "/ENC_LB"],
         "harness: M+ M- 3V3 GND A B",
@@ -344,15 +345,15 @@ PINS = {  # ref: [net per pad 1..n], reference
         ["/BO1", "/BO2", "+3V3", "GND", "/ENC_RA", "/ENC_RB"],
         "harness: M+ M- 3V3 GND A B",
     ),
-    "J7": (["/ESTOP", "GND"], "E-stop switch"),
-    "J8": (["+BATT", "GND"], "motor power in (5 V from the UPS HAT)"),
+    "J7": (
+        ["+3V3", "/ESTOP", "/ESTOP_LOOP"],
+        "E-stop: 3V3, NC contact, cable-detect loop (E3)",
+    ),
     "J9": (
         ["+5V", "GND", "/UART_TX", "/UART_RX"],
         "Pi: 5V GND TX RX (cross TX/RX in the harness)",
     ),
-    "J10": (["/LED_A", "GND"], "power LED: anode cathode"),
-    "J11": (["/NEO_DIN", "+5V", "GND"], "NeoPixel: DIN 5V GND"),
-    "C3": (["+BATT", "GND"], "polarized: pad 1 = +"),
+    "C3": (["+5V", "GND"], "polarized: pad 1 = +"),
     "C6": (["+5V", "GND"], "polarized: pad 1 = +"),
 }
 for ref, (nets, note) in PINS.items():
@@ -363,7 +364,6 @@ for ref, (nets, note) in PINS.items():
 SIGNOFF.append(
     "J1/J2 motor harness: encoder-motor socket pin order -> XH 6-pin M+ M- 3V3 GND A B"
 )
-SIGNOFF.append("J11 NeoPixel pin order (DIN 5V GND) matches the LED you bought")
 
 # ── 5 Mechanics ──────────────────────────────────────────────────────────────
 S = "5 mechanics"
@@ -373,9 +373,16 @@ want = {(float(x), float(y)) for x, y in BO.outline()}
 check(
     pts == want and len(edges) == len(want),
     S,
-    f"Edge.Cuts = board_outline.py ({BO.W:g} x {BO.H:g}, notches x {BO.NOTCH_X}, {BO.NOTCH_D:g} deep)",
+    f"Edge.Cuts = board_outline.py ({BO.W:g} x {BO.H:g})",
 )
-MH = {"MH1": (4, 11), "MH2": (55, 11), "MH3": (4, 56), "MH4": (55, 56)}
+# Encoder sockets stand to chassis |y| 23.9 (board_outline.py); the board is centred on the
+# chassis centreline, so it clears them if it is no wider than 2 x 23 (0.9 mm margin).
+check(
+    BO.H <= 46.0,
+    S,
+    f"board {BO.H:g} wide: |y| <= {BO.H / 2:g}, encoder sockets at |y| 23.9",
+)
+MH = {f"MH{i}": xy for i, xy in enumerate(BO.HOLES, start=1)}
 bad = []
 for ref, (x, y) in MH.items():
     f = FP.get(ref)
@@ -390,7 +397,7 @@ for ref, (x, y) in MH.items():
 check(
     not bad,
     S,
-    f"M3 holes: 3.2 NPTH on the 51 x 45 pattern (06 §3; chassis.py REFLEX_HOLES) {bad or ''}",
+    f"M3 holes: 3.2 NPTH on the {2 * BO.HOLE_HALF[0]:g} x {2 * BO.HOLE_HALF[1]:g} pattern (board_outline.HOLES = chassis.py REFLEX_HOLES) {bad or ''}",
 )
 # USB-C: footprint pad-1 end; at angle 90 it faces -x (the rear edge, chassis x -40).
 ang = u1.GetOrientationDegrees() % 360
@@ -429,19 +436,19 @@ SIGNOFF.append(
 # ── 6 Fab package ────────────────────────────────────────────────────────────
 S = "6 fab package"
 if not ZIP.exists():
-    check(False, S, f"{ZIP.name} missing: run fab_export.py")
+    check(False, S, f"{ZIP.name} missing: run make_fab.py")
 else:
     names = set(zipfile.ZipFile(ZIP).namelist())
-    need = [
-        "F_Cu.gtl",
-        "In1_Cu.g1",
-        "In2_Cu.g2",
-        "B_Cu.gbl",
-        "F_Mask.gts",
-        "B_Mask.gbs",
-        "F_Silkscreen.gto",
-        "B_Silkscreen.gbo",
-        "Edge_Cuts.gm1",
+    need = [  # make_fab.py plots plain .gbr (no Protel extensions)
+        "F_Cu.gbr",
+        "In1_Cu.gbr",
+        "In2_Cu.gbr",
+        "B_Cu.gbr",
+        "F_Mask.gbr",
+        "B_Mask.gbr",
+        "F_Silkscreen.gbr",
+        "B_Silkscreen.gbr",
+        "Edge_Cuts.gbr",
         "-PTH.drl",
         "-NPTH.drl",
         "-job.gbrjob",
@@ -494,6 +501,7 @@ else:
         "pcb",
         "export",
         "gerbers",
+        "--no-protel-ext",  # same names as make_fab.py
         "--layers",
         "F.Cu,In1.Cu,In2.Cu,B.Cu,F.Mask,B.Mask,Edge.Cuts",
         "-o",
@@ -525,6 +533,8 @@ else:
             str(HERE / "gerber_check.py"),
             str(ZIP),
             str(QCDIR),
+            str(BO.W),
+            str(BO.H),
         ],
         capture_output=True,
         text=True,

@@ -498,22 +498,8 @@ s.schematicSymbols.append(
 )
 
 
-# ── Power LED (hardware, hardwired to +5V) ───────────────────────────────
-# J10: XH 2-pin  pin1=LED_A  pin2=GND — always on when 5V present, no GPIO
-J10X, J10Y = 248.0, 58.0
-j10_p = conn2_pins(J10X, J10Y)
-s.schematicSymbols.append(
-    make_sym(
-        "Connector_Generic",
-        "Conn_01x02",
-        J10X,
-        J10Y,
-        "J10",
-        "Power LED",
-        FP_XH2,
-        "Power LED (panel mount). Hardwired to +5V rail — always on when powered.",
-    )
-)
+# ── Power LED: J10 + R10 DELETED 2026-11-09 (Ben: no LEDs on the reflex board; the
+#    face screen shows the robot is alive). Board shrink, docs/v2-defect-register.md §M.
 
 # ── NeoPixel WS2812B 8×8 matrix connector ────────────────────────────────
 # J11: XH 3-pin  pin1=NEO_DIN  pin2=+5V  pin3=GND
@@ -686,22 +672,6 @@ s.schematicSymbols.append(
     )
 )
 
-# ── R10: Power LED series resistor (hardwired +5V → 330Ω → LED_A) ────────
-R10X, R10Y = 231.0, 58.0
-r10_t, r10_b = r_pins(R10X, R10Y)
-s.schematicSymbols.append(
-    make_sym(
-        "Device",
-        "R",
-        R10X,
-        R10Y,
-        "R10",
-        "330",
-        "Resistor_SMD:R_0402_1005Metric",
-        "Power LED series resistor (5V→330Ω→LED_A, ~9mA, no GPIO)",
-    )
-)
-
 # ── R11: NeoPixel data line series resistor (ringing suppression) ─────────
 
 # ── U3: 74LVC1G125 level shifter (3.3V GPIO42 → 5V NeoPixel data) ─────────
@@ -781,12 +751,14 @@ s.schematicSymbols.append(make_pwr("+3V3", *j5_p[1]))
 s.schematicSymbols.append(make_pwr("+5V", *j6_p[0]))
 s.schematicSymbols.append(make_pwr("GND", *j6_p[3]))
 
-# J1 Motor A: pin3=+5V (encoder power), pin4=GND
-s.schematicSymbols.append(make_pwr("+5V", *j1_p[2]))
+# J1 Motor A: pin3=+3V3 (encoder power), pin4=GND. 2026-11-09 (register M7): was +5V, but
+# the encoder's A/B outputs go straight to non-5V-tolerant GPIO9-12, so power it at 3.3 V
+# (Yahboom encoder TT: 3.3-5 V). Same fix cad-loop made on v1 (600b271).
+s.schematicSymbols.append(make_pwr("+3V3", *j1_p[2]))
 s.schematicSymbols.append(make_pwr("GND", *j1_p[3]))
 
-# J2 Motor B: pin3=+5V (encoder power), pin4=GND
-s.schematicSymbols.append(make_pwr("+5V", *j2_p[2]))
+# J2 Motor B: pin3=+3V3 (encoder power), pin4=GND
+s.schematicSymbols.append(make_pwr("+3V3", *j2_p[2]))
 s.schematicSymbols.append(make_pwr("GND", *j2_p[3]))
 
 # J7 E-stop: pin1=+3V3 (through the NC contact to pin2). No GND on this connector
@@ -797,13 +769,9 @@ s.schematicSymbols.append(make_pwr("+3V3", *j7_p[0]))
 s.schematicSymbols.append(make_pwr("+5V", *j9_p[0]))
 s.schematicSymbols.append(make_pwr("GND", *j9_p[1]))
 
-# J10 Power LED: pin2=GND
-s.schematicSymbols.append(make_pwr("GND", *j10_p[1]))
 
 # J11 NeoPixel: pin2=+5V, pin3=GND
 
-# R10 power LED: top=+5V (bottom=LED_A via label)
-s.schematicSymbols.append(make_pwr("+5V", *r10_t))
 
 # U3 74LVC1G125: VCC=+5V, GND, OE_bar tied to GND (always enabled)
 
@@ -819,7 +787,8 @@ s.schematicSymbols.append(make_pwr("GND", C7X, C7Y + 3.81))
 # so the pins overlap and KiCad sees them on the same net
 s.schematicSymbols.append(make_pwr("PWR_FLAG", *U1L["1"]))  # on +5V net
 s.schematicSymbols.append(make_pwr("PWR_FLAG", *U1L["2"]))  # on GND net
-s.schematicSymbols.append(make_pwr("PWR_FLAG", *U2P["VM"]))  # on +5V net
+# (U2 VM PWR_FLAG removed 2026-11-09: it dates from VM = +BATT, a separate rail. Since A3
+#  VM is +5V, so it was a second PWR_FLAG on +5V: ERC pin_to_pin "power output to power output".)
 
 # ========================================================================
 # NET LABELS (angle=180 = connection on right → text extends LEFT,
@@ -926,12 +895,6 @@ lbl.append(make_label("ECHO_DIV", R7X, R7Y + 3.81, 270))
 # C1: top=ESTOP, bottom=GND (powered)
 lbl.append(make_label("ESTOP", C1X, C1Y - 3.81, 90))
 
-
-# ── Power LED J10 + R10 ───────────────────────────────────────────────────
-# R10: top=+5V (power symbol), bottom=LED_A
-lbl.append(make_label("LED_A", *r10_b, 270))
-# J10: pin1=LED_A, pin2=GND (power symbol)
-lbl.append(make_label("LED_A", *j10_p[0], 180))
 
 # ── NeoPixel circuit: GPIO42 → U3(74LVC1G125) → R11 → J11 ───────────────
 # GPIO42 inner cluster pad 11: NEO_DATA source

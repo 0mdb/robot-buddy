@@ -67,7 +67,7 @@ wheels, Pi deck (the "Pi holder"), speaker back box, mic grommets, gaskets.
 The boards don't fit side by side on a 110 mm plate: Pi 5 (56 mm) plus reflex
 board (60 mm) is 116 mm across. So:
 
-- **Level 0, plate top:** reflex board (65 × 60, M3 holes at a 51 × 45 pattern),
+- **Level 0, plate top:** reflex board (52.5 × 46 since 2026-11-09, was 65 × 60; M3 holes at a 45.5 × 39 pattern, `hardware/kicad/board_outline.py`),
   TB6612 if off-board, XVF3800 core board, wiring. Low-profile parts only.
 - **Level 1, Pi deck:** the Pi stack on a printed deck (3 mm) standing on 4 posts
   from the plate. Stack, bottom to top (measured 2026-10-30): 6 mm brass standoffs
@@ -446,7 +446,7 @@ The table below is the joint list only.
 | Plate ↔ bulkhead | 3 × M3 up through the plate into heat-sets in the bulkhead foot + 2 locating tabs |
 | Plate ↔ motor mounts | 4 × M3 × 8 each, down from the top into heat-sets in plate under-bosses (07 F2) |
 | Plate ↔ Pi deck | 4 × M3 down into heat-sets at the plate post tops (07 F5); Pi stack to deck by M2.5 into its brass standoffs (07 F6) |
-| Reflex board ↔ plate | 4 × M3 on 51 × 45 pattern, printed standoffs with heat-sets |
+| Reflex board ↔ plate | 4 × M3 on 45.5 × 39 pattern (was 51 × 45), printed standoffs with heat-sets |
 | Canopy ↔ body | 4 × M3 SHCS into heat-sets (bulkhead top ×2, plate rear ×2) |
 | Follower clamp | per 05 spec (M3 + nyloc / thumb-nut from below) |
 
@@ -460,7 +460,7 @@ Heat-set pockets per the insert datasheet (M3 ≈ Ø4.0, M2.5 ≈ Ø3.5); boss O
 | Pi 5 + NVMe adapter + UPS HAT (B) | **Measured:** 53 mm stack (59 with the 6 mm standoffs), Pi USB tops 30 mm above the adapter's bottom. Still need: footprint if the HAT/adapter overhangs 85 × 56; Pi PCB Z from the vendor model |
 | XVF3800 Flex mic disc + core board | Audio bench step 7 |
 | CE40P-8 + back box | Datasheet + audio §4.3 |
-| Reflex board | Have STEP (65 × 60) |
+| Reflex board | Have STEP (52.5 × 46, regenerated 2026-11-09) |
 | Camera, HC-SR04 housing | Have parts |
 
 **Envelopes built 2026-10-30** (`tools/chassis.py rebuild`, all volume-checked):
@@ -469,7 +469,7 @@ Heat-set pockets per the insert datasheet (M3 ≈ Ø4.0, M2.5 ≈ Ø3.5); boss O
 |---|---|---|
 | `Pi5_stack_envelope.SLDPRT` | Pi hole-pattern centre, Z 0 at the standoff feet, +X to the USB/Ethernet end; 4 × Ø5 × 6 standoffs + 87 × 56 × 53 block | measured; HAT/adapter overhang 🟡 |
 | `FNK0104_face_envelope.SLDPRT` | PCB centre on the back-component plane, +Y to the MIC end, +Z to the viewer; back 4.7 + PCB 1.6 + LCD/touch 4.3; Ø5.6 pad clearances + Ø3.2 holes at 42 × 78 | from the ES3C28P drawing |
-| `reflex_board_envelope.SLDPRT` | hole-pattern centre, PCB bottom face Z 0; 65 × 60, holes 51 × 45 | outline + holes from KiCad; heights 🟡 (12 top, 2 bottom) |
+| `reflex_board_envelope.SLDPRT` | hole-pattern centre, PCB bottom face Z 0; 52.5 × 46, holes 45.5 × 39 (was 65 × 60 / 51 × 45; rebuild pending) | outline + holes from KiCad; heights 🟡 (12 top, 2 bottom) |
 | `TT_Motor_envelope_v2.SLDPRT` | see §2 | widths 🟡 |
 | XVF3800 Flex disc + core board, CE40P-8 + back box | — | **not built**: no measured dimensions yet (audio bench step 7) |
 
