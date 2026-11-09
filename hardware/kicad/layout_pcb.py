@@ -4,7 +4,7 @@ PCB layout for robot-buddy-reflex.
 Reads schematic netlist, places all footprints at sensible positions with nets
 assigned.  Open the resulting .kicad_pcb in KiCad → route traces, run DRC.
 
-Board outline: 65 × 60 mm
+Board outline: 65 × 60 mm with two encoder-connector notches (board_outline.py)
 """
 
 import subprocess
@@ -13,16 +13,18 @@ import xml.etree.ElementTree as ET
 from kiutils.board import Board
 from kiutils.footprint import Footprint
 from kiutils.items.common import Net, Position
-from kiutils.items.gritems import GrRect
+from kiutils.items.gritems import GrLine
+
+import board_outline as BO
 
 PCB = "/home/ben/robot-buddy/hardware/kicad/robot-buddy-reflex/robot-buddy-reflex.kicad_pcb"
 SCH = "/home/ben/robot-buddy/hardware/kicad/robot-buddy-reflex/robot-buddy-reflex.kicad_sch"
 KICAD = "/usr/share/kicad/footprints"
-LOCAL = "/home/ben/kicad-libs/footprints/robot-projects.pretty"
+LOCAL = "/home/ben/robot-buddy/hardware/kicad/lib/robot-projects.pretty"  # recovered from the board 2026-11-08 (~/kicad-libs was gone)
 NETLIST = "/tmp/reflex-netlist.xml"
 
 OX, OY = 0.0, 0.0  # board origin in KiCad drawing (at top-left; move after routing)
-W, H = 65.0, 60.0  # board dimensions mm
+W, H = BO.W, BO.H  # board bounding box mm; the real edge is BO.outline()
 
 # ── Regenerate netlist from schematic ────────────────────────────────────
 subprocess.run(
@@ -75,6 +77,39 @@ _os.unlink(_tf.name)
 b.footprints.clear()
 b.nets.clear()
 b.graphicItems.clear()
+# Notches (2026-11-08): drop routing seeds that fall outside the new outline (+0.3 edge
+# clearance). Stubs left dangling (here, or on moved pads) are pruned in the pcbnew pass.
+_EDGE = BO.inset(BO.outline(), 0.3)
+
+
+_SEED_M = 1.0  # KiCad wants 0.5 copper-to-edge, plus a via's 0.3-0.4 radius
+
+
+def _inside(x, y):
+    """On the board and >= _SEED_M from the notch edges (outer edges: BO.contains)."""
+    near_notch = BO.NOTCH_X[0] - _SEED_M < x < BO.NOTCH_X[1] + _SEED_M and (
+        y < BO.NOTCH_D + _SEED_M or y > H - BO.NOTCH_D - _SEED_M
+    )
+    return BO.contains(x, y) and not near_notch
+
+
+def _seed_ok(t):
+    pts = []
+    for a in ("start", "mid", "end", "position"):
+        p = getattr(t, a, None)
+        if p is not None:
+            pts.append((p.X, p.Y))
+    if len(pts) >= 2:  # sample along straight segments too
+        (x1, y1), (x2, y2) = pts[0], pts[-1]
+        pts += [(x1 + (x2 - x1) * k / 8, y1 + (y2 - y1) * k / 8) for k in range(1, 8)]
+    return all(_inside(x, y) for x, y in pts)
+
+
+_n0 = len(b.traceItems)
+if _os.environ.get("RB_NO_SEEDS"):  # route the whole board from scratch
+    b.traceItems = []
+b.traceItems = [t for t in b.traceItems if _seed_ok(t)]
+print(f"routing seeds: {_n0} -> {len(b.traceItems)} (dropped outside the notched outline)")
 # NOTE: traceItems (routing tracks) are intentionally NOT cleared here.
 # freerouting uses existing tracks as routing seeds; starting from zero causes
 # it to hang indefinitely on this board. Old tracks are re-routed/optimized.
@@ -140,13 +175,14 @@ def place(ref, value, fp_id, x, y, angle=0):
 # ════════════════════════════════════════════════════════════════════════
 # PLACEMENT MAP  (all mm, PCB origin = top-left of board)
 #
-#  0        10       20       30       40       50       60   65
-#  +-MH1-J6(SR04)-J7(Est)---------------------------MH2--------+
-#  |                                                   J1(MtrA) |
+#  0        10       20    28.5               51   55      65
+#  +-MH1-J6(SR04)-J7(Est)-+   (encoder notch)  +-MH2--------+
+#  |                      +--------------------+   J1(MtrA) |
 # J8(pwr)  [R8R9C2]    [U1 ESP32]  [R1R2R3]  [U2 TB6612]      |
-# J9(uart) [R5R6R7]    [       ]   [R4,C1 ]  [C4C5  C3]  J2(MtrB)|
-#  +-MH3--J5(Qwiic)-------------------------------------MH4------+
-#                                                   50mm tall
+# J9(uart) [R5R6R7]    [       ]   [R4,C1 ]  [C4C5]   C3  J2(MtrB)|
+#          J10(LED)          U3  C6         +--------------------+
+#  +-MH3--J5(Qwiic)-J11(Neo)-+   (encoder notch)  +-MH4--------+
+#  60 mm tall; notches x 28.5-50, 7 deep (board_outline.py, 2026-11-08)
 # ════════════════════════════════════════════════════════════════════
 
 # ── Main ICs ─────────────────────────────────────────────────────────────
@@ -247,7 +283,12 @@ place("R7", "100", "Resistor_SMD:R_0402_1005Metric", 6.5, 37, 90)  # echo ESD
 #   C3 1000µF polarized THT: below U2 on VM/VBAT rail (back-EMF bulk)
 #   10mm dia, 5mm lead pitch; placed at y=44 angle=0 (pads horizontal toward right)
 #   Minor courtyard overlap with U2 (bottom at y=43.5) — OK, different stack heights.
-place("C3", "1000µF", "Capacitor_THT:CP_Radial_D10.0mm_P5.00mm", 46, 50)
+#   2026-11-08 notch: body (origin = pad 1, body centre +2.5 x) was 43.5-53.5 x 45-55, into the
+#   bottom notch. The notches cut the edge corridors, so left<->right traffic (+5V to J1/J2)
+#   now runs through the bands between the notches and U2; C3 anywhere in the y 41-53 band
+#   sealed it (0.75 mm each side). Now under U1, centred (21, 46.5): VM (+BATT, In2 plane)
+#   and GND (In1) reach it through the planes; ~25 mm from U2's VM pins, fine for TT motors.
+place("C3", "1000µF", "Capacitor_THT:CP_Radial_D10.0mm_P5.00mm", 18.5, 46.5)
 #   C4/C5 100nF: VBAT and 3V3 rail decoupling, in center-passive cluster
 place("C4", "100n", "Capacitor_SMD:C_0402_1005Metric", 30, 38.5, 90)
 place("C5", "100n", "Capacitor_SMD:C_0402_1005Metric", 30, 41.5, 90)
@@ -258,11 +299,16 @@ place("C5", "100n", "Capacitor_SMD:C_0402_1005Metric", 30, 41.5, 90)
 #   clearance from the SDA routing zone.
 place("U3", "74LVC1G125", "Package_TO_SOT_SMD:SOT-23-5", 29, 46)
 place("R10", "330", "Resistor_SMD:R_0402_1005Metric", 25, 52, 90)
-place("R11", "330", "Resistor_SMD:R_0402_1005Metric", 29, 52, 90)
-place("C7", "100n", "Capacitor_SMD:C_0402_1005Metric", 33, 52, 90)
+place("R11", "330", "Resistor_SMD:R_0402_1005Metric", 29, 50.5, 90)  # 52 -> 50.5: notch edge at y 53
+place("C7", "100n", "Capacitor_SMD:C_0402_1005Metric", 33, 50.5, 90)  # 52 -> 50.5: notch edge at y 53
 place("C6", "100µF", "Capacitor_THT:CP_Radial_D5.0mm_P2.00mm", 38, 50)
-place("J10", "LED", "Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical", 25, 57)
-place("J11", "NeoPixel", "Connector_JST:JST_XH_B3B-XH-A_1x03_P2.50mm_Vertical", 35, 57)
+#   2026-11-08 notch: J10/J11 sat in the bottom notch (x 28.5-50, y > 53). J11 -> C3's old patch
+#   under U2 (courtyard 42-53 x 45.9-52.7), low in the band so the +5V run to J1/J2 at y 45.05
+#   (F.Cu, x 30.8-61.6) stays open. J10 -> the bottom-right corner on the edge beside MH4,
+#   turned like J1/J2 (59.3-66 x 51.4-59.8). The bottom-left strip stays clear for the
+#   SDA/SCL/+3V3 runs to J5 (J11 there crowded the SDA via at (19.16, 55.80), as in June).
+place("J10", "LED", "Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical", 62.15, 56.8, 90)
+place("J11", "NeoPixel", "Connector_JST:JST_XH_B3B-XH-A_1x03_P2.50mm_Vertical", 45, 48.8)
 
 # ── M3 mounting holes (3.2mm drill, mechanical — no net connections) ──────────
 #   Positioned to avoid connector drills; minor courtyard touches are OK
@@ -273,12 +319,17 @@ place("MH3", "MountingHole", "MountingHole:MountingHole_3.2mm_M3_DIN965", 4, 56)
 place("MH4", "MountingHole", "MountingHole:MountingHole_3.2mm_M3_DIN965", 55, 56)
 
 # ── Board outline (Edge.Cuts) ─────────────────────────────────────────────────
-edge = GrRect()
-edge.start = Position(X=OX, Y=OY)
-edge.end = Position(X=OX + W, Y=OY + H)
-edge.layer = "Edge.Cuts"
-edge.width = 0.05
-b.graphicItems.append(edge)
+_ol = BO.outline()
+for (_x1, _y1), (_x2, _y2) in zip(_ol, _ol[1:] + _ol[:1]):
+    b.graphicItems.append(
+        GrLine(
+            start=Position(X=OX + _x1, Y=OY + _y1),
+            end=Position(X=OX + _x2, Y=OY + _y2),
+            layer="Edge.Cuts",
+            width=0.05,
+            tstamp=str(uuid.uuid4()),
+        )
+    )
 
 # ── Write PCB ────────────────────────────────────────────────────────────────
 b.to_file(PCB)
@@ -301,9 +352,7 @@ _BOARD_OX, _BOARD_OY, _BOARD_W, _BOARD_H = OX, OY, W, H
 
 
 def _in_board(x_nm, y_nm):
-    return _pn.FromMM(_BOARD_OX) <= x_nm <= _pn.FromMM(
-        _BOARD_OX + _BOARD_W
-    ) and _pn.FromMM(_BOARD_OY) <= y_nm <= _pn.FromMM(_BOARD_OY + _BOARD_H)
+    return BO.contains(_pn.ToMM(x_nm) - _BOARD_OX, _pn.ToMM(y_nm) - _BOARD_OY)
 
 
 for fp in _b.GetFootprints():
@@ -337,6 +386,123 @@ for fp in _b.GetFootprints():
         except AttributeError:
             pass
 
+# ── Prune dangling routing seeds ──────────────────────────────────────────────
+# Seeds cut by the notch, or left on the old pads of moved parts (C3, J10, J11, R11, C7),
+# end in nothing. Remove any track end that touches no pad, via or other track, until stable.
+def _prune_dangling(board):
+    removed = 0
+    while True:
+        tracks = [t for t in board.GetTracks() if t.Type() == _pn.PCB_TRACE_T]
+        vias = [t for t in board.GetTracks() if t.Type() == _pn.PCB_VIA_T]
+        pads = list(board.GetPads())
+        def joined(t, p):
+            # overlap, as KiCad's connectivity counts it (seed ends often miss by 0.01 mm)
+            if any(o is not t and o.GetLayer() == t.GetLayer() and o.HitTest(p) for o in tracks):
+                return True
+            if any(v.HitTest(p) for v in vias):
+                return True
+            return any(pd.IsOnLayer(t.GetLayer()) and pd.HitTest(p) for pd in pads)
+
+        dead = [t for t in tracks if not (joined(t, t.GetStart()) and joined(t, t.GetEnd()))]
+        lone = [
+            v for v in vias
+            if not any(t.HitTest(v.GetPosition()) for t in tracks)
+            and not any(pd.HitTest(v.GetPosition()) for pd in pads)
+        ]
+        if not dead and not lone:
+            return removed
+        for t in dead + lone:
+            board.Remove(t)
+        removed += len(dead) + len(lone)
+
+
+# Seeds still lying on the pads of the parts moved for the notch (they routed past the old
+# layout) would short or crowd them: clear any seed within 0.3 of those pads.
+_MOVED = {"C3", "J10", "J11", "R11", "C7"}
+
+
+def _clear_under(board, refs, margin_mm=0.3):
+    # Pads only: seeds may run under a THT body (C3's held SDA/SCL/+3V3 to J5 in June).
+    boxes = []
+    for fp in board.GetFootprints():
+        if fp.GetReference() in refs:
+            for pad in fp.Pads():
+                bb = pad.GetBoundingBox()
+                bb.Inflate(_pn.FromMM(margin_mm))
+                boxes.append(bb)
+    gone = 0
+    for t in list(board.GetTracks()):
+        if t.Type() == _pn.PCB_VIA_T:
+            pts = [t.GetPosition()]
+        else:
+            a, e = t.GetStart(), t.GetEnd()
+            pts = [_pn.VECTOR2I(int(a.x + (e.x - a.x) * k / 16), int(a.y + (e.y - a.y) * k / 16)) for k in range(17)]
+        if any(bb.Contains(p) for bb in boxes for p in pts):
+            board.Remove(t)
+            gone += 1
+    return gone
+
+
+print(f"cleared {_clear_under(_b, _MOVED)} seed(s) under the moved parts")
+# Old +3V3 patch copies (route_pcb.py step 7, laid at y 21.15 and again as seeds) crowd U1
+# pad 19; let the router lay the R4-1 / U2-10 run fresh (it finds y 21.27-21.42).
+_n3 = 0
+for _t in list(_b.GetTracks()):
+    if _t.Type() == _pn.PCB_TRACE_T and _t.GetNetname() == "+3V3" and _t.GetLayer() == _pn.F_Cu:
+        _ends = [_t.GetStart(), _t.GetEnd()]
+        if all(13.0 <= _pn.ToMM(e.x) <= 56.5 and 19.4 <= _pn.ToMM(e.y) <= 21.8 for e in _ends):
+            _b.Remove(_t)
+            _n3 += 1
+print(f"dropped {_n3} old +3V3 patch seed(s)")
+# ENC_LA ran along the top edge at y 7, now the notch edge: its leftover stub (via at
+# (28.06, 9.93)) only boxes the router in. Lay the whole net fresh.
+_RESEED = {"/ENC_LA"}
+_nr = 0
+for _t in list(_b.GetTracks()):
+    if _t.GetNetname() in _RESEED:
+        _b.Remove(_t)
+        _nr += 1
+print(f"dropped {_nr} seed(s) on {sorted(_RESEED)} to reroute them fresh")
+
+# ...and give it the hard part as a seed: J1 pad 5 west along y 8.2, between the top notch
+# (edge y 7, copper >= 7.5) and the MH2 hole (55, 11; r 1.6 + 0.25), to a via at its old spot.
+# freerouting (which can't read the MH keepouts) then only joins the via to U1 pad 24.
+def _seed_track(board, net, pts, layer=_pn.F_Cu, w=0.25):
+    n = board.FindNet(net)
+    for (x1, y1), (x2, y2) in zip(pts, pts[1:]):
+        t = _pn.PCB_TRACK(board)
+        t.SetLayer(layer)
+        t.SetNet(n)
+        t.SetWidth(_pn.FromMM(w))
+        t.SetStart(_pn.VECTOR2I(_pn.FromMM(OX + x1), _pn.FromMM(OY + y1)))
+        t.SetEnd(_pn.VECTOR2I(_pn.FromMM(OX + x2), _pn.FromMM(OY + y2)))
+        board.Add(t)
+
+
+_seed_track(_b, "/ENC_LA", [(62.15, 7.00), (58.50, 7.00), (57.30, 8.20), (29.79, 8.20), (28.06, 9.93)])
+_v = _pn.PCB_VIA(_b)
+_v.SetPosition(_pn.VECTOR2I(_pn.FromMM(OX + 28.06), _pn.FromMM(OY + 9.93)))
+_v.SetWidth(_pn.FromMM(0.6))
+_v.SetDrill(_pn.FromMM(0.3))
+_v.SetNet(_b.FindNet("/ENC_LA"))
+_b.Add(_v)
+print("seeded /ENC_LA: J1-5 -> y 8.2 -> via (28.06, 9.93)")
+
+print(f"pruned {_prune_dangling(_b)} dangling track/via seed(s)")
+
+# ── THT pads keep their outer rings ───────────────────────────────────────────
+# The stock KiCad footprints ship THT pads with remove_unused_layers (REMOVE_ALL): with no
+# trace on B.Cu the ring is dropped there, the B.Cu GND pour floods to the hole, and the
+# pad-sized mask opening exposes that GND. Soldering the pin (on B.Cu) then bridges it to GND:
+# J8 pin 1 is +BATT. Found 2026-11-08 by KiCad 10's solder_mask_bridge check (33 pads in June).
+_nk = 0
+for _fp in _b.GetFootprints():
+    for _pad in _fp.Pads():
+        if _pad.GetAttribute() == _pn.PAD_ATTRIB_PTH:
+            _pad.Padstack().SetUnconnectedLayerMode(_pn.UNCONNECTED_LAYER_MODE_REMOVE_EXCEPT_START_AND_END)
+            _nk += 1
+print(f"{_nk} THT pads keep their F.Cu/B.Cu rings")
+
 # ── 4-layer stackup + copper fill zones ──────────────────────────────────────
 _b.SetCopperLayerCount(4)
 
@@ -349,14 +515,8 @@ def _add_zone(board, net_name, layer, clearance_mm=0.1):
         z.SetNet(net)
     outline = z.Outline()
     outline.NewOutline()
-    inset = _pn.FromMM(0.3)
-    for cx, cy in [
-        (_pn.FromMM(OX) + inset, _pn.FromMM(OY) + inset),
-        (_pn.FromMM(OX + W) - inset, _pn.FromMM(OY) + inset),
-        (_pn.FromMM(OX + W) - inset, _pn.FromMM(OY + H) - inset),
-        (_pn.FromMM(OX) + inset, _pn.FromMM(OY + H) - inset),
-    ]:
-        outline.Append(int(cx), int(cy))
+    for cx, cy in BO.inset(BO.outline(), 0.3):  # notched outline, 0.3 in from the edge
+        outline.Append(_pn.FromMM(OX + cx), _pn.FromMM(OY + cy))
     z.SetMinThickness(_pn.FromMM(0.25))
     z.SetLocalClearance(_pn.FromMM(clearance_mm))
     z.SetPadConnection(_pn.ZONE_CONNECTION_FULL)
@@ -404,7 +564,7 @@ _pro["net_settings"]["classes"] = [
     {
         "name": "Power",
         "priority": 100,
-        "clearance": 0.25,
+        "clearance": 0.2,  # 0.25 -> 0.2 (2026-11-08): what route_pcb.py routes Power at; 8.4 V board
         "track_width": 0.5,
         "via_diameter": 0.8,
         "via_drill": 0.4,
@@ -423,7 +583,7 @@ _pro["net_settings"]["classes"] = [
     {
         "name": "Motor",
         "priority": 100,
-        "clearance": 0.3,
+        "clearance": 0.2,  # 0.3 -> 0.2 (2026-11-08): route_pcb.py merges Motor into Power (0.2)
         "track_width": 0.8,
         "via_diameter": 1.0,
         "via_drill": 0.5,
@@ -478,7 +638,7 @@ print(
 )
 print("  GPIO14/15/16 (pads 27-29) are NOT accessible on this module — schematic NCs.")
 print(
-    "  C3 1000µF THT: pad1(+)=VBAT at (46,50), pad2(-)=GND at (51,50). Verify polarity."
+    "  C3 1000µF THT: pad1(+)=VBAT at (18.5,46.5), pad2(-)=GND at (23.5,46.5). Verify polarity."
 )
 print(
     "  MH1-MH4: M3 mounting holes (no nets) — minor courtyard overlaps near connectors are OK."

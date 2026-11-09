@@ -110,14 +110,14 @@
   "up": "+z"
  },
  "RB-PRT-020_sprocket": {
-  "cad_g": 35.86594920369038,
+  "cad_g": 35.85726608937384,
   "cm3": 27.31,
   "grams": 35.23,
   "mat": "PET-CF",
   "mismatch": [],
   "qty": 2,
   "support": false,
-  "time": "1h 15m 18s",
+  "time": "1h 15m 27s",
   "up": "+z"
  },
  "RB-PRT-021_idler": {

@@ -85,7 +85,7 @@ PLATE_T_UNDER = 4.0  # plate thickness: its flat underside is at z -4
 
 # hubs
 TT_SHAFT_D, TT_FLAT = 5.4, 3.7  # TT output: Ø5.4 double-D, 3.7 across flats
-BORE_CLR = 0.10  # per side; coupon picks the real value
+BORE_CLR = 0.15  # per side: TT bore ladder, 3 notches (Ben 2026-11-08, PET-CF)
 TT_ENGAGE = 8.0  # TBD: shaft length into the hub (measure; drawing ~9)
 TUBE_R = 7.5  # sprocket hub tube
 BRG_D, BRG_W = 13.1, 5.0  # 624 slip pocket (05)

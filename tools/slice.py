@@ -269,16 +269,17 @@ def winpath(p: str) -> str:
 
 
 def run_orca(
-    presets: tuple[str, str, str], bed: str, d: str, stl: str, extra: str = ""
+    presets: tuple[str, str, str], bed: str, d: str, stl: str | list[str], extra: str = ""
 ) -> None:
     m, p, f = (winpath(x) for x in presets)
+    stls = " ".join(f'"{winpath(x)}"' for x in ([stl] if isinstance(stl, str) else stl))
     bat = os.path.join(d, "run.bat")
     with open(bat, "w", newline="\r\n", encoding="utf-8") as fh:
         fh.write(
             "@echo off\n"
             f"cd /d {winpath(d)}\n"
             f'"{ORCA_EXE}" --load-settings "{m};{p}" --load-filaments "{f}"'
-            f' --curr-bed-type "{bed}" {extra} --outputdir "{winpath(d)}" "{winpath(stl)}"\n'
+            f' --curr-bed-type "{bed}" {extra} --outputdir "{winpath(d)}" {stls}\n'
         )
     subprocess.run(["cmd.exe", "/c", winpath(bat)], capture_output=True, cwd="/mnt/c")
 
@@ -372,12 +373,93 @@ def slice_part(prof: Profiles, stem: str, threemf: bool, mat_override: str = "")
     return r
 
 
+# Production plates (2026-11-08): several parts x qty on one bed, OrcaSlicer arranges them.
+# One material per plate; support is on if any part on it needs it (tree(auto) only grows
+# where a part overhangs, so flat parts get none).
+PLATES = {
+    "petcf1": [  # base plate (support) + the small structure parts
+        "RB-PRT-001_base_plate",
+        "RB-PRT-010_motor_mount_R",
+        "RB-PRT-011_motor_mount_L",
+        "RB-PRT-030_carriage_L",
+        "RB-PRT-031_carriage_R",
+        "RB-PRT-060_speaker_clamp",
+    ],
+    "petcf2": [  # track frames (support); the bulkhead grew ~37 g of support with them
+        "RB-PRT-040_trackframe_L",
+        "RB-PRT-041_trackframe_R",
+    ],
+    "petcf3": [  # no support: bulkhead, Pi deck, wheels (after the 684 / M2.5 coupons)
+        "RB-PRT-002_bulkhead",
+        "RB-PRT-003_pi_deck",
+        "RB-PRT-020_sprocket",
+        "RB-PRT-021_idler",
+        "RB-PRT-022_road_disc",
+    ],
+}
+
+
+def slice_plate(prof: Profiles, name: str, threemf: bool) -> dict:
+    stems = PLATES[name]
+    mats = {PARTS[k][0] for k in stems}
+    assert len(mats) == 1, f"plate {name} mixes materials {mats}"
+    mat = mats.pop()
+    machine, process, filament, bed, rho = MATS[mat]
+    support = any(PARTS[k][3] for k in stems)
+    d = os.path.join(STAGE, f"plate_{name}")
+    os.makedirs(d, exist_ok=True)
+    for fn in os.listdir(d):
+        if fn.endswith((".gcode", ".3mf", ".stl")):
+            os.remove(os.path.join(d, fn))
+    stls, cad_g, n = [], 0.0, 0
+    for k in stems:
+        mesh = oriented(k, PARTS[k][1])
+        for i in range(PARTS[k][2]):
+            fn = os.path.join(d, f"{k}_{i + 1}.stl" if PARTS[k][2] > 1 else f"{k}.stl")
+            mesh.export(fn)
+            stls.append(fn)
+            cad_g += mesh.volume / 1000 * rho
+            n += 1
+    presets = write_presets(prof, mat, support, d)
+    run_orca(presets, bed, d, stls, "--arrange 1 --slice 0")
+    g = sorted(os.path.join(d, x) for x in os.listdir(d) if x.endswith(".gcode"))
+    r = {"stem": f"{mat.replace('-', '')}_{name}", "mat": mat, "objects": n, "support": support, "cad_g": cad_g}
+    if not g:
+        r["error"] = "no G-code (slice failed)"
+        return r
+    if len(g) > 1 or not g[0].endswith("plate_1.gcode"):
+        # the arranger spills what doesn't fit onto more beds, one G-code each
+        r["error"] = f"doesn't fit one bed: the arranger made {[os.path.basename(x) for x in g]}"
+        return r
+    r.update(read_gcode(g[0]))
+    os.makedirs(OUT, exist_ok=True)
+    shutil.move(g[0], os.path.join(OUT, r["stem"] + ".gcode"))
+    if threemf:
+        run_orca(presets, bed, d, stls, f'--arrange 1 --export-3mf "{r["stem"]}.3mf"')
+        mf = os.path.join(d, r["stem"] + ".3mf")
+        if os.path.exists(mf):
+            shutil.move(mf, os.path.join(OUT, r["stem"] + ".3mf"))
+            r["3mf"] = True
+    return r
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", default="")
     ap.add_argument("--no-3mf", action="store_true")
     ap.add_argument("--mat", choices=list(MATS), default="", help="slice in another material (A/B)")
+    ap.add_argument("--plate", choices=list(PLATES), help="slice a production plate (all parts x qty, arranged)")
     a = ap.parse_args()
+    if a.plate:
+        r = slice_plate(Profiles(), a.plate, not a.no_3mf)
+        if "error" in r:
+            sys.exit(f"plate {a.plate}: {r['error']}")
+        print(
+            f"plate {a.plate}: {r['objects']} objects, {r['mat']}, {r['grams']:.1f} g sliced"
+            f" ({r['cad_g']:.1f} g solid), {r['time']}{'  +support' if r['support'] else ''}"
+            f"  -> CAD/exports/print/{r['stem']}.3mf"
+        )
+        return
     keys = []
     for k in [x.strip() for x in a.only.split(",") if x.strip()] or list(PARTS):
         keys += ALIAS.get(k, k).split(",")

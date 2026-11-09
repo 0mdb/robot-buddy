@@ -28,6 +28,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import drivetrain as dt  # noqa: E402  (08: the TPU track system's numbers and wheel geometry)
 import sw  # noqa: E402  (staging/winpath/sync helpers)
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "hardware", "kicad"))
+import board_outline as pcb_outline  # noqa: E402  (the reflex PCB's notched edge, one source)
+
 # ---------------------------------------------------------------- plate (06 §1, §4)
 PLATE_L, PLATE_W, PLATE_T = 170.0, 110.0, 4.0
 # Ben (2026-11-06): the 45° front chamfers are gone. The bulkhead and its cheeks span
@@ -60,6 +63,12 @@ MOT_ENC_T = 26.0  # encoder housing along the shaft axis (drawing "26")
 MOT_ENC_W = (
     25.0  # encoder housing across (drawing "25"); TBD which way the 8.7 lug points
 )
+# Encoder socket (Ben 2026-11-08): a block on the encoder board facing the chassis centre,
+# 16.8 along the body from ~1 mm in from the encoder end, 13.35 tall, standing 8.5 past the
+# mount face (motor frame y 0 -> -8.5). Centred on the motor axis (Ben: "located in the
+# middle", so both sides sit alike): chassis z 6.8-20.2, its bottom 4 over the mount foot's top.
+MOT_CONN_L, MOT_CONN_OUT, MOT_CONN_IN = 16.8, 8.5, 1.0  # length, protrusion, inset from the end
+MOT_CONN_Z = 13.35 / 2  # half-height about the motor axis
 
 # --------------------------------------------------------- motor mount (measured)
 # TT_Motor_Mount_L.SLDPRT in its own frame (read 2026-10-30): foot Z 0..3, upright
@@ -141,6 +150,8 @@ def motor_ops() -> tuple[list[str], float]:
         f"box|{g0} {MOT_GEAR_END}|0 {MOT_THICK}|{-gw} {gw}",  # gearbox
         f"box|{e1} {g0}|1.7 {MOT_THICK - 1.7}|{-cw} {cw}",  # can
         f"box|{MOT_CAN_END} {e1}|{ey0} {ey0 + MOT_ENC_T}|{-ew} {ew}",  # encoder
+        f"box|{MOT_CAN_END + MOT_CONN_IN} {MOT_CAN_END + MOT_CONN_IN + MOT_CONN_L}|"
+        f"{-MOT_CONN_OUT} 0|{-MOT_CONN_Z} {MOT_CONN_Z}",  # encoder socket
         f"cyl|y|{MOT_SHAFT_X} 0|{MOT_THICK} {MOT_THICK + MOT_SHAFT_LEN}|{MOT_SHAFT_D / 2}|boss",
         *[
             f"prof|-3 3|M {MOT_SHAFT_X + sgn * MOT_SHAFT_FLAT / 2} {MOT_THICK} "
@@ -155,6 +166,9 @@ def motor_ops() -> tuple[list[str], float]:
     v_gear = (MOT_GEAR_END - g0) * MOT_THICK * MOT_GEAR_W
     v_can = (g0 - e1) * (MOT_THICK - 3.4) * MOT_CAN_W
     v_enc = MOT_ENC_LEN * MOT_ENC_T * MOT_ENC_W
+    c0, c1 = MOT_CAN_END + MOT_CONN_IN, MOT_CAN_END + MOT_CONN_IN + MOT_CONN_L
+    v_conn = (c1 - c0) * MOT_CONN_OUT * 2 * MOT_CONN_Z
+    v_conn -= max(0.0, min(c1, e1) - c0) * max(0.0, -ey0) * 2 * min(MOT_CONN_Z, ew)  # in the encoder
     # double-D flats, normal to the motor's X (the sprocket's D-bore flats face the same
     # way): a round envelope here read as a 15.4 mm3 clash with the bore (P11)
     r, f = MOT_SHAFT_D / 2, MOT_SHAFT_FLAT / 2
@@ -163,7 +177,7 @@ def motor_ops() -> tuple[list[str], float]:
     v_holes = (
         2 * math.pi * (MOT_HOLE_D / 2) ** 2 * MOT_THICK
     )  # both holes lie in the gearbox
-    return ops, v_gear + v_can + v_enc + v_shaft - v_holes
+    return ops, v_gear + v_can + v_enc + v_conn + v_shaft - v_holes
 
 
 def row(r: list[float], t: tuple[float, float, float]) -> str:
@@ -990,11 +1004,20 @@ def reflex_ops() -> tuple[list[str], float]:
         for x, y in corners(*REFLEX_HOLES)
     ]
     ops += [f"cyl|z|{x} {y}|all|1.6|cut" for x, y in corners(*REFLEX_HOLES)]
+    # encoder-socket notches (2026-11-08), from the PCB's own outline (board_outline.py):
+    # KiCad (kx, ky) -> envelope (kx + REFLEX_X[0], REFLEX_Y[1] - ky)
+    nx0, nx1 = (REFLEX_X[0] + v for v in pcb_outline.NOTCH_X)
+    nd = pcb_outline.NOTCH_D
+    for y0, y1 in ((REFLEX_Y[1] - nd, REFLEX_Y[1] + 0.1), (REFLEX_Y[0] - 0.1, REFLEX_Y[0] + nd)):
+        ops.append(
+            f"prof|{REFLEX_Z[0] - 0.1} {REFLEX_Z[1] + 0.1}|M {nx0} {y0} L {nx1} {y0} L {nx1} {y1} L {nx0} {y1}|cut"
+        )
     h = REFLEX_Z[1] - REFLEX_Z[0]
     vol = (
         (REFLEX_X[1] - REFLEX_X[0]) * (REFLEX_Y[1] - REFLEX_Y[0]) * h
         - reflex_pad_area() * -REFLEX_Z[0]
         - 4 * math.pi * 1.6**2 * REFLEX_Z[1]
+        - 2 * (nx1 - nx0) * nd * h
     )
     return ops, vol
 
@@ -1116,7 +1139,7 @@ def rebuild_manifest(win: str) -> list[str]:
         *plate_lines(plate),
         f"part|{motor}",
         *m_ops,
-        f"expect|vol {m_vol:.1f} 5.0|box {MOT_CAN_END} {MOT_GEAR_END} {(MOT_THICK - MOT_ENC_T) / 2} "
+        f"expect|vol {m_vol:.1f} 5.0|box {MOT_CAN_END} {MOT_GEAR_END} {-MOT_CONN_OUT} "
         f"{MOT_THICK + MOT_SHAFT_LEN} {-MOT_ENC_W / 2} {MOT_ENC_W / 2} 0.05",
         "save",
         *envelope_lines(pi, face, reflex),
