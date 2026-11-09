@@ -79,7 +79,7 @@ MOT_SHAFT_D = 5.4
 MOT_SHAFT_FLAT = (
     3.7  # double-D across the flats (Yahboom drawing; 08 / drivetrain TT_FLAT)
 )
-MOT_SHAFT_LEN = 10.0  # TBD: protrusion past the gearbox face
+MOT_SHAFT_LEN = dt.TT_SHAFT_LEN  # protrusion past the gearbox face (8.5, Ben 2026-11-09)
 MOT_GEAR_END = 32.1  # hole line -> gearbox end (75 overall)
 MOT_CAN_END = -42.9  # hole line -> encoder end
 MOT_GEAR_START = 29.0 - 42.9  # drawing "29": encoder end -> gearbox start

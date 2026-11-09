@@ -223,6 +223,16 @@ before ordering (screw engagement ≥ 1.3 d, tip ≥ 0.5 mm short of the pocket 
 
 > Amendment (loop P6c, 2026-10-31): **canopy material = PC White (60100)** (M4 closed; Ben favoured PC, S8 decided). Heel 150 N on the ribbed canopy (top 97): PC 25.3 MPa top / 1.70 mm → **SF 2.4** on XY UTS 62; ASA 25.5 MPa / 1.48 mm → SF 1.45 on XY 37, fails SF 2. PC: dry first, enclosed, engineering plate, brim as needed. ρ 1.20 g/cm³ in the mass roll-up 🟡 until checked against the TDS.
 
+> Amendment (Ben, 2026-11-08): **new F15, sprocket → TT output shaft: M2.5 × 6 SHCS
+> (ISO 4762, A2), 2 per robot.** The TT shaft end is tapped M2.5 (Ben: a brass standoff
+> threads in; the Yahboom drawing gives Ø5.4 / 3.70 but not the thread). The head sits on a
+> 1.5 mm web inside the hub (Ø2.9 clearance) and clamps it onto the shaft tip: engagement
+> 4.5 (1.8 d) in a tapped hole ≥ 6 deep (Ben, 2026-11-09), so it can't bottom. The D-bore carries the torque; the screw only holds the sprocket on axially.
+> Assembly: drop the screw into the hub from the outboard side, press the 624, push the
+> sprocket onto the shaft, tighten through the bearing's Ø4 bore with the long arm of a
+> 2 mm key (head top ~25 mm in). Medium threadlocker on the steel thread only. Tighten
+> snug (~0.2 N·m): it bears on a printed web.
+
 > Amendment (2026-11-08, plate rev 2, 06 §4.1): the plate is 6 mm (was 4), so every screw
 > up from the belly is 2 mm longer: **F1** bulkhead foot M3 × 8 → **× 10** (low head, DIN 7984),
 > **F4** carriage clamp M3 × 12 → **× 14**, **F9 rear** canopy M3 × 10 → **× 12**. **F2**

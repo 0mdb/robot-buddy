@@ -139,6 +139,13 @@ the outboard face for P2o.
 > (r 9.55) over the pocket and its shoulder, web 3 → 4 mm. The D-bore end is unchanged. The
 > bearing stays: it is the track frame's front pin (06 §7 P2o), which closes belt tension
 > through the frame (S1m increment ~0.09 mm) and carries the road axles (S9). +2.1 cm³.
+> Then 6 internal spokes (2.0 mm, hub tube to rim, web to gearbox face; `SPROCKET_SPOKES`
+> in chassis.py), so the D-bore end and the rim's inboard disc are tied together, not only
+> through the hub tube to the web.
+> **Retention (07 F15):** M2.5 × 6 SHCS into the shaft's tapped end, its head on a 1.5 mm
+> seat web (`SPROCKET_WEB_T`) at the end of the D-bore. The shaft tip seats on that web, so
+> the D-bore depth = shaft length past the gearbox face − SIDE_GAP (`TT_SHAFT_LEN` **8.5**,
+> Ben's calipers 2026-11-09) = **7.0**. The bore coupons stay at 8.0.
 
 **Idler.** Same rim, hub = **two 624s** (outboard face + just past the centre plane), with
 crush ribs (Q14). Open inboard side: the carriage's journal boss reaches in to the hub

@@ -86,7 +86,17 @@ PLATE_T_UNDER = 4.0  # plate thickness: its flat underside is at z -4
 # hubs
 TT_SHAFT_D, TT_FLAT = 5.4, 3.7  # TT output: Ø5.4 double-D, 3.7 across flats
 BORE_CLR = 0.15  # per side: TT bore ladder, 3 notches (Ben 2026-11-08, PET-CF)
-TT_ENGAGE = 8.0  # TBD: shaft length into the hub (measure; drawing ~9)
+# Sprocket on the TT shaft (Ben 2026-11-08): the shaft end is tapped M2.5 (a brass standoff
+# threads in). An M2.5 x 6 SHCS (07 F15) clamps a SPROCKET_WEB_T web inside the hub onto the
+# shaft tip, so the tip sets the sprocket's axial station: the D-bore is the shaft's length
+# past the gearbox face less SIDE_GAP. The screw is dropped in from outboard before the
+# 624 is pressed (its head won't pass the bearing's Ø4 bore) and tightened through that bore
+# with the long arm of a 2 mm key.
+TT_SHAFT_LEN = 8.5  # shaft past the gearbox face (Ben, calipers, 2026-11-09)
+TT_ENGAGE = TT_SHAFT_LEN - SIDE_GAP  # D-bore depth in the hub; the tip seats on the web
+SPROCKET_WEB_T = 1.5  # seat web between the screw tube and the D-bore
+M25_CLR = 2.9  # M2.5 clearance through the web
+CPN_TT_ENGAGE = 8.0  # the bore coupons as printed
 TUBE_R = 7.5  # sprocket hub tube
 BRG_D, BRG_W = 13.1, 5.0  # 624 slip pocket (05)
 BRG_SHOULDER_R = 5.0  # bears on the outer race only (624 outer race ID ~10.3)
@@ -415,7 +425,8 @@ def sprocket_layers(outrigger: bool = True, m: int = N_TEETH * 48) -> list:
     else:
         z = 0.0
     hub += [
-        (z, BELT_W - TT_ENGAGE, tube, TUBE_R),
+        (z, BELT_W - TT_ENGAGE - SPROCKET_WEB_T, tube, TUBE_R),
+        (BELT_W - TT_ENGAGE - SPROCKET_WEB_T, BELT_W - TT_ENGAGE, circle(M25_CLR / 2, m), TUBE_R),
         (BELT_W - TT_ENGAGE, BELT_W, dbore(m), TUBE_R),
     ]
     # web: pocket (outrigger) or screw hole through it
@@ -561,7 +572,7 @@ def coupons() -> dict[str, np.ndarray]:
     # TT bore ladder: 4 rings, clearance 0.05..0.20 per side, k notches = rung k
     for k, c in enumerate((0.05, 0.10, 0.15, 0.20), 1):
         out[f"coupon_ttbore_{int(c * 100):02d}"] = mesh(
-            [(0.0, TT_ENGAGE, [(dbore(m, c), notched(TUBE_R, m, k))])]
+            [(0.0, CPN_TT_ENGAGE, [(dbore(m, c), notched(TUBE_R, m, k))])]
         )
     # 624 seat ladder: crush-rib interference 0.10..0.20 + the shoulder
     for k, i in enumerate((0.10, 0.15, 0.20), 1):
