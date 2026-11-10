@@ -71,7 +71,7 @@ struct RectI {
 };
 
 struct DirtyRegion {
-    static constexpr uint8_t MAX_RECTS = 8;
+    static constexpr uint8_t MAX_RECTS = 16; // overflow falls back to a full redraw
     RectI                    rects[MAX_RECTS] = {};
     uint8_t                  count = 0;
     bool                     full = false;
@@ -83,8 +83,13 @@ struct PrevBoundsState {
     RectI mouth = {};
     RectI border = {};
     RectI ring = {};
-    bool  full = false;
-    bool  valid = false;
+    // Sparkles are single random pixels; track each one's position so the frame it
+    // dies on clears it (the canvas is only cleared inside dirty rects).
+    int16_t sparkle_x[MAX_SPARKLE_PIXELS] = {};
+    int16_t sparkle_y[MAX_SPARKLE_PIXELS] = {};
+    uint8_t sparkle_count = 0;
+    bool    full = false;
+    bool    valid = false;
 };
 
 struct RenderPerfSnapshot {
@@ -843,7 +848,8 @@ static DirtyRegion compute_dirty_region(const FaceState& fs, const RectI& ring)
         return region;
     }
 
-    const bool full_now = (fs.system.mode != SystemMode::NONE) || fs.fx.afterglow || fs.anim.rage || fs.fx.sparkle;
+    // Sparkles no longer force a full redraw: they are added as 1x1 rects below.
+    const bool full_now = (fs.system.mode != SystemMode::NONE) || fs.fx.afterglow || fs.anim.rage;
     const bool full_prev = s_prev_bounds.valid && s_prev_bounds.full;
 
     RectI eye_l = {};
@@ -867,6 +873,10 @@ static DirtyRegion compute_dirty_region(const FaceState& fs, const RectI& ring)
 
         dirty_region_add_prev_curr(region, s_prev_bounds.ring, ring);
 
+        for (uint8_t i = 0; i < s_prev_bounds.sparkle_count; i++) {
+            dirty_region_add_xywh(region, s_prev_bounds.sparkle_x[i], s_prev_bounds.sparkle_y[i], 1, 1);
+        }
+
         if (border.valid || s_prev_bounds.border.valid) {
             constexpr int edge = 20;
             dirty_region_add_xywh(region, 0, 0, SCREEN_W, edge);
@@ -883,6 +893,17 @@ static DirtyRegion compute_dirty_region(const FaceState& fs, const RectI& ring)
     s_prev_bounds.mouth = mouth;
     s_prev_bounds.border = border;
     s_prev_bounds.ring = ring;
+    s_prev_bounds.sparkle_count = 0;
+    for (const auto& sp : fs.fx.sparkle_pixels) {
+        // Same visibility test as render_sparkles().
+        if (!sp.active || sp.life == 0 || sp.x < 0 || sp.x >= SCREEN_W || sp.y < 0 || sp.y >= SCREEN_H) continue;
+        if (!full_now) {
+            dirty_region_add_xywh(region, sp.x, sp.y, 1, 1);
+        }
+        s_prev_bounds.sparkle_x[s_prev_bounds.sparkle_count] = sp.x;
+        s_prev_bounds.sparkle_y[s_prev_bounds.sparkle_count] = sp.y;
+        s_prev_bounds.sparkle_count++;
+    }
     s_prev_bounds.full = full_now;
     s_prev_bounds.valid = true;
 
