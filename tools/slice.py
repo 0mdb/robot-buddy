@@ -441,6 +441,15 @@ PLATES = {
         "RB-PRT-020_sprocket",
         "RB-PRT-021_idler",
     ],
+    "petcf5": [  # 2026-11-09: what's left that only bolts to the plate (sprockets, idlers,
+        # frames, carriages, rev-2 base plate already printed); the base plate waits on the
+        # reflex v2 relayout (register M12) for its standoff pattern
+        "RB-PRT-002_bulkhead",
+        "RB-PRT-010_motor_mount_R",
+        "RB-PRT-011_motor_mount_L",
+        "RB-PRT-060_speaker_clamp",
+        "RB-PRT-023_idler_spacer",
+    ],
     "petcf4": [  # waits on the 684 bearings (road-disc seat) and the M2.5 insert row (deck)
         "RB-PRT-003_pi_deck",
         "RB-PRT-022_road_disc",

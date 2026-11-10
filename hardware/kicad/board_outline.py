@@ -41,7 +41,8 @@ REAR_EDGE_CHASSIS_X = -40.0
 # z 6.8-20.2, i.e. right above the board's long edges (board top z 6.6). Nothing taller than
 # the bare board may sit in that band. PLUG_DEPTH is PROVISIONAL: plug + cable bend inboard
 # of the socket face is not measured yet (QUESTIONS.md "plug + cable depth"). Measure it,
-# set it here, and pcb_qc.py §5 checks the layout against it.
+# set it here, and pcb_qc.py §5 checks the layout against it. Ben 2026-11-09: the cable
+# leaves straight out of the face (no bend near the socket); plug length still unmeasured.
 SOCKET_X = (31.0, 47.8)  # board x (chassis -9..7.8)
 SOCKET_FACE_Y = 23.9  # chassis |y| of the socket's mating face
 PLUG_DEPTH = 8.0  # mm inboard of the face: PROVISIONAL until measured

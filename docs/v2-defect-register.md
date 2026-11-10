@@ -196,6 +196,8 @@ Encoded so it can't be lost: `board_outline.py` has `SOCKET_X`, `SOCKET_FACE_Y` 
 `PLUG_DEPTH` (8.0, **provisional**), and `pcb_qc.py` §5 fails while any courtyard sits in
 `plug_keepouts()`. It currently fails on J1, J2, MH2, MH4, U2.
 
+Ben 2026-11-09: the cable leaves **straight out** of the socket face, with no bend near the socket. The plug and cable therefore run inboard at socket height (z 6.8–20.2) across the plug zone; the keep-out is set by how high the opening sits above the board top, not only by plug length. Still open: plug body length and the opening's height on the socket.
+
 Fix (after the measurement): keep board x ≈ 29.5–49.5 free near both long edges to the
 measured depth. Move J1/J2 out of that band (rear of it, beside U1, or the front edge), move
 the front hole pair out of it, and keep U2 inboard of the zone. The board may need to grow in
@@ -232,7 +234,7 @@ x 30.
 The deck (x −75..25, |y| ≤ 29.5) covers the whole board, underside at chassis z 24. The board top
 face is at z 6.6, so the headroom is **17.4 mm**. The "12 mm budget" is the CAD envelope
 (`REFLEX_Z`), with 5.4 mm spare above it. Tall parts:
-- **C3:** the radial part is still unpicked (O2). It must be Ø10, 5 mm pitch, ≤ ~16 mm tall, ≥ 10 V
+- **C3:** **chosen 2026-11-09 (Ben): Rubycon 16ZLH1000MEFC10X16.** Was unpicked (O2). It must be Ø10, 5 mm pitch, ≤ ~16 mm tall, ≥ 10 V
   (16 V preferred) and low-ESR. A 10 × 20 does not fit. Candidate: Rubycon
   **16ZLH1000MEFC10X16** (10 × 16, 5 mm pitch, ~28 mΩ, 1.76 A ripple per distributor listings;
   confirm on the datasheet and re-run the §O ripple numbers against it). 1.4 mm to the deck.
