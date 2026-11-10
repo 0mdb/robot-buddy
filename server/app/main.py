@@ -11,7 +11,8 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
 from app.admission import ConverseSessionRegistry, PlanAdmissionGate
-from app.ai_runtime import debug_snapshot as ai_debug_snapshot, get_tts
+from app.ai_runtime import debug_snapshot as ai_debug_snapshot
+from app.ai_runtime import get_stt, get_tts
 from app.config import settings
 from app.llm.base import PlannerLLMBackend
 from app.llm.factory import create_llm_backend
@@ -133,6 +134,15 @@ async def lifespan(app: FastAPI):
     else:
         tts.set_orpheus_allowed(False, "performance_mode_disabled")
     app.state.orpheus_enabled = bool(tts.orpheus_allowed)
+
+    # Whisper loads after the GPU engines have taken their budgets.
+    if settings.preload_stt:
+        stt = get_stt()
+        if stt is not None:
+            try:
+                await stt.preload()
+            except Exception:
+                log.exception("STT preload failed; it will load on first use")
 
     # Hybrid tool-use preamble (task #7): persistent MCP client to the
     # supervisor. Connect attempt is non-blocking — a failed initial connect

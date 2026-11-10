@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import io
 import logging
 import wave
@@ -23,8 +24,8 @@ CHANNELS = 1
 class WhisperSTT:
     """Speech-to-text using faster-whisper.
 
-    The model is loaded lazily on first transcribe() call to avoid
-    blocking startup when STT isn't needed.
+    The server preloads the model at startup (``PRELOAD_STT``, default on);
+    otherwise it loads on the first transcribe() call.
     """
 
     def __init__(
@@ -56,13 +57,15 @@ class WhisperSTT:
             log.info("Whisper model loaded.")
         return self._model
 
+    async def preload(self) -> None:
+        """Load the model now (in a thread) instead of on the first turn."""
+        await asyncio.to_thread(self._ensure_model)
+
     async def transcribe(self, pcm_audio: bytes) -> str:
         """Transcribe raw PCM audio (16-bit, 16 kHz, mono) to text.
 
         Runs the model synchronously in a thread to avoid blocking the event loop.
         """
-        import asyncio
-
         return await asyncio.to_thread(self._transcribe_sync, pcm_audio)
 
     def _transcribe_sync(self, pcm_audio: bytes) -> str:

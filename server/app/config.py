@@ -77,6 +77,8 @@ class Settings:
     )
     plan_timeout_s: float = float(os.environ.get("PLAN_TIMEOUT_S", "5.0"))
     warmup_llm: bool = _env_bool("WARMUP_LLM", True)
+    # Load Whisper at startup so the first voice turn does not wait ~13 s for it.
+    preload_stt: bool = _env_bool("PRELOAD_STT", True)
     auto_pull_ollama_model: bool = _env_bool("AUTO_PULL_OLLAMA_MODEL", True)
     ollama_pull_timeout_s: float = float(
         os.environ.get("OLLAMA_PULL_TIMEOUT_S", "1800.0")
