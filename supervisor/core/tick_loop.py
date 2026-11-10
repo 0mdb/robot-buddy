@@ -49,6 +49,7 @@ from supervisor.devices.protocol import (
     FaceSystemMode,
 )
 from supervisor.api.conversation_capture import ConversationCapture
+from supervisor.personality.parent_alerts import ParentAlerts
 from supervisor.devices.reflex_client import ReflexClient
 from supervisor.messages.envelope import Envelope
 from supervisor.messages.types import (
@@ -126,12 +127,14 @@ class TickLoop:
         param_registry: Any | None = None,
         power_monitor: PowerMonitor | None = None,
         teleop_ttl_s: float = 0.5,
+        parent_alerts: ParentAlerts | None = None,
     ) -> None:
         self._reflex = reflex
         self._face = face
         self._workers = workers
         self._on_telemetry = on_telemetry
         self._conv_capture = conv_capture
+        self._parent_alerts = parent_alerts
         self._param_registry = param_registry
         self._power_monitor: PowerMonitor = power_monitor or NullPowerMonitor()
         self._power_task: asyncio.Task[None] | None = None
@@ -369,6 +372,8 @@ class TickLoop:
             self._handle_face_events(env)
             if self._conv_capture is not None:
                 self._conv_capture.capture_envelope(env)
+            if self._parent_alerts is not None:
+                self._parent_alerts.capture_envelope(env)
 
         # 1b. Update conversation state machine (auto-transitions, backchannel)
         self._conv.update(self.robot.tick_dt_ms)

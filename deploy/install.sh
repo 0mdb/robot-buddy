@@ -120,7 +120,7 @@ if [[ -f "$ENV_DEST" ]]; then
     info "Edit it manually to change startup flags."
 else
     sudo cp "$ENV_SOURCE" "$ENV_DEST"
-    sudo chmod 644 "$ENV_DEST"
+    sudo chmod 600 "$ENV_DEST"  # may hold the Home Assistant token (RB_HA_TOKEN); systemd reads it as root
     ok "environment file at $ENV_DEST"
 fi
 

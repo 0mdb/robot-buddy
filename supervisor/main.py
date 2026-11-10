@@ -220,6 +220,19 @@ async def async_main(args: argparse.Namespace) -> None:
 
     capture = ProtocolCapture()
     conv_capture = ConversationCapture()
+
+    from supervisor.personality.parent_alerts import (
+        ParentAlerts,
+        home_assistant_push_from_env,
+    )
+
+    ha_push = home_assistant_push_from_env()
+    parent_alerts = ParentAlerts(
+        Path(cfg.personality.memory_path).parent / "parent_alerts.json", push=ha_push
+    )
+    log.info(
+        "parent alerts: inbox on, Home Assistant push %s", "on" if ha_push else "off"
+    )
     mock_reflex = None
     reflex = None
     face = None
@@ -297,6 +310,7 @@ async def async_main(args: argparse.Namespace) -> None:
             planner_enabled=planner_enabled,
             robot_id=args.robot_id,
             conv_capture=conv_capture,
+            parent_alerts=parent_alerts,
             param_registry=registry,
             power_monitor=power_monitor,
         )
@@ -311,6 +325,7 @@ async def async_main(args: argparse.Namespace) -> None:
             capture=capture,
             conv_capture=conv_capture,
             tts_endpoint=tts_endpoint,
+            parent_alerts=parent_alerts,
         )
         http_config = uvicorn.Config(
             app,

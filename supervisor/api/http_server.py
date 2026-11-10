@@ -45,6 +45,7 @@ if TYPE_CHECKING:
     from supervisor.api.ws_hub import WsHub
     from supervisor.core.tick_loop import TickLoop
     from supervisor.core.worker_manager import WorkerManager
+    from supervisor.personality.parent_alerts import AlertStore, ParentAlerts
 
 log = logging.getLogger(__name__)
 
@@ -135,6 +136,7 @@ def create_app(
     conv_capture: ConversationCapture | None = None,
     tts_endpoint: str = "",
     household_path: Path | None = None,
+    parent_alerts: ParentAlerts | None = None,
 ) -> FastAPI:
     import psutil
 
@@ -473,6 +475,81 @@ def create_app(
         """Parent 'Forget everyone': delete the roster and everything stored beside it."""
         household.forget_everyone(roster_path)
         return _roster_reply(household.Roster())
+
+    # -- Parent alerts (secrets and serious disclosures) ----------------------
+    # Robot-local inbox; the child's words never leave the robot.
+
+    def _alerts() -> AlertStore | None:
+        if parent_alerts is None:
+            return None
+        return parent_alerts.store()
+
+    def _alerts_reply(store: AlertStore) -> JSONResponse:
+        push = parent_alerts is not None and parent_alerts.push is not None
+        return JSONResponse(store.to_dict() | {"push": push})
+
+    @app.get("/api/parent-alerts")
+    async def get_parent_alerts():
+        store = _alerts()
+        if store is None:
+            return JSONResponse(
+                {"ok": False, "reason": "parent alerts unavailable"}, 503
+            )
+        return _alerts_reply(store)
+
+    @app.put("/api/parent-alerts/enabled")
+    async def set_parent_alerts_enabled(body: dict):
+        store = _alerts()
+        if store is None:
+            return JSONResponse(
+                {"ok": False, "reason": "parent alerts unavailable"}, 503
+            )
+        if not isinstance(body.get("enabled"), bool):
+            return JSONResponse(
+                {"ok": False, "reason": "enabled must be true or false"}, 422
+            )
+        store.enabled = body["enabled"]
+        store.save()
+        return _alerts_reply(store)
+
+    @app.patch("/api/parent-alerts/{alert_id}")
+    async def mark_parent_alert(alert_id: str, body: dict):
+        store = _alerts()
+        if store is None:
+            return JSONResponse(
+                {"ok": False, "reason": "parent alerts unavailable"}, 503
+            )
+        if not isinstance(body.get("reviewed"), bool):
+            return JSONResponse(
+                {"ok": False, "reason": "reviewed must be true or false"}, 422
+            )
+        if not store.mark(alert_id, body["reviewed"]):
+            return JSONResponse({"ok": False, "reason": "no such alert"}, 404)
+        store.save()
+        return _alerts_reply(store)
+
+    @app.delete("/api/parent-alerts/{alert_id}")
+    async def delete_parent_alert(alert_id: str):
+        store = _alerts()
+        if store is None:
+            return JSONResponse(
+                {"ok": False, "reason": "parent alerts unavailable"}, 503
+            )
+        if not store.remove(alert_id):
+            return JSONResponse({"ok": False, "reason": "no such alert"}, 404)
+        store.save()
+        return _alerts_reply(store)
+
+    @app.delete("/api/parent-alerts")
+    async def clear_parent_alerts():
+        store = _alerts()
+        if store is None:
+            return JSONResponse(
+                {"ok": False, "reason": "parent alerts unavailable"}, 503
+            )
+        store.clear()
+        store.save()
+        return _alerts_reply(store)
 
     # -- Vision masks (dashboard mask editor) --------------------------------
 
