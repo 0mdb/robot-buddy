@@ -276,7 +276,7 @@ Detailed research is in `docs/research/`. This section summarizes findings that 
 9. Never continue interaction when the child shows distress attributed to the robot
 10. Never display sustained negative affect outside active conversation
 
-**COPPA (effective June 2025)**: Voice recordings must be deleted immediately after STT processing. Biometric identifiers (voiceprints) are "personal information" requiring parental consent. If emotional memory is implemented, it constitutes personal information requiring consent and retention limits. **[Empirical]**
+**COPPA (effective June 2025)**: Voice recordings must be deleted immediately after STT processing. Biometric identifiers (voiceprints) are "personal information" requiring parental consent. If emotional memory is implemented, it constitutes personal information requiring consent and retention limits. **[Empirical]** *Note: COPPA applies to commercially operated services directed at children. This project is a family-built robot for household use — COPPA does not apply, but privacy-by-default principles are retained as good practice.*
 
 **EU AI Act (prohibitions effective February 2025)**: Article 5(1)(b) prohibits exploiting children's age-based vulnerability. Article 5(1)(a) prohibits subliminal/manipulative techniques. Emotion recognition ban (Article 5(1)(f)) applies to workplaces/education, NOT home use — but exploitation/manipulation prohibitions still apply. **[Empirical]**
 
@@ -813,7 +813,7 @@ Remember emotional context and interaction patterns across sessions. File-backed
 | Failure mode risk | Significant — stale data, privacy concerns, over-personalization, data corruption, storage limits. See regulatory and attachment risks below. |
 | Server resilience | Good for stored data — but new memories require server (LLM must understand conversation to identify what to remember) |
 
-**Regulatory risk (hard constraint)**: Persistent emotional interaction data for children ages 4-6 falls under COPPA (US) and EU AI Act provisions for high-risk AI systems involving minors. Sending persistent emotional data to a cloud LLM is legally precarious. If Option C is chosen, data must be strictly local and on-device — never transmitted to the server. The server receives only anonymized semantic tags (e.g., `likes_dinosaurs=true`), never raw emotional logs or conversation transcripts.
+**Regulatory risk (commercial context)**: Persistent emotional interaction data for children ages 4-6 would fall under COPPA (US) and EU AI Act provisions for high-risk AI systems involving minors in a commercial product. *This project is family-use only — these regulations do not apply, but the privacy-by-default design (local-only, no cloud transmission) is retained as good practice.* The server receives only semantic tags (e.g., `likes_dinosaurs=true`), never raw emotional logs or conversation transcripts.
 
 **Uncanny recall risk**: From an attachment theory perspective, perfect recall in a machine can trigger relationship uncanny valley. If the robot accurately references a passing comment from three weeks ago, it may feel more unnerving than endearing to both child and parent. Any persistent memory must have visible decay — the robot should "vaguely remember" rather than "perfectly recall."
 
@@ -1196,11 +1196,11 @@ The personality engine stores emotional context and interaction patterns across 
 - Recall framing (approximate by default: "I think we talked about...")
 - Consent gate (parental consent required before persistent storage activates)
 - Data viewer and deletion (parent dashboard integration)
-- COPPA-compliant retention policy (written, explicit)
+- Privacy-aware retention policy (COPPA N/A for family project; privacy-by-default retained as good practice)
 
 **Constraint toggle philosophy**: Same as PE-1 guardrails — constraints ship enabled with safe defaults. They can be individually adjusted for tuning, tightened for stricter deployments, or loosened for research/testing. The memory system itself is constraint-agnostic; policy is layered on top.
 
-**Evidence basis**: Ligthart et al. (2022) — memory personalization keeps children engaged across sessions (Bucket 2). Kanda et al. (2004) — personal remarks increase engagement duration (Bucket 3). Shared rituals require cross-session memory by definition (Bucket 3). COPPA and EU AI Act impose constraints but do not prohibit local-only semantic memory with consent (Bucket 0).
+**Evidence basis**: Ligthart et al. (2022) — memory personalization keeps children engaged across sessions (Bucket 2). Kanda et al. (2004) — personal remarks increase engagement duration (Bucket 3). Shared rituals require cross-session memory by definition (Bucket 3). Data remains local-only on Pi filesystem as good practice (Bucket 0).
 
 #### PE-3: Idle Emotional Behavior — Option A (Deterministic Rules) + Integrator Noise
 
@@ -1212,13 +1212,15 @@ The idle behavior catalog (Bucket 4, §3.3) provides the deterministic backbone:
 
 **Evidence basis**: TAME baseline dominance when no stimuli present (Bucket 1). Kismet drive model produces perceived "aliveness" (Bucket 1). Children perceive pure determinism as "toy-like" — 25% noise produces "alive" (Bucket 4). Annoying threshold analysis confirms SI=0.30 is well below any risk (Bucket 4).
 
-#### PE-4: Per-Child Adaptation — Option A (Fixed Personality)
+#### PE-4: Per-Child Adaptation — Option B (Per-Child Profiles)
 
-**Decision**: Same personality for all children, all sessions. No per-child trait modification.
+**Decision**: Per-family-member profiles with face/voice identification. Personality axes remain fixed (same "person"), but content, greetings, conversation history, and preferences are personalized per identified user.
 
-The robot is "the same person" to everyone. Personality axes are set at design time and do not change based on who is interacting. Content personalization (topics, rituals, greetings) comes from persistent memory (PE-2), not personality modification. The robot adapts *what it talks about*, not *who it is*.
+**Amendment (2026-11-10)**: Original decision was Option A (Fixed Personality), chosen to avoid COPPA/biometric risk for a commercial product. Project scope is now family-only (not commercially operated), so biometric identification is expected and appropriate. HC-2 revised from "No biometric identification" to "Identification limited to registered family members."
 
-**Evidence basis**: Engagement benefits attributed to "adaptation" come from content/ritual personalization, not personality trait modification (Bucket 3). Tapus & Matarić (2008) validated personality matching with adults only — unwarranted for 4-year-olds (Bucket 1). Children ages 4-6 benefit from consistency (Bucket 3). Per-child profiles introduce COPPA/biometric risk (Bucket 0 HC-2, HC-3).
+The robot is still "the same person" in terms of personality axes (Energy, Vulnerability, etc.), but it knows *who* it's talking to and adapts content accordingly — greeting by name, remembering per-person topics and rituals, adjusting wake word sensitivity per voice. Identification is via face recognition (OpenCV/dlib) and/or voice embeddings for registered household members only.
+
+**Evidence basis**: Engagement benefits come primarily from content/ritual personalization, not personality trait modification (Bucket 3). Kanda et al. (2004) — personal remarks increase engagement duration. Ligthart et al. (2022) — memory personalization keeps children engaged across sessions. Per-child profiles are now viable since biometric constraints are lifted for family use.
 
 #### PE-5: Initiative Frequency — Option C (Context-Triggered)
 

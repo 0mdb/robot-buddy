@@ -106,7 +106,7 @@ class PersonalityConfig:
     guardrails: GuardrailConfig = field(default_factory=GuardrailConfig)
 
     memory_path: str = "./data/personality_memory.json"
-    memory_consent: bool = False  # COPPA default: opt-out
+    memory_consent: bool = True  # family project: opt-in by default
 
 
 @dataclass

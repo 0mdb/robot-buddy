@@ -168,7 +168,7 @@ Spec: `specs/personality-engine-spec-stage2.md`
 - **Layer 0**: Deterministic rules (no server required)
 - **Layer 1**: LLM-enhanced via Qwen3-8B-AWQ on server
 - **Single source of emotional truth**: Personality worker is final authority on face + TTS prosody
-- **Memory**: Local-only JSON, 5 decay tiers, COPPA compliant
+- **Memory**: Local-only JSON, 5 decay tiers, per-family-member profiles
 
 ## Deterministic Telemetry
 
