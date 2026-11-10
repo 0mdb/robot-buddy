@@ -334,10 +334,13 @@ _138 items archived to `docs/TODO-archive.md` (latest: 2026-02-24). Sections: Fa
 **Context**: HC-2 amended 2026-11-10 — project is family-use, not commercial. Biometric identification is expected and required. PE-4 revised from Option A (Fixed) to Option B (Per-Child Profiles).
 
 **Phase 1: Face Detection & Recognition** `[opus]`
-- [ ] Spike: evaluate face_recognition (dlib) vs MediaPipe Face Detection vs OpenCV DNN on Pi 5 (latency, accuracy, VRAM/CPU cost)
+- [x] Spike: evaluate face_recognition (dlib) vs MediaPipe vs OpenCV DNN vs InsightFace/ONNX vs hybrid server offload on Pi 5 _(recommendation: SCRFD-500MF + MobileFaceNet via ONNX Runtime; see `scratchpad/track-e-face-recognition-spike.md`)_
+- [x] Core face recognition module: SCRFD-500MF detection + MobileFaceNet 128-dim embeddings + ArcFace alignment + NMS + cosine-similarity gallery matching + JSON persistence _(`supervisor/inputs/face_detector.py`, 17 tests)_
+- [x] Vision worker integration: face detection every Nth frame, runtime enable/disable, VISION_FACE_DETECTED events _(`supervisor/workers/vision_worker.py`)_
+- [x] Event routing + WorldState: face_names, face_count, face_rx_mono_ms fields; event_router routes vision.face.detected _(`supervisor/core/state.py`, `supervisor/core/event_router.py`)_
+- [x] Config: VisionConfig extended with face model paths, thresholds, face_every_n_frames _(`supervisor/config.py`)_
 - [ ] Family registration UI in dashboard: capture face embeddings for each household member (name + photo enrollment)
-- [ ] Vision worker: add face detection pipeline (separate from existing HSV color detection)
-- [ ] Vision worker: face recognition against registered family embeddings → emit `vision.person_identified` event
+- [ ] Hardware validation: install onnxruntime on Pi 5, download SCRFD-500MF + MobileFaceNet ONNX models, benchmark detection + recognition latency at 320×240
 - [ ] Per-person memory profiles: extend memory store (PE spec S2 §8) to partition by identified person
 - [ ] Personality engine: greet by name, recall per-person topics/rituals when face is recognized
 - [ ] Unknown face handling: "I see someone I don't know" → neutral greeting, no profile creation without parent action
