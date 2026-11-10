@@ -46,6 +46,14 @@ cd ~/vantage/sim && .venv/bin/python wander_baseline.py   # full-tier WANDER bas
 | Governor caps, approaching the wall | range < 500 then < 300 | same |
 | MCU obstacle latch / at rest | — / 212–215 mm | 247 / 214 mm |
 
+## Trying a tuned set on the robot
+
+`POST /params` (or the dashboard) with the `wander.*` values from `out/<run>/best.json`. **They
+persist**: the supervisor saves every param change to `~/.config/robot-buddy/params.json` and
+reloads it at boot, so a restart does *not* revert. To go back to the defaults, delete the
+`wander.*` keys from that file (or the file) and restart. Vantage's sim runs the supervisor with a
+throwaway `HOME`, so sim runs never touch that file.
+
 ## Rules
 
 - **Observations are only what the robot has.** Sim truth is for scoring, never an input.

@@ -21,6 +21,11 @@ Run 2 (after run 1 failed on the full stack — SIM-AUTONOMY.md "Stage 2"):
 Output in out/<name>/: log.jsonl (per generation), best.json (params + scores), report.md
 (defaults vs tuned on train and held-out rooms and spawns). To try a result on the robot, set each
 `wander.<name>` through the param registry; nothing here changes robot defaults.
+
+Applied values PERSIST: the supervisor saves every param change to
+~/.config/robot-buddy/params.json and reloads it at boot (api/param_persistence.py). A restart does
+not roll back. To revert, delete the `wander.*` keys from that file (or the file) and restart.
+(Vantage's sim gives the supervisor a throwaway HOME for exactly this reason.)
 """
 
 from __future__ import annotations
