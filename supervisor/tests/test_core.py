@@ -992,3 +992,40 @@ def test_escape_is_not_throttled_by_forward_range():
     out = apply_safety(DesiredTwist(-120, 400), r, WorldState())
     assert out.v_mm_s == -OBSTACLE_ESCAPE_MAX_MM_S
     assert not any(c.reason.startswith("range") for c in r.speed_caps)
+
+
+class TestWanderTunables:
+    def test_registry_defaults_are_the_code_defaults(self):
+        from supervisor.api.param_registry import create_default_registry
+        from supervisor.core.skill_executor import (
+            WANDER_TUNABLES,
+            wander_tunable_defaults,
+        )
+
+        reg = create_default_registry()
+        defaults = wander_tunable_defaults()
+        for name, (_kind, lo, hi, _step, _doc) in WANDER_TUNABLES.items():
+            p = reg.get(f"wander.{name}")
+            assert p is not None and p.default == defaults[name]
+            assert lo <= defaults[name] <= hi, f"{name} default outside its bounds"
+
+    def test_live_change_reaches_the_running_executor(self):
+        from supervisor.api.param_registry import create_default_registry
+        from supervisor.core.tick_loop import TickLoop
+
+        class _Stub:
+            connected = False
+
+            def on_telemetry(self, cb):
+                pass
+
+            def __getattr__(self, name):
+                return lambda *a, **k: None
+
+        reg = create_default_registry()
+        loop = TickLoop(reflex=_Stub(), face=None, workers=_Stub(), param_registry=reg)  # type: ignore[arg-type]
+        ok, why = reg.set("wander.patrol_v_mm_s", 120)
+        assert ok, why
+        assert loop._skill._patrol_v_mm_s == 120
+        ok, _ = reg.set("wander.patrol_v_mm_s", 900)  # outside the bounds
+        assert not ok and loop._skill._patrol_v_mm_s == 120

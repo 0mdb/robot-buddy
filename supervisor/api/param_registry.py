@@ -1199,4 +1199,22 @@ def create_default_registry() -> ParamRegistry:
         )
     )
 
+    # WANDER motion tunables (skill_executor.WANDER_TUNABLES; defaults from SkillExecutor).
+    from supervisor.core.skill_executor import WANDER_TUNABLES, wander_tunable_defaults
+
+    wander_defaults = wander_tunable_defaults()
+    for key, (kind, lo, hi, step, doc) in WANDER_TUNABLES.items():
+        reg.register(
+            ParamDef(
+                name=f"wander.{key}",
+                type=kind,
+                min=lo,
+                max=hi,
+                step=step,
+                default=wander_defaults[key],
+                owner="supervisor",
+                doc=doc,
+            )
+        )
+
     return reg

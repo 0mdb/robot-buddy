@@ -1263,6 +1263,8 @@ class TickLoop:
         """Handle param registry changes."""
         if name.startswith("face.seq_"):
             self._sync_mood_seq_timing()
+        if name.startswith("wander."):
+            self._skill.set_tunable(name.removeprefix("wander."), _value)
 
     def _sync_mood_seq_timing(self) -> None:
         """Sync mood sequencer timing from param registry."""

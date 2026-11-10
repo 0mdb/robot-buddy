@@ -10,6 +10,66 @@ from supervisor.devices.protocol import Fault, RangeStatus
 from supervisor.core.state import DesiredTwist, RobotState, WorldState
 
 
+# WANDER's motion tunables: (type, min, max, step, doc). Defaults are __init__'s, read from the
+# signature, so there is one source for each number. Registered as `wander.<name>` in the param
+# registry and applied live (TickLoop); the bounds are also the search space for
+# training/wander/tune.py. Ball/approach/scan tunables are absent on purpose: nothing exercises
+# them until vision runs, so they cannot be tuned or checked yet.
+WANDER_TUNABLES: dict[str, tuple[str, float, float, float, str]] = {
+    "patrol_v_mm_s": ("int", 30, 250, 5, "Patrol forward speed"),
+    "patrol_w_mrad_s": (
+        "int",
+        0,
+        600,
+        10,
+        "Patrol turn rate (sign flips periodically)",
+    ),
+    "patrol_turn_flip_ms": (
+        "int",
+        1000,
+        12000,
+        100,
+        "Patrol turn direction flip period",
+    ),
+    "obstacle_close_mm": ("int", 300, 900, 10, "Range below which WANDER turns away"),
+    "obstacle_very_close_mm": (
+        "int",
+        260,
+        600,
+        10,
+        "Range below which it reverses while turning",
+    ),
+    "avoid_reverse_mm_s": (
+        "int",
+        -150,
+        -30,
+        5,
+        "Reverse speed when very close (and escaping)",
+    ),
+    "avoid_turn_mrad_s": ("int", 150, 1200, 10, "Turn rate when avoiding"),
+    "retreat_reverse_mm_s": ("int", -150, -30, 5, "Retreat cycle: reverse speed"),
+    "retreat_reverse_ms": ("int", 200, 3000, 50, "Retreat cycle: reverse duration"),
+    "retreat_turn_mrad_s": ("int", 150, 1200, 10, "Retreat cycle: turn rate"),
+    "retreat_turn_ms": ("int", 200, 4000, 50, "Retreat cycle: turn duration"),
+    "retreat_pause_ms": ("int", 0, 2000, 50, "Retreat cycle: pause"),
+    "obstacle_escape_max_mm": (
+        "int",
+        150,
+        800,
+        10,
+        "Max blind reverse per OBSTACLE latch",
+    ),
+    "no_progress_ms": ("int", 300, 4000, 50, "Stalled this long → retreat cycle"),
+    "no_progress_ratio": (
+        "float",
+        0.2,
+        0.9,
+        0.05,
+        "Achieved/commanded below this = stalled",
+    ),
+}
+
+
 def _clamp_i(value: float, lo: int, hi: int) -> int:
     return max(lo, min(hi, int(value)))
 
@@ -231,6 +291,13 @@ class SkillExecutor:
             return DesiredTwist(0, turn)
         return DesiredTwist(self._approach_v_cautious_mm_s, turn)
 
+    def set_tunable(self, name: str, value: float) -> None:
+        """Apply one WANDER tunable live (param registry `wander.<name>`)."""
+        if name not in WANDER_TUNABLES:
+            raise KeyError(f"not a WANDER tunable: {name}")
+        kind = WANDER_TUNABLES[name][0]
+        setattr(self, f"_{name}", int(value) if kind == "int" else float(value))
+
     def _retreat_cycle_ms(self) -> int:
         return self._retreat_reverse_ms + self._retreat_turn_ms + self._retreat_pause_ms
 
@@ -272,3 +339,11 @@ class SkillExecutor:
             self._active_skill = active_skill
             self._active_skill_since_ms = float(tick_mono_ms)
         return max(0.0, float(tick_mono_ms) - self._active_skill_since_ms)
+
+
+def wander_tunable_defaults() -> dict[str, float]:
+    """The defaults of WANDER_TUNABLES, from SkillExecutor.__init__'s signature."""
+    import inspect
+
+    sig = inspect.signature(SkillExecutor.__init__)
+    return {k: sig.parameters[k].default for k in WANDER_TUNABLES}
