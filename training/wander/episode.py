@@ -28,12 +28,20 @@ def run_wander(
     duration_s: float = 180.0,
     *,
     skill_params: dict[str, Any] | None = None,
+    skill: Any = None,
+    sonar_specular_max_deg: float | None = None,
     open_doors: frozenset[str] = frozenset(),
     with_track: bool = False,
     spawn: int = 0,
 ) -> dict[str, Any]:
     fb = fast_env.FastBuddy(
-        room, yaw_deg, open_doors=open_doors, spawn=spawn, skill_params=skill_params
+        room,
+        yaw_deg,
+        open_doors=open_doors,
+        spawn=spawn,
+        skill_params=skill_params,
+        skill=skill,
+        sonar_specular_max_deg=sonar_specular_max_deg,
     )
     try:
         if not fb.run_until(lambda f: f.mode == "IDLE", 5.0):

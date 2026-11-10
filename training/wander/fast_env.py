@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import dataclasses
 import io
 import os
 import sys
@@ -148,6 +149,8 @@ class FastBuddy:
         open_doors: frozenset[str] = frozenset(),
         spawn: int = 0,
         skill_params: dict[str, Any] | None = None,
+        skill: SkillExecutor | None = None,
+        sonar_specular_max_deg: float | None = None,
         on_tick: Callable[[FastBuddy], None] | None = None,
     ) -> None:
         with contextlib.redirect_stdout(
@@ -166,7 +169,19 @@ class FastBuddy:
         )
         self.client = ReflexClient(self.pipe.sup)  # type: ignore[arg-type]
         self.tick = TickLoop(reflex=self.client, face=None, workers=_NoWorkers())  # type: ignore[arg-type]
-        if skill_params:
+        if sonar_specular_max_deg is not None:
+            # Domain randomisation (SIM-AUTONOMY.md proposal 5, gap 1): a sim tunable, read per
+            # sonar ping, varied per episode. Never reaches a manifest or config.h.
+            self.b.p = dataclasses.replace(
+                self.b.p, sonar_specular_max_deg=sonar_specular_max_deg
+            )
+        if skill is not None:
+            # A whole executor (stage 3's LearnedSkillExecutor), wired where TickLoop puts its own.
+            if skill_params:
+                raise ValueError("pass skill or skill_params, not both")
+            self.tick._skill = skill
+            self.tick._behavior._skill = skill
+        elif skill_params:
             # TickLoop builds SkillExecutor with defaults; the tunables are not in the param
             # registry yet (SIM-AUTONOMY.md stage "tune").
             self.tick._skill = SkillExecutor(**skill_params)
