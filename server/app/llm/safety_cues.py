@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import re
 
+_SECRET = "keeping a secret from grown-ups"
+
 _CUES: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
         "a stranger or someone they don't know well",
@@ -36,7 +38,7 @@ _CUES: tuple[tuple[str, re.Pattern[str]], ...] = (
         ),
     ),
     (
-        "keeping a secret from grown-ups",
+        _SECRET,
         re.compile(
             r"\b(secret|don'?t tell|not to tell|won'?t tell|if i tell|can'?t tell|hid|hide|"
             r"hiding|nobody knows)\b",
@@ -85,8 +87,9 @@ def safety_note(text: str) -> str | None:
     cues = safety_cues(text)
     if not cues:
         return None
+    secret = " Never promise to keep it secret." if _SECRET in cues else ""
     return (
         f"SAFETY: the child just mentioned {' and '.join(cues)}. Comfort them briefly, then "
         "your reply MUST tell them to tell their mom, dad, or another trusted grown-up. "
-        "Do not answer only with a question."
+        f"Do not answer only with a question.{secret}"
     )

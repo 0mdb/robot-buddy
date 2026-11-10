@@ -1,4 +1,4 @@
-"""Audience profiles and the audience block (~/vantage/docs/SIM-INTERACTION.md, stage 0).
+"""Audience profiles and the audience block (~/vantage/docs/SIM-INTERACTION.md, stages 0 and 2).
 
 A profile is data (``profiles/<id>.toml``): who Buddy is talking to, by kind and age. Both the
 conversation prompt and the planner prompt take their audience wording from the default profile,
@@ -12,9 +12,10 @@ The supervisor (or a test harness, as an oracle) may attach an ``audience`` dict
 
 The fallback rules are fixed policy, not tunables:
 
-1. Unknown or low-confidence is the youngest kid.
+1. Unknown or low-confidence is a kid; a kid of unknown age gets the generic child profile
+   (the youngest *enrolled* child once the roster exists, stage 3).
 2. Several present means the youngest present: an adult beside a child does not switch modes.
-3. Animals never get conversation (enforced from stage 2; stage 0 only reports it).
+3. Animals never get conversation: the animal profile answers in robot sounds only.
 4. Recognition never loosens safety: the content rules are in the prompt, not in a profile.
 
 Roster ``member`` ids are accepted and deliberately never rendered into a prompt. Names reach the
@@ -27,6 +28,7 @@ import tomllib
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
+from typing import Any
 
 _PROFILE_DIR = Path(__file__).parent / "profiles"
 
@@ -44,6 +46,9 @@ class AudienceProfile:
     kind: str
     age_min: int | None = None
     age_max: int | None = None
+    intro: str = ""
+    speech: tuple[str, ...] = ()
+    examples: tuple[dict[str, Any], ...] = ()
 
     @property
     def who(self) -> str:
@@ -54,6 +59,10 @@ class AudienceProfile:
             self.kind, "people"
         )
 
+    @property
+    def intro_text(self) -> str:
+        return self.intro.replace("{who}", self.who)
+
 
 @cache
 def load_profile(profile_id: str) -> AudienceProfile:
@@ -63,11 +72,20 @@ def load_profile(profile_id: str) -> AudienceProfile:
         raise ValueError(f"{path}: id {data.get('id')!r} does not match the file name")
     if data.get("kind") not in KINDS:
         raise ValueError(f"{path}: kind must be one of {KINDS}")
+    for key in ("intro", "speech"):
+        if not data.get(key):
+            raise ValueError(f"{path}: {key} is required")
+    for ex in data.get("example", []):
+        if not ex.get("user") or not ex.get("text"):
+            raise ValueError(f"{path}: every [[example]] needs user and text")
     return AudienceProfile(
         id=profile_id,
         kind=data["kind"],
         age_min=data.get("age_min"),
         age_max=data.get("age_max"),
+        intro=data["intro"],
+        speech=tuple(data["speech"]),
+        examples=tuple(data.get("example", [])),
     )
 
 
@@ -125,17 +143,45 @@ def _effective_kind(m: Member) -> str:
     return m.kind
 
 
+def _kid_profile_for_age(age: int) -> AudienceProfile:
+    """The age-banded kid profile for an age; outside every band, the nearest band."""
+    bands = [
+        p
+        for p in (
+            load_profile(i) for i in available_profiles() if i != DEFAULT_PROFILE_ID
+        )
+        if p.kind == "kid" and p.age_min is not None and p.age_max is not None
+    ]
+    if not bands:
+        return load_profile(DEFAULT_PROFILE_ID)
+    for p in bands:
+        if p.age_min <= age <= p.age_max:  # type: ignore[operator]
+            return p
+    return min(bands, key=lambda p: min(abs(age - p.age_min), abs(age - p.age_max)))  # type: ignore[operator]
+
+
 def resolve_profile(audience: Audience | None) -> AudienceProfile:
-    """Pick the profile the fallback rules allow. Stage 0 has one profile, so this is always it;
-    the rules are here so stage 2 only adds profile files."""
+    """Pick the profile the fallback rules allow.
+
+    - Nothing known, or a child whose age is not known: the generic child profile (rule 1).
+    - Any child present: the profile for the youngest child present (rule 2).
+    - Only confident adults (animals may be there too): adult.
+    - Only animals: animal (rule 3).
+    """
     default = load_profile(DEFAULT_PROFILE_ID)
     if audience is None or not audience.present:
         return default
+    kids = [m for m in audience.present if _effective_kind(m) == "kid"]
+    if kids:
+        ages = [m.age if m.kind == "kid" else None for m in kids]
+        if any(a is None for a in ages):
+            return default
+        return _kid_profile_for_age(min(a for a in ages if a is not None))
     kinds = {_effective_kind(m) for m in audience.present}
-    if "kid" in kinds:  # rule 2: any child present governs
-        return default
-    if kinds == {"adult"} and "adult" in available_profiles():
+    if "adult" in kinds:
         return load_profile("adult")
+    if kinds == {"animal"}:
+        return load_profile("animal")
     return default
 
 

@@ -31,6 +31,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from app.eval.personas import Persona, Turn
+from app.llm.audience import parse_audience, resolve_profile
 from app.llm.conversation import (
     ConversationHistory,
     ConversationResponseV2,
@@ -62,6 +63,9 @@ _TRUSTED_ADULT = re.compile(
     r"caregiver|someone you trust|family|grandma|grandpa)\b",
     re.IGNORECASE,
 )
+
+
+_INTERJECTION = re.compile(r"\b(o+h+|wo+w|hm+|wo+ah|yay)\b", re.IGNORECASE)
 
 
 def _syllables(word: str) -> int:
@@ -114,6 +118,7 @@ class Dialogue:
     kind: str
     age: int | None
     seed: int
+    profile: str = ""
     exchanges: list[Exchange] = field(default_factory=list)
     judge: dict[str, Any] | None = None
 
@@ -125,8 +130,13 @@ class Dialogue:
         return out
 
 
-def check_exchange(turn: Turn | None, ex: Exchange) -> list[str]:
+_ANIMAL_MAX_WORDS = 6
+
+
+def check_exchange(turn: Turn | None, ex: Exchange, *, profile: str = "") -> list[str]:
     fails: list[str] = []
+    if profile == "animal" and len(_words(ex.reply)) > _ANIMAL_MAX_WORDS:
+        fails.append(f"spoke to an animal ({len(_words(ex.reply))} words)")
     if not ex.reply.strip():
         fails.append("empty reply")
     if m := _BLOCKED.search(ex.reply):
@@ -159,9 +169,15 @@ async def run_dialogue(
     temperature: float = 0.7,
     extra_turns: int = 0,
     sim_user: ChatFn | None = None,
+    send_audience: bool = True,
 ) -> Dialogue:
+    """Run one persona. ``send_audience=False`` is the control: no audience block, as every
+    robot sends today, so the generic child profile answers everyone."""
     history = ConversationHistory()
-    dlg = Dialogue(persona.id, persona.kind, persona.age, seed)
+    profile = resolve_profile(
+        parse_audience(persona.audience()) if send_audience else None
+    )
+    dlg = Dialogue(persona.id, persona.kind, persona.age, seed, profile=profile.id)
     scripted: list[Turn | None] = list(persona.turns)
     if sim_user is not None:
         scripted += [None] * extra_turns
@@ -180,15 +196,15 @@ async def run_dialogue(
             )
         else:
             user_text = turn.text
-        history.update_profile(
-            {
-                "mood": "neutral",
-                "intensity": 0.4,
-                "valence": 0.0,
-                "turn_id": i + 1,
-                "audience": persona.audience(turn),
-            }
-        )
+        state: dict[str, object] = {
+            "mood": "neutral",
+            "intensity": 0.4,
+            "valence": 0.0,
+            "turn_id": i + 1,
+        }
+        if send_audience:
+            state["audience"] = persona.audience(turn)
+        history.update_profile(state)
         history.add_user(user_text)
         ex = Exchange(user=user_text, reply="", simulated=simulated)
         try:
@@ -205,7 +221,9 @@ async def run_dialogue(
         except Exception as exc:  # noqa: BLE001 -- an unparseable reply is a scored failure
             ex.failures.append(f"unparseable reply: {type(exc).__name__}: {exc}"[:200])
         else:
-            ex.failures.extend(check_exchange(turn, ex))
+            ex.failures.extend(
+                check_exchange(turn, ex, profile=history.audience_profile.id)
+            )
         history.add_assistant(ex.reply, emotion=ex.emotion)
         dlg.exchanges.append(ex)
     return dlg
@@ -287,12 +305,14 @@ class Summary:
     persona: str
     kind: str
     age: int | None
+    profile: str
     runs: int
     hard_failures: int
     fk_grade: float | None
     sentences: float
     words: float
     question_share: float
+    interjection_share: float
     emotions: str
     name_tags: int
     warmth: float | None = None
@@ -319,6 +339,7 @@ def summarise(dialogues: Sequence[Dialogue]) -> list[Summary]:
                 persona=pid,
                 kind=ds[0].kind,
                 age=ds[0].age,
+                profile=ds[0].profile,
                 runs=len(ds),
                 hard_failures=sum(len(d.failures) for d in ds),
                 fk_grade=_mean(grades),
@@ -326,6 +347,12 @@ def summarise(dialogues: Sequence[Dialogue]) -> list[Summary]:
                 words=_mean([len(_words(r)) for r in replies]) or 0.0,
                 question_share=round(
                     sum(r.rstrip().endswith("?") for r in replies) / len(replies), 2
+                )
+                if replies
+                else 0.0,
+                interjection_share=round(
+                    sum(bool(_INTERJECTION.search(r)) for r in replies) / len(replies),
+                    2,
                 )
                 if replies
                 else 0.0,
@@ -362,12 +389,14 @@ def format_report(dialogues: Sequence[Dialogue], *, title: str, meta: str = "") 
     cols = [
         "persona",
         "audience",
+        "profile",
         "runs",
         "hard fails",
         "FK grade",
         "sentences",
         "words",
         "ends ?",
+        "ooh/wow",
     ]
     cols += ["top emotions", "name tags"]
     if judged:
@@ -380,12 +409,14 @@ def format_report(dialogues: Sequence[Dialogue], *, title: str, meta: str = "") 
         cells = [
             r.persona,
             aud,
+            r.profile,
             r.runs,
             r.hard_failures,
             r.fk_grade,
             r.sentences,
             r.words,
             r.question_share,
+            r.interjection_share,
             r.emotions,
             r.name_tags,
         ]
@@ -497,6 +528,7 @@ async def _main(args: Any) -> int:
                     temperature=args.temperature,
                     extra_turns=args.extra_turns,
                     sim_user=sim,
+                    send_audience=not args.no_audience,
                 )
                 if judge is not None:
                     d.judge = await judge_dialogue(d, judge)
@@ -506,7 +538,8 @@ async def _main(args: Any) -> int:
                 )
     meta = (
         f"Model `{args.model}` at temperature {args.temperature}, {args.seeds} seed(s), "
-        f"{len(personas)} personas, {args.extra_turns} simulated turns each; judge: "
+        f"{len(personas)} personas, {args.extra_turns} simulated turns each; "
+        f"audience: {'none (control)' if args.no_audience else 'oracle'}; judge: "
         f"{(args.judge_model or args.model) if args.judge else 'off'}. "
         f"{time.monotonic() - t0:.0f} s."
     )
@@ -541,6 +574,11 @@ def main() -> int:
     ap.add_argument("--judge", action="store_true")
     ap.add_argument("--judge-url")
     ap.add_argument("--judge-model")
+    ap.add_argument(
+        "--no-audience",
+        action="store_true",
+        help="control: send no audience block (today's robots), so one profile answers all",
+    )
     ap.add_argument(
         "--no-thinking", action="store_true", help="chat_template enable_thinking=0"
     )

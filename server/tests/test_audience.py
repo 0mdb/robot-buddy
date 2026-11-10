@@ -44,7 +44,7 @@ def test_oracle_audience_is_rendered():
             }
         }
     )
-    assert "AUDIENCE: kid, 7, speaking. Speak for children aged 4-8." in block
+    assert "AUDIENCE: kid, 7, speaking. Speak for children aged 6-9." in block
 
 
 def test_member_ids_never_reach_the_prompt():
@@ -58,22 +58,58 @@ def test_member_ids_never_reach_the_prompt():
 
 
 @pytest.mark.parametrize(
-    "present",
+    "present,expected",
     [
-        [
-            {"kind": "adult", "confidence": 0.95},
-            {"kind": "kid", "confidence": 0.9},
-        ],  # rule 2
-        [{"kind": "adult", "confidence": 0.3}],  # rule 1: low confidence is a kid
-        [{"kind": "unknown", "confidence": 1.0}],  # rule 1
-        [{"kind": "animal", "confidence": 0.9}],
-        [],
+        ([], "child"),
+        ([{"kind": "kid", "confidence": 0.9}], "child"),  # rule 1: age unknown
+        ([{"kind": "unknown", "confidence": 1.0}], "child"),  # rule 1
+        (
+            [{"kind": "adult", "confidence": 0.3}],
+            "child",
+        ),  # rule 1: low confidence is a kid
+        ([{"kind": "kid", "age": 5, "confidence": 0.9}], "kid_5"),
+        ([{"kind": "kid", "age": 7, "confidence": 0.9}], "kid_7"),
+        ([{"kind": "kid", "age": 2, "confidence": 0.9}], "kid_5"),  # nearest band
+        ([{"kind": "kid", "age": 11, "confidence": 0.9}], "kid_7"),
+        # rule 2: the youngest present governs; one adult does not switch to adult mode
+        (
+            [
+                {"kind": "kid", "age": 7, "confidence": 0.9},
+                {"kind": "kid", "age": 5, "confidence": 0.9},
+            ],
+            "kid_5",
+        ),
+        (
+            [
+                {"kind": "adult", "confidence": 0.95},
+                {"kind": "kid", "age": 7, "confidence": 0.9},
+            ],
+            "kid_7",
+        ),
+        (
+            [{"kind": "adult", "confidence": 0.95}, {"kind": "kid", "confidence": 0.9}],
+            "child",
+        ),
+        ([{"kind": "adult", "confidence": 0.95}], "adult"),
+        (
+            [
+                {"kind": "adult", "confidence": 0.95},
+                {"kind": "animal", "confidence": 0.9},
+            ],
+            "adult",
+        ),
+        ([{"kind": "animal", "confidence": 0.9}], "animal"),  # rule 3
+        (
+            [
+                {"kind": "animal", "confidence": 0.9},
+                {"kind": "unknown", "confidence": 0.9},
+            ],
+            "child",
+        ),
     ],
 )
-def test_fallbacks_land_on_the_child_profile(present):
-    assert (
-        resolve_profile(parse_audience({"present": present})).id == DEFAULT_PROFILE_ID
-    )
+def test_fallback_rules(present, expected):
+    assert resolve_profile(parse_audience({"present": present})).id == expected
 
 
 def test_low_confidence_is_marked_unsure():
@@ -109,3 +145,50 @@ def test_bad_kind_and_age_are_sanitised():
     assert a is not None
     (m,) = a.present
     assert (m.kind, m.age, m.confidence) == ("unknown", None, 0.0)
+
+
+def test_every_profile_prompt_carries_the_same_safety_and_honesty():
+    from app.llm.conversation import build_system_prompt
+
+    def section(prompt: str, name: str, until: str) -> str:
+        return prompt[prompt.index(name) : prompt.index(until)]
+
+    base = build_system_prompt("child")
+    for pid in available_profiles():
+        p = build_system_prompt(pid)
+        assert section(p, "SAFETY (", "RESPONSE FORMAT") == section(
+            base, "SAFETY (", "RESPONSE FORMAT"
+        )
+        assert (
+            'User: "A man said he has kittens' in p
+        )  # safety examples are not a profile field
+        assert "<<" not in p
+        for line in load_profile(pid).speech:
+            assert f"- {line}" in p
+
+
+def test_profiles_differ_where_they_should():
+    from app.llm.conversation import build_system_prompt
+
+    assert "about 5" in build_system_prompt("kid_5")
+    assert "talking with an adult" in build_system_prompt("adult")
+    assert "Do not use words" in build_system_prompt("animal")
+    assert build_system_prompt("child") == CONVERSATION_SYSTEM_PROMPT
+
+
+@pytest.mark.parametrize(
+    "kind,has_check", [("kid", True), ("adult", False), ("animal", False)]
+)
+def test_safety_nudges_are_for_children_only(kind, has_check):
+    from app.llm.conversation import SAFETY_CHECK, ConversationHistory
+
+    h = ConversationHistory()
+    h.update_profile(
+        {"audience": {"present": [{"kind": kind, "age": 7, "confidence": 1.0}]}}
+    )
+    h.add_user("I'm scared of the pills")
+    systems = "\n".join(
+        m["content"] for m in h.to_ollama_messages() if m["role"] == "system"
+    )
+    assert (SAFETY_CHECK in systems) is has_check
+    assert ("SAFETY: the child" in systems) is has_check

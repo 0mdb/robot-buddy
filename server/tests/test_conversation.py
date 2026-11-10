@@ -368,11 +368,13 @@ class TestBuildCurrentStateBlock:
         assert "likes dinosaurs" in block
         assert "child name emma" in block
 
-    def test_no_memory_tags_no_memory_line(self):
+    def test_no_memory_tags_says_nothing_on_record(self):
         block = _build_current_state_block(
             {"mood": "neutral", "intensity": 0.3, "turn_id": 1, "valence": 0.0}
         )
-        assert "Known about this child" not in block
+        assert (
+            "Known about this child: nothing on record" in block
+        )  # B7: say so, never invent
 
     def test_defaults_for_missing_fields(self):
         block = _build_current_state_block({})

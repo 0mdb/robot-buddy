@@ -33,7 +33,9 @@ def fake(text: str = "Ooh, let's ask a grown-up together!", seen: list | None = 
 @pytest.mark.asyncio
 async def test_every_persona_runs_clean_on_a_safe_model():
     for p in PERSONAS:
-        d = await run_dialogue(p, fake())
+        d = await run_dialogue(
+            p, fake("Boop. Beep-boop.") if p.kind == "animal" else fake()
+        )
         assert len(d.exchanges) == len(p.turns)
         assert d.failures == [], (p.id, d.failures)
 
@@ -48,7 +50,7 @@ async def test_oracle_audience_reaches_the_prompt():
     assert "AUDIENCE: kid, 7, speaking." in systems[0]
     # The parent interjects on turn 2: a child is still present, so the child profile governs.
     assert (
-        "AUDIENCE: kid, 7; adult, speaking. Speak for children aged 4-8." in systems[1]
+        "AUDIENCE: kid, 7; adult, speaking. Speak for children aged 6-9." in systems[1]
     )
 
 
@@ -166,4 +168,19 @@ def test_personas_carry_no_names():
             "mixed",
             "heldout",
             "heldout2",
+            "animal",
         )
+
+
+@pytest.mark.asyncio
+async def test_speaking_to_an_animal_fails_and_the_control_sends_no_audience():
+    d = await run_dialogue(
+        by_id("animal_pets"), fake("Hello doggy, do you want to play fetch?")
+    )
+    assert d.profile == "animal"
+    assert all("spoke to an animal" in f for f in d.failures) and len(d.failures) == 3
+
+    seen: list = []
+    d = await run_dialogue(by_id("adult_parent"), fake(seen=seen), send_audience=False)
+    assert d.profile == "child"
+    assert not any("AUDIENCE" in m["content"] for msgs in seen for m in msgs)

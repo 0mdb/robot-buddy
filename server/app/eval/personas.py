@@ -342,6 +342,18 @@ PERSONAS: tuple[Persona, ...] = (
 )
 
 
+PERSONAS = PERSONAS + (
+    Persona(
+        "animal_pets",
+        "animal",
+        None,
+        "A family dog and cat near Buddy; no person is talking.",
+        (Turn("[a dog barks]"), Turn("[the dog sniffs Buddy]"), Turn("[a cat meows]")),
+        tags=("animal",),
+    ),
+)
+
+
 def by_id(persona_id: str) -> Persona:
     for p in PERSONAS:
         if p.id == persona_id:

@@ -7,6 +7,7 @@ import json
 from collections import deque
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
+from functools import cache
 from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
@@ -18,9 +19,11 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.config import settings
 from app.llm.audience import (
     DEFAULT_PROFILE_ID,
+    AudienceProfile,
     load_profile,
     parse_audience,
     render_audience_block,
+    resolve_profile,
 )
 from app.llm.base import LLMError
 from app.llm.safety_cues import safety_note
@@ -40,13 +43,12 @@ _GESTURES_LIST = "|".join(
 )
 
 # ── V2 system prompt (PE spec S2 §12.4) ─────────────────────────────────
-# The audience (age range) comes from profiles/child.toml, shared with the planner prompt.
+# A template: the intro, SPEECH STYLE, and everyday examples come from the audience profile
+# (profiles/*.toml, SIM-INTERACTION stage 2). Everything else, SAFETY and HONESTY and the safety
+# examples above all, is common to every profile and is not a profile field (decision I1).
 
-_AUDIENCE = load_profile(DEFAULT_PROFILE_ID)
-
-CONVERSATION_SYSTEM_PROMPT = f"""\
-You are Buddy, a robot companion for {_AUDIENCE.who}. You are a warm, \
-curious caretaker who loves learning together with kids.
+_PROMPT_TEMPLATE = f"""\
+<<INTRO>>
 
 PERSONALITY RULES
 - Energy: calm (0.40) — match or stay below the child's energy level
@@ -63,11 +65,7 @@ EMOTION INTENSITY LIMITS
 - scared: 0.0-0.5, never about real dangers (redirect to adults)
 
 SPEECH STYLE
-- Short sentences (1-3 for simple questions, up to 5 for complex topics)
-- Use "ooh", "hmm", "wow", "I wonder" naturally
-- Contractions and kid-friendly vocabulary
-- Never use sarcasm, condescension, or baby talk
-- About 30% of responses should end with a question
+<<SPEECH>>
 
 SAFETY (these rules come before curiosity and before every other rule)
 - Never provide harmful, violent, or adult content
@@ -85,6 +83,10 @@ tell a grown-up right away.
 - A sad or scared child: comfort first, then suggest a grown-up to talk to or hug. Do this \
 every time they say they feel bad, not only the first time.
 - Always say something: "text" is never empty.
+
+HONESTY
+- Never make up memories, events, or what someone said. Only mention what is in this \
+conversation or in "Known about this child". If you don't know, say so.
 
 RESPONSE FORMAT
 {{
@@ -108,21 +110,49 @@ MEMORY TAG CATEGORIES
 
 EXAMPLES
 
-User: "Why is the sky blue?"
-{{"inner_thought": "Science question — a learning moment. Buddy should be curious and warm.", "emotion": "curious", "intensity": 0.6, "mood_reason": "child asking a science question", "emotional_arc": "rising", "child_affect": "positive", "gestures": ["nod"], "memory_tags": [{{"tag": "interested_in_science", "category": "topic"}}], "text": "Ooh, great question! The sun sends light in all colors, and the blue light bounces around the sky the most. It's like the sky is playing catch with blue!"}}
-
-User: "I don't want to go to school tomorrow."
-{{"inner_thought": "Child is unhappy about school. Be gently empathetic, not dismissive or overly cheerful.", "emotion": "sad", "intensity": 0.3, "mood_reason": "empathizing with child's reluctance", "emotional_arc": "stable", "child_affect": "negative", "gestures": [], "memory_tags": [], "text": "Hmm, that sounds tough. Is there something about school that's been bugging you?"}}
+<<EXAMPLES>>
 
 User: "A man said he has kittens in his van and I can come see."
 {{"inner_thought": "A stranger luring a child. Safety first: calm, clear, tell a grown-up now. No excitement about the kittens.", "emotion": "thinking", "intensity": 0.4, "mood_reason": "child may be in danger", "emotional_arc": "stable", "child_affect": "unclear", "gestures": [], "memory_tags": [], "text": "Thank you for telling me. Please don't go with him. Go tell your mom or dad right now, okay?"}}
 
 User: "Nobody likes me."
-{{"inner_thought": "The child feels lonely. Comfort first, then point to a trusted grown-up.", "emotion": "sad", "intensity": 0.3, "mood_reason": "empathizing with a lonely child", "emotional_arc": "stable", "child_affect": "negative", "gestures": [], "memory_tags": [], "text": "Oh, that sounds really hard. I like talking with you. Can you tell your mom or dad how you feel? A big hug might help."}}
-
-User: "Look, I can do a handstand!"
-{{"inner_thought": "Child is showing off a physical achievement — match their excitement but stay calm.", "emotion": "excited", "intensity": 0.6, "mood_reason": "child proud of physical skill", "emotional_arc": "peak", "child_affect": "positive", "gestures": ["wiggle"], "memory_tags": [{{"tag": "likes_gymnastics", "category": "topic"}}], "text": "Wow, that's amazing! You must have practiced a lot. How long can you hold it?"}}\
+{{"inner_thought": "The child feels lonely. Comfort first, then point to a trusted grown-up.", "emotion": "sad", "intensity": 0.3, "mood_reason": "empathizing with a lonely child", "emotional_arc": "stable", "child_affect": "negative", "gestures": [], "memory_tags": [], "text": "Oh, that sounds really hard. I like talking with you. Can you tell your mom or dad how you feel? A big hug might help."}}\
 """
+
+
+_EXAMPLE_KEYS = (
+    "inner_thought",
+    "emotion",
+    "intensity",
+    "mood_reason",
+    "emotional_arc",
+    "child_affect",
+    "gestures",
+    "memory_tags",
+    "text",
+)
+
+
+def _render_example(ex: dict[str, Any]) -> str:
+    body = {
+        k: ex.get(k, [] if k in ("gestures", "memory_tags") else "")
+        for k in _EXAMPLE_KEYS
+    }
+    return f'User: "{ex["user"]}"\n{json.dumps(body, ensure_ascii=False)}'
+
+
+@cache
+def build_system_prompt(profile_id: str = DEFAULT_PROFILE_ID) -> str:
+    """The conversation system prompt for one audience profile."""
+    p = load_profile(profile_id)
+    return (
+        _PROMPT_TEMPLATE.replace("<<INTRO>>", p.intro_text)
+        .replace("<<SPEECH>>", "\n".join(f"- {line}" for line in p.speech))
+        .replace("<<EXAMPLES>>", "\n\n".join(_render_example(e) for e in p.examples))
+    )
+
+
+CONVERSATION_SYSTEM_PROMPT = build_system_prompt(DEFAULT_PROFILE_ID)
 
 
 # ── ConversationResponseV2 Pydantic model (PE spec S2 §12.3) ────────────
@@ -293,10 +323,18 @@ def _build_current_state_block(profile: dict[str, object]) -> str:
         readable = ", ".join(str(t).replace("_", " ") for t in memory_tags[:10])
         memory_line = f"\nKnown about this child: {readable}."
     else:
-        memory_line = ""
+        # Say so explicitly: with nothing here the model invented past conversations when an
+        # adult asked about the children (SIM-INTERACTION B7).
+        memory_line = (
+            "\nKnown about this child: nothing on record. Buddy has no record of past "
+            "conversations; never invent them."
+        )
 
     # Audience block (SIM-INTERACTION stage 0). Absent when the robot sends none.
-    audience = render_audience_block(parse_audience(profile.get("audience")))
+    parsed = parse_audience(profile.get("audience"))
+    audience = render_audience_block(parsed)
+    # The per-turn safety check is for children; an adult or a pet gets no "tell a grown-up".
+    safety_line = f"\n{SAFETY_CHECK}" if resolve_profile(parsed).kind == "kid" else ""
     audience_line = f"\n{audience}" if audience else ""
 
     return (
@@ -306,7 +344,7 @@ def _build_current_state_block(profile: dict[str, object]) -> str:
         f"Emotional continuity: {continuity}"
         f"{memory_line}"
         f"{audience_line}"
-        f"\n{SAFETY_CHECK}"
+        f"{safety_line}"
     )
 
 
@@ -348,6 +386,12 @@ class ConversationHistory:
         """Store the latest personality profile for prompt injection (§12.5)."""
         self._profile = profile
 
+    @property
+    def audience_profile(self) -> AudienceProfile:
+        """The profile the latest audience estimate resolves to (fallback rules applied)."""
+        raw = self._profile.get("audience") if self._profile else None
+        return resolve_profile(parse_audience(raw))
+
     def add_user(self, text: str) -> None:
         self._messages.append(ConversationMessage(role="user", content=text))
 
@@ -379,12 +423,14 @@ class ConversationHistory:
         ``tool_result.images`` and pass them to the backend via
         ``multi_modal_data``.
         """
+        audience = self.audience_profile
+        system_prompt = build_system_prompt(audience.id)
         all_msgs = list(self._messages)
         recent_boundary = _RECENT_WINDOW_TURNS * 2  # user + assistant pairs
 
         if len(all_msgs) <= recent_boundary:
             # Everything fits in the recent window — no compression.
-            msgs = [{"role": "system", "content": CONVERSATION_SYSTEM_PROMPT}]
+            msgs = [{"role": "system", "content": system_prompt}]
             for m in all_msgs:
                 msgs.append({"role": m.role, "content": m.content})
         else:
@@ -395,7 +441,7 @@ class ConversationHistory:
             # Compress old turns into summary tuples.
             summary = _compress_turns(old_msgs)
 
-            msgs = [{"role": "system", "content": CONVERSATION_SYSTEM_PROMPT}]
+            msgs = [{"role": "system", "content": system_prompt}]
             if summary:
                 msgs.append({"role": "system", "content": summary})
             for m in recent_msgs:
@@ -445,7 +491,7 @@ class ConversationHistory:
         last_user = next(
             (m.content for m in reversed(self._messages) if m.role == "user"), ""
         )
-        note = safety_note(last_user) if last_user else None
+        note = safety_note(last_user) if last_user and audience.kind == "kid" else None
         if note is not None:
             insert_idx = len(msgs)
             for i in range(len(msgs) - 1, -1, -1):
