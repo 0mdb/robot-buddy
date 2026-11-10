@@ -114,7 +114,8 @@ Stage 4.2 Dirty-Rect A/B Snapshot (2026-02-25, post-dirty firmware + updated sup
 - [ ] On-device: tap / long-press / drag feel with a child-size finger; tune `TOUCH_*` in `config.h` (+ sim) if needed; check ring visibility near screen edges
 - [ ] On-device: eyes return to mood colour after an ERROR_DISPLAY; unplug supervisor → sleepy look-around within 3 s → restores on reconnect
 - [ ] On-device: blink/eyelid look unchanged after the row-wise eyelid rewrite (should be pixel-identical)
-- [ ] On-device: watch `usb_tx_short_writes` / `tx_flush_timeout` in heartbeat after the all-or-nothing USB write change
+- [x] On-device (2026-11-10): flashed + supervisor deployed (`8573f93`): 31 FPS, frame work ~10 ms (was 52.6), dirty px ~22k (sparkle no longer forces full redraws), cmd latency ~20 ms, clean POWERON boot; USB short writes/flush timeouts only during startup
+- [ ] **Camera-driven gaze** (not implemented yet): no vision → face gaze path exists today; host gaze comes only from the conversation choreographer / conv state. Needs: a target (ball bearing exists, horizontal only; no person/face detection), bearing → gaze mapping from camera FOV to `MAX_GAZE`, smoothing, and priority vs conversation gaze and local finger-follow (finger wins while touching). Verify on hardware that the eyes point at the target. Blocked on the Pi camera ("camera unavailable: list index out of range" since 2026-11-10 13:20)
 
 **Evaluation** `[opus]`
 - [ ] T1: Automated CI tests (parity check, unit tests, linting)
