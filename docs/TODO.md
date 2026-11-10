@@ -47,8 +47,8 @@ _10 items complete (Stage 4.0 spec/port/parity/buttons/gestures/docs) — see ar
 - [x] Stage 4.0: Bug: face device buttons not working (PTT/ACTION) — LVGL touch callbacks registered on parent instead of canvas_obj; canvas absorbed all events `[sonnet]`
 - [ ] Stage 4.0: Mouth parity: device vs Python sim (Sim V3) vs JS sim (Face Mirror) — migrate firmware mouth to sim upper/lower envelope model; accept when scripted side-by-side shows no obvious mismatch in motion `[sonnet]`
 - [ ] Stage 4.0: Gesture parity: HEART_EYES mismatch — port sim heart SDF + scale constants (`HEART_SOLID_SCALE`, `HEART_PUPIL_SCALE`) to firmware; accept when side-by-side scripted checks pass `[sonnet]`
-- [ ] Stage 4.0: Blink parity on hardware — eyelids must fully occlude eye fill at full closure (no blue eye outline leak during blink) `[sonnet]`
-- [ ] Stage 4.0: Refine THINKING face on hardware (currently reads as angry) `[sonnet]`
+- [x] Stage 4.0: Blink parity — eyelids now also cover the edge-glow ring (the floating "eyebrow" line), 2026-11-10; confirm on hardware
+- [x] Stage 4.0: THINKING read as angry (inward lid slope = ANGRY cue) — redesigned as one raised brow (spec amended, firmware + sim, 2026-11-10); confirm on hardware
 - [ ] Stage 4.0: Tune timing values on hardware: ramp durations, hold times, border alpha curves `[sonnet]`
 - [x] Stage 4.0: Face button UX — superseded 2026-11-10: corner buttons replaced by whole-screen tap/long-press with on-device ring + boop (see Stage 4.3)
 - [ ] Stage 4.1: Baseline integrity gate: revert to float `px_blend(..., float alpha)` as active path; keep fixed-point/u8 helpers disabled/commented with A/B notes; baseline build must pass (`just build-face`)
@@ -110,6 +110,8 @@ Stage 4.2 Dirty-Rect A/B Snapshot (2026-02-25, post-dirty firmware + updated sup
 - [x] Host-link watchdog (3 s) → local sleepy look-around, host state replayed on return (spec §4.4 amended)
 - [x] HEARTBEAT sys tail: reset_reason, boot_count, host_link_lost, min free heap; supervisor logs face soft-resets
 - [x] `just test-face-host`: gesture classifier + SPSC queue (ASan/UBSan; TSan clean)
+- [x] `just test-face-render`: real `face_ui.cpp` drawing on the host vs a full-clear reference (dirty-rect correctness); `render_harness <dir> moods` dumps mood stills for design review
+- [x] Mouth drawn hard-edged (firmware + sim): AA shades shifted hue on the TN panel and streaked along the mouth
 - [ ] On-device: flash, then confirm FPS ≈ 30 in heartbeat perf (`window_frames`), and record frame/render numbers vs the 13 FPS baseline
 - [ ] On-device: tap / long-press / drag feel with a child-size finger; tune `TOUCH_*` in `config.h` (+ sim) if needed; check ring visibility near screen edges
 - [ ] On-device: eyes return to mood colour after an ERROR_DISPLAY; unplug supervisor → sleepy look-around within 3 s → restores on reconnect

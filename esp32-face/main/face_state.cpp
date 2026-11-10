@@ -33,6 +33,11 @@ static float tween(float current, float target, float speed)
     return current + (target - current) * speed;
 }
 
+// Asymmetric-brow lid offsets (right eye hooded so the left reads as raised).
+// Mirrored in tools/face_sim_v3/state/constants.py; parity-checked.
+static constexpr float CURIOUS_BROW_OFFSET = 0.25f;
+static constexpr float THINKING_BROW_OFFSET = 0.22f;
+
 static float spring_step(float current, float target, float& vel, float k = 0.25f, float d = 0.65f)
 {
     const float force = (target - current) * k;
@@ -308,9 +313,9 @@ void face_state_update(FaceState& fs)
         t_width = 1.1f;
         break;
     case Mood::THINKING:
-        t_curve = 0.0f;
-        t_lid_slope = 0.2f;
-        t_lid_top = 0.08f;
+        // One raised brow (right eye hooded below), no inward slope: the slope is
+        // the ANGRY cue and made THINKING read as a glare (spec amended 2026-11-10).
+        t_curve = -0.05f;
         break;
     case Mood::CONFUSED:
         t_curve = -0.2f;
@@ -577,10 +582,11 @@ void face_state_update(FaceState& fs)
     const float final_top_l = fmaxf(t_lid_top, closure_l);
     float       final_top_r = fmaxf(t_lid_top, closure_r);
 
-    // Curious: asymmetric brow — right eye slightly hooded, left appears "raised"
-    if (fs.mood == Mood::CURIOUS) {
+    // Curious / thinking: asymmetric brow — right eye hooded, left appears "raised"
+    if (fs.mood == Mood::CURIOUS || fs.mood == Mood::THINKING) {
         const float ci = clampf(fs.expression_intensity, 0.0f, 1.0f);
-        final_top_r = fmaxf(final_top_r, 0.25f * ci);
+        const float offset = (fs.mood == Mood::CURIOUS) ? CURIOUS_BROW_OFFSET : THINKING_BROW_OFFSET;
+        final_top_r = fmaxf(final_top_r, offset * ci);
     }
 
     const float speed_l = (final_top_l > fs.eyelids.top_l) ? 0.6f : 0.4f;

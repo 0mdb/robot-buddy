@@ -537,9 +537,9 @@ def _render_mouth(buf: list, fs: FaceState) -> None:
                 if (openness > 1.0 and upper_y < py < lower_y)
                 else min(abs(py - upper_y), abs(py - lower_y))
             )
-            alpha = 1.0 - smoothstep(thick / 2.0 - 1.0, thick / 2.0 + 1.0, dist)
-            if alpha > 0:
-                set_px_blend(buf, row_idx + x, draw_col, alpha)
+            # Hard-edged stroke, matching the MCU (AA shades streak on the TN panel)
+            if dist <= thick / 2.0:
+                set_px_blend(buf, row_idx + x, draw_col, 1.0)
 
 
 # ── Main render entry point ──────────────────────────────────────────

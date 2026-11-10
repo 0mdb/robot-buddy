@@ -123,6 +123,8 @@ def main() -> int:
         SCREEN_H,
         SCREEN_W,
         SPARKLE_CHANCE,
+        CURIOUS_BROW_OFFSET,
+        THINKING_BROW_OFFSET,
         SPRING_D,
         SPRING_K,
         TALKING_BASE_OPEN,
@@ -278,6 +280,14 @@ def main() -> int:
     print("-- Sparkle --")
     v = extract_value(all_text, "SPARKLE_CHANCE")
     check("SPARKLE_CHANCE", parse_float(v) if v else None, SPARKLE_CHANCE)
+
+    # Asymmetric-brow lid offsets (CURIOUS, THINKING)
+    for cname, sval in [
+        ("CURIOUS_BROW_OFFSET", CURIOUS_BROW_OFFSET),
+        ("THINKING_BROW_OFFSET", THINKING_BROW_OFFSET),
+    ]:
+        v = extract_value(state_cpp, cname)
+        check(cname, parse_float(v) if v else None, sval)
 
     # ── Flags ────────────────────────────────────────────────────
     print("-- Flags --")

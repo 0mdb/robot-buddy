@@ -323,13 +323,13 @@ Naming follows **viewer perspective** throughout.
 
 **VA**: (+0.10, +0.20) — near-neutral, mild arousal
 **Intent**: "Hmm, let me think about that..."
-**Overall read**: Slightly furrowed, eyes narrowed in concentration. Gaze averts up-right. A focused, deliberate look.
+**Overall read**: "Hmm…" — one brow raised, gaze averts up-right, mouth pursed to one side. A thoughtful, deliberate look. *(Amended 2026-11-10: the inward furrow read as angry on hardware; it shared ANGRY's lid-slope direction. Replaced with the one-raised-brow cue.)*
 
 | Channel | Description |
 |---------|---|
-| Eyes | Slightly narrowed — focused concentration. |
-| Eyelids | Moderate inward slope (lid_slope 0.4) — concentrated brow. Upper lid slightly dropped (lid_top 0.2). |
-| Mouth | Very slight frown (curve -0.1). Closed. Offset slightly to one side (mouth_offset_x). |
+| Eyes | Open; asymmetric. |
+| Eyelids | **No slope** (lid_slope 0) — an inward slope is the ANGRY cue. **One brow raised**: right eye hooded by `THINKING_BROW_OFFSET` = 0.22 extra lid_top (× intensity), left eye fully open so it reads as raised (same mechanism as CURIOUS). lid_top 0. |
+| Mouth | Very slight frown (curve -0.05). Closed. Offset slightly to one side (mouth_offset_x). |
 | Color | Cool blue (80, 135, 220). Cerebral, calm. |
 | Gaze | **Aversion to up-right** — deliberate "looking away to think" cue (spec §4.2.2). |
 

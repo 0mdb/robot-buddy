@@ -202,7 +202,14 @@ MOOD_TARGETS: dict[Mood, tuple[float, float, float, float, float, float]] = {
     Mood.SLEEPY: (0.0, 1.0, 0.0, -0.2, 0.6, 0.0),
     Mood.LOVE: (0.6, 1.0, 0.0, 0.0, 0.0, 0.3),
     Mood.SILLY: (0.5, 1.1, 0.0, 0.0, 0.0, 0.0),
-    Mood.THINKING: (0.0, 1.0, 0.0, 0.2, 0.08, 0.0),  # Softer furrow (was 0.4/0.2)
+    Mood.THINKING: (
+        -0.05,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+    ),  # No slope (read as angry); one raised brow via THINKING_BROW_OFFSET
     Mood.CONFUSED: (
         -0.2,
         1.0,
@@ -262,6 +269,8 @@ THINKING_MOUTH_OFFSET_X = 1.5
 # Curious-mood asymmetric brow ("one eyebrow raised" look)
 # Extra lid_top closure on right eye → left eye appears raised by contrast
 CURIOUS_BROW_OFFSET = 0.25
+# Thinking-mood asymmetric brow (spec amended 2026-11-10): replaces the inward furrow
+THINKING_BROW_OFFSET = 0.22
 
 # Confused-mood persistent mouth offset (asymmetric mouth sells "puzzled")
 CONFUSED_MOOD_MOUTH_OFFSET_X = 2.0

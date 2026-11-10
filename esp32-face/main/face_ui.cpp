@@ -340,16 +340,20 @@ static void render_eye(pixel_t* buf, const EyeState& eye, const FaceState& fs, b
     const int   y0 = static_cast<int>(ey);
     const int   y1 = static_cast<int>(ey + eh);
 
-    // Per-column lid limits, then fill row by row (contiguous PSRAM writes instead
-    // of one strided column at a time). Same pixels as the old per-column vlines:
-    // top lid covers y0..top[x] when top[x] > y0; bottom covers bot[x]..y1 when bot[x] < y1.
-    const int cx0 = x0 < 0 ? 0 : x0;
-    const int cx1 = x1 > SCREEN_W ? SCREEN_W : x1;
+    // Per-column lid limits, then fill row by row (contiguous PSRAM writes).
+    // A lid is present when it reaches into the eye box (top_limit > y0 / bot_limit < y1).
+    // It then also covers the edge-glow ring around the eye (pad), otherwise the glow's
+    // top edge and sides stay visible as a floating "eyebrow" line when the lid drops.
+    const int pad = fs.fx.edge_glow ? 3 : 0; // glow is drawn 2 px outside the eye (+1 rounding)
+    const int ly0 = y0 - pad;
+    const int ly1 = y1 + pad;
+    const int cx0 = (x0 - pad) < 0 ? 0 : (x0 - pad);
+    const int cx1 = (x1 + pad) > SCREEN_W ? SCREEN_W : (x1 + pad);
     if (cx1 <= cx0) return;
     static int lid_top_y[SCREEN_W]; // static: off the task stack
     static int lid_bot_y[SCREEN_W];
-    int        top_max = y0 - 1;
-    int        bot_min = y1 + 1;
+    int        top_max = ly0 - 1;
+    int        bot_min = ly1 + 1;
     for (int x = cx0; x < cx1; x++) {
         float nx = (static_cast<float>(x) - (ex + ew * 0.5f)) / fmaxf(1.0f, ew * 0.5f);
         if (!is_left) {
@@ -358,15 +362,15 @@ static void render_eye(pixel_t* buf, const EyeState& eye, const FaceState& fs, b
         const float slope_off = slope * 20.0f * nx;
         const int   top_limit = static_cast<int>((ey - 0.5f) + eh * 2.0f * lid_top + slope_off);
         const int   bot_limit = static_cast<int>((ey + eh) - eh * 2.0f * lid_bot);
-        lid_top_y[x] = (top_limit > y0) ? top_limit : (y0 - 1); // y0-1: no top lid
-        lid_bot_y[x] = (bot_limit < y1) ? bot_limit : (y1 + 1); // y1+1: no bottom lid
+        lid_top_y[x] = (top_limit > y0) ? top_limit : (ly0 - 1); // ly0-1: no top lid
+        lid_bot_y[x] = (bot_limit < y1) ? bot_limit : (ly1 + 1); // ly1+1: no bottom lid
         if (lid_top_y[x] > top_max) top_max = lid_top_y[x];
         if (lid_bot_y[x] < bot_min) bot_min = lid_bot_y[x];
     }
     // A fully closed lid can run past the eye box (top lid below y1, bottom lid above
-    // y0), exactly as the old vlines did, so the row range covers that too.
-    int ry0 = (bot_min < y0) ? bot_min : y0;
-    int ry1 = (top_max > y1) ? top_max : y1;
+    // y0), so the row range covers that too.
+    int ry0 = (bot_min < ly0) ? bot_min : ly0;
+    int ry1 = (top_max > ly1) ? top_max : ly1;
     if (ry0 < 0) ry0 = 0;
     if (ry1 >= SCREEN_H) ry1 = SCREEN_H - 1;
     for (int y = ry0; y <= ry1; y++) {
@@ -375,7 +379,7 @@ static void render_eye(pixel_t* buf, const EyeState& eye, const FaceState& fs, b
         }
         pixel_t* row = buf + y * SCREEN_W;
         for (int x = cx0; x < cx1; x++) {
-            if ((y >= y0 && y <= lid_top_y[x]) || (y >= lid_bot_y[x] && y <= y1)) {
+            if ((y >= ly0 && y <= lid_top_y[x]) || (y >= lid_bot_y[x] && y <= ly1)) {
                 row[x] = black;
             }
         }
@@ -399,11 +403,12 @@ static void render_mouth(pixel_t* buf, const FaceState& fs)
         return;
     }
 
-    const int   x0 = static_cast<int>(cx - w - thick);
-    const int   x1 = static_cast<int>(cx + w + thick);
-    const int   y0 = static_cast<int>(cy - fabsf(curve) - openness - thick);
-    const int   y1 = static_cast<int>(cy + fabsf(curve) + openness + thick);
-    const float half_thick = thick * 0.5f;
+    const int     x0 = static_cast<int>(cx - w - thick);
+    const int     x1 = static_cast<int>(cx + w + thick);
+    const int     y0 = static_cast<int>(cy - fabsf(curve) - openness - thick);
+    const int     y1 = static_cast<int>(cy + fabsf(curve) + openness + thick);
+    const float   half_thick = thick * 0.5f;
+    const pixel_t mouth_color = rgb_to_color(r, g, b);
 
     // Per-column curve values are the same for every row: compute them once.
     static constexpr int MAX_MOUTH_COLS = SCREEN_W;
@@ -426,7 +431,9 @@ static void render_mouth(pixel_t* buf, const FaceState& fs)
         ymin = fminf(ymin, col_upper[i]);
         ymax = fmaxf(ymax, col_lower[i]);
     }
-    const float reach = half_thick + 1.0f; // alpha is 0 beyond this distance
+    // Hard-edged stroke (no anti-aliasing): on this TN panel the in-between AA shades
+    // shift hue with viewing angle and showed as coloured streaks along the mouth.
+    const float reach = half_thick;
     const bool  filled = openness > 1.0f;
     int         ry0 = static_cast<int>(floorf(ymin - reach));
     int         ry1 = static_cast<int>(ceilf(ymax + reach)) + 1;
@@ -448,9 +455,8 @@ static void render_mouth(pixel_t* buf, const FaceState& fs)
                 dist = fminf(fabsf(py - upper_y), fabsf(py - lower_y));
             }
 
-            const float alpha = 1.0f - smoothstepf(half_thick - 1.0f, half_thick + 1.0f, dist);
-            if (alpha > 0.01f) {
-                buf[row + x] = px_blend(buf[row + x], r, g, b, alpha);
+            if (dist <= half_thick) {
+                buf[row + x] = mouth_color;
             }
         }
     }

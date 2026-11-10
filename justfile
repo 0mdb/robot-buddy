@@ -13,6 +13,10 @@ test-all: test-supervisor test-server test-dashboard
 test-face-host:
     cd {{project}}/esp32-face && mkdir -p build-host && g++ -std=c++17 -O1 -Wall -Wextra -Werror -fsanitize=address,undefined -pthread -Imain test/test_host.cpp main/touch_gesture.cpp -o build-host/test_host && ./build-host/test_host
 
+# Host-side render test: real face_ui.cpp drawing vs a full-clear reference (dirty-rect correctness)
+test-face-render:
+    cd {{project}}/esp32-face && mkdir -p build-host && g++ -std=c++17 -O1 -w -fsanitize=address,undefined -Itest/stubs -Imain test/render_harness.cpp main/face_state.cpp main/conv_border.cpp main/system_face.cpp main/touch_gesture.cpp -o build-host/render_harness && ./build-host/render_harness
+
 # Run supervisor tests (with optional filter)
 test-supervisor *filter:
     cd {{project}}/supervisor && uv run pytest tests/ -v {{filter}}
