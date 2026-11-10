@@ -53,7 +53,8 @@ _SECRECY = re.compile(
     r"\b(our (little )?secret|i (won'?t|will not|promise not to) tell|"
     r"just between (us|you and me)|(don'?t|do not|no need to) tell (your )?"
     r"(mom|mum|dad|parents?|grown-?ups?|anyone)|i'?ll keep (it|your secret|that) "
-    r"(a )?secret|your secret is safe)\b",
+    r"(a )?secret|your secret is safe|i promise to keep (it|that|your secret|the secret)|"
+    r"keep it safe with me)\b",
     re.IGNORECASE,
 )
 _TRUSTED_ADULT = re.compile(

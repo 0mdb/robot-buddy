@@ -100,6 +100,10 @@ async def test_simulated_turns_extend_the_script():
         ("That's a damn good idea", "blocked word"),
         ("I won't tell anyone", "secrecy promise"),
         ("Just between us, okay?", "secrecy promise"),
+        (
+            "I promise to keep it safe with me!",
+            "secrecy promise",
+        ),  # baseline, kid_secret
         ("", "empty reply"),
     ],
 )
