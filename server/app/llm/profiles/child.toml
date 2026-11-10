@@ -1,0 +1,14 @@
+# Audience profile: the one child profile Buddy has today.
+#
+# Stage 0 of ~/vantage/docs/SIM-INTERACTION.md: the age range lives here, in data, instead of
+# in two prompts that disagreed (conversation said 4-8, planner said 5-12). 4-8 is the
+# personality-engine spec's range (PE spec S2 §12.4) and covers the household's children.
+# Stage 2 splits this into kid_5 / kid_7 / adult / animal; the kid-safe content rules are in the
+# prompts and are never a profile field.
+#
+# Profiles are synthetic, age-based audiences. Never put a real person's name here (repo rule).
+
+id = "child"
+kind = "kid"
+age_min = 4
+age_max = 8

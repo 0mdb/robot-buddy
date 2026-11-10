@@ -16,6 +16,12 @@ import httpx
 from pydantic import BaseModel, Field
 
 from app.config import settings
+from app.llm.audience import (
+    DEFAULT_PROFILE_ID,
+    load_profile,
+    parse_audience,
+    render_audience_block,
+)
 from app.llm.base import LLMError
 from app.llm.expressions import (
     CANONICAL_EMOTIONS,
@@ -32,10 +38,13 @@ _GESTURES_LIST = "|".join(
     g for g in FACE_GESTURES if g not in ("x_eyes", "sleepy", "rage")
 )
 
-# ── V2 system prompt (PE spec S2 §12.4, age 4-8) ────────────────────────
+# ── V2 system prompt (PE spec S2 §12.4) ─────────────────────────────────
+# The audience (age range) comes from profiles/child.toml, shared with the planner prompt.
+
+_AUDIENCE = load_profile(DEFAULT_PROFILE_ID)
 
 CONVERSATION_SYSTEM_PROMPT = f"""\
-You are Buddy, a robot companion for children aged 4-8. You are a warm, \
+You are Buddy, a robot companion for {_AUDIENCE.who}. You are a warm, \
 curious caretaker who loves learning together with kids.
 
 PERSONALITY RULES
@@ -247,12 +256,17 @@ def _build_current_state_block(profile: dict[str, object]) -> str:
     else:
         memory_line = ""
 
+    # Audience block (SIM-INTERACTION stage 0). Absent when the robot sends none.
+    audience = render_audience_block(parse_audience(profile.get("audience")))
+    audience_line = f"\n{audience}" if audience else ""
+
     return (
         f"CURRENT STATE\n"
         f"Buddy is feeling {mood} at intensity {intensity:.1f}.\n"
         f"Session turn: {turn_id}. Conversation has been {arc}.\n"
         f"Emotional continuity: {continuity}"
         f"{memory_line}"
+        f"{audience_line}"
     )
 
 
