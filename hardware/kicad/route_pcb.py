@@ -270,12 +270,19 @@ for _try in range(1, ROUTE_TRIES + 1):
         text=True,
     )
     _out = (result.stdout + result.stderr).splitlines()
+    # 2.1.0 prints no "Auto-routing was completed" line (2026-11-10: every try then
+    # scored the 99 placeholder, so the retry loop could not tell runs apart). It ends
+    # with a JSON summary carrying "incomplete_count"; older builds had the line.
     _final = [ln for ln in _out if "Auto-routing was completed" in ln]
-    for line in _final or [ln for ln in _out if "ERROR" in ln]:
+    _inc = [ln for ln in _out if '"incomplete_count"' in ln]
+    for line in _final or _inc or [ln for ln in _out if "ERROR" in ln]:
         print(f"  try {_try}:", line.strip())
     if result.returncode != 0 or not os.path.exists(SES):
         continue
-    _m = re.search(r"\((\d+) unrouted", _final[-1]) if _final else None
+    if _inc:
+        _m = re.search(r'"incomplete_count":\s*(\d+)', _inc[-1])
+    else:
+        _m = re.search(r"\((\d+) unrouted", _final[-1]) if _final else None
     _unrouted = int(_m.group(1)) if _m else (0 if _final else 99)
     if _best is None or _unrouted < _best:
         _best = _unrouted

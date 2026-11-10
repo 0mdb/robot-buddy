@@ -395,7 +395,7 @@ check(
     f"board {BO.H:g} wide: |y| <= {BO.H / 2:g}, encoder sockets at |y| 23.9",
 )
 # Encoder plugs: the sockets face inboard, so plug + cable sit over the long edges in
-# board x 31..47.8 (board_outline.plug_keepouts, PLUG_DEPTH provisional until measured).
+# board x 31..47.8 (board_outline.plug_keepouts, PLUG_DEPTH measured 2026-11-10).
 _in_zone = []
 for _ref, _f in FP.items():
     _c = _f.GetCourtyard(pcbnew.F_CrtYd)
@@ -412,11 +412,8 @@ for _ref, _f in FP.items():
 check(
     not _in_zone,
     S,
-    f"encoder plug keep-out (x {BO.SOCKET_X[0]:g}-{BO.SOCKET_X[1]:g}, {BO.PLUG_DEPTH:g} mm inboard of the socket face, "
-    f"PLUG_DEPTH provisional) clear: {sorted(_in_zone) or 'yes'}",
-)
-SIGNOFF.append(
-    "Encoder plug + cable depth inboard of the socket face measured and set as board_outline.PLUG_DEPTH"
+    f"encoder plug keep-out (x {BO.SOCKET_X[0]:g}-{BO.SOCKET_X[1]:g}, {BO.PLUG_DEPTH:g} mm inboard of the socket face) "
+    f"clear: {sorted(_in_zone) or 'yes'}",
 )
 MH = {f"MH{i}": xy for i, xy in enumerate(BO.HOLES, start=1)}
 bad = []
@@ -462,8 +459,8 @@ check(
     f"nothing in the plug's path at the rear edge (y {usb_y[0]:.1f}-{usb_y[1]:.1f}) {block or ''}",
 )
 SIGNOFF.append(
-    "Heights under the Pi deck (12 mm parts budget, chassis.py REFLEX_Z): C3 1000 uF "
-    "must be 10 x 12.5 or shorter; U2 on female headers ~11 mm"
+    "Heights under the Pi deck (17.4 mm from board top to deck underside, measured "
+    "2026-11-09): C3 Rubycon 16ZLH1000MEFC10X16 is 10 x 16; U2 on female headers ~11 mm"
 )
 SIGNOFF.append(
     "USB-C plug for the Pi link fits the rear bay (7 mm to the carriages): right-angle plug or adapter"

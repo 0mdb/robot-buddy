@@ -2,10 +2,9 @@
 
 **Status: all v1 boards SCRAP.** Do not power a v1 board with U2 (TB6612) seated — see E1.
 
-**v2: DO NOT ORDER: encoder-plug clash (§M12, 2026-11-09).** §M fixed on the board and the
-board shrunk to 52.5 × 46 (§M11), but the encoder sockets face inboard and their plugs land on
-J1/J2, the front screw heads and U2. A relayout around a keep-out is needed, and it waits on
-one measurement (plug + cable depth). Firmware is on v2 (`pin_map.h`, expander driver).
+**v2: M12 fixed on the board (2026-11-10): 63 × 46, `pcb_qc.py` 0 fail / 0 warn.** Still
+before ordering: base plate + `reflex_board_envelope` SolidWorks rebuild, Ben's sign-offs
+(`pcb_qc.py` list) and the JLC match review. Firmware is on v2 (`pin_map.h`, expander driver).
 
 Consolidated list of every v1 defect plus the v2 architecture change, with a
 pre-fab sign-off gate at the end. Mirrors `robot-scout/docs/v2-defect-register.md`.
@@ -197,6 +196,30 @@ Encoded so it can't be lost: `board_outline.py` has `SOCKET_X`, `SOCKET_FACE_Y` 
 `plug_keepouts()`. It currently fails on J1, J2, MH2, MH4, U2.
 
 Ben 2026-11-09: the cable leaves **straight out** of the socket face, with no bend near the socket. The plug and cable therefore run inboard at socket height (z 6.8–20.2) across the plug zone; the keep-out is set by how high the opening sits above the board top, not only by plug length. Still open: plug body length and the opening's height on the socket.
+
+**Fixed 2026-11-10 (Ben approved each step).** From Ben's two photos of the motor on a
+cutting mat (inch scale; the 13.35 socket depth reads back as 12.8, so the scale holds):
+- The plug stands ~2 mm proud of the socket face; 6 loose wires (~1.2 mm OD) leave straight
+  out. The pin row runs across the face's full height (z 6.8–20.2), lowest wire ~z 8.5–9,
+  level with an M3 head on the board (~z 9), so the strip is full height: nothing taller
+  than the bare board. `PLUG_DEPTH` = 7 (2 plug + 5 for the wires to bend down to the board).
+- At any depth the front screw heads (3.5 mm in, Ø6.2) sat in the strip, and J1/J2 had no
+  edge spot left (J9 / J6 / C6 own the edges behind the strip; U2 is inboard of it).
+- **Board 52.5 → 63 × 46** (Ben: "ok making the board bigger if it makes things fit
+  better"). Rear edge stays at chassis x −40, so the front edge is at x 23 (the 65 × 60
+  board reached x 25). Holes 56 × 39: front standoffs (9, ±19.5) → (19.5, ±19.5). The
+  PET-CF/CAD session confirmed nothing else uses chassis x 12.5–23 there.
+- J1/J2 turned 90° into two columns of a front strip (x 48.3–62.3), J5 under MH2, J7 + R4/C1/R18
+  under J1. U2, C3, U4 and everything rear of x 31 unchanged. The motor ends of the harness
+  are bare wires crimped to XH (Ben), so XH stays.
+- Pipeline: `layout_pcb.py --fresh` → `route_pcb.py` (freerouting 2.1.0, 0 unrouted, DRC 0/0)
+  → `make_fab.py` → `pcb_qc.py`: **0 fail, 0 warn**. DRC's 32 `lib_footprint_issues`
+  warnings are this WSL's missing global KiCad lib table, not the board.
+- Found on the way: `route_pcb.py` looked for freerouting's old "Auto-routing was completed"
+  line, which 2.1.0 does not print, so every retry scored a placeholder 99 and the loop kept
+  the first run (that run left +3V3 at R16/C9 unconnected; the DRC gate caught it). It now
+  reads 2.1.0's `"incomplete_count"`. `~/kicad-libs` was missing on this WSL and was
+  re-cloned from github 0mdb/kicad-libs at `8e632f1` (the M1 un-mirror); §2 re-checks U2.
 
 Fix (after the measurement): keep board x ≈ 29.5–49.5 free near both long edges to the
 measured depth. Move J1/J2 out of that band (rear of it, beside U1, or the front edge), move
@@ -1553,7 +1576,7 @@ No gerbers are generated until every line is checked and initialled.
 - [x] Headroom measured: 17.4 mm to the deck (M14)
 - [ ] C3 radial part picked: Ø10 × ≤ 16, e.g. 16ZLH1000MEFC10X16, §O ripple re-run
 - [x] All BOM lines have verified LCSC numbers, package = footprint
-- [ ] 🔴 M12: encoder plug + cable depth measured, `PLUG_DEPTH` set, layout clear of `plug_keepouts()` (`pcb_qc.py` §5)
+- [x] M12: encoder plug + cable depth measured (7 mm), `PLUG_DEPTH` set, layout clear of `plug_keepouts()` (`pcb_qc.py` §5) _(2026-11-10)_
 
 ### Final
 - [x] DRC clean — 0 violations, 0 unconnected, 0 schematic-parity; all three gates pass

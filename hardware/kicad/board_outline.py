@@ -5,6 +5,8 @@ KiCad drawing mm: origin at the board's top-left corner, y down. x runs rear -> 
 (x 0 is the rear edge, chassis x -40, where the USB-C exits; R2c), y runs left -> right.
 
 2026-11-09 shrink (Ben): 65 x 60 with encoder notches -> 52.5 x 46, no notches.
+2026-11-10 (Ben, register M12): lengthened to 63 x 46 so the encoder plugs + wires have
+a clear strip over the long edges and J1/J2 + the front holes sit forward of it.
 The encoder TT socket stands to chassis |y| 23.9 (8.5 mm inboard of the mount face,
 chassis x -9..7.8; Ben's measurement 2026-11-08). A 46 mm board centred on the chassis
 centreline spans |y| <= 23, so it clears the sockets along its whole length. The
@@ -16,7 +18,7 @@ bottom face, KiCad y flipped: chassis x = REFLEX_AT.x + (kx - HOLE_CX),
 chassis y = REFLEX_AT.y + (HOLE_CY - ky).
 """
 
-W, H = 52.5, 46.0  # board, mm
+W, H = 63.0, 46.0  # board, mm (52.5 until 2026-11-10, M12)
 
 # M3 holes, 4 in a rectangle (the base plate's standoffs are corners() of a symmetric
 # pattern). 3.5 mm in from each edge: the Ø6.2 head keepout stays on the board.
@@ -39,13 +41,15 @@ REAR_EDGE_CHASSIS_X = -40.0
 # INBOARD (Ben 2026-11-05, docs/cad/loop/QUESTIONS.md): its mating face is at chassis
 # |y| 23.9, so the plug and its cable occupy |y| < 23.9 over chassis x -9..7.8 and
 # z 6.8-20.2, i.e. right above the board's long edges (board top z 6.6). Nothing taller than
-# the bare board may sit in that band. PLUG_DEPTH is PROVISIONAL: plug + cable bend inboard
-# of the socket face is not measured yet (QUESTIONS.md "plug + cable depth"). Measure it,
-# set it here, and pcb_qc.py §5 checks the layout against it. Ben 2026-11-09: the cable
-# leaves straight out of the face (no bend near the socket); plug length still unmeasured.
+# the bare board may sit in that band; pcb_qc.py §5 checks the layout against it.
+# Ben 2026-11-09: the cable leaves straight out of the face (no bend near the socket).
+# Measured 2026-11-10 from Ben's photos: the plug stands ~2 mm proud of the face, its
+# 6 loose wires (~1.2 mm OD) leave straight out, and the pin row spans the face's height,
+# lowest wire ~z 8.5-9, level with an M3 head on the board (z ~9). So the band is full
+# height: nothing taller than the bare board. 7 = 2 plug + 5 for the wires to bend down.
 SOCKET_X = (31.0, 47.8)  # board x (chassis -9..7.8)
 SOCKET_FACE_Y = 23.9  # chassis |y| of the socket's mating face
-PLUG_DEPTH = 8.0  # mm inboard of the face: PROVISIONAL until measured
+PLUG_DEPTH = 7.0  # mm inboard of the face (measured 2026-11-10, see above)
 
 
 def plug_keepouts() -> list[tuple[float, float, float, float]]:

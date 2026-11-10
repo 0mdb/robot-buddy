@@ -4,7 +4,7 @@ PCB layout for robot-buddy-reflex.
 Reads schematic netlist, places all footprints at sensible positions with nets
 assigned.  Open the resulting .kicad_pcb in KiCad → route traces, run DRC.
 
-Board outline: board_outline.py (52.5 × 46 mm since 2026-11-09)
+Board outline: board_outline.py (63 × 46 mm since 2026-11-10)
 """
 
 import subprocess
@@ -169,14 +169,14 @@ def place(ref, value, fp_id, x, y, angle=0):
 # ════════════════════════════════════════════════════════════════════════
 # PLACEMENT MAP  (all mm, PCB origin = top-left of board; x rear -> front)
 #
-#  0         10        20    24.5               45.3   52.5
-#  +-MH1--[ J9 5V GND TX> RX< ]+[ J1 MOTOR L      ]+--MH2--+   y 0  (chassis left)
-#  |                           |[  U2 TB6612, 180  ]  [J5]  |
-# USB=[ U1 ESP32-S3-Zero, 90 ] |[ ctrl col | motor ]  [J7]  |
-#  |  [ USB-C flush, x 0     ] |[  (PWM/AIN/BIN)   ]        |
-#  |  C4 C7 C5 R5R6R7 R1 R2 C6 | R12-15 [U4] [ C3 1000u ]R4C1|
-#  +-MH3--[ J6 SR04 ]----------+[ J2 MOTOR R      ]+--MH4--+   y 46 (chassis right)
-#                       52.5 x 46 mm  (was 65 x 60 + notches)
+#  0         10        20    24.5    31      47.8  51.2  58.4  63
+#  +-MH1--[ J9 5V GND TX> RX< ]+ ~~~~ plug strip ~~~~ +[  ][MH2]+   y 0  (chassis left)
+#  |                           |[  U2 TB6612, 180  ]   |J1|[J5] |
+# USB=[ U1 ESP32-S3-Zero, 90 ] |[ ctrl col | motor ]   |  |     |
+#  |  [ USB-C flush, x 0     ] |[  (PWM/AIN/BIN)   ]   [J7]|J2| |
+#  |  C4 C7 C5 R5R6R7 R1 R2 C6 | R12-15 [U4] [ C3 1000u ] R4C1 |  | |
+#  +-MH3--[ J6 SR04 ]----------+ ~~~~ plug strip ~~~~ +   [MH4]+   y 46 (chassis right)
+#              63 x 46 mm (52.5 x 46 until 2026-11-10; was 65 x 60 + notches)
 #
 # 2026-11-09 shrink: board_outline.py has the why (46 mm clears the encoder sockets at
 # |y| 23.9 with no notches). Order QC fixes from cad-loop carried over (register §M):
@@ -217,14 +217,17 @@ place(
     180,
 )
 
-# ── Motor connectors on the long edges, beside the encoder sockets ──────────
-#   J1 = MOTOR L on the top edge (chassis +y = left), J2 = MOTOR R on the bottom edge.
-#   XH courtyard x -3..15.49, y -2.9..3.94 at angle 0: J1 y 0.05..6.89, J2 y 39.1..45.94.
+# ── Motor connectors: two columns in the front strip (register M12, 2026-11-10) ──
+#   The encoder plugs + wires own the long edges over x 31..47.8 (board_outline.
+#   plug_keepouts), so J1/J2 moved forward of the sockets. At 90 the XH courtyard is
+#   x pos-2.9..pos+3.94, y pos-15.49..pos+3. J1 (MOTOR L, chassis left = y 0 side) in the
+#   inner column at y 3.5..22; J2 (MOTOR R) in the outer column at y 20.5..39, clear of
+#   MH4 (y >= 39.4). The motor ends of the harness are bare wires crimped to XH (Ben).
 place(
-    "J1", "MOTOR L", "Connector_JST:JST_XH_B6B-XH-A_1x06_P2.50mm_Vertical", 27.5, 2.95
+    "J1", "MOTOR L", "Connector_JST:JST_XH_B6B-XH-A_1x06_P2.50mm_Vertical", 51.2, 19.0, 90
 )
 place(
-    "J2", "MOTOR R", "Connector_JST:JST_XH_B6B-XH-A_1x06_P2.50mm_Vertical", 27.5, 42.0
+    "J2", "MOTOR R", "Connector_JST:JST_XH_B6B-XH-A_1x06_P2.50mm_Vertical", 58.4, 36.0, 90
 )
 
 # ── Pi link: J9 top-rear, beside U1's TX/RX pads ─────────────────────────────
@@ -252,12 +255,13 @@ place(
     90,
 )
 
-# ── Front strip (x 45.3..52.5, between MH2 and MH4): Qwiic + E-stop ──────────
+# ── Front strip, around J1/J2: Qwiic (outer column, under MH2) + E-stop (inner column,
+#    under J1) ─────────────────────────────────────────────────────────────────
 place(
     "J5",
     "QWIIC 3V3",
     "Connector_JST:JST_SH_BM04B-SRSS-TB_1x04-1MP_P1.00mm_Vertical",
-    49.6,
+    59.2,
     11.5,
     90,
 )
@@ -266,15 +270,15 @@ place(
     "J7",
     "E-STOP NC",
     "Connector_JST:JST_XH_B3B-XH-A_1x03_P2.50mm_Vertical",
-    48.5,
-    26,
+    51.2,
+    31,
     90,
 )
 #   ESTOP: R4 (pad2=ESTOP, pad1=GND) holds it low when the loop is open, C1 debounce;
 #   R18: e-stop cable-detect loop pull-down (E3). All three beside J7.
-place("R4", "10k", "Resistor_SMD:R_0402_1005Metric", 47.5, 30.1, 0)
-place("C1", "100n", "Capacitor_SMD:C_0402_1005Metric", 47.5, 31.4, 0)
-place("R18", "10k", "Resistor_SMD:R_0402_1005Metric", 47.5, 32.7, 0)
+place("R4", "10k", "Resistor_SMD:R_0402_1005Metric", 50.0, 35.6, 0)
+place("C1", "100n", "Capacitor_SMD:C_0402_1005Metric", 50.0, 36.9, 0)
+place("R18", "10k", "Resistor_SMD:R_0402_1005Metric", 50.0, 38.2, 0)
 
 # ── Under U1 (bottom-rear strip): rail decoupling, echo divider, PWM pull-downs ─
 place("C4", "100n", "Capacitor_SMD:C_0402_1005Metric", 2, 35.5, 90)  # +5V at U1 pad 1
