@@ -1,0 +1,26 @@
+[project]
+name = "buddy-wander-training"
+version = "0.1.0"
+description = "Develop Buddy's WANDER in simulation: fast tier, metrics, tuning (see README)"
+requires-python = ">=3.11"
+dependencies = [
+    "robot-buddy-supervisor",
+    # Vantage's sim world (~/vantage/sim, imported via VANTAGE_SIM) needs these:
+    "mujoco>=3.2",
+    "numpy>=1.24",
+    "shapely>=2.0",
+    "mapbox-earcut>=1.0",
+    "pillow>=10",
+]
+
+[dependency-groups]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.23"]
+
+[tool.uv.sources]
+robot-buddy-supervisor = { path = "../../supervisor", editable = true }
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
