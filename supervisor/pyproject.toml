@@ -13,6 +13,8 @@ dependencies = [
     "opencv-python-headless>=4.8",
     "numpy>=1.24",
     "psutil>=5.9",
+    # Vantage discovery: the shared bridge advertises _vantage._udp.local. when present.
+    "zeroconf>=0.130",
     "mcp>=1.2",
     "smbus2>=0.4",
 ]
