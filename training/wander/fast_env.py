@@ -146,13 +146,14 @@ class FastBuddy:
         yaw_deg: float = 0.0,
         *,
         open_doors: frozenset[str] = frozenset(),
+        spawn: int = 0,
         skill_params: dict[str, Any] | None = None,
         on_tick: Callable[[FastBuddy], None] | None = None,
     ) -> None:
         with contextlib.redirect_stdout(
             io.StringIO()
         ):  # drive.make prints the world summary
-            self.b = drive.make(room, yaw_deg, open_doors)
+            self.b = drive.make(room, yaw_deg, open_doors, spawn)
         self.room, self.yaw_deg = room, yaw_deg
         self.vt_us = T0_US
         self.pipe = _Pipe()

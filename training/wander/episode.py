@@ -30,9 +30,10 @@ def run_wander(
     skill_params: dict[str, Any] | None = None,
     open_doors: frozenset[str] = frozenset(),
     with_track: bool = False,
+    spawn: int = 0,
 ) -> dict[str, Any]:
     fb = fast_env.FastBuddy(
-        room, yaw_deg, open_doors=open_doors, skill_params=skill_params
+        room, yaw_deg, open_doors=open_doors, spawn=spawn, skill_params=skill_params
     )
     try:
         if not fb.run_until(lambda f: f.mode == "IDLE", 5.0):
@@ -54,6 +55,7 @@ def run_wander(
         out: dict[str, Any] = {
             "room": room,
             "yaw": yaw_deg,
+            "spawn": spawn,
             "tier": "fast",
             **meter.result(),
         }
