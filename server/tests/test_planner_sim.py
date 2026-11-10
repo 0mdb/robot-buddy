@@ -8,7 +8,6 @@ import pytest
 
 from app.eval.planner_sim import (
     SCENARIOS,
-    STALE_EVENTS,
     ball_gate_open,
     by_id,
     check_plan,
@@ -43,10 +42,16 @@ def test_every_scenario_is_a_valid_world_state_shaped_like_the_robot() -> None:
         assert sc.ticks, sc.id
         for w in sc.ticks:
             WorldState.model_validate(w)
-            assert w["trigger"] == "periodic" and w["faults"] == []
             assert w["ball_detected"] == (w["ball_confidence"] > 0.3)
             assert len(w["recent_events"]) <= 5
-            assert "clear_confidence" not in w  # the robot never sends it
+            if "new_events" in w:
+                assert w["trigger"] == ("event" if w["new_events"] else "heartbeat")
+                assert (
+                    w["recent_events"][len(w["recent_events"]) - len(w["new_events"]) :]
+                    == w["new_events"]
+                )
+            else:
+                assert w["trigger"] == "periodic"  # legacy supervisor
 
 
 def test_ball_gate() -> None:
@@ -63,14 +68,14 @@ def test_quiet_plan_passes_everywhere() -> None:
 
 
 def test_hard_checks_fire() -> None:
-    w = world()
+    w = world("face.button.click")
     assert check_plan(w, None)
     assert "power talk" in check_plan(w, plan(say("I'm getting sleepy!")))[0]
     assert "power talk" in check_plan(w, plan(say("Time to recharge!")))[0]
-    assert (
-        "ball" in check_plan(world(ball_confidence=0.5), plan(say("Ooh, a ball!")))[0]
-    )
-    assert check_plan(world(ball_confidence=0.9), plan(say("Ooh, a ball!"))) == []
+    ev = "vision.ball_acquired"
+    shut = check_plan(world(ev, ball_confidence=0.5), plan(say("Ooh, a ball!")))
+    assert "ball" in shut[0]
+    assert check_plan(world(ev, ball_confidence=0.9), plan(say("Ooh, a ball!"))) == []
     uv = by_id("undervoltage").ticks[0]
     assert (
         len(
@@ -82,7 +87,7 @@ def test_hard_checks_fire() -> None:
         check_plan(uv, plan({"action": "emote", "name": "curious", "intensity": 0.3}))
         == []
     )
-    close = world(range_mm=300)
+    close = world("safety.obstacle_close", range_mm=300)
     assert (
         "forward skill"
         in check_plan(close, plan({"action": "skill", "name": "investigate_ball"}))[0]
@@ -93,16 +98,14 @@ def test_hard_checks_fire() -> None:
     )
     fault = by_id("fault").ticks[0]
     assert "celebrated" in check_plan(fault, plan(say("Yay, let's go!")))[0]
-    assert "no events" in check_plan(world(recent_events=[]), plan(say("Hello!")))[0]
-    # Stale events are not "no events": the prompt cannot tell them from new ones, so speech there
-    # is measured, not failed.
-    assert (
-        check_plan(world(recent_events=list(STALE_EVENTS)), plan(say("Hello!"))) == []
-    )
+    assert "no new events" in check_plan(world(), plan(say("Hello!")))[0]
+    # A legacy supervisor sends no new_events: speech there is measured, not failed.
+    assert check_plan(world(legacy=True), plan(say("Hello!"))) == []
+    assert "celebrated" in check_plan(world(faults=["STALL"]), plan(say("Awesome!")))[0]
 
 
 def test_power_regex_leaves_ordinary_words_alone() -> None:
-    w = world()
+    w = world("face.button.click")
     for ok in (
         "Napkins are fun!",
         "Let's explore!",
@@ -136,9 +139,44 @@ async def test_unparseable_after_repair_is_a_failure_and_report_says_fail() -> N
 
 
 @pytest.mark.asyncio
-async def test_repeat_say_is_counted() -> None:
-    same = json.dumps({"actions": [say("Ooh!")], "ttl_ms": 2000})
-    r = await run_scenario(by_id("quiet_stale"), fake(*[same] * 4), seed=0)
-    rep = format_report([r], title="t")
-    row = next(line for line in rep.splitlines() if line.startswith("| quiet_stale"))
-    assert row.split(" | ")[6] == "3"  # 4 ticks, 3 consecutive repeats
+async def test_quiet_ticks_never_reach_the_model() -> None:
+    seen: list = []
+    r = await run_scenario(by_id("quiet"), fake(seen=seen), seed=0)
+    assert seen == [] and all(t.skipped and t.plan["actions"] == [] for t in r.ticks)
+
+
+@pytest.mark.asyncio
+async def test_heard_applies_the_scheduler_cooldowns_and_repeats_count_openings() -> (
+    None
+):
+    ball = json.dumps({"actions": [say("Ooh! A ball!")], "ttl_ms": 2000})
+    again = json.dumps({"actions": [say("Ooh, a ball again!")], "ttl_ms": 2000})
+    lost = json.dumps({"actions": [], "ttl_ms": 500})
+    # ball_reacquired: acquired, lost, acquired, 5 s apart. Same text 10 s later is dropped.
+    r = await run_scenario(by_id("ball_reacquired"), fake(ball, lost, ball), seed=0)
+    assert [t.heard for t in r.ticks] == [["Ooh! A ball!"], [], []]
+    # Reworded, it is heard, and counts as a repeat a child would notice.
+    r = await run_scenario(by_id("ball_reacquired"), fake(ball, lost, again), seed=0)
+    assert [t.heard for t in r.ticks] == [["Ooh! A ball!"], [], ["Ooh, a ball again!"]]
+    row = next(
+        line
+        for line in format_report([r], title="t").splitlines()
+        if line.startswith("| ball_reacquired")
+    )
+    assert row.split(" | ")[8] == "1"
+
+
+def test_a_negated_ball_is_not_a_claim() -> None:
+    w = world("vision.ball_lost")
+    assert check_plan(w, plan(say("Hmm, no ball around. Let's explore!"))) == []
+    assert check_plan(w, plan(say("Where did the ball go?"))) == []
+    assert check_plan(w, plan(say("Wait. A ball!")))  # the second sentence claims one
+
+
+def test_openings_ignore_leading_interjections() -> None:
+    from app.eval.planner_sim import _opening
+
+    assert _opening("Ooh! You pressed the button!") == _opening(
+        "Yay! You pressed the button! 🎉"
+    )
+    assert _opening("Oh no! Uh oh. A ball!") == "a ball"

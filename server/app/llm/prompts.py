@@ -86,6 +86,9 @@ Rules:
 - Use scan_for_target when target confidence is uncertain or stale and you need to search.
 - Use approach_until_range when a target is detected and you should move into a safe distance band.
 - Use retreat_and_recover after close-call navigation moments to back off and reset orientation.
+- "New events" lists what happened since your last plan; "Recent events" is
+  older context and may repeat across ticks. React to New events, not to
+  Recent events.
 - Autonomous quiet default: if this is a heartbeat tick with NO new
   salient event in the world state (no button press, no ball transition,
   no mode change, no fault, no close obstacle, no recent conversation
@@ -122,26 +125,75 @@ def _render_power(state: WorldState) -> str:
     return " — ".join(parts)
 
 
+# Events the supervisor answers itself: it owns battery announcements, and the prompt tells the
+# planner not to make its own. Shown, they drew "my battery is getting low" (Planner suite).
+SUPERVISOR_OWNED_EVENTS = frozenset(
+    {
+        "power.low_soc_raised",
+        "power.undervoltage_raised",
+        "power.undervoltage_cleared",
+    }
+)
+
+
+def ball_seen(state: WorldState) -> bool:
+    """The ball gate. The supervisor's ball_detected is confidence > 0.3."""
+    return (
+        state.ball_detected
+        and state.ball_confidence >= BALL_MIN_CONFIDENCE
+        and 0 <= state.vision_age_ms <= BALL_MAX_AGE_MS
+    )
+
+
+def _planner_events(events: list[str], state: WorldState) -> list[str]:
+    """What the planner is shown. vision.ball_acquired fires at 0.60 on the robot; with the gate
+    shut it would contradict "Ball detected: False", so it is held back with the ball."""
+    hidden = SUPERVISOR_OWNED_EVENTS
+    if not ball_seen(state):
+        hidden = hidden | {"vision.ball_acquired"}
+    return [e for e in events if e not in hidden]
+
+
+def planner_new_events(state: WorldState) -> list[str] | None:
+    if state.new_events is None:
+        return None
+    return _planner_events(state.new_events, state)
+
+
+def is_quiet_tick(state: WorldState) -> bool:
+    """Nothing has happened since the last plan the robot accepted.
+
+    The prompt's own rule says the answer is an empty plan, so the server returns one without
+    asking the model (Vantage SIM-INTERACTION "Planner suite"). Idle life on a quiet robot is the
+    personality worker's, not the planner's. False when the supervisor does not send new_events.
+    """
+    new = planner_new_events(state)
+    return new is not None and not new
+
+
+QUIET_PLAN_TTL_MS = 500
+
+
 def format_user_prompt(state: WorldState) -> str:
     """Build the user message from a world-state snapshot."""
     faults = ", ".join(state.faults) if state.faults else "none"
     conf = f"{state.clear_confidence:.0%}" if state.clear_confidence >= 0 else "n/a"
     ball_conf = f"{state.ball_confidence:.2f}"
-    # The ball gate, in code (SIM-INTERACTION "Planner suite", P2). The supervisor sends
-    # ball_detected = confidence > 0.3, and the model announced balls the prompt's own rule
-    # ruled out. It is shown as detected only when the rule below would allow a mention.
-    ball_seen = (
-        state.ball_detected
-        and state.ball_confidence >= BALL_MIN_CONFIDENCE
-        and 0 <= state.vision_age_ms <= BALL_MAX_AGE_MS
-    )
+    # The ball gate, in code (SIM-INTERACTION "Planner suite", P2): shown as detected only when
+    # the prompt's own rule would allow a mention.
+    ball_shown = ball_seen(state)
     vision_age = f"{state.vision_age_ms:.0f} ms" if state.vision_age_ms >= 0 else "n/a"
     power = _render_power(state)
     # 0 mm = no range reading yet. Valid ranges always > 0 for a real obstacle;
     # sensor floor is ~40 mm even for the closest object.
     range_str = f"{state.range_mm} mm" if state.range_mm > 0 else "unknown"
-    recent_events = (
-        ", ".join(state.recent_events[-5:]) if state.recent_events else "none"
+    shown_recent = _planner_events(state.recent_events, state)
+    recent_events = ", ".join(shown_recent[-5:]) if shown_recent else "none"
+    shown_new = planner_new_events(state)
+    new_events_line = (
+        ""
+        if shown_new is None
+        else f"- New events: {', '.join(shown_new[-5:]) or 'none'}\n"
     )
 
     return (
@@ -151,12 +203,13 @@ def format_user_prompt(state: WorldState) -> str:
         f"- Range sensor: {range_str}\n"
         f"- Faults: {faults}\n"
         f"- Path clear confidence: {conf}\n"
-        f"- Ball detected: {ball_seen}"
+        f"- Ball detected: {ball_shown}"
         f" (confidence: {ball_conf}, bearing: {state.ball_bearing_deg:.1f} deg)\n"
         f"- Vision age: {vision_age}\n"
         f"- Current speed: L={state.speed_l_mm_s}  R={state.speed_r_mm_s} mm/s\n"
         f"- Speed after safety caps: v={state.v_capped}  w={state.w_capped}\n"
         f"- Active skill: {state.planner_active_skill}\n"
+        f"{new_events_line}"
         f"- Recent events: {recent_events}\n"
         f"- Trigger: {state.trigger}\n"
         f"\nWhat should Robot Buddy do right now?"

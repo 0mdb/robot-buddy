@@ -54,6 +54,9 @@ class WorldState(BaseModel):
     w_capped: float = 0.0
     trigger: str = "heartbeat"
     recent_events: list[str] = Field(default_factory=list)
+    # Events since the last plan the robot accepted. None = a supervisor that predates the field:
+    # render as before and never treat the tick as quiet.
+    new_events: list[str] | None = None
     planner_active_skill: str = "patrol_drift"
     face_talking: bool = False
     face_listening: bool = False
@@ -64,7 +67,9 @@ class WorldState(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-def _require(*names: str) -> ConfigDict:
+def _require(
+    *names: str, enums: dict[str, tuple[str, ...]] | None = None
+) -> ConfigDict:
     """Mark fields required in the JSON schema even though they have Python defaults.
 
     The ``action`` discriminator defaults to its own literal, so pydantic leaves it out of
@@ -72,9 +77,15 @@ def _require(*names: str) -> ConfigDict:
     unguided (``{"emote": "neutral"}``), and ``ModelPlan`` rejects such an action, so the
     whole plan is lost (SIM-INTERACTION "Planner suite", P1). Same fix as conversation's B4.
     """
-    return ConfigDict(
-        json_schema_extra=lambda schema: schema.update(required=list(names))
-    )
+
+    def extra(schema: dict) -> None:
+        schema["required"] = list(names)
+        # Names checked by a Python validator are free strings to the schema, so guided decoding
+        # could emit "concerned" and lose the plan to the validator. List them in the schema.
+        for prop, values in (enums or {}).items():
+            schema["properties"][prop]["enum"] = list(values)
+
+    return ConfigDict(json_schema_extra=extra)
 
 
 class SayAction(BaseModel):
@@ -100,7 +111,9 @@ VALID_SKILLS = frozenset(
 
 
 class EmoteAction(BaseModel):
-    model_config = _require("action", "name", "intensity")
+    model_config = _require(
+        "action", "name", "intensity", enums={"name": CANONICAL_EMOTIONS}
+    )
 
     action: Literal["emote"] = "emote"
     name: str
@@ -117,7 +130,9 @@ class EmoteAction(BaseModel):
 
 
 class GestureAction(BaseModel):
-    model_config = _require("action", "name")
+    model_config = _require(
+        "action", "name", enums={"name": FACE_GESTURES + BODY_GESTURES}
+    )
 
     action: Literal["gesture"] = "gesture"
     name: str

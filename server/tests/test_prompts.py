@@ -169,3 +169,49 @@ def test_ball_shown_detected_only_when_the_gate_passes():
     assert "Ball detected: False" in format_user_prompt(_ball_ws(ball_detected=False))
     # The raw confidence still reaches the model, so it can say "maybe" without claiming a ball.
     assert "confidence: 0.52" in format_user_prompt(_ball_ws(ball_confidence=0.52))
+
+
+def test_new_events_line_only_when_the_supervisor_sends_it():
+    base = dict(
+        robot_id="r",
+        seq=1,
+        monotonic_ts_ms=0,
+        mode="WANDER",
+        range_mm=900,
+        recent_events=["mode.changed"],
+    )
+    assert "New events" not in format_user_prompt(WorldState(**base))
+    assert "- New events: none\n" in format_user_prompt(
+        WorldState(**base, new_events=[])
+    )
+    p = format_user_prompt(WorldState(**base, new_events=["face.button.click"]))
+    assert "- New events: face.button.click\n" in p
+    assert "- Recent events: mode.changed\n" in p
+
+
+def test_supervisor_owned_and_gated_events_are_hidden_and_quiet():
+    from app.llm.prompts import is_quiet_tick
+
+    base = dict(robot_id="r", seq=1, monotonic_ts_ms=0, mode="WANDER", range_mm=900)
+    # Battery events are the supervisor's to announce: hidden, and alone they make a quiet tick.
+    ws = WorldState(
+        **base,
+        new_events=["power.low_soc_raised"],
+        recent_events=["power.low_soc_raised"],
+    )
+    assert is_quiet_tick(ws)
+    assert "power." not in format_user_prompt(ws)
+    # vision.ball_acquired fires at 0.60 on the robot: hidden while the 0.80 gate is shut ...
+    shut = WorldState(
+        **base,
+        new_events=["vision.ball_acquired"],
+        ball_detected=True,
+        ball_confidence=0.65,
+        vision_age_ms=100.0,
+    )
+    assert is_quiet_tick(shut)
+    assert "ball_acquired" not in format_user_prompt(shut)
+    # ... and shown once it opens.
+    open_ = shut.model_copy(update={"ball_confidence": 0.9})
+    assert not is_quiet_tick(open_)
+    assert "- New events: vision.ball_acquired\n" in format_user_prompt(open_)

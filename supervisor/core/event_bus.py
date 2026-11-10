@@ -205,7 +205,7 @@ class PlannerEventBus:
                 "fault.raised",
                 {
                     "flags": int(robot.fault_flags),
-                    "faults": self._fault_names(robot.fault_flags),
+                    "faults": self.fault_names(robot.fault_flags),
                 },
                 now_ms,
             )
@@ -214,7 +214,7 @@ class PlannerEventBus:
                 "fault.cleared",
                 {
                     "flags": int(self._last_fault_flags),
-                    "faults": self._fault_names(self._last_fault_flags),
+                    "faults": self.fault_names(self._last_fault_flags),
                 },
                 now_ms,
             )
@@ -307,7 +307,7 @@ class PlannerEventBus:
         }
 
     @staticmethod
-    def _fault_names(flags: int) -> list[str]:
+    def fault_names(flags: int) -> list[str]:
         names: list[str] = []
         for fault in Fault:
             if fault == Fault.NONE:

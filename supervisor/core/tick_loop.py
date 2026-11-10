@@ -1434,6 +1434,7 @@ class TickLoop:
         from supervisor.messages.types import AI_CMD_REQUEST_PLAN
 
         power = self.robot.power
+        new_events = self._event_bus.events_since(self.world.plan_event_cursor, limit=5)
         world_dict = {
             "robot_id": self._robot_id,
             "mode": self.robot.mode.value,
@@ -1446,14 +1447,22 @@ class TickLoop:
                 "pmic_undervoltage": power.pmic_undervoltage,
             },
             "range_mm": self.robot.range_mm,
-            "faults": [],
+            "faults": self._event_bus.fault_names(self.robot.fault_flags),
+            "clear_confidence": round(self.world.clear_confidence, 2),
             "ball_detected": self.world.ball_confidence > 0.3,
             "ball_confidence": round(self.world.ball_confidence, 2),
             "ball_bearing_deg": round(self.world.ball_bearing_deg, 1),
             "vision_age_ms": round(self.world.vision_age_ms, 1),
             "speed_l_mm_s": self.robot.speed_l_mm_s,
             "speed_r_mm_s": self.robot.speed_r_mm_s,
-            "trigger": "periodic",
+            # new_events: since the last plan the robot accepted (the cursor moves in
+            # EventRouter._handle_plan). recent_events: the last five, as context. Without the
+            # split a quiet tick looked like an event tick (Vantage SIM-INTERACTION "Planner suite").
+            "trigger": "event" if new_events else "heartbeat",
+            "new_events": [e.type for e in new_events],
+            "new_events_through_seq": (
+                new_events[-1].seq if new_events else self.world.plan_event_cursor
+            ),
             "recent_events": [e.type for e in self._event_bus.latest(5)],
             "planner_active_skill": self.world.active_skill,
             "face_talking": self.robot.face_talking,

@@ -343,3 +343,15 @@ def test_plan_schema_requires_the_action_discriminator():
 def test_plan_without_action_key_still_rejected():
     with pytest.raises(ValidationError):
         ModelPlan.model_validate({"actions": [{"emote": "neutral"}], "ttl_ms": 500})
+
+
+def test_plan_schema_lists_the_names_the_validators_accept():
+    """A free-string name let guided decoding emit "concerned"; the validator then dropped the
+    whole plan (Planner suite)."""
+    from app.llm.expressions import BODY_GESTURES, CANONICAL_EMOTIONS, FACE_GESTURES
+
+    d = ModelPlan.model_json_schema()["$defs"]
+    assert d["EmoteAction"]["properties"]["name"]["enum"] == list(CANONICAL_EMOTIONS)
+    assert d["GestureAction"]["properties"]["name"]["enum"] == list(
+        FACE_GESTURES + BODY_GESTURES
+    )

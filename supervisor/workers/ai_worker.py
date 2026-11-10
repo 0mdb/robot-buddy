@@ -268,6 +268,9 @@ class AIWorker(BaseWorker):
                         "t_server_ms": int(data.get("server_monotonic_ts_ms", 0)),
                         "actions": data.get("actions", []),
                         "ttl_ms": int(data.get("ttl_ms", 2000)),
+                        "new_events_through_seq": int(
+                            world_state.get("new_events_through_seq", 0)
+                        ),
                     },
                     ref_seq=self._plan_seq,
                 )

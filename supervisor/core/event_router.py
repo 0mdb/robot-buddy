@@ -285,6 +285,9 @@ class EventRouter:
 
         # Update world state
         self._world.plan_seq_last_accepted = plan_seq
+        self._world.plan_event_cursor = max(
+            self._world.plan_event_cursor, int(p.get("new_events_through_seq", 0))
+        )
         self._world.last_plan_mono_ms = now_ms
         self._world.last_plan_actions = len(validated.actions)
         self._world.last_plan_id = plan_id

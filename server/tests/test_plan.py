@@ -165,3 +165,28 @@ async def test_plan_llm_error(monkeypatch):
     resp = await _request("POST", "/plan", json=WORLD_STATE)
     assert resp.status_code == 502
     assert resp.json()["error"] == "llm_error"
+
+
+@pytest.mark.asyncio
+async def test_quiet_tick_returns_empty_plan_without_the_model(monkeypatch):
+    """new_events == [] is the prompt's quiet default, applied in code: no LLM call."""
+    _attach_fake_ollama()
+    calls: list[object] = []
+
+    async def mock_generate_plan(self, state):
+        calls.append(state)
+        return VALID_PLAN
+
+    monkeypatch.setattr(OllamaClient, "generate_plan", mock_generate_plan)
+
+    quiet = {**WORLD_STATE, "new_events": [], "recent_events": ["face.button.click"]}
+    resp = await _request("POST", "/plan", json=quiet)
+    assert resp.status_code == 200
+    assert resp.json()["actions"] == [] and resp.json()["ttl_ms"] == 500
+    assert calls == []
+
+    # An event, or a supervisor that predates new_events, still asks the model.
+    for ws in ({**WORLD_STATE, "new_events": ["face.button.click"]}, WORLD_STATE):
+        resp = await _request("POST", "/plan", json=ws)
+        assert len(resp.json()["actions"]) == 2
+    assert len(calls) == 2

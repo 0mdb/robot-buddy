@@ -321,6 +321,9 @@ class WorldState:
     last_plan: list[dict] | None = None
     last_plan_error: str = ""
     plan_seq_last_accepted: int = -1
+    # Highest planner-event seq covered by an accepted plan. Moves only when a plan arrives, so
+    # a failed request (502, timeout, busy) does not swallow its window's events.
+    plan_event_cursor: int = 0
     plan_dropped_stale: int = 0
     plan_dropped_cooldown: int = 0
     plan_dropped_out_of_order: int = 0

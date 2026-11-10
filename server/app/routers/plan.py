@@ -11,6 +11,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from app.llm.base import LLMBusyError, LLMError, LLMTimeoutError, LLMUnavailableError
+from app.llm.prompts import QUIET_PLAN_TTL_MS, is_quiet_tick
 from app.llm.schemas import ModelPlan, PlanResponse, WorldState
 
 log = logging.getLogger(__name__)
@@ -23,6 +24,18 @@ async def create_plan(
     state: WorldState, request: Request
 ) -> PlanResponse | JSONResponse:
     """Accept a world-state snapshot and return a bounded performance plan."""
+    if is_quiet_tick(state):
+        # The prompt's quiet default, applied in code: no model call, no GPU, no admission slot.
+        return PlanResponse(
+            plan_id=uuid.uuid4().hex,
+            robot_id=state.robot_id,
+            seq=state.seq,
+            monotonic_ts_ms=state.monotonic_ts_ms,
+            server_monotonic_ts_ms=int(time.monotonic() * 1000),
+            actions=[],
+            ttl_ms=QUIET_PLAN_TTL_MS,
+        )
+
     llm = request.app.state.llm
     gate = getattr(request.app.state, "plan_gate", None)
 

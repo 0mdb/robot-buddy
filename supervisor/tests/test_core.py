@@ -1182,3 +1182,83 @@ class TestScreenGestures:
         )
         assert not loop.world.ptt_active
         assert not loop.world.session_id
+
+
+class TestPlannerNewEvents:
+    """new_events since the last *accepted* plan (Vantage SIM-INTERACTION "Planner suite")."""
+
+    def _loop(self):
+        from supervisor.core.tick_loop import TickLoop
+
+        workers = MagicMock()
+        workers.send_to = AsyncMock(return_value=True)
+        return TickLoop(reflex=None, face=None, workers=workers)
+
+    @staticmethod
+    async def _request(loop) -> dict:
+        loop._workers.send_to.reset_mock()
+        await loop._request_plan(0.0)
+        (call,) = loop._workers.send_to.call_args_list
+        return call.args[2]["world_state"]
+
+    @staticmethod
+    async def _accept(loop, ws: dict, plan_seq: int) -> None:
+        await loop._event_router.route(
+            "ai",
+            Envelope(
+                type="ai.plan.received",
+                src="ai",
+                seq=plan_seq,
+                t_ns=0,
+                payload={
+                    "plan_id": f"p{plan_seq}",
+                    "plan_seq": plan_seq,
+                    "actions": [],
+                    "ttl_ms": 500,
+                    "new_events_through_seq": ws["new_events_through_seq"],
+                },
+            ),
+        )
+
+    @pytest.mark.asyncio
+    async def test_quiet_after_accepted_plan_events_kept_after_failed_one(self):
+        loop = self._loop()
+        loop._event_bus.emit("face.button.click", {}, 1000.0)
+        loop._event_bus.emit("vision.ball_acquired", {}, 1100.0)
+
+        ws = await self._request(loop)
+        assert ws["trigger"] == "event"
+        assert ws["new_events"] == ["face.button.click", "vision.ball_acquired"]
+
+        # The request failed (no plan came back): the next one still carries the events.
+        ws = await self._request(loop)
+        assert ws["new_events"] == ["face.button.click", "vision.ball_acquired"]
+
+        await self._accept(loop, ws, 1)
+        ws = await self._request(loop)
+        assert ws["new_events"] == [] and ws["trigger"] == "heartbeat"
+        assert ws["recent_events"] == ["face.button.click", "vision.ball_acquired"]
+
+        loop._event_bus.emit("face.touch.press", {}, 2000.0)
+        ws = await self._request(loop)
+        assert ws["new_events"] == ["face.touch.press"]
+
+    @pytest.mark.asyncio
+    async def test_out_of_order_plan_never_moves_the_cursor_back(self):
+        loop = self._loop()
+        loop._event_bus.emit("mode.changed", {}, 1000.0)
+        ws_old = await self._request(loop)
+        loop._event_bus.emit("face.button.click", {}, 1100.0)
+        ws_new = await self._request(loop)
+        await self._accept(loop, ws_new, 2)
+        await self._accept(loop, ws_old, 1)  # late, dropped as out of order
+        assert loop.world.plan_event_cursor == ws_new["new_events_through_seq"]
+
+    @pytest.mark.asyncio
+    async def test_faults_and_clear_confidence_are_sent(self):
+        loop = self._loop()
+        loop.robot.fault_flags = int(Fault.STALL | Fault.OBSTACLE)
+        loop.world.clear_confidence = 0.234
+        ws = await self._request(loop)
+        assert ws["faults"] == ["STALL", "OBSTACLE"]
+        assert ws["clear_confidence"] == 0.23
