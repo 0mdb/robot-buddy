@@ -53,3 +53,27 @@ class WsHub:
 
         for ws in stale:
             self._clients.discard(ws)
+
+    def broadcast_event(self, event_type: str, payload: dict[str, Any]) -> None:
+        """Non-blocking broadcast of a typed event to all clients."""
+        if not self._clients:
+            return
+
+        envelope = json.dumps(
+            {
+                "schema": "supervisor_ws_v2",
+                "type": event_type,
+                "ts_ms": int(time.monotonic() * 1000),
+                "payload": payload,
+            }
+        )
+
+        stale: list[WebSocket] = []
+        for ws in self._clients:
+            try:
+                asyncio.ensure_future(ws.send_text(envelope))
+            except Exception:
+                stale.append(ws)
+
+        for ws in stale:
+            self._clients.discard(ws)

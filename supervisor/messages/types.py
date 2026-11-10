@@ -17,6 +17,8 @@ VISION_LIFECYCLE_STARTED = "vision.lifecycle.started"
 VISION_LIFECYCLE_STOPPED = "vision.lifecycle.stopped"
 VISION_LIFECYCLE_ERROR = "vision.lifecycle.error"
 VISION_FACE_DETECTED = "vision.face.detected"
+VISION_CMD_FACE_ENROLL = "vision.cmd.face_enroll"
+VISION_FACE_ENROLL_RESULT = "vision.face.enroll_result"
 
 # ── TTS (§4.4) ──────────────────────────────────────────────────
 
