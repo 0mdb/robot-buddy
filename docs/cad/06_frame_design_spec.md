@@ -502,4 +502,14 @@ No new interferences.
 5. Interference check + Mass Properties (CoG between the axles).
 6. Renders to Ben, then print in PETG to check fit, then PET-CF/ASA.
 
+> Amendment (Ben, 2026-11-10, IMU): the **BMI270 IMU breakout** (SparkFun Qwiic, cabled to the
+> reflex board's J5) hangs **under the Pi deck, centred at (−54, 0)**, parts down, its back at
+> z 21 on 3 mm spacers (07 F19), in the bay aft of the reflex board (x −66.7 … −41.3, |y| ≤ 12.7;
+> the deck over the reflex board has only 5.4 of headroom). The parts layer (z ≥ 16.4) stays
+> 4.9 above the reflex USB-C plug (z ≤ 11.5). Consequences for the deck: the USB cable's
+> pass-through moves from the slot at x −62 … −54 (now under the IMU) to an **open notch in the
+> rear edge, x −75 … −68, |y| ≤ 4** (the cable drops in from behind; the plugs never pass
+> through), and the vent slots start at x −38 (was −45) to clear the IMU's front insert bosses.
+> Board dimensions are TBC (25.4 square, Ø3.3 on a 20.32 square: measure before printing).
+
 > Amendment (loop P4b, 2026-10-31): rear deck posts (−48, ±20) → (−70, ±20), deck rear edge x −66 → −75. At −48 the deck's M3 screws sat under the Pi board and could not be reached with the stack fitted (R1-F1, `docs/cad/loop/R1_assembly.md`).

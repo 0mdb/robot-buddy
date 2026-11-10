@@ -46,16 +46,21 @@ POCKET_R = 3.0  # their plan corner radius
 # posts / standoffs / jack blocks / openings, each grown by a 2.4 web, and a 3 mm edge band.
 # Cells between the old rib lines (x -60/-40/-20/0/20/45/66, y 0/+-21.5/+-36.5/+-47), 1.2
 # off each line, shrunk until clear. (x0, x1, y0, y1)
+# 2026-11-10: the -y cells were never trimmed around the reflex standoffs the way the +y
+# cells were; they cut 3.9 into the (-36.5, -19.5) and (9, -19.5) bosses (the insert
+# hole reaches z -2.2, the pocket floor is z -3). Now mirrored from +y. The front reflex
+# standoffs moved to (19.5, +-19.5) with the 63 mm board (register M12): |y| <= 11.8
+# keeps a 3.1 web to their Ø9.2 bosses. pocket_boss_webs() checks this.
 TOP_POCKETS = (
     (-73.3, -61.2, -12.8, -1.2),
     (-73.3, -61.2, 1.2, 12.8),
-    (-58.8, -41.2, -20.3, -1.2),
+    (-58.8, -43.2, -20.3, -1.2),
     (-58.8, -43.2, 1.2, 20.3),
-    (-38.8, -21.2, -18.8, -1.2),
+    (-38.8, -21.2, -11.8, -1.2),
     (-38.8, -21.2, 1.2, 11.8),
     (-18.8, -1.2, -20.3, -1.2),
     (-18.8, -1.2, 1.2, 20.3),
-    (1.2, 18.8, -18.8, -1.2),
+    (1.2, 18.8, -11.8, -1.2),
     (1.2, 18.8, 1.2, 11.8),
     (22.7, 43.8, -45.8, -37.7),
     (22.7, 43.8, 37.7, 45.8),
@@ -98,6 +103,14 @@ MOT_ENC_W = (
 # middle", so both sides sit alike): chassis z 6.8-20.2, its bottom 4 over the mount foot's top.
 MOT_CONN_L, MOT_CONN_OUT, MOT_CONN_IN = 16.8, 8.5, 1.0  # length, protrusion, inset from the end
 MOT_CONN_Z = 13.35 / 2  # half-height about the motor axis
+# Gearbox end lug (Ben 2026-11-10, photo): a small tab with a hole standing off the gearbox's
+# far end, mid-thickness. Ben's original mount (CAD/exports/TT_Motor_Mount_L.stl) carries a
+# 2.9 x 5.4 slot through its 2.8 end wall for it: 7.7-10.6 out from the motor face, z -3.2..
+# +2.2 about the hole-pair midpoint. Envelope: that slot less 0.25 a side, MOT_LUG_L long (TBD
+# measure; the slot goes through the stop, so any length <= the stop's 3.0 is covered).
+MOT_LUG_Y = (7.7, 10.6)  # slot span along the shaft axis, from the mount face
+MOT_LUG_Z = (-3.2, 2.2)  # slot span across, about the hole-pair midpoint (original mount)
+MOT_LUG_L, MOT_LUG_CLR = 2.5, 0.25
 
 # --------------------------------------------------------- motor mount (measured)
 # TT_Motor_Mount_L.SLDPRT in its own frame (read 2026-10-30): foot Z 0..3, upright
@@ -197,6 +210,9 @@ def motor_ops() -> tuple[list[str], float]:
         ],
         f"cyl|y|0 {MOT_HOLE_PITCH / 2}|all|{MOT_HOLE_D / 2}|cut",
         f"cyl|y|0 {-MOT_HOLE_PITCH / 2}|all|{MOT_HOLE_D / 2}|cut",
+        # gearbox end lug (symmetric in z: the motor envelope may be placed z-flipped)
+        f"box|{MOT_GEAR_END - 0.01} {MOT_GEAR_END + MOT_LUG_L}|{MOT_LUG_Y[0] + MOT_LUG_CLR} {MOT_LUG_Y[1] - MOT_LUG_CLR}|"
+        f"{-(MOT_LUG_Z[1] - MOT_LUG_Z[0]) / 2 + MOT_LUG_CLR} {(MOT_LUG_Z[1] - MOT_LUG_Z[0]) / 2 - MOT_LUG_CLR}",
     ]
     v_gear = (MOT_GEAR_END - g0) * MOT_THICK * MOT_GEAR_W
     v_can = (g0 - e1) * (MOT_THICK - 3.4) * MOT_CAN_W
@@ -212,7 +228,8 @@ def motor_ops() -> tuple[list[str], float]:
     v_holes = (
         2 * math.pi * (MOT_HOLE_D / 2) ** 2 * MOT_THICK
     )  # both holes lie in the gearbox
-    return ops, v_gear + v_can + v_enc + v_conn + v_shaft - v_holes
+    v_lug = MOT_LUG_L * (MOT_LUG_Y[1] - MOT_LUG_Y[0] - 2 * MOT_LUG_CLR) * (MOT_LUG_Z[1] - MOT_LUG_Z[0] - 2 * MOT_LUG_CLR)
+    return ops, v_gear + v_can + v_enc + v_conn + v_shaft - v_holes + v_lug
 
 
 def row(r: list[float], t: tuple[float, float, float]) -> str:
@@ -375,11 +392,29 @@ def shape_mask(s: tuple, X, Y):
     raise ValueError(s)
 
 
+def pocket_boss_webs(min_web: float = 2.0) -> list[tuple[tuple, tuple, float]]:
+    """(boss centre, pocket, web) for every top pocket closer than min_web to a reflex
+    standoff or deck-post boss. Empty when clear. (2026-11-10: the -y pockets cut 3.9 into
+    the reflex bosses and nothing caught it.)"""
+    rx, ry, _ = REFLEX_AT
+    bosses = [(rx + dx, ry + dy) for dx, dy in corners(*REFLEX_HOLES)] + list(DECK_POSTS)
+    bad = []
+    for bx, by in bosses:
+        for x0, x1, y0, y1 in TOP_POCKETS:
+            d = math.hypot(max(x0 - bx, 0, bx - x1), max(y0 - by, 0, by - y1)) - INS_BOSS / 2
+            if d < min_web:
+                bad.append(((bx, by), (x0, x1, y0, y1), round(d, 2)))
+    return bad
+
+
 def plate_features() -> list[tuple[str, tuple, float, float]]:
     """(op, shape, z0, z1) in build order: all bosses, then all cuts.
 
     op: 'add' boss, 'cut' blind cut over z0..z1, 'all' through cut.
     """
+    if not BOTTOM_RIBS:
+        bad = pocket_boss_webs()
+        assert not bad, f"top pockets too close to standoff/post bosses: {bad}"
     add: list[tuple[str, tuple, float, float]] = [("add", ("outline",), -PLATE_T, 0.0)]
     cut: list[tuple[str, tuple, float, float]] = []
     # motor-mount inserts: under-boss, sized down where a plate edge is close
@@ -711,8 +746,34 @@ DECK_X = (
 DECK_HW = 29.5
 DECK_TONGUE = (36.0, 14.0)  # front end x, half-width
 CLR_M25 = 2.9
-DECK_VENTS = ((-45.0, 5.0), (-12.0, -6.0, 0.0, 6.0, 12.0), 2.0)  # x0 x1, ys, r
-DECK_CABLE_REAR = (-62.0, -54.0, -10.0, 10.0)  # to level 0 (reflex board)
+DECK_VENTS = ((-38.0, 5.0), (-12.0, -6.0, 0.0, 6.0, 12.0), 2.0)  # x0 x1, ys, r (x0 -45 -> -38: IMU, 2026-11-10)
+# 2026-11-10 (IMU): the reflex USB-C cable's pass-through moved from a slot at x -62..-54 (now
+# under the IMU) to an open notch in the rear edge; the cable drops in from behind, so it only
+# needs the cable's width, not the plug's. Rect runs 1 past the edge (no tangent end).
+DECK_CABLE_REAR = (-76.0, -68.0, -4.0, 4.0)  # to level 0 (reflex board)
+
+# IMU (2026-11-10, Ben: option 1): SparkFun 6DoF BMI270 Qwiic breakout (docs/reflex-wiring.md,
+# J5 cable), hung under the deck aft of the reflex board, centred on the chassis centreline:
+# the bay x -75..-40 is clear at deck height (plate posts at |y| 20 +- 4.6, carriages |y| >= 28),
+# and the deck over the reflex board itself has only 5.4 of headroom. Board parts DOWN, back
+# on 4 nylon spacers, M2.5 x 8 SHCS up through board + spacer into M2.5 x 4 inserts pressed
+# into the deck from below (the deck prints top up, so the bosses for the insert length go on
+# its top, under the Pi). The USB-C plug below (z 5..11.5) has 4.9 to the parts layer.
+# TBC (Ben's calipers): 25.4 x 25.4 board, Ø3.3 holes on a 20.32 square, 3.0 parts height.
+IMU_PCB = (25.4, 25.4, 1.6)
+IMU_HOLES = (10.16, 10.16)  # half pattern
+IMU_HOLE_D, IMU_PARTS_H = 3.3, 3.0
+IMU_AT = (-54.0, 0.0)  # board centre (x, y)
+IMU_SPACER = (5.0, 2.7, 3.0)  # OD, ID, length
+IMU_BOSS_D, IMU_BOSS_H, IMU_INS_D = 6.0, 1.5, 3.6  # deck-top boss, M2.5 x 4 insert pocket
+
+
+def imu_geom() -> dict:
+    cx, cy = IMU_AT
+    w, h, t = IMU_PCB
+    zt = DECK_Z - IMU_SPACER[2]  # board back
+    return {"x": (cx - w / 2, cx + w / 2), "y": (cy - h / 2, cy + h / 2), "z_pcb": (zt - t, zt),
+            "holes": [(cx + dx, cy + dy) for dx, dy in corners(*IMU_HOLES)]}
 DECK_CABLE_FRONT = (
     26.0,
     32.0,
@@ -849,6 +910,9 @@ def deck_features() -> list[tuple[str, tuple, float, float]]:
     cut.append(("all", ("rect", *DECK_CABLE_REAR), 0, 0))
     fx0, fx1, fy, fr = DECK_CABLE_FRONT
     cut.append(("all", ("slot", fx0, fy, fx1, fy, fr), 0, 0))
+    for x, y in imu_geom()["holes"]:  # IMU: insert bosses on the top, pockets through
+        add.append(("add", ("circle", x, y, IMU_BOSS_D / 2), z1, z1 + IMU_BOSS_H))
+        cut.append(("all", ("circle", x, y, IMU_INS_D / 2), 0, 0))
     return add + cut
 
 
@@ -1200,7 +1264,7 @@ def rebuild_manifest(win: str) -> list[str]:
         *plate_lines(plate),
         f"part|{motor}",
         *m_ops,
-        f"expect|vol {m_vol:.1f} 5.0|box {MOT_CAN_END} {MOT_GEAR_END} {-MOT_CONN_OUT} "
+        f"expect|vol {m_vol:.1f} 5.0|box {MOT_CAN_END} {MOT_GEAR_END + MOT_LUG_L} {-MOT_CONN_OUT} "
         f"{MOT_THICK + MOT_SHAFT_LEN} {-MOT_ENC_W / 2} {MOT_ENC_W / 2} 0.05",
         "save",
         *envelope_lines(pi, face, reflex),
@@ -1225,6 +1289,7 @@ def rebuild_manifest(win: str) -> list[str]:
         *camera_module_lines(cad + r"\library\camera_module3_envelope.SLDPRT"),
         *hcsr04_lines(cad + r"\library\hcsr04_envelope.SLDPRT"),
         *pam8302_lines(cad + r"\library\pam8302_envelope.SLDPRT"),
+        *bmi270_lines(cad + r"\library\bmi270_envelope.SLDPRT"),
         *sonar_holder_lines(cad + r"\parts\RB-PRT-070_sonar_holder.SLDPRT"),
         # P6m2 (2026-11-08): the mic disc envelope + its TPU washers (the disc hangs in the canopy's hump)
         *mic_disc_lines(cad + r"\library\mic_disc_envelope.SLDPRT"),
@@ -1297,6 +1362,7 @@ def rebuild_manifest(win: str) -> list[str]:
             for sd, s in (("L", +1), ("R", -1))
         ],
         f"comp|amp|{cad}\\library\\pam8302_envelope.SLDPRT|{row(ROT_I, (0, 0, 0))}",
+        f"comp|imu|{cad}\\library\\bmi270_envelope.SLDPRT|{row(ROT_I, (0, 0, 0))}",
         *hardware_comps(cad + r"\library"),
         "interfere",
         "asmsave",
@@ -2633,6 +2699,12 @@ def mount_v2_features(mirror: bool) -> list[tuple]:
         ops.append(("cut", ("cyly", hx, hz + dz, y0, MM_FACE + 0.1, INS_HOLE / 2)))
     for x, y in MOUNT_FOOT_HOLES:
         ops.append(("cut", ("cylz", x, y, -0.1, MM_FOOT_T + 0.1, CLR_M3 / 2)))
+    # 2026-11-10 (Ben): slot through the end stop for the gearbox end lug, as his original
+    # mount had: 2.9 wide along the shaft axis, +-3.2 about the motor axis (his slot ran
+    # -3.2..+2.2; symmetric here so either face-up of the motor fits)
+    ly0, ly1 = MM_FACE + MOT_LUG_Y[0], MM_FACE + MOT_LUG_Y[1]
+    lz = max(abs(z) for z in MOT_LUG_Z)
+    ops.append(("cut", ("box", xa - MM_STOP_T - 0.1, xa + 0.1, ly0, ly1, hz - lz, hz + lz)))
     if not mirror:
         return ops
 
@@ -4210,6 +4282,23 @@ def pam8302_lines(path: str) -> list[str]:
     ]
 
 
+def bmi270_lines(path: str) -> list[str]:
+    """BMI270 Qwiic breakout envelope (interference only, chassis frame): the PCB and a parts
+    layer below it over the whole board, cleared Ø5 round each hole (spacer above, SHCS head
+    below), holes Ø3.3 through. TBC: measure the board."""
+    g = imu_geom()
+    (x0, x1), (y0, y1), (zb, zt) = g["x"], g["y"], g["z_pcb"]
+    zp = zb - IMU_PARTS_H
+    rk, rh = 2.5, IMU_HOLE_D / 2
+    ln = [f"part|{path}", f"box|{x0:.3f} {x1:.3f}|{y0:.3f} {y1:.3f}|{zp:.3f} {zt:.3f}"]
+    for x, y in g["holes"]:
+        ln.append(f"cyl|z|{x:.3f} {y:.3f}|{zp - 0.1:.3f} {zb:.3f}|{rk}|cut")
+        ln.append(f"cyl|z|{x:.3f} {y:.3f}|all|{rh}|cut")
+    v = (x1 - x0) * (y1 - y0) * (zt - zp) - 4 * math.pi * (rk * rk * IMU_PARTS_H + rh * rh * IMU_PCB[2])
+    ln += [f"expect|vol {v:.1f} {v * 0.01:.1f}|box {x0:.2f} {x1:.2f} {y0:.2f} {y1:.2f} {zp:.2f} {zt:.2f} 0.05", "save"]
+    return ln
+
+
 def canopy_lines(path: str) -> list[str]:
     f = canopy_features()
     p = f["p"]
@@ -4769,6 +4858,13 @@ def hardware_layout() -> list[tuple[str, "hw.Item", list, str]]:
     # F8: XVF core board -> deck wall (tick 99): M2.5 x 6 into M2.5 x 4 inserts
     add("F8", hw.screw("shcs", 2.5, 6.0), [((x, -40.2, z), (0.0, -1.0, 0.0)) for x, z in core_standoffs()])
     add("F8", I25, [((x, -38.7, z), (0.0, 1.0, 0.0)) for x, z in core_standoffs()])
+    # F19 (2026-11-10): IMU breakout under the deck: M2.5 x 8 up through board + 3 mm spacer
+    # into M2.5 x 4 inserts pressed up into the deck (engages 3.4)
+    ig = imu_geom()
+    add("F19", hw.screw("shcs", 2.5, 8.0), [((x, y, ig["z_pcb"][0]), DN) for x, y in ig["holes"]])
+    add("F19", hw.ring_part("hw_spacer_M2.5x3", "Nylon round spacer M2.5 x 3 (Ø5 x Ø2.7)", *IMU_SPACER),
+        [((x, y, ig["z_pcb"][1]), UP) for x, y in ig["holes"]])
+    add("F19", I25, [((x, y, DECK_Z), UP) for x, y in ig["holes"]])
     # F9 front: flanged button down through the hood into the bulkhead lugs (pre-tilt)
     lx = bh_lug_x()
     add("F9 front", hw.screw("flanged", 3.0, 8.0), [((lx, s * BH_LUG_Y, 130.1), UP) for s in (1, -1)], "pre")

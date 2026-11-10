@@ -312,6 +312,12 @@ before ordering (screw engagement ≥ 1.3 d, tip ≥ 0.5 mm short of the pocket 
 > | 2 | Shoulder bolt ISO 7379 Ø4 x 53.5, M3 thread (head Ø8 x 4) | F4 |
 > | 8 | Washer ISO 7089 M3 (3.2 x 7 x 0.5, A2) | F2 |
 
+> Amendment (Ben, 2026-11-10, IMU): **new F19, BMI270 Qwiic breakout → Pi deck underside:
+> 4 × M2.5 × 8 SHCS up through the board's Ø3.3 holes and a nylon round spacer M2.5 × 3
+> (Ø5 × Ø2.7) into 4 × M2.5 × 4 heat-set inserts pressed up into the deck** (3 mm deck + 1.5
+> boss on its top, Ø3.6 pocket through; 3.4 engaged). Fit the IMU to the deck before the deck
+> goes on its posts. Bill above: +4 M2.5 × 8, +4 M2.5 × 4 inserts, +4 spacers (`hwbom`).
+
 **Totals (stale, see the 2026-11-10 bill above; per robot, +20 % spares when ordering):** M3 inserts ~34 (F1, F2, F5, F7, F8,
 F9, F10, F11), M2.5 inserts 4 (F12); M3 × 6 ×12, M3 × 8 ×15, M3 × 8 button ×4,
 M3 × 10 ×3, M3 × 30 ×4 (kit), M2.5 × 6 ×4, M2.5 × 8 ×4, M3 nyloc ×8, M3 washers ×8.
