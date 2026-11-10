@@ -82,3 +82,9 @@ hardware/kicad/robot-buddy-reflex/qc/
 
 # Eval outputs (L1 conversation suite) — regenerated, never committed
 server/eval_out/
+
+# Household data — personality memory, the household roster, daily usage. Robot-local and
+# private: never committed (the repo has a remote). The service runs from the repo root
+# (deploy/robot-buddy-supervisor.service); `just run` runs from supervisor/.
+/data/
+/supervisor/data/
