@@ -136,6 +136,16 @@ check against the boards when they arrive.
 **PAM8302A (#2130):** 24 × 15 × 2 mm without the header, 1.4 g, 3.5 mm screw terminals
 (about 10 mm tall). The page lists no mounting holes: plan a printed clip or foam tape.
 
+> Amendment (Ben, 2026-11-10): **the amp mounts in the canopy (RB-PRT-004), on its inner
+> left side wall at the front, beside the speaker.** Two rails along x grip the PCB's long
+> edges (1.9 slot, 1.0 grip, 1.2 lip) with a stop at the rear end; the board slides in from
+> the canopy's open front (canopy off) and takes a dot of hot glue. PCB at x 34–58, z 36–51,
+> its back on the wall (y 49.45–51.05); screw terminals at the front end, toward the
+> speaker. The canopy's front follows the 15° wall (x ≈ 62 at z 53), which sets x 58.
+> Envelope `pam8302_envelope` (PCB, 2.0 parts layer 1.2 off the long edges, terminal block,
+> 5-pin header; **measure the board**: parts within 1 mm of the long edges would sit under
+> the lips). The speaker, jack and 5 V leads cross the canopy joint: leave slack.
+
 **Speaker → wiring:** the CMS-30205 lead ends in a PicoBlade 1.25 plug; the Flex output is
 JST PH 2.0 and the PAM8302A has screw terminals. Either cut the plug off for the terminals,
 or crimp a PH 2-pin onto the lead.

@@ -55,14 +55,14 @@
   "up": "+z"
  },
  "RB-PRT-002_bulkhead": {
-  "cad_g": 62.78437729793348,
-  "cm3": 46.01,
-  "grams": 59.35,
+  "cad_g": 54.281930274991126,
+  "cm3": 39.8,
+  "grams": 51.34,
   "mat": "PET-CF",
   "mismatch": [],
   "qty": 1,
   "support": false,
-  "time": "2h 9m 12s",
+  "time": "1h 52m 13s",
   "up": "-x"
  },
  "RB-PRT-003_pi_deck": {
@@ -251,6 +251,17 @@
   "support": false,
   "time": "7m 5s",
   "up": "+z"
+ },
+ "RB-PRT-070_sonar_holder": {
+  "cad_g": 11.687766710823185,
+  "cm3": 8.59,
+  "grams": 11.08,
+  "mat": "PET-CF",
+  "mismatch": [],
+  "qty": 1,
+  "support": false,
+  "time": "29m 29s",
+  "up": "-x"
  },
  "belt_lug6": {
   "cad_g": 7.844111962106823,

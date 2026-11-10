@@ -197,7 +197,7 @@ than black.
 
 1. **TT measurements**: shaft length past the gearbox face, end-screw size, confirm 5.4 / 3.7.
 2. **Coupons** in PETG: TT bore ladder, 624 and 684 seats → `BORE_CLR`, crush interference.
-   > Result (2026-11-08, Ben, PET-CF): **624 seat: 2 notches = 0.15 crush interference** (already the idler default, `idler(interf=0.15)`; no change). **TT bore ladder: 3 notches = 0.15/side** → `BORE_CLR` 0.10 → 0.15 (sprocket D-bore). 684 not reported yet (the road disc's 0.10 stands).
+   > Result (2026-11-08, Ben, PET-CF): **624 seat: 2 notches = 0.15 crush interference** (already the idler default, `idler(interf=0.15)`; no change). **TT bore ladder: 3 notches = 0.15/side** → `BORE_CLR` 0.10 → 0.15 (sprocket D-bore). **684 seat (Ben 2026-11-09): the bearings fit `coupon_684_10` well** → the road disc's 0.10 crush stands; road discs ×8 released on plate `petcf5`.
    > Amendment (loop M6, 2026-11-02, Ben: "add the PA6-CF coupons"): print `coupon_624_10/15/20`
    > and `coupon_684_10` a second time in **Fiberon PA6-CF20** (dry 100 °C / 10 h; 0.4 hardened,
    > the fpv250 preset: `just cad-slice --mat PA6-CF`), next to the PET-CF set as the control.

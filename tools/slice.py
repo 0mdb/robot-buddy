@@ -143,6 +143,7 @@ PARTS = {
     ),
     # P7 / P8 (tick 93): speaker clamp (pad side up) and gasket, flat
     "RB-PRT-060_speaker_clamp": ("PET-CF", "+x", 1, False, "flat, pad up"),
+    "RB-PRT-070_sonar_holder": ("PET-CF", "-x", 1, False, "front face down (lips flat on the bed)"),
     "RB-PRT-061_speaker_gasket": ("TPU", "+x", 1, False, "flat ring, 1 mm"),
     "RB-PRT-062_mic_washer": ("TPU", "+z", 6, False, "flat, 1 mm; 2 per mic-disc screw"),
     "RB-PRT-023_idler_spacer": ("PET-CF", "+z", 2, False, "standing; between the idler's 624 inner races, 13.0 long"),
@@ -181,6 +182,7 @@ ALIAS = {
     "slide": "RB-CPN-001_slide_strip,RB-CPN-002_slide_rail",
     "inserts": "RB-CPN-003_insert_ladder",
     "speaker": "RB-PRT-060_speaker_clamp,RB-PRT-061_speaker_gasket",
+    "sonar": "RB-PRT-070_sonar_holder",
 }
 
 
@@ -443,16 +445,20 @@ PLATES = {
     ],
     "petcf5": [  # 2026-11-09: what's left that only bolts to the plate (sprockets, idlers,
         # frames, carriages, rev-2 base plate already printed); the base plate waits on the
-        # reflex v2 relayout (register M12) for its standoff pattern
-        "RB-PRT-002_bulkhead",
+        # reflex v2 relayout (register M12) for its standoff pattern. Bulkhead pulled (Ben
+        # 2026-11-09): the merged HC-SR04 holder took its flat print face; split the holder out
         "RB-PRT-010_motor_mount_R",
         "RB-PRT-011_motor_mount_L",
         "RB-PRT-060_speaker_clamp",
         "RB-PRT-023_idler_spacer",
+        "RB-PRT-022_road_disc",  # Ben 2026-11-09: the 684s fit coupon_684_10 well, crush 0.10 stands
     ],
-    "petcf4": [  # waits on the 684 bearings (road-disc seat) and the M2.5 insert row (deck)
+    "petcf6": [  # 2026-11-09: bulkhead with its flat face back + the split HC-SR04 holder
+        "RB-PRT-002_bulkhead",
+        "RB-PRT-070_sonar_holder",
+    ],
+    "petcf4": [  # waits on the M2.5 insert row (deck)
         "RB-PRT-003_pi_deck",
-        "RB-PRT-022_road_disc",
     ],
 }
 

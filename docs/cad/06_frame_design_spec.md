@@ -223,6 +223,21 @@ board and any off-board TB6612 now go aft, between the carriages (x −85…−4
 >   inboard, use a short / right-angle plug or solder them.
 > - S5 / S5c to re-run on this bulkhead.
 
+> Amendment (Ben, 2026-11-09, later): **the HC-SR04 holder is split out as RB-PRT-070.**
+> Merged, it took the bulkhead's flat face-down print face (D3). Now the box passes through
+> a window in the wall (0.2 a side) and the front frame gets lips that bear on the face: 6
+> on top (z 38.5–44.5, pre-tilt), 3 below (z 10.5–13.5, 1.5 over the foot ledge). Held by
+> 2 × M2 × 8 pan head thread-forming from the front through the top lip (y −4 / −40, z 41.5)
+> into Ø4.4 bosses behind the wall (07 F18); the box in the window takes the moment. The
+> sensor still snaps in from behind, F17 unchanged. The holder prints front face down.
+> - **Knee gusset:** the holder runs through its plane (y 0–3 vs 1.2–3.6) back to x 74.5,
+>   so the gusset is notched round it (0.2 clear) and its top's rear corner moves from the
+>   wall (x 70.8) to x 60: a ≥ 5 mm band wraps behind the holder, so the wall above it
+>   (z 37–44) still braces to the bolted tail. A plain notch would have cut the gusset in
+>   two between z ≈ 27 and 37. The notch also takes the inner side flange's 2 mm at
+>   y −47…−45.2 over the holder's height.
+> - S5 / S5c (front push) to re-run with the new gusset before the bulkhead prints.
+
 ## 6. Canopy (piece 3)
 
 - ASA white: heat-stable over the Pi 5 (PLA softens around 55–60 °C) and tougher when dropped. PLA only for bolt-on accents.

@@ -25,6 +25,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import hardware as hw  # noqa: E402  (bought-hardware envelopes)
 import drivetrain as dt  # noqa: E402  (08: the TPU track system's numbers and wheel geometry)
 import sw  # noqa: E402  (staging/winpath/sync helpers)
 
@@ -945,7 +946,10 @@ def core_board_lines(path: str) -> list[str]:
     for hx, hz in g["holes"]:
         ln.append(f"cyl|y|{hx:.3f} {hz:.3f}|{yb:.3f} {ylead + 0.1:.3f}|{rc}|cut")
         ln.append(f"cyl|y|{hx:.3f} {hz:.3f}|{ycomp - 0.1:.3f} {ylead + 0.1:.3f}|1.65|cut")
+        # 2026-11-10: parts keep-out Ø5 round each hole on the parts face (the F8 heads)
+        ln.append(f"cyl|y|{hx:.3f} {hz:.3f}|{ycomp - 0.1:.3f} {yo + 0.05:.3f}|2.5|cut")
         v -= math.pi * rc * rc * CORE_LEAD_H + math.pi * 1.65**2 * (yb - ycomp)
+        v -= math.pi * (2.5**2 - 1.65**2) * (yo - ycomp)
     ln += [f"expect|vol {v:.1f} {v * 0.01:.1f}|box {x0:.2f} {x1:.2f} {ycomp:.2f} {ylead:.2f} "
            f"{z0 - CORE_JACK[2]:.2f} {z1:.2f} 0.05", "save"]
     return ln
@@ -1220,11 +1224,15 @@ def rebuild_manifest(win: str) -> list[str]:
         # 2026-11-09: Camera Module 3 envelope (on the bulkhead's camera bosses)
         *camera_module_lines(cad + r"\library\camera_module3_envelope.SLDPRT"),
         *hcsr04_lines(cad + r"\library\hcsr04_envelope.SLDPRT"),
+        *pam8302_lines(cad + r"\library\pam8302_envelope.SLDPRT"),
+        *sonar_holder_lines(cad + r"\parts\RB-PRT-070_sonar_holder.SLDPRT"),
         # P6m2 (2026-11-08): the mic disc envelope + its TPU washers (the disc hangs in the canopy's hump)
         *mic_disc_lines(cad + r"\library\mic_disc_envelope.SLDPRT"),
         *mic_washer_lines(cad + r"\parts\RB-PRT-062_mic_washer.SLDPRT"),
         # 2026-11-09 (Ben): spacer between the idler's two 624 inner races
         *idler_spacer_lines(cad + r"\parts\RB-PRT-023_idler_spacer.SLDPRT"),
+        # 2026-11-10: bought hardware envelopes (tools/hardware.py), placed below
+        *[ln for it in hardware_items().values() for ln in hw.item_lines(it, cad + "\\library\\" + it.name + ".SLDPRT")],
         # P9 (tick 99): XVF3800 core-board envelope (on the deck's wall)
         *core_board_lines(cad + r"\library\xvf_core_envelope.SLDPRT"),
         # D6 (tick 89): follower-slide fit coupon (not in the assembly, not in the robot mass)
@@ -1276,6 +1284,7 @@ def rebuild_manifest(win: str) -> list[str]:
         f"comp|spk_module|{cad}\\library\\speaker_module_envelope.SLDPRT|{row(*speaker_tilt())}",
         f"comp|camera|{cad}\\library\\camera_module3_envelope.SLDPRT|{row(*speaker_tilt())}",
         f"comp|hcsr04|{cad}\\library\\hcsr04_envelope.SLDPRT|{row(*speaker_tilt())}",
+        f"comp|sonar_holder|{cad}\\parts\\RB-PRT-070_sonar_holder.SLDPRT|{row(*speaker_tilt())}",
         f"comp|mic_disc|{cad}\\library\\mic_disc_envelope.SLDPRT|{row(ROT_I, (0, 0, 0))}",
         f"comp|xvf_core|{cad}\\library\\xvf_core_envelope.SLDPRT|{row(ROT_I, (0, 0, 0))}",
         *[
@@ -1287,6 +1296,8 @@ def rebuild_manifest(win: str) -> list[str]:
             f"comp|idler_spacer_{sd}|{cad}\\parts\\RB-PRT-023_idler_spacer.SLDPRT|{row(*wheel_at(dt.belt_fit()['x_fit'], s, idler_z()))}"
             for sd, s in (("L", +1), ("R", -1))
         ],
+        f"comp|amp|{cad}\\library\\pam8302_envelope.SLDPRT|{row(ROT_I, (0, 0, 0))}",
+        *hardware_comps(cad + r"\library"),
         "interfere",
         "asmsave",
         # T10: analysis-only part, plate + both mounts as one body (not printed)
@@ -1319,6 +1330,7 @@ def rebuild_manifest(win: str) -> list[str]:
                 (idler, "RB-PRT-021_idler"),
                 (road, "RB-PRT-022_road_disc"),
                 (cad + r"\parts\RB-PRT-060_speaker_clamp.SLDPRT", "RB-PRT-060_speaker_clamp"),
+                (cad + r"\parts\RB-PRT-070_sonar_holder.SLDPRT", "RB-PRT-070_sonar_holder"),
                 (cad + r"\parts\RB-PRT-061_speaker_gasket.SLDPRT", "RB-PRT-061_speaker_gasket"),
                 (cad + r"\parts\RB-PRT-062_mic_washer.SLDPRT", "RB-PRT-062_mic_washer"),
                 (cad + r"\parts\RB-PRT-023_idler_spacer.SLDPRT", "RB-PRT-023_idler_spacer"),
@@ -1470,13 +1482,31 @@ def camera_module_lines(path: str) -> list[str]:
         f"box|{xf:.3f} {xbf:.3f}|{cy - hb} {cy + hb}|{cz - hb} {cz + hb}",
         f"cyl|x|{cy} {cz}|{xbf - 0.1:.3f} {xbf + CAM_BARREL_L:.3f}|{CAM_BARREL_R}|boss",
         f"box|{xf - t - cd:.3f} {xf - t:.3f}|{cy - cw / 2} {cy + cw / 2}|{zb + h - chh:.3f} {zb + h:.3f}",
+        # 2026-11-10: the PCB's 4 x Ø2.2 mounting holes (F16)
+        *[f"cyl|x|{cy + dy} {cz + dz}|{xf - t - 0.1:.3f} {xf + 0.1:.3f}|1.1|cut" for dy, dz in CAM_HOLES],
     ]
     v = w * h * t + CAM_BLOCK**2 * (xbf - xf) + math.pi * CAM_BARREL_R**2 * CAM_BARREL_L + cw * chh * cd
+    v -= len(CAM_HOLES) * math.pi * 1.1**2 * t
     lines += [
         f"expect|vol {v:.1f} {v * 0.01:.1f}|box {xf - t - cd:.2f} {xbf + CAM_BARREL_L:.2f} {cy - w / 2:.2f} {cy + w / 2:.2f} {zb:.2f} {zb + h:.2f} 0.05",
         "save",
     ]
     return lines
+
+
+def _disc_in_rect(cy: float, cz: float, r: float, y0: float, y1: float, z0: float, z1: float) -> float:
+    """Area of a disc inside an axis-aligned rectangle (numeric, for expect volumes)."""
+    import numpy as np
+
+    st = 0.01
+    ys = np.arange(cy - r + st / 2, cy + r, st)
+    zs = np.arange(cz - r + st / 2, cz + r, st)
+    Y, Z = np.meshgrid(ys, zs)
+    m = ((Y - cy) ** 2 + (Z - cz) ** 2 <= r * r) & (Y >= y0) & (Y <= y1) & (Z >= z0) & (Z <= z1)
+    return float(m.sum()) * st * st
+
+
+HC_HOLE_R, HC_HEAD_KEEP_R = 0.9, 1.75  # 2026-11-10: PCB holes Ø1.8, parts keep-out Ø3.5 (F17 heads Ø3.2; Ø3.6 is tangent to the PCB edge)
 
 
 def hcsr04_lines(path: str) -> list[str]:
@@ -1496,6 +1526,13 @@ def hcsr04_lines(path: str) -> list[str]:
         v += math.pi * 64 * 13
     lines.append(f"box|{xb - 1.5:.3f} {xb + 0.1:.3f}|{yc - 21.5} {yc + 21.5}|{zc - 9} {zc + 9}")
     v += 43 * 18 * 1.5
+    # 2026-11-10: the mounting holes and a parts keep-out round them (the F17 screw heads)
+    for xh, zh in SR_PCB_HOLES:
+        hy, hz = sr_map(xh, zh)
+        lines.append(f"cyl|x|{hy} {hz}|{xb - 1.6:.3f} {xf + 0.1:.3f}|{HC_HOLE_R}|cut")
+        lines.append(f"cyl|x|{hy} {hz}|{xb - 1.6:.3f} {xb + 0.05:.3f}|{HC_HEAD_KEEP_R}|cut")
+        v -= _disc_in_rect(hy, hz, HC_HOLE_R, yc - 22.5, yc + 22.5, zc - 9.8, zc + 9.8) * 1.6
+        v -= _disc_in_rect(hy, hz, HC_HEAD_KEEP_R, yc - 21.5, yc + 21.5, zc - 9, zc + 9) * 1.5
     py, pz = sr_map(31.0, 4.5)
     lines.append(f"box|{xb - 18.7:.3f} {xb - 1.5 + 0.1:.3f}|{py - 5.1} {py + 5.1}|{pz - 1.27} {pz + 1.27}")
     v += 10.2 * 2.54 * 17.2
@@ -1683,6 +1720,18 @@ SR_HOLES = ((18.0, 12.5), (44.0, 12.5))  # transducer holes (xh, zh), Ø17
 SR_HOLE_R = 8.5
 SR_PCB_HOLES = ((10.0, 4.0), (52.0, 4.0), (10.0, 21.0), (52.0, 21.0))  # 42 x 17 about (31, 12.5)
 SR_BOSS_R, SR_PILOT_R, SR_PILOT_D = 1.6, 0.65, 5.0
+# 2026-11-09 (Ben): split out as RB-PRT-070_sonar_holder. Merged, it cost the bulkhead its flat
+# face-down print face (D3). The holder's box goes through a window in the wall (SR_WIN_CLR a
+# side); its front frame gets lips that bear on the face: SR_LIP_TOP above (zh -6..0, holds
+# the screws) and SR_LIP_BOT below (zh 25..28, stops 1.5 over the foot ledge). Two M2 x 8 pan
+# head thread-forming screws (head Ø4 x 1.6) through the top lip into Ø4.4 bosses on the wall's
+# back. The box in the window takes the moment; the lips take the push back.
+SR_LIP_TOP, SR_LIP_BOT = 6.0, 3.0
+SR_WIN_CLR = 0.2  # snug, print-dfm 0.15-0.25
+SR_SCREW_XH, SR_SCREW_ZH = (13.0, 49.0), -3.0  # chassis y -4 / -40, z 41.5
+SR_SCREW_CLR, SR_SCREW_CB_R, SR_SCREW_CB_D = 1.2, 2.2, 1.8  # Ø2.4 through, Ø4.4 x 1.8 c'bore
+SR_WALL_BOSS_R, SR_WALL_BOSS_X0 = 2.2, 78.5  # bosses behind the wall, back to x 78.5
+SR_WALL_PILOT_R, SR_WALL_PILOT_X0 = 0.85, 79.5  # Ø1.7 (as the camera's M2 pilots)
 
 
 def sr_map(xh: float, zh: float) -> tuple[float, float]:
@@ -1705,8 +1754,8 @@ def sonar_holder_rounds() -> list[tuple[str, float]]:
     the front face's inner loops (2 x Ø17, the crystal slot). Pre-tilt, picked by edge
     midpoints."""
     xf, xw = SR_FRONT, BH_XF
-    ya, za = sr_map(56.0, 25.0)
-    yb, zb = sr_map(6.0, 0.0)
+    ya, za = sr_map(56.0, 25.0 + SR_LIP_BOT)
+    yb, zb = sr_map(6.0, -SR_LIP_TOP)
     y0, y1, z0, z1 = min(ya, yb), max(ya, yb), min(za, zb), max(za, zb)
     ym, zm, xm = (y0 + y1) / 2, (z0 + z1) / 2, (xf + xw) / 2
     e = 0.3
@@ -1724,6 +1773,7 @@ def sonar_holder_rounds() -> list[tuple[str, float]]:
     dv = q * SR_EDGE_R**2 * L
     out = [(f"fillet|{SR_EDGE_R}|any|{';'.join(bx)}|8|{-dv:.2f} {0.35 * dv + 2:.2f}", -dv)]
     per = 2 * 2 * math.pi * SR_HOLE_R + 2 * 5.0 + 2 * math.pi * 2.0
+    per += len(SR_SCREW_XH) * 2 * math.pi * SR_SCREW_CB_R
     dvh = q * SR_HOLE_EDGE_R**2 * per
     out.append(
         (
@@ -1736,14 +1786,15 @@ def sonar_holder_rounds() -> list[tuple[str, float]]:
 
 
 def sonar_holder_features() -> list[tuple]:
-    """(op, shape) list for the merged holder, pre-tilt (see the SR_* note)."""
-    x0, x1 = BH_XF - BH_T, BH_XF
+    """(op, shape) list for RB-PRT-070 (the holder alone), pre-tilt (see the SR_* note)."""
     yt = SR_FRONT - SR_TRIM  # trim depth
+    yl = SR_FRONT - BH_XF  # lip depth: the front frame down to the wall face
     f: list[tuple] = []
     # The outboard end (xh 56 -> y -47) stands 2 mm onto the front cap's r 8 side round (the
-    # face is flat to |y| 45); it is merged after the rounds (bulkhead_lines), so that round
-    # still rolls down the lower plate, and the end keeps its full 3 mm wall.
+    # face is flat to |y| 45): its lip floats <= 0.25 off the face there.
     f.append(("add", sr_box(6, 56, 0, 2.25, 0, 25)))  # front plate
+    f.append(("add", sr_box(6, 56, 0, yl, -SR_LIP_TOP, 0)))  # top lip (screws)
+    f.append(("add", sr_box(6, 56, 0, yl, 25, 25 + SR_LIP_BOT)))  # bottom lip
     for a in ((6, 9, 0, 25), (53, 56, 0, 25), (9, 53, 0, 2.5), (9, 53, 21.5, 25)):  # box to the pocket
         f.append(("add", sr_box(a[0], a[1], 2.25, 12.25, a[2], a[3])))
     for a in ((6, 8, 0, 25), (54, 56, 0, 25), (8, 54, 0, 1.5), (8, 54, 22.5, 25)):  # pocket walls
@@ -1768,16 +1819,11 @@ def sonar_holder_features() -> list[tuple]:
     for xh0, xh1 in ((9.0, 11.6), (50.4, 53.0)):
         for zh0, zh1 in ((2.5, 5.6), (19.4, 21.5)):
             f.append(("add", sr_box(xh0, xh1, 2.25, 12.25, zh0, zh1)))
-    # cuts: the wall inside the box (corners and the crystal shelf kept), the front holes,
-    # the crystal slot, the pilots
-    xa, xb = x0 - 0.1, x1 + 0.1
-    for xh0, xh1, zh0, zh1 in (
-        (11.6, 50.4, 2.5, 16.5), (9, 11.6, 5.6, 16.5), (50.4, 53, 5.6, 16.5),  # below the shelf
-        (9, 26.5, 16.5, 19.4), (35.5, 53, 16.5, 19.4), (11.6, 50.4, 19.4, 21.5),  # beside / above
-        (26.5, 35.5, 17.5, 19.4),
-    ):
-        _, bx0, bx1, by0, by1, bz0, bz1 = sr_box(xh0, xh1, 0, 1, zh0, zh1)
-        f.append(("cut", ("box", xa, xb, by0, by1, bz0, bz1)))
+    # cuts: the front holes, the crystal slot, the pilots, the lip screws
+    for xh in SR_SCREW_XH:
+        sy_, sz_ = sr_map(xh, SR_SCREW_ZH)
+        f.append(("cut", ("cylx", sy_, sz_, BH_XF - 0.1, SR_FRONT + 0.1, SR_SCREW_CLR)))
+        f.append(("cut", ("cylx", sy_, sz_, SR_FRONT - SR_SCREW_CB_D, SR_FRONT + 0.1, SR_SCREW_CB_R)))
     for xh, zh in SR_HOLES:
         hy, hz = sr_map(xh, zh)
         f.append(("cut", ("cylx", hy, hz, SR_FRONT - 2.35, SR_FRONT + 0.1, SR_HOLE_R)))
@@ -1789,6 +1835,74 @@ def sonar_holder_features() -> list[tuple]:
         by, bz = sr_map(xh, zh)
         f.append(("cut", ("cylx", by, bz, SR_FRONT - 12.35, SR_FRONT - 12.25 + SR_PILOT_D, SR_PILOT_R)))
     return f
+
+
+def bulkhead_sonar_features() -> list[tuple]:
+    """(op, shape) the bulkhead keeps for RB-PRT-070, pre-tilt: the window for the holder's
+    box (SR_WIN_CLR a side) and the two M2 bosses + pilots behind the top lip."""
+    c = SR_WIN_CLR
+    ya, za = sr_map(56.0, 25.0)
+    yb, zb = sr_map(6.0, 0.0)
+    x0 = BH_XF - BH_T
+    f: list[tuple] = []
+    for xh in SR_SCREW_XH:
+        sy_, sz_ = sr_map(xh, SR_SCREW_ZH)
+        f.append(("add", ("cylx", sy_, sz_, SR_WALL_BOSS_X0, x0 + 0.01, SR_WALL_BOSS_R)))
+    f.append(("cut", ("box", x0 - 0.1, BH_XF + 0.1, min(ya, yb) - c, max(ya, yb) + c, min(za, zb) - c, max(za, zb) + c)))
+    for xh in SR_SCREW_XH:
+        sy_, sz_ = sr_map(xh, SR_SCREW_ZH)
+        f.append(("cut", ("cylx", sy_, sz_, SR_WALL_PILOT_X0, BH_XF + 0.1, SR_WALL_PILOT_R)))
+    return f
+
+
+def _pre_volume(feats: list[tuple], lo: tuple, hi: tuple, step: float = 0.1) -> float:
+    """Voxel volume of an (op, shape) list applied in order, no rotation."""
+    import numpy as np
+
+    xs = np.arange(lo[0] + step / 2, hi[0], step)
+    ys = np.arange(lo[1] + step / 2, hi[1], step)
+    X, Y = np.meshgrid(xs, ys, indexing="ij")
+    vol = 0.0
+    for z in np.arange(lo[2] + step / 2, hi[2], step):
+        P = np.stack([X, Y, np.full_like(X, z)], axis=-1)
+        solid = np.zeros_like(X, dtype=bool)
+        for op, sh in feats:
+            m = _shape_mask3(sh, P)
+            solid = solid | m if op == "add" else solid & ~m
+        vol += int(solid.sum()) * step**3
+    return vol
+
+
+def sonar_holder_lines(path: str) -> list[str]:
+    """RB-PRT-070: the HC-SR04 holder alone, pre-tilt frame (placed with speaker_tilt(), like
+    the speaker clamp). Prints front face down."""
+
+    def emit(op: str, sh: tuple) -> str:
+        kind = "boss" if op == "add" else "cut"
+        if sh[0] == "box":
+            _, x0, x1, y0, y1, z0, z1 = sh
+            return f"prof|{x0} {x1}|{_right_rect(y0, y1, z0, z1)}|{kind}|right"
+        if sh[0] == "cylx":
+            _, cy, cz, x0, x1, r = sh
+            return f"cyl|x|{cy} {cz}|{x0} {x1}|{r}|{kind}"
+        _, poly, y0, y1 = sh  # prismy
+        pts = [f"{x:.4f} {-z:.4f}" for x, z in poly]
+        return f"prof|{y0} {y1}|M {pts[0]}{''.join(' L ' + q for q in pts[1:])}|{kind}|top"
+
+    f = sonar_holder_features()
+    ya, za = sr_map(56.0, 25.0 + SR_LIP_BOT)
+    yb, zb = sr_map(6.0, -SR_LIP_TOP)
+    bb = (SR_TRIM, SR_FRONT, min(ya, yb), max(ya, yb), min(za, zb), max(za, zb))
+    vol = _pre_volume(f, (bb[0] - 0.5, bb[2] - 0.5, bb[4] - 0.5), (bb[1] + 0.5, bb[3] + 0.5, bb[5] + 0.5), 0.05)
+    vol += sum(dv for _, dv in sonar_holder_rounds())
+    return [
+        f"part|{path}",
+        *[emit(op, sh) for op, sh in f if op == "add"],
+        *[emit(op, sh) for op, sh in f if op == "cut"],
+        *[ln for ln, _ in sonar_holder_rounds()],
+        f"expect|vol {vol:.1f} {vol * 0.015:.1f}|box {' '.join(f'{v:.2f}' for v in bb)} 0.1",
+        "save",
+    ]
 
 BH_SPK = (
     16.0,
@@ -1874,6 +1988,12 @@ BH_TAB = (4.0, 9.8, 3.6)  # into the 4.6 x 10.4 plate slots (0.3/side)
 BH_KNEE_Y = (1.2, 3.6)  # 2.4 thick
 BH_KNEE_TOP = 44.0  # top of the gusset, chassis z
 BH_KNEE_TAIL = 56.0  # rear end on the plate (the wire slot ends at x 55)
+# 2026-11-09: the split HC-SR04 holder (RB-PRT-070) runs through the gusset's plane (y 0..3
+# vs 1.2..3.6) from the wall back to x 74.5. The gusset is notched round it (SR_NOTCH_CLR), and
+# its top's rear corner goes back from the wall (x 70.8) to BH_KNEE_TOP_X, so a >= 5 mm band
+# runs round the holder's back: the wall above the holder (z 37..44) still braces to the tail.
+BH_KNEE_TOP_X = 60.0
+SR_NOTCH_CLR = 0.2
 BH_KNEE_PAD = ((56.0, 66.0), (-2.2, 7.0), (0.0, 9.0))
 BH_KNEE_HOLE = (61.0, 2.4)
 
@@ -2095,8 +2215,29 @@ def bulkhead_features() -> tuple[list[tuple], list[tuple]]:
         (BH_KNEE_TAIL, 0.0),
         (back0, 0.0),
         (back0 - BH_KNEE_TOP * lean, BH_KNEE_TOP),
+        (BH_KNEE_TOP_X, BH_KNEE_TOP),
     ]
     post.append(("add", ("prismy", knee, *BH_KNEE_Y)))
+    # notch for RB-PRT-070 behind the wall (pre-tilt box, tilted into the chassis frame); it
+    # also takes the inner side flange's stretch at y -47..-45.2
+    R, t = speaker_tilt()
+    c_ = SR_NOTCH_CLR
+    ya, za = sr_map(56.0, 25.0)
+    yb, zb = sr_map(6.0, 0.0)
+    z0, z1 = min(za, zb) - c_, max(za, zb) + c_
+    notch = [
+        (R[0] * x + R[2] * z + t[0], R[6] * x + R[8] * z + t[2])
+        for x, z in ((SR_TRIM - c_, z0), (BH_XF - BH_T - 0.05, z0), (BH_XF - BH_T - 0.05, z1), (SR_TRIM - c_, z1))
+    ]
+    post.append(("cut", ("prismy", notch, min(ya, yb) - c_ - 0.2, BH_KNEE_Y[1] + 0.1)))
+    # ... and the gusset's 0.6 overlap into the wall, inside the window only (beside the
+    # window that overlap is buried in the wall)
+    cw = SR_WIN_CLR
+    front = [
+        (R[0] * x + R[2] * z + t[0], R[6] * x + R[8] * z + t[2])
+        for x, z in ((BH_XF - BH_T - 0.1, z0 + c_ - cw), (BH_XF, z0 + c_ - cw), (BH_XF, z1 - c_ + cw), (BH_XF - BH_T - 0.1, z1 - c_ + cw))
+    ]
+    post.append(("cut", ("prismy", front, min(ya, yb) - cw, max(ya, yb) + cw)))
     (px0, px1), (py0, py1), (pz0, pz1) = BH_KNEE_PAD
     post.append(("add", ("box", px0, px1, py0, py1, pz0, pz1)))
     for y in BULK_HOLES_Y:
@@ -2149,7 +2290,7 @@ def bulkhead_volume_numeric(step: float = 0.2) -> tuple[float, list[float]]:
     import numpy as np
 
     pre, post = bulkhead_features()
-    pre = pre + sonar_holder_features()  # applied after the rounds in the build
+    pre = pre + bulkhead_sonar_features()  # applied after the rounds in the build
     xs = np.arange(30.0 + step / 2, 90.0, step)  # tick 94: the lugs moved aft reach x 38.6
     yh = BH_W / 2 + 1
     ys = np.arange(-yh + step / 2, yh, step)
@@ -2354,11 +2495,11 @@ def bulkhead_lines(path: str) -> list[str]:
     for ln_, _ in seam_break_lines(BH_XF - CAP_D, cap_z_low()):
         lines.append(ln_)
     lines.append(flange_end_line())
-    # 2026-11-09: the merged HC-SR04 holder, after the cap rounds (pre-tilt frame)
-    sr = sonar_holder_features()
+    # 2026-11-09: window + M2 bosses for RB-PRT-070 (the holder, split out), after the cap
+    # rounds (pre-tilt frame): the window's outboard end reaches the side round
+    sr = bulkhead_sonar_features()
     lines += [emit(op, sh) for op, sh in sr if op == "add"]
     lines += [emit(op, sh) for op, sh in sr if op == "cut"]
-    lines += [ln for ln, _ in sonar_holder_rounds()]
     lines.append(f"rotbody|{BH_PIVOT[0]} {BH_PIVOT[1]} {BH_PIVOT[2]}|y|{-BH_TILT}")
     for op, sh in post:
         if op == "trim":  # applied last, after the side-face rounds (below)
@@ -2404,7 +2545,6 @@ def bulkhead_lines(path: str) -> list[str]:
         cb.append(f"{xm - 0.6} {yy - 0.1} {zm - 1.2} {xm + 0.6} {yy + 0.1} {zm + 1.2}")
     lines.append(f"fillet|{PLATE_EDGE_R}|any|{';'.join(cb)}|4|{-dvft:.2f} {0.3 * dvft + 0.5:.2f}")
     vol -= dvft + dvtop
-    vol += sum(dv for _, dv in sonar_holder_rounds())
     lines += [emit("cut", sh) for op, sh in post if op == "trim"]
     # P6m3: the top is the cap's r 8 front-top round after the tilt (the voxel box has no rounds)
     s15, c15 = math.sin(math.radians(BH_TILT)), math.cos(math.radians(BH_TILT))
@@ -3989,6 +4129,87 @@ def _prism_y(poly: list, y0: float, y1: float, kind: str) -> str:
     return f"prof|{y0} {y1}|{' '.join(toks)}|{kind}|top"
 
 
+# 2026-11-10 (Ben): PAM8302A amp (audio-hardware §2, Adafruit #2130: 24 x 15 x 1.6, no mounting
+# holes) on the canopy's inner LEFT side wall at the front, beside the speaker (bulkhead back,
+# y 6..26). Two rails along x grip its long edges (AMP_GRIP over each, AMP_SLOT for the 1.6
+# PCB) and a stop at the rear end; it slides in from the canopy's open front (canopy off) and
+# takes a dot of hot glue. Screw terminals at the front end, toward the speaker. The canopy
+# prints rear wall down, so the rails stand vertical (no overhang but their ends).
+AMP_PCB = (24.0, 15.0, 1.6)  # length (x), height (z), thickness
+AMP_X0, AMP_ZB = 34.0, 36.0  # PCB rear end, bottom edge (the canopy front follows the 15° wall: x ~62 at z 53)
+AMP_SLOT, AMP_GRIP, AMP_LIP, AMP_RAIL, AMP_CLR = 1.9, 1.0, 1.2, 2.0, 0.25
+
+
+def amp_geom() -> dict:
+    yw = CAN_HW - CAN_T  # wall inner face
+    x0, x1 = AMP_X0, AMP_X0 + AMP_PCB[0]
+    zb, zt = AMP_ZB, AMP_ZB + AMP_PCB[1]
+    return {"yw": yw, "x": (x0, x1), "z": (zb, zt), "y_pcb": (yw - (AMP_SLOT + AMP_PCB[2]) / 2, yw - (AMP_SLOT - AMP_PCB[2]) / 2)}
+
+
+def canopy_amp_boxes() -> list[tuple[float, float, float, float, float, float]]:
+    g = amp_geom()
+    yw, (x0, x1), (zb, zt) = g["yw"], g["x"], g["z"]
+    c, xs = AMP_CLR, x0 - AMP_CLR - AMP_RAIL  # rails start behind the stop
+    yl = yw - AMP_SLOT - AMP_LIP  # lip inner face
+    return [
+        (xs, x1, yl, yw, zb - c - AMP_RAIL, zb - c),  # bottom rail body
+        (xs, x1, yl, yw - AMP_SLOT, zb - c, zb + AMP_GRIP),  # bottom lip
+        (xs, x1, yl, yw, zt + c, zt + c + AMP_RAIL),  # top rail body
+        (xs, x1, yl, yw - AMP_SLOT, zt - AMP_GRIP, zt + c),  # top lip
+        (xs, x0 - c, yw - AMP_SLOT, yw, zb - c, zt + c),  # rear stop (PCB edge only)
+    ]
+
+
+def canopy_amp_lines() -> tuple[list[str], float]:
+    """Rail boxes (0.1 into the wall) and their volume (wall side clipped at yw)."""
+    yw = amp_geom()["yw"]
+    bx = canopy_amp_boxes()
+    lines = [f"box|{a:.3f} {b:.3f}|{c:.3f} {d + (0.1 if d >= yw - 1e-9 else 0):.3f}|{e:.3f} {f:.3f}" for a, b, c, d, e, f in bx]
+    # volume: union of the boxes (the stop overlaps the rails' slot strip; lips overlap bodies at z)
+    import numpy as np
+
+    st = 0.05
+    xs_ = np.arange(min(b[0] for b in bx) + st / 2, max(b[1] for b in bx), st)
+    ys_ = np.arange(min(b[2] for b in bx) + st / 2, yw, st)
+    zs_ = np.arange(min(b[4] for b in bx) + st / 2, max(b[5] for b in bx), st)
+    Y, Z = np.meshgrid(ys_, zs_, indexing="ij")
+    area = 0.0
+    m_all = np.zeros(Y.shape, bool)
+    # rails are prismatic in x except the stop: integrate per x slab
+    vol = 0.0
+    for x in xs_:
+        m = np.zeros(Y.shape, bool)
+        for a, b, c, d, e, f in bx:
+            if a <= x <= b:
+                m |= (Y >= c) & (Y <= d) & (Z >= e) & (Z <= f)
+        vol += m.sum() * st**3
+    del area, m_all
+    return lines, float(vol)
+
+
+def pam8302_lines(path: str) -> list[str]:
+    """PAM8302A envelope (interference only, chassis frame): PCB in the rails, a 2.0 parts
+    layer 1.2 off the long edges, the 2-pos 3.5 mm terminal block at the front end (7.6 x 7 x
+    10 tall) and the 5-pin header at the rear end (2.5 x 12.7 x 8.5). TBD: measure the board."""
+    g = amp_geom()
+    (x0, x1), (zb, zt), (yp0, yp1) = g["x"], g["z"], g["y_pcb"]
+    zc = (zb + zt) / 2
+    bx = [
+        (x0, x1, yp0, yp1, zb, zt),
+        (x0 + 3.2, x1 - 7.8, yp0 - 2.0, yp0 + 0.05, zb + 1.2, zt - 1.2),
+        (x1 - 7.6, x1, yp0 - 10.0, yp0 + 0.05, zc - 3.5, zc + 3.5),
+        (x0 + 0.5, x0 + 3.0, yp0 - 8.5, yp0 + 0.05, zc - 6.35, zc + 6.35),
+    ]
+    v = (x1 - x0) * (zt - zb) * AMP_PCB[2] + (x1 - 7.8 - x0 - 3.2) * 2.0 * (zt - zb - 2.4) + 7.6 * 10.0 * 7.0 + 2.5 * 8.5 * 12.7
+    return [
+        f"part|{path}",
+        *[f"box|{a:.3f} {b:.3f}|{c:.3f} {d:.3f}|{e:.3f} {f:.3f}" for a, b, c, d, e, f in bx],
+        f"expect|vol {v:.1f} {v * 0.02:.1f}|box {x0:.2f} {x1:.2f} {yp0 - 10:.2f} {yp1:.2f} {zb:.2f} {zt:.2f} 0.05",
+        "save",
+    ]
+
+
 def canopy_lines(path: str) -> list[str]:
     f = canopy_features()
     p = f["p"]
@@ -4086,8 +4307,9 @@ def canopy_lines(path: str) -> list[str]:
         *canopy_rear_edges()[1],
         *canopy_mic_lines()[0],
         *canopy_seam()["lines"],
+        *canopy_amp_lines()[0],
         PART_LABELS["canopy"],
-        f"expect|vol {f['vol'] + hood_screw()['vol'] + canopy_mic_lines()[1] + canopy_seam()['vol']:.1f} {f['vol'] * 0.03:.1f}|box {CAN_X0} {fp[0]:.2f} {-hw} {hw} {-CAN_TAB[2]} {e[1]:.2f} 0.5",
+        f"expect|vol {f['vol'] + hood_screw()['vol'] + canopy_mic_lines()[1] + canopy_seam()['vol'] + canopy_amp_lines()[1]:.1f} {f['vol'] * 0.03:.1f}|box {CAN_X0} {fp[0]:.2f} {-hw} {hw} {-CAN_TAB[2]} {e[1]:.2f} 0.5",
         "save",
     ]
     return lines
@@ -4468,6 +4690,145 @@ def trackframe_lines(path: str, side: int) -> list[str]:
     ]
 
 
+# ------------------------------------------------------------------- hardware (07 §4.4)
+# 2026-11-10 (Ben): every bought fastener / bearing / pin in the assembly. Envelopes come from
+# tools/hardware.py (drawn at the engaged thread / pocket Ø, so a clean interference check
+# means the joint is right). Seats and axes are the code's own geometry (07 vs code audit,
+# 2026-11-10: code wins). Each entry: (joint, item, [(seat, axis toward the head/out)], frame)
+# where frame is "ch" (chassis) or "pre" (bulkhead pre-tilt, placed with speaker_tilt()).
+def hardware_layout() -> list[tuple[str, "hw.Item", list, str]]:
+    I3 = hw.insert(3.0, 5.7, INS_HOLE_PC)  # Ø4.0: fits the 4.1 (PET-CF) and 4.0 (PC) pockets
+    I25 = hw.insert(2.5, 4.0, 3.6)
+    UP, DN = (0.0, 0.0, 1.0), (0.0, 0.0, -1.0)
+    out: list = []
+
+    def add(joint: str, item, seats: list, frame: str = "ch") -> None:
+        out.append((joint, item, seats, frame))
+
+    # F1: plate -> bulkhead foot, low head up from the belly into the foot's inserts; + knee
+    belly = PLATE_BOTTOM if not BOTTOM_RIBS else -PLATE_T
+    f1 = [(BULK_X, y) for y in BULK_HOLES_Y]
+    add("F1", hw.screw("lowhead", 3.0, 10.0), [((x, y, belly), DN) for x, y in f1])
+    add("F1 knee", hw.screw("lowhead", 3.0, 10.0), [((*BH_KNEE_HOLE, belly + 2.0), DN)])  # in its 2.0 counterbore
+    add("F1", I3, [((x, y, 0.0), UP) for x, y in [*f1, BH_KNEE_HOLE]])
+    # F2: motor mount -> plate, SHCS + washer down from the foot top, inserts flush from the top
+    mh = mount_holes()
+    add("F2", hw.screw("shcs", 3.0, 8.0), [((x, y, 3.5), UP) for x, y in mh])
+    add("F2", hw.ring_part("hw_washer_M3", "Washer ISO 7089 M3 (3.2 x 7 x 0.5, A2)", 7.0, 3.2, 0.5), [((x, y, 3.0), UP) for x, y in mh])
+    add("F2", I3, [((x, y, -5.7), UP) for x, y in mh])
+    # F3: TT motor -> mount, M3 x 28 through the gearbox, head on its outer face at |y| 55
+    f3 = [(32.9, s, z) for s in (1, -1) for z in (13.5 - MOT_HOLE_PITCH / 2, 13.5 + MOT_HOLE_PITCH / 2)]
+    add("F3", hw.screw("shcs", 3.0, 28.0), [((x, s * 55.0, z), (0.0, s, 0.0)) for x, s, z in f3])
+    add("F3", I3, [((x, s * 26.7, z), (0.0, s, 0.0)) for x, s, z in f3])
+    # F4: idler axle (05, 2026-11-09 stack): shoulder bolt, head inboard on the pedestal
+    xf, iz = dt.belt_fit()["x_fit"], idler_z()
+    sb = hw.Item(
+        "hw_shoulder_4x53.5_M3",
+        "Shoulder bolt ISO 7379 Ø4 x 53.5, M3 thread (head Ø8 x 4)",
+        (
+            "cyl|z|0 0|0 4|4|boss",
+            "cyl|z|0 0|-53.5 0.01|1.99|boss",
+            "cyl|z|0 0|-61.5 -53.49|1.5|boss",
+            f"expect|vol {math.pi * (16 * 4 + 1.99**2 * 53.5 + 2.25 * 8):.1f} 2|box -4 4 -4 4 -61.5 4 0.05",
+        ),
+        0.0,
+    )
+    add("F4 axle", sb, [((xf, s * CAR_PED[1], iz), (0.0, -s, 0.0)) for s in (1, -1)])
+    add("F4 axle", hw.ring_part("hw_nyloc_M3", "Nyloc nut DIN 985 M3 (envelope Ø6 x 4)", 6.0, 3.02, 4.0),
+        [((xf, s * 97.1, iz), (0.0, s, 0.0)) for s in (1, -1)])
+    shim = hw.ring_part("hw_shim_4x8x0.5", "Shim ring DIN 988 4 x 8 x 0.5", 8.0, 4.02, 0.5)
+    add("F4 axle", shim, [((xf, s * y0, iz), (0.0, s, 0.0)) for s in (1, -1) for y0 in (69.0, 92.5, 93.0)])
+    b624 = hw.bearing("624", 4.0, 13.0, 5.0)
+    add("Idler", b624, [((xf, s * y0, iz), (0.0, s, 0.0)) for s in (1, -1) for y0 in (69.5, 87.5)])
+    # F4 clamp: M3 x 12 up from the belly into the insert pressed up into the carriage foot
+    add("F4 clamp", hw.screw("shcs", 3.0, 12.0), [((xf, s * CLAMP_Y, belly), DN) for s in (1, -1)])
+    add("F4 clamp", I3, [((xf, s * CLAMP_Y, 0.0), UP) for s in (1, -1)])
+    # F4b: tension jack, insert at the block's front end, tip on the carriage pad (x_fit + 10)
+    add("F4b", hw.screw("shcs", 3.0, 30.0), [((xf + 10.0 + 30.0, s * JACK_Y, JACK_Z), (1.0, 0.0, 0.0)) for s in (1, -1)])
+    add("F4b", I3, [((JACK_BLOCK_X[1] - 5.7, s * JACK_Y, JACK_Z), (1.0, 0.0, 0.0)) for s in (1, -1)])
+    # Sprocket: 624 at the outboard face, Ø4 x 8 dowel from the frame plate, F15 clamp screw
+    sx, sz = 52.7, 13.5
+    add("Sprocket", b624, [((sx, s * 87.5, sz), (0.0, s, 0.0)) for s in (1, -1)])
+    add("Sprocket pin", hw.pin("hw_dowel_4x8", "Dowel pin Ø4 h8 x 8, bearing steel (drawn Ø3.95)", 3.95, 8.0),
+        [((sx, s * 88.3, sz), (0.0, s, 0.0)) for s in (1, -1)])
+    add("F15", hw.screw("shcs", 2.5, 6.0), [((sx, s * 65.0, sz), (0.0, s, 0.0)) for s in (1, -1)])
+    # Road wheels: one 684 per disc, on the belt edges
+    yi, yo = track_y()
+    add("Road wheel", hw.bearing("684", 4.0, 9.0, 4.0),
+        [((x, s * y0, z), (0.0, s, 0.0)) for x, z in road_axles() for s in (1, -1) for y0 in (yi, yo - 4.0)])
+    # F5: Pi deck -> plate posts
+    add("F5", hw.screw("shcs", 3.0, 8.0), [((x, y, DECK_Z + DECK_T), UP) for x, y in DECK_POSTS])
+    add("F5", I3, [((x, y, DECK_Z - 5.7), UP) for x, y in DECK_POSTS])
+    # F6: Pi stack -> deck, up through the deck into the stack's brass standoffs (in its envelope)
+    add("F6", hw.screw("shcs", 2.5, 6.0), [((x, y, DECK_Z), DN) for x, y in pi_holes_chassis()])
+    # F7: reflex board -> plate standoffs
+    rx, ry, rz = REFLEX_AT
+    rh = [(rx + dx, ry + dy) for dx, dy in corners(*REFLEX_HOLES)]  # follows board_outline.py
+    add("F7", hw.screw("shcs", 3.0, 8.0), [((x, y, REFLEX_STANDOFF + 1.6), UP) for x, y in rh])
+    add("F7", I3, [((x, y, REFLEX_STANDOFF - 5.7), UP) for x, y in rh])
+    # F8: XVF core board -> deck wall (tick 99): M2.5 x 6 into M2.5 x 4 inserts
+    add("F8", hw.screw("shcs", 2.5, 6.0), [((x, -40.2, z), (0.0, -1.0, 0.0)) for x, z in core_standoffs()])
+    add("F8", I25, [((x, -38.7, z), (0.0, 1.0, 0.0)) for x, z in core_standoffs()])
+    # F9 front: flanged button down through the hood into the bulkhead lugs (pre-tilt)
+    lx = bh_lug_x()
+    add("F9 front", hw.screw("flanged", 3.0, 8.0), [((lx, s * BH_LUG_Y, 130.1), UP) for s in (1, -1)], "pre")
+    add("F9 front", I3, [((lx, s * BH_LUG_Y, 128.0 - 5.7), UP) for s in (1, -1)], "pre")
+    # F9 rear: button head up from the belly into the canopy apron bosses
+    cbx, cby, _ = CAN_BOSS
+    add("F9 rear", hw.screw("button", 3.0, 12.0), [((cbx, s * cby, belly), DN) for s in (1, -1)])
+    add("F9 rear", I3, [((cbx, s * cby, 0.0), UP) for s in (1, -1)])
+    # F10: mic disc, M2.5 x 8 up through washer / disc / washer into the hump's inserts
+    mh_ = mic_geom()["holes"]
+    add("F10", hw.screw("shcs", 2.5, 8.0), [((x, y, MIC_PLANE - 3.5), DN) for x, y in mh_])
+    add("F10", I25, [((x, y, MIC_PLANE), UP) for x, y in mh_])
+    # F11: face board -> bulkhead standoffs (pre-tilt): M3 x 6 (the 6.0 pocket bottoms an x 8)
+    fh = [(y, z) for y in (42.08, -35.92) for z in (56.0, 98.0)]
+    add("F11", hw.screw("shcs", 3.0, 6.0), [((76.1, y, z), (-1.0, 0.0, 0.0)) for y, z in fh], "pre")
+    add("F11", I3, [((77.7, y, z), (1.0, 0.0, 0.0)) for y, z in fh], "pre")
+    # F12: speaker clamp, M3 x 8 into the boss inserts (pre-tilt)
+    xb = BH_XF - BH_T - SPK_DEPTH
+    add("F12", hw.screw("shcs", 3.0, 8.0), [((xb - SPK_CLAMP_T, y, SPK_BOSS_Z), (-1.0, 0.0, 0.0)) for y in SPK_BOSS_Y], "pre")
+    add("F12", I3, [((xb, y, SPK_BOSS_Z), (1.0, 0.0, 0.0)) for y in SPK_BOSS_Y], "pre")
+    # F16: camera, M2 x 5 thread-forming into the bosses' Ø1.7 pilots (pre-tilt)
+    cy_, cz_, _ = BH_CAM
+    add("F16", hw.screw("pan", 2.0, 5.0, CAM_PILOT_R * 2, tf=True),
+        [((77.005, cy_ + dy, cz_ + dz), (-1.0, 0.0, 0.0)) for dy, dz in CAM_HOLES], "pre")
+    # F17: HC-SR04 -> holder, M1.6 x 6 thread-forming (pre-tilt)
+    add("F17", hw.screw("pan", 1.6, 6.0, SR_PILOT_R * 2, tf=True),
+        [((SR_FRONT - 12.25 - 1.6 - 0.02, *sr_map(xh, zh)), (-1.0, 0.0, 0.0)) for xh, zh in SR_PCB_HOLES], "pre")
+    # F18: sonar holder -> bulkhead, M2 x 8 pan thread-forming from the front (pre-tilt)
+    add("F18", hw.screw("pan", 2.0, 8.0, SR_WALL_PILOT_R * 2, tf=True),
+        [((SR_FRONT - SR_SCREW_CB_D, *sr_map(xh, SR_SCREW_ZH)), (1.0, 0.0, 0.0)) for xh in SR_SCREW_XH], "pre")
+    return out
+
+
+def hardware_items() -> dict[str, "hw.Item"]:
+    return {it.name: it for _, it, _, _ in hardware_layout()}
+
+
+def hardware_comps(lib: str) -> list[str]:
+    lines, n = [], {}
+    tilt = speaker_tilt()
+    for joint, it, seats, frame in hardware_layout():
+        for seat, axis in seats:
+            pl = hw.place(seat, axis)
+            if frame == "pre":
+                pl = hw.compose(tilt, pl)
+            k = n[it.name] = n.get(it.name, 0) + 1
+            lines.append(f"comp|{it.name}_{k}|{lib}\\{it.name}.SLDPRT|{row(*pl)}")
+    return lines
+
+
+def hardware_bom() -> list[tuple[str, str, int]]:
+    """(description, joints, qty per robot) from the layout."""
+    agg: dict[str, list] = {}
+    for joint, it, seats, _ in hardware_layout():
+        a = agg.setdefault(it.desc, [set(), 0])
+        a[0].add(joint.split()[0])
+        a[1] += len(seats)
+    return sorted(((d, ", ".join(sorted(j)), q) for d, (j, q) in agg.items()), key=lambda r: r[0])
+
+
 # ------------------------------------------------------------------- runner
 def compile_engine(tool: str) -> str:
     shutil.copyfile(
@@ -4498,6 +4859,7 @@ RHO = {"PET-CF": 1.29, "TPU": 1.22, "PC": 1.20}  # PC 🟡 until checked on the 
 PART_MATERIAL = {
     "RB-PRT-001": "PET-CF",
     "RB-PRT-060": "PET-CF",  # speaker clamp (P7)
+    "RB-PRT-070": "PET-CF",  # HC-SR04 holder (split from the bulkhead 2026-11-09)
     "RB-PRT-061": "TPU",  # speaker gasket (P8)
     "RB-PRT-062": "TPU",  # mic-disc washers (P8, tick 98)
     "RB-PRT-002": "PET-CF",
@@ -4637,11 +4999,16 @@ def main() -> None:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    ap.add_argument("what", choices=["rebuild"])
+    ap.add_argument("what", choices=["rebuild", "hwbom"], help="hwbom: print the bought-hardware bill (markdown)")
     ap.add_argument("-n", "--dry-run", action="store_true")
     ap.add_argument("--full", action="store_true", help="rebuild every part (ignore the part cache)")
     a = ap.parse_args()
     win = sw.winpath(sw.staging())
+    if a.what == "hwbom":
+        print("| Qty | Item | Joints |\n|---:|---|---|")
+        for d, j, q in hardware_bom():
+            print(f"| {q} | {d} | {j} |")
+        return
     if a.what == "rebuild":
         run(rebuild_manifest(win), a.dry_run, a.full)
 

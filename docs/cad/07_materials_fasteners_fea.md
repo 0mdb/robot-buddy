@@ -239,6 +239,11 @@ before ordering (screw engagement ≥ 1.3 d, tip ≥ 0.5 mm short of the pocket 
 > thread-forming, 4 per robot**, through its Ø1.8 holes (42 × 17; M2 doesn't pass) into
 > Ø3.2 corner bosses (Ø1.3 pilot, 5 deep), backing up the holder's snap fit. **F12** above
 > is stale: the speaker clamp (P7) uses 2 × M3 inserts, not M2.5.
+> Amendment (Ben, 2026-11-09, 06 §5 holder split): **F17 now goes into RB-PRT-070** (the
+> holder, unchanged bosses). **New F18, sonar holder → bulkhead: M2 × 8 pan head thread-
+> forming (head Ø4 × 1.6), 2 per robot**, from the front through the holder's top lip (Ø2.4,
+> Ø4.4 × 1.8 counterbore) into Ø4.4 bosses on the wall's back (Ø1.7 pilot to x 79.5): ~5
+> engaged in wall + boss.
 
 > Amendment (2026-11-08, plate rev 2, 06 §4.1): the plate is 6 mm (was 4), so every screw
 > up from the belly is 2 mm longer: **F1** bulkhead foot M3 × 8 → **× 10** (low head, DIN 7984),
@@ -259,7 +264,55 @@ before ordering (screw engagement ≥ 1.3 d, tip ≥ 0.5 mm short of the pocket 
 > Not × 10: it would run 1.2 past the bearing into the sprocket hub (clearance to the M2.5
 > clamp screw head unchecked).
 
-**Totals (per robot, +20 % spares when ordering):** M3 inserts ~34 (F1, F2, F5, F7, F8,
+> Amendment (Ben, 2026-11-10): **all bought hardware is in RB-ASM-101** (envelopes from
+> `tools/hardware.py`, placed by `chassis.py` `hardware_layout()` from the same constants as the
+> printed parts; 138 instances). Audit against the code (code wins for geometry):
+> - **F4 carriage clamp: M3 × 12** (not × 14: the rev-2 +2 applied to P13a's × 10; a × 14 tip
+>   reaches the axle-bolt head zone).
+> - **F11 face board: M3 × 6** (not × 8: the standoff pockets are 6.0 deep, `BH_FACE_POCKET`; an
+>   × 8 bottoms out). 06 §5's "M3 × 5" is stale too.
+> - **F12 speaker clamp: 2 × M3 × 8 SHCS** into 2 M3 inserts (the row's M2.5 × 8 ×4 is stale).
+> - **F8:** the tick-99 amendment (3 × M2.5 × 6 + M2.5 × 4 inserts) replaces the row. F13 is
+>   replaced by F16–F18. **F1 knee screw:** M3 × 10 low head in its 2.0 counterbore.
+> - **F4 idler axle:** shoulder bolt Ø4 × 53.5 shoulder + ≥ 8 M3 thread (frame 3.6 + nyloc);
+>   check the bought part (05's "55 overall" is not enough). Head inboard (05 2026-11-09).
+> - **Open, no spec yet:** road-axle retention (Ø4 axles |y| 56.5 → 97.1, no insert or nut
+>   in the code; 1.5 mm to the plate edge inboard). The F4b insert end is taken as the block's
+>   front. The M1.6 heads (drawn Ø3.2) graze the holder's snap ridge (1.5 mm³, zh 21 pair);
+>   real M1.6 pan heads (~Ø3.0) should clear.
+> - Interference (2026-11-10): clean except by design (F15 into the TT shaft, F6 into the Pi
+>   standoffs, bearing crush ribs) and the known HC-SR04 plug / right mount (2.3 mm³). The
+>   reflex / plate hits wait on the plate rebuild (M12).
+>
+> **Hardware bill, per robot** (generated: `python3 tools/chassis.py hwbom`; +20 % spares
+> when ordering). Supersedes the Totals line below.
+>
+> | Qty | Item | Joints |
+> |---:|---|---|
+> | 6 | Ball bearing 624 (4 x 13 x 5, 2RS) | Idler, Sprocket |
+> | 8 | Ball bearing 684 (4 x 9 x 4, 2RS) | Road |
+> | 2 | Dowel pin Ø4 h8 x 8, bearing steel (drawn Ø3.95) | Sprocket |
+> | 6 | Heat-set insert M2.5 x 4 (Ruthex-type, brass) | F10, F8 |
+> | 38 | Heat-set insert M3 x 5.7 (Ruthex-type, brass) | F1, F11, F12, F2, F3, F4, F4b, F5, F7, F9 |
+> | 4 | M1.6 x 6 pan head, thread-forming for plastics (TF) | F17 |
+> | 4 | M2 x 5 pan head, thread-forming for plastics (TF) | F16 |
+> | 2 | M2 x 8 pan head, thread-forming for plastics (TF) | F18 |
+> | 9 | M2.5 x 6 SHCS ISO 4762 (A2) | F15, F6, F8 |
+> | 3 | M2.5 x 8 SHCS ISO 4762 (A2) | F10 |
+> | 4 | M3 x 10 low head DIN 7984 (A2) | F1 |
+> | 2 | M3 x 12 SHCS ISO 4762 (A2) | F4 |
+> | 2 | M3 x 12 button ISO 7380-1 (A2) | F9 |
+> | 4 | M3 x 28 SHCS ISO 4762 (A2) | F3 |
+> | 2 | M3 x 30 SHCS ISO 4762 (A2) | F4b |
+> | 4 | M3 x 6 SHCS ISO 4762 (A2) | F11 |
+> | 18 | M3 x 8 SHCS ISO 4762 (A2) | F12, F2, F5, F7 |
+> | 2 | M3 x 8 flanged button ISO 7380-2 (A2) | F9 |
+> | 2 | Nyloc nut DIN 985 M3 (envelope Ø6 x 4) | F4 |
+> | 6 | Shim ring DIN 988 4 x 8 x 0.5 | F4 |
+> | 2 | Shoulder bolt ISO 7379 Ø4 x 53.5, M3 thread (head Ø8 x 4) | F4 |
+> | 8 | Washer ISO 7089 M3 (3.2 x 7 x 0.5, A2) | F2 |
+
+**Totals (stale, see the 2026-11-10 bill above; per robot, +20 % spares when ordering):** M3 inserts ~34 (F1, F2, F5, F7, F8,
 F9, F10, F11), M2.5 inserts 4 (F12); M3 × 6 ×12, M3 × 8 ×15, M3 × 8 button ×4,
 M3 × 10 ×3, M3 × 30 ×4 (kit), M2.5 × 6 ×4, M2.5 × 8 ×4, M3 nyloc ×8, M3 washers ×8.
 
