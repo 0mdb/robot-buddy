@@ -123,6 +123,18 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--no-face", action="store_true", help="Disable Face MCU")
     p.add_argument("--no-vision", action="store_true", help="Disable vision worker")
     p.add_argument(
+        "--camera",
+        default=os.environ.get("RB_CAMERA", "picamera2"),
+        help="Vision camera source: 'picamera2' (CSI, default), a V4L2 index or device "
+        "path (USB camera), or a stream URL cv2 can open. Also reads RB_CAMERA",
+    )
+    p.add_argument(
+        "--no-audio",
+        action="store_true",
+        help="No mic or speaker: skip the ear and tts workers. The planner still runs; "
+        "text conversation works, voice does not",
+    )
+    p.add_argument(
         "--no-planner", action="store_true", help="Disable AI/planner worker"
     )
     p.add_argument("--http-port", type=int, default=8080, help="HTTP server port")
@@ -259,11 +271,14 @@ async def async_main(args: argparse.Namespace) -> None:
 
         # Register workers
         if not args.no_vision:
+            os.environ["RB_CAMERA"] = args.camera  # workers inherit the environment
             workers.register("vision", "supervisor.workers.vision_worker")
 
-        if planner_enabled:
+        audio_enabled = planner_enabled and not args.no_audio
+        if audio_enabled:
             workers.register("ear", "supervisor.workers.ear_worker")
             workers.register("tts", "supervisor.workers.tts_worker")
+        if planner_enabled:
             workers.register("ai", "supervisor.workers.ai_worker")
 
         # Personality worker (Layer 0 is fully deterministic, no server needed)
@@ -329,7 +344,7 @@ async def async_main(args: argparse.Namespace) -> None:
                 },
             )
 
-        if planner_enabled:
+        if audio_enabled:
             ear_init = {
                 "mic_device": args.usb_mic_device,
                 "mic_socket_path": workers.mic_socket_path,
@@ -358,6 +373,7 @@ async def async_main(args: argparse.Namespace) -> None:
             }
             await workers.send_to("tts", "tts.config.init", tts_init)
 
+        if planner_enabled:
             ai_init = {
                 "audio_mode": cfg.workers.audio_mode,
                 "mic_socket_path": workers.mic_socket_path,
@@ -593,10 +609,11 @@ async def async_main(args: argparse.Namespace) -> None:
             face_transport.on_raw_frame(raw_logger.log_frame)
 
         log.info(
-            "supervisor running (mock=%s, vision=%s, planner=%s, http=%s:%d)",
+            "supervisor running (mock=%s, vision=%s, planner=%s, audio=%s, http=%s:%d)",
             cfg.mock,
             not args.no_vision,
             planner_enabled,
+            audio_enabled,
             cfg.network.host,
             cfg.network.http_port,
         )

@@ -10,6 +10,7 @@ import asyncio
 import base64
 import concurrent.futures
 import logging
+import os
 import threading
 import time
 from typing import Any
@@ -202,6 +203,33 @@ class VisionWorker(BaseWorker):
             "last_error": self._last_error,
         }
 
+    def _open_picamera2(self) -> Any:
+        """Open and start the CSI camera via Picamera2/libcamera."""
+        from picamera2 import Picamera2
+
+        cam = Picamera2(0)
+        # Picamera2 format names are inverted vs OpenCV: "RGB888" yields
+        # B,G,R bytes in memory (what cv2 expects), "BGR888" yields R,G,B.
+        # Prefer "RGB888" so no conversion is needed on the hot path.
+        try:
+            cam.configure(
+                cam.create_video_configuration(
+                    main={"size": self._capture_size, "format": "RGB888"},
+                )
+            )
+            self._camera_main_format = "RGB888"
+        except Exception:
+            cam.configure(
+                cam.create_video_configuration(
+                    main={"size": self._capture_size, "format": "BGR888"},
+                )
+            )
+            self._camera_main_format = "BGR888"
+        cam.start()
+        self._camera_ok = True
+        log.info("camera opened (format=%s)", self._camera_main_format)
+        return cam
+
     async def run(self) -> None:
         """Main vision loop — capture frames and run detection."""
         try:
@@ -218,32 +246,22 @@ class VisionWorker(BaseWorker):
             self.send(VISION_LIFECYCLE_ERROR, {"error": "detectors not available"})
             return
 
-        # Open camera
+        # Open camera. RB_CAMERA (set from the supervisor's --camera) picks the source:
+        # "picamera2" (default, the CSI camera), or anything cv2.VideoCapture opens — a V4L2
+        # index or device path for a USB camera, or a stream URL (e.g. an MJPEG endpoint).
+        source = os.environ.get("RB_CAMERA", "picamera2") or "picamera2"
         cam = None
+        cap = None
         try:
-            from picamera2 import Picamera2
-
-            cam = Picamera2(0)
-            # Picamera2 format names are inverted vs OpenCV: "RGB888" yields
-            # B,G,R bytes in memory (what cv2 expects), "BGR888" yields R,G,B.
-            # Prefer "RGB888" so no conversion is needed on the hot path.
-            try:
-                cam.configure(
-                    cam.create_video_configuration(
-                        main={"size": self._capture_size, "format": "RGB888"},
-                    )
-                )
-                self._camera_main_format = "RGB888"
-            except Exception:
-                cam.configure(
-                    cam.create_video_configuration(
-                        main={"size": self._capture_size, "format": "BGR888"},
-                    )
-                )
-                self._camera_main_format = "BGR888"
-            cam.start()
-            self._camera_ok = True
-            log.info("camera opened (format=%s)", self._camera_main_format)
+            if source != "picamera2":
+                cap = cv2.VideoCapture(int(source) if source.isdigit() else source)
+                if not cap.isOpened():
+                    raise RuntimeError(f"cv2.VideoCapture could not open {source!r}")
+                self._camera_main_format = "cv2"  # BGR, what the detectors expect
+                self._camera_ok = True
+                log.info("camera opened (source=%s)", source)
+            else:
+                cam = self._open_picamera2()
         except Exception as e:
             self._last_error = str(e)
             self._camera_ok = False
@@ -263,6 +281,11 @@ class VisionWorker(BaseWorker):
 
             def _capture_with_metadata() -> tuple[Any, int]:
                 """Blocking capture that returns (frame_array, t_cam_ns)."""
+                if cap is not None:
+                    ok, arr = cap.read()
+                    if not ok:
+                        raise RuntimeError("camera read failed")
+                    return arr, time.monotonic_ns()
                 with self._pending_controls_lock:
                     controls = self._pending_controls
                     self._pending_controls = {}
@@ -466,6 +489,8 @@ class VisionWorker(BaseWorker):
             pass
         finally:
             cam_executor.shutdown(wait=False, cancel_futures=True)
+            if cap is not None:
+                cap.release()
             if cam:
                 try:
                     cam.stop()

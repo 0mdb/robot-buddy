@@ -173,6 +173,10 @@ class TickLoop:
         # Button debounce
         self._last_greet_ms = 0.0
         self._greet_debounce_ms = 5000.0
+        # How long greet_on_button holds WANDER still before patrol resumes. Without it, one
+        # ACTION press would park WANDER until a planner skill happened to replace it.
+        self._greet_hold_ms = 3000.0
+        self._skill_since_ms = 0.0
 
         # Conversation state machine
         from supervisor.core.conv_state import ConvStateTracker
@@ -388,7 +392,17 @@ class TickLoop:
         # 4b. Forward system events to personality worker
         self._forward_pe_system_events(prev_mode)
 
-        # 5. Behavior engine — pick twist
+        # 5. Behavior engine — pick twist. The skill the planner (or the greet button) chose lives
+        # on the scheduler; WANDER reads it from world, so publish it here every tick.
+        skill = self._scheduler.active_skill
+        if skill != self.world.active_skill:
+            self._skill_since_ms = now_ms
+        if (
+            skill == "greet_on_button"
+            and now_ms - self._skill_since_ms > self._greet_hold_ms
+        ):
+            skill = self._scheduler.active_skill = "patrol_drift"
+        self.world.active_skill = skill
         recent = self._event_bus.latest(10)
         desired = self._behavior.step(self.robot, self.world, recent)
         self.robot.twist_cmd = desired

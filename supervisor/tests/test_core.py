@@ -769,3 +769,63 @@ class TestConversationSpeechArbitration:
             if len(c.args) >= 2 and c.args[0] == "tts" and c.args[1] == TTS_CMD_CANCEL
         ]
         assert cancel_calls
+
+
+class TestPlannerSkillReachesBehavior:
+    """A planner `skill` action must reach WANDER (it was stored on the scheduler and never read)."""
+
+    @pytest.mark.asyncio
+    async def test_scheduled_skill_is_what_the_behavior_engine_sees(self):
+        from supervisor.core.action_scheduler import ValidatedPlan
+        from supervisor.core.tick_loop import TickLoop
+
+        class _Reflex:
+            connected = False
+
+            def on_telemetry(self, cb):
+                pass
+
+            def __getattr__(self, name):
+                return lambda *a, **k: None
+
+        class _Workers:
+            def __getattr__(self, name):
+                return lambda *a, **k: None
+
+        loop = TickLoop(reflex=_Reflex(), face=None, workers=_Workers())  # type: ignore[arg-type]
+        seen: list[str] = []
+        step = loop._behavior.step
+
+        def spy(robot, world, recent):
+            seen.append(world.active_skill)
+            return step(robot, world, recent)
+
+        loop._behavior.step = spy  # type: ignore[method-assign]
+        plan = ValidatedPlan(
+            actions=[{"action": "skill", "name": "scan_for_target"}], ttl_ms=2000
+        )
+        loop._scheduler.schedule_plan(plan, now_mono_ms=1000.0, issued_mono_ms=1000.0)
+        await loop._tick()
+        assert seen == ["scan_for_target"]
+
+    @pytest.mark.asyncio
+    async def test_greet_holds_then_patrol_resumes(self):
+        from supervisor.core.tick_loop import TickLoop
+
+        class _Stub:
+            connected = False
+
+            def on_telemetry(self, cb):
+                pass
+
+            def __getattr__(self, name):
+                return lambda *a, **k: None
+
+        loop = TickLoop(reflex=_Stub(), face=None, workers=_Stub())  # type: ignore[arg-type]
+        loop.robot.tick_mono_ms = 10_000.0
+        loop._trigger_greet(10_000.0)
+        await loop._tick()
+        assert loop.world.active_skill == "greet_on_button"
+        loop.robot.tick_mono_ms = 10_000.0 + loop._greet_hold_ms + 1
+        await loop._tick()
+        assert loop.world.active_skill == "patrol_drift"
