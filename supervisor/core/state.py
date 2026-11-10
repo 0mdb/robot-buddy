@@ -298,6 +298,11 @@ class WorldState:
     vision_rx_mono_ms: float = 0.0
     vision_frame_seq: int = 0
 
+    # Face recognition (Track E)
+    face_names: list[str] = field(default_factory=list)
+    face_count: int = 0
+    face_rx_mono_ms: float = 0.0
+
     # Audio / speech
     speaking: bool = False
     current_energy: int = 0
@@ -378,6 +383,8 @@ class WorldState:
             "ball_bearing": round(self.ball_bearing_deg, 1),
             "vision_fps": round(self.vision_fps, 1),
             "vision_age_ms": round(self.vision_age_ms, 1),
+            "face_names": self.face_names,
+            "face_count": self.face_count,
             "speaking": self.speaking,
             "current_energy": self.current_energy,
             "ptt_active": self.ptt_active,

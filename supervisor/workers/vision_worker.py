@@ -18,6 +18,7 @@ from supervisor.messages.envelope import Envelope
 from supervisor.messages.types import (
     VISION_CONFIG_UPDATE,
     VISION_DETECTION_SNAPSHOT,
+    VISION_FACE_DETECTED,
     VISION_FRAME_JPEG,
     VISION_LIFECYCLE_ERROR,
 )
@@ -78,6 +79,13 @@ class VisionWorker(BaseWorker):
         # Rate limiting
         self._last_snapshot_t = 0.0
         self._last_jpeg_t = 0.0
+        self._last_face_t = 0.0
+
+        # Face recognition (Track E)
+        self._face_recognizer: Any = None
+        self._face_enabled = False
+        self._face_every_n = 3
+        self._face_frame_counter = 0
 
         # Camera format ("BGR888" preferred; fallback to "RGB888" + convert)
         self._camera_main_format = "RGB888"
@@ -189,6 +197,12 @@ class VisionWorker(BaseWorker):
                 self._mask_obj = raw if isinstance(raw, dict) else None
                 self._mask_dirty = True
 
+            # Face recognition config
+            if "face_recognition_enabled" in p:
+                self._face_enabled = bool(p["face_recognition_enabled"])
+            if "face_every_n_frames" in p:
+                self._face_every_n = max(1, int(p["face_every_n_frames"]))
+
             if controls_changed:
                 self._queue_controls_apply()
             log.info("config updated")
@@ -217,6 +231,27 @@ class VisionWorker(BaseWorker):
         except ImportError:
             self.send(VISION_LIFECYCLE_ERROR, {"error": "detectors not available"})
             return
+
+        # Face recognition (lazy — only if enabled + models available)
+        if self._face_enabled:
+            try:
+                from supervisor.inputs.face_detector import FaceRecognizer
+
+                self._face_recognizer = FaceRecognizer(
+                    gallery_path=getattr(self, "_face_gallery_path", "./data/face_embeddings.json"),
+                    detection_model_path=getattr(self, "_face_det_model", "./models/scrfd_500m.onnx"),
+                    recognition_model_path=getattr(self, "_face_rec_model", "./models/mobilefacenet.onnx"),
+                    detection_threshold=getattr(self, "_face_det_threshold", 0.5),
+                    recognition_threshold=getattr(self, "_face_rec_threshold", 0.45),
+                )
+                if self._face_recognizer.available:
+                    log.info("Face recognition enabled")
+                else:
+                    log.warning("Face recognition enabled but models not found — disabled")
+                    self._face_recognizer = None
+            except ImportError:
+                log.warning("Face recognition enabled but face_detector module not available")
+                self._face_recognizer = None
 
         # Open camera
         cam = None
@@ -412,6 +447,30 @@ class VisionWorker(BaseWorker):
                     include_mask=self._mask_ball_include,
                     hfov_deg=self._hfov_deg,
                 )
+
+                # Face detection (every Nth frame)
+                if self._face_recognizer is not None:
+                    self._face_frame_counter += 1
+                    if self._face_frame_counter >= self._face_every_n:
+                        self._face_frame_counter = 0
+                        faces = self._face_recognizer.detect_faces(small)
+                        if faces:
+                            self.send(
+                                VISION_FACE_DETECTED,
+                                {
+                                    "faces": [
+                                        {
+                                            "bbox": list(f.bbox),
+                                            "confidence": round(f.confidence, 3),
+                                            "name": f.name,
+                                            "identity_confidence": round(
+                                                f.identity_confidence, 3
+                                            ),
+                                        }
+                                        for f in faces
+                                    ],
+                                },
+                            )
 
                 # FPS tracking
                 self._frame_seq += 1

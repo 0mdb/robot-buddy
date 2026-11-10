@@ -54,6 +54,13 @@ class VisionConfig:
     capture_height: int = 480
     process_width: int = 320
     process_height: int = 240
+    face_recognition_enabled: bool = False
+    face_detection_model: str = "./models/scrfd_500m.onnx"
+    face_recognition_model: str = "./models/mobilefacenet.onnx"
+    face_gallery_path: str = "./data/face_embeddings.json"
+    face_detection_threshold: float = 0.5
+    face_recognition_threshold: float = 0.45
+    face_every_n_frames: int = 3
 
 
 @dataclass

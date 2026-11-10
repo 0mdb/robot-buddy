@@ -16,6 +16,7 @@ VISION_STATUS_HEALTH = "vision.status.health"
 VISION_LIFECYCLE_STARTED = "vision.lifecycle.started"
 VISION_LIFECYCLE_STOPPED = "vision.lifecycle.stopped"
 VISION_LIFECYCLE_ERROR = "vision.lifecycle.error"
+VISION_FACE_DETECTED = "vision.face.detected"
 
 # ── TTS (§4.4) ──────────────────────────────────────────────────
 
