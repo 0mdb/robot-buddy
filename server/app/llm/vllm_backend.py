@@ -42,12 +42,15 @@ _VLLM_DTYPE = Literal["auto", "half", "float16", "bfloat16", "float", "float32"]
 
 # Cached V2 JSON schema for guided decoding (generated once from Pydantic model).
 _CONVERSATION_V2_JSON_SCHEMA = ConversationResponseV2.model_json_schema()
+# Plans are guided too (SIM-INTERACTION "Planner suite", P1): unguided, most quiet-tick plans
+# omitted the "action" key and were discarded after the repair retry.
+_PLAN_JSON_SCHEMA = ModelPlan.model_json_schema()
 
 
 def _extract_json_object(text: str) -> str:
     """Best-effort extraction of the first JSON object from free-form text.
 
-    Used for plan generation (which doesn't use guided decoding yet).
+    Plans are guided; this stays as the fallback when no structured-output backend is present.
     """
     if not isinstance(text, str):
         return ""
@@ -360,7 +363,9 @@ class VLLMBackend(PlannerLLMBackend):
             for attempt in (1, 2):
                 prompt = self._apply_chat_template(messages)
                 text = await self._generate_text(
-                    prompt, request_tag=f"plan-{state.seq}-{attempt}"
+                    prompt,
+                    request_tag=f"plan-{state.seq}-{attempt}",
+                    guided_json_schema=_PLAN_JSON_SCHEMA,
                 )
                 candidate = _extract_json_object(text)
                 try:

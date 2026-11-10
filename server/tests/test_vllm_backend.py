@@ -293,7 +293,9 @@ class TestPlanRepairLoop:
         prompts_seen: list[str] = []
         calls = {"n": 0}
 
-        async def _fake_generate_text(prompt: str, *, request_tag: str) -> str:
+        async def _fake_generate_text(
+            prompt: str, *, request_tag: str, **_kw: object
+        ) -> str:
             del request_tag
             prompts_seen.append(prompt)
             calls["n"] += 1
@@ -349,3 +351,27 @@ class TestModelConfigResolution:
         snap = backend.debug_snapshot()
         assert snap["chat_template"] is False  # no tokenizer loaded
         assert snap["model_family"] == "qwen3"
+
+
+@pytest.mark.asyncio
+async def test_vllm_generate_plan_is_guided_by_the_plan_schema():
+    """SIM-INTERACTION "Planner suite" P1: unguided plans dropped the "action" key."""
+    from app.llm.schemas import ModelPlan
+
+    backend = VLLMBackend()
+    seen: list[object] = []
+
+    async def _fake_generate_text(
+        prompt: str,
+        *,
+        request_tag: str,
+        guided_json_schema: object = None,
+        **_kw: object,
+    ) -> str:
+        del prompt, request_tag
+        seen.append(guided_json_schema)
+        return '{"actions":[],"ttl_ms":500}'
+
+    backend._generate_text = _fake_generate_text  # type: ignore[method-assign]
+    await backend.generate_plan(_world_state())
+    assert seen == [ModelPlan.model_json_schema()]

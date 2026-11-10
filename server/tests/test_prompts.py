@@ -144,3 +144,28 @@ def test_format_user_prompt_with_vision():
     )
     prompt = format_user_prompt(ws)
     assert "95%" in prompt
+
+
+def _ball_ws(**kw):
+    base = dict(
+        robot_id="r",
+        seq=1,
+        monotonic_ts_ms=0,
+        mode="WANDER",
+        range_mm=900,
+        ball_detected=True,
+        ball_confidence=0.9,
+        vision_age_ms=120.0,
+    )
+    return WorldState(**{**base, **kw})
+
+
+def test_ball_shown_detected_only_when_the_gate_passes():
+    """Planner suite P2: the supervisor sends detected = conf > 0.3; the gate is applied here."""
+    assert "Ball detected: True" in format_user_prompt(_ball_ws())
+    assert "Ball detected: False" in format_user_prompt(_ball_ws(ball_confidence=0.52))
+    assert "Ball detected: False" in format_user_prompt(_ball_ws(vision_age_ms=1800.0))
+    assert "Ball detected: False" in format_user_prompt(_ball_ws(vision_age_ms=-1.0))
+    assert "Ball detected: False" in format_user_prompt(_ball_ws(ball_detected=False))
+    # The raw confidence still reaches the model, so it can say "maybe" without claiming a ball.
+    assert "confidence: 0.52" in format_user_prompt(_ball_ws(ball_confidence=0.52))

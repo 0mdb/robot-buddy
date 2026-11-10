@@ -328,3 +328,18 @@ def test_world_state_full():
     assert ws.ball_confidence == 0.91
     assert ws.vision_age_ms == 88.0
     assert ws.trigger == "ball_seen"
+
+
+def test_plan_schema_requires_the_action_discriminator():
+    """Guided decoding may omit any field the schema does not require. Without "action" an
+    action cannot be told apart, and ModelPlan rejects the whole plan (Planner suite P1)."""
+    s = ModelPlan.model_json_schema()
+    assert set(s["required"]) == {"actions", "ttl_ms"}
+    for name in ("SayAction", "EmoteAction", "GestureAction", "SkillAction"):
+        assert "action" in s["$defs"][name]["required"], name
+    assert set(s["$defs"]["SayAction"]["required"]) == {"action", "text"}
+
+
+def test_plan_without_action_key_still_rejected():
+    with pytest.raises(ValidationError):
+        ModelPlan.model_validate({"actions": [{"emote": "neutral"}], "ttl_ms": 500})

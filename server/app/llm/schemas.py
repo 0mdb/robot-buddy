@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated, Literal, Union
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.llm.expressions import (
     CANONICAL_EMOTIONS,
@@ -64,7 +64,22 @@ class WorldState(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+def _require(*names: str) -> ConfigDict:
+    """Mark fields required in the JSON schema even though they have Python defaults.
+
+    The ``action`` discriminator defaults to its own literal, so pydantic leaves it out of
+    ``required``, and guided decoding is then free to omit it. The model did exactly that
+    unguided (``{"emote": "neutral"}``), and ``ModelPlan`` rejects such an action, so the
+    whole plan is lost (SIM-INTERACTION "Planner suite", P1). Same fix as conversation's B4.
+    """
+    return ConfigDict(
+        json_schema_extra=lambda schema: schema.update(required=list(names))
+    )
+
+
 class SayAction(BaseModel):
+    model_config = _require("action", "text")
+
     action: Literal["say"] = "say"
     text: str = Field(max_length=200)
 
@@ -85,6 +100,8 @@ VALID_SKILLS = frozenset(
 
 
 class EmoteAction(BaseModel):
+    model_config = _require("action", "name", "intensity")
+
     action: Literal["emote"] = "emote"
     name: str
     intensity: float = Field(ge=0.0, le=1.0, default=0.5)
@@ -100,6 +117,8 @@ class EmoteAction(BaseModel):
 
 
 class GestureAction(BaseModel):
+    model_config = _require("action", "name")
+
     action: Literal["gesture"] = "gesture"
     name: str
     params: dict = Field(default_factory=dict)
@@ -115,6 +134,8 @@ class GestureAction(BaseModel):
 
 
 class SkillAction(BaseModel):
+    model_config = _require("action", "name")
+
     action: Literal["skill"] = "skill"
     name: Literal[
         "patrol_drift",
@@ -135,6 +156,8 @@ PlanAction = Annotated[
 
 class ModelPlan(BaseModel):
     """Bounded action payload returned by the LLM."""
+
+    model_config = _require("actions", "ttl_ms")
 
     actions: list[PlanAction] = Field(default_factory=list, max_length=5)
     ttl_ms: int = Field(default=2000, ge=500, le=5000)

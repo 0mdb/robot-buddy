@@ -7,7 +7,7 @@ a child hears when nobody is talking to Buddy.
 
 Each scenario is a short run of ticks. Every tick goes through the server's own message builder
 (``VLLMBackend._build_plan_messages``), JSON extraction, ``ModelPlan`` validation, and its single
-repair retry, exactly as ``generate_plan`` does. Only the transport differs: any OpenAI-compatible
+repair retry, exactly as ``generate_plan`` does, guided by the same schema. Only the transport differs: any OpenAI-compatible
 endpoint serving the same model.
 
 **The world states are shaped like the real supervisor's** (``tick_loop._request_plan``), not
@@ -44,7 +44,12 @@ from typing import Any
 
 from app.eval.converse_sim import _BLOCKED, ChatFn, _words
 from app.llm.schemas import ModelPlan, SayAction, SkillAction, WorldState
-from app.llm.vllm_backend import VLLMBackend, _JSON_REPAIR_SUFFIX, _extract_json_object
+from app.llm.vllm_backend import (
+    _JSON_REPAIR_SUFFIX,
+    _PLAN_JSON_SCHEMA,
+    VLLMBackend,
+    _extract_json_object,
+)
 
 MAX_ACTIONS = 5  # settings.max_actions default
 
@@ -330,7 +335,8 @@ async def plan_once(
 ) -> tuple[str, ModelPlan | None, bool]:
     """``generate_plan``'s loop: build, generate, extract, validate, one repair retry.
 
-    ``schema`` is an experiment, not the server: production plans are unguided today."""
+    ``schema`` is what the server guides with (``_PLAN_JSON_SCHEMA``); None reproduces the
+    unguided baseline."""
     messages = VLLMBackend._build_plan_messages(state)
     raw = await chat(messages, schema, temperature)
     plan = _parse(raw)
@@ -512,7 +518,7 @@ async def _main(args: Any) -> int:
                     chat,
                     seed=seed,
                     temperature=args.temperature,
-                    schema=ModelPlan.model_json_schema() if args.guided else None,
+                    schema=None if args.unguided else _PLAN_JSON_SCHEMA,
                 )
                 runs.append(r)
                 print(
@@ -522,7 +528,7 @@ async def _main(args: Any) -> int:
     meta = (
         f"Model `{args.model}` at temperature {args.temperature}, {args.seeds} seed(s), "
         f"{len(scenarios)} scenarios; decoding "
-        f"{'guided by ModelPlan (experiment)' if args.guided else 'unguided (as the server)'}. "
+        f"{'unguided (the pre-fix baseline)' if args.unguided else 'guided, as the server'}. "
         f"World states shaped like `tick_loop._request_plan`. "
         f"{time.monotonic() - t0:.0f} s."
     )
@@ -548,9 +554,9 @@ def main() -> int:
     )
     ap.add_argument("--scenarios", nargs="*", help="scenario ids (default: all)")
     ap.add_argument(
-        "--guided",
+        "--unguided",
         action="store_true",
-        help="experiment: constrain to ModelPlan's JSON schema (the server does not, today)",
+        help="reproduce the pre-fix baseline: no schema (the server guides plans)",
     )
     ap.add_argument(
         "--no-thinking", action="store_true", help="chat_template enable_thinking=0"

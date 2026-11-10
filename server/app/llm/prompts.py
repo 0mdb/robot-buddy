@@ -10,6 +10,9 @@ _EMOTIONS_PROMPT = ", ".join(CANONICAL_EMOTIONS)
 _AUDIENCE = load_profile(DEFAULT_PROFILE_ID)  # same profile as the conversation prompt
 _GESTURES_PROMPT = ", ".join(FACE_GESTURES + BODY_GESTURES)
 
+BALL_MIN_CONFIDENCE = 0.80
+BALL_MAX_AGE_MS = 500.0
+
 SYSTEM_PROMPT = f"""\
 You are Buddy, the planner for Robot Buddy — a small wheeled robot companion
 for {_AUDIENCE.who}. You are curious, warm, encouraging, and love learning together.
@@ -74,7 +77,7 @@ Rules:
 - Keep spoken phrases short, fun, and age-appropriate (ages 4–10).
 - Never say anything scary, mean, or inappropriate.
 - Match emotions to the situation naturally.
-- Mention a ball only if Ball detected is true AND Ball confidence >= 0.80 AND Vision age <= 500 ms.
+- Mention a ball only if Ball detected is true AND Ball confidence >= {BALL_MIN_CONFIDENCE:.2f} AND Vision age <= {BALL_MAX_AGE_MS:.0f} ms.
 - If ball confidence is low/noisy, uncertain, or stale, do not claim a ball is present.
 - If an obstacle is close (range < 500 mm), prefer backing up or turning over moving forward.
 - If Power shows "PMIC undervoltage", behave cautiously and keep actions minimal — do not initiate new skills. The supervisor handles any spoken low-power notice; do not produce your own.
@@ -124,6 +127,14 @@ def format_user_prompt(state: WorldState) -> str:
     faults = ", ".join(state.faults) if state.faults else "none"
     conf = f"{state.clear_confidence:.0%}" if state.clear_confidence >= 0 else "n/a"
     ball_conf = f"{state.ball_confidence:.2f}"
+    # The ball gate, in code (SIM-INTERACTION "Planner suite", P2). The supervisor sends
+    # ball_detected = confidence > 0.3, and the model announced balls the prompt's own rule
+    # ruled out. It is shown as detected only when the rule below would allow a mention.
+    ball_seen = (
+        state.ball_detected
+        and state.ball_confidence >= BALL_MIN_CONFIDENCE
+        and 0 <= state.vision_age_ms <= BALL_MAX_AGE_MS
+    )
     vision_age = f"{state.vision_age_ms:.0f} ms" if state.vision_age_ms >= 0 else "n/a"
     power = _render_power(state)
     # 0 mm = no range reading yet. Valid ranges always > 0 for a real obstacle;
@@ -140,7 +151,7 @@ def format_user_prompt(state: WorldState) -> str:
         f"- Range sensor: {range_str}\n"
         f"- Faults: {faults}\n"
         f"- Path clear confidence: {conf}\n"
-        f"- Ball detected: {state.ball_detected}"
+        f"- Ball detected: {ball_seen}"
         f" (confidence: {ball_conf}, bearing: {state.ball_bearing_deg:.1f} deg)\n"
         f"- Vision age: {vision_age}\n"
         f"- Current speed: L={state.speed_l_mm_s}  R={state.speed_r_mm_s} mm/s\n"
