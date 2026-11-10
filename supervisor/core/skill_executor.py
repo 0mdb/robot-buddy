@@ -6,7 +6,7 @@ Adapted from v1: accepts both RobotState (MCU hardware) and WorldState
 
 from __future__ import annotations
 
-from supervisor.devices.protocol import RangeStatus
+from supervisor.devices.protocol import Fault, RangeStatus
 from supervisor.core.state import DesiredTwist, RobotState, WorldState
 
 
@@ -47,6 +47,12 @@ class SkillExecutor:
         obstacle_very_close_mm: int = 300,
         avoid_reverse_mm_s: int = -120,
         avoid_turn_mrad_s: int = 400,
+        obstacle_escape_max_mm: int = 400,
+        obstacle_escape_max_ms: int = 8000,
+        no_progress_ms: int = 1000,
+        no_progress_cmd_mm_s: int = 20,
+        no_progress_cmd_mrad_s: int = 150,
+        no_progress_ratio: float = 0.5,
     ) -> None:
         self._patrol_v_mm_s = patrol_v_mm_s
         self._patrol_w_mrad_s = patrol_w_mrad_s
@@ -75,6 +81,16 @@ class SkillExecutor:
         self._obstacle_very_close_mm = obstacle_very_close_mm
         self._avoid_reverse_mm_s = avoid_reverse_mm_s
         self._avoid_turn_mrad_s = avoid_turn_mrad_s
+        self._obstacle_escape_max_mm = obstacle_escape_max_mm
+        self._obstacle_escape_max_ms = obstacle_escape_max_ms
+        self._escape_since_ms: float | None = None
+        self._escape_mm = 0.0
+        self._no_progress_ms = no_progress_ms
+        self._no_progress_cmd_mm_s = no_progress_cmd_mm_s
+        self._no_progress_cmd_mrad_s = no_progress_cmd_mrad_s
+        self._no_progress_ratio = no_progress_ratio
+        self._stalled_since_ms: float | None = None
+        self._recover_since_ms: float | None = None
         self._active_skill = ""
         self._active_skill_since_ms = 0.0
 
@@ -92,6 +108,58 @@ class SkillExecutor:
 
         if active_skill == "greet_on_button":
             return DesiredTwist(0, 0)
+
+        # The reflex has latched OBSTACLE. Back away (reverse arc) whatever the sonar says now: at
+        # a grazing angle a wall a few cm away reads TIMEOUT, so a range test would fall through
+        # to a forward skill the fault gate rightly refuses, and the robot would wait forever.
+        # Blind (no rear sensor), so bounded per latch by distance reversed (encoders), with a
+        # time backstop for slipping tracks. The MCU releases at range_release_mm, or when blind
+        # after backing off (safety.cpp).
+        if robot.fault_flags & int(Fault.OBSTACLE):
+            if self._escape_since_ms is None:
+                self._escape_since_ms = float(robot.tick_mono_ms)
+                self._escape_mm = 0.0
+            wheels = (abs(robot.speed_l_mm_s) + abs(robot.speed_r_mm_s)) / 2
+            self._escape_mm += wheels * max(0.0, robot.tick_dt_ms) / 1000.0
+            if (
+                self._escape_mm < self._obstacle_escape_max_mm
+                and robot.tick_mono_ms - self._escape_since_ms
+                < self._obstacle_escape_max_ms
+            ):
+                return DesiredTwist(self._avoid_reverse_mm_s, self._avoid_turn_mrad_s)
+            return DesiredTwist(0, 0)
+        self._escape_since_ms = None
+
+        # No progress: last tick's governed command was real, yet the robot is achieving less than
+        # no_progress_ratio of it — wheels (linear) or gyro (turning in place, where skid-steer
+        # tracks can stall). It is pushing something its sensor cannot see (a wall at a grazing
+        # angle reads TIMEOUT, a chair base sits under the beam), below the MCU's STALL threshold.
+        # Run one retreat-and-recover cycle, then resume. Ratios, not absolutes: one encoder count
+        # per telemetry period already reads ~14 mm/s.
+        now_ms = float(robot.tick_mono_ms)
+        if self._recover_since_ms is not None:
+            elapsed = now_ms - self._recover_since_ms
+            if elapsed < self._retreat_cycle_ms():
+                return self._retreat_and_recover(elapsed)
+            self._recover_since_ms = None
+        cmd = robot.twist_capped
+        k = self._no_progress_ratio
+        if abs(cmd.v_mm_s) >= self._no_progress_cmd_mm_s:
+            achieved = (abs(robot.speed_l_mm_s) + abs(robot.speed_r_mm_s)) / 2
+            stalled = achieved < k * abs(cmd.v_mm_s)
+        elif abs(cmd.w_mrad_s) >= self._no_progress_cmd_mrad_s:
+            stalled = abs(robot.gyro_z_mrad_s) < k * abs(cmd.w_mrad_s)
+        else:
+            stalled = False
+        if stalled:
+            if self._stalled_since_ms is None:
+                self._stalled_since_ms = now_ms
+            elif now_ms - self._stalled_since_ms > self._no_progress_ms:
+                self._stalled_since_ms = None
+                self._recover_since_ms = now_ms
+                return self._retreat_and_recover(0.0)
+        else:
+            self._stalled_since_ms = None
 
         if active_skill == "retreat_and_recover":
             return self._retreat_and_recover(skill_elapsed_ms)
@@ -162,6 +230,9 @@ class SkillExecutor:
         if bearing > self._approach_turn_deadband_deg:
             return DesiredTwist(0, turn)
         return DesiredTwist(self._approach_v_cautious_mm_s, turn)
+
+    def _retreat_cycle_ms(self) -> int:
+        return self._retreat_reverse_ms + self._retreat_turn_ms + self._retreat_pause_ms
 
     def _retreat_and_recover(self, skill_elapsed_ms: float) -> DesiredTwist:
         cycle_ms = (

@@ -205,6 +205,24 @@ void control_task(void* arg)
         v_target_l = clampf(v_target_l, -max_v, max_v);
         v_target_r = clampf(v_target_r, -max_v, max_v);
 
+        // ---- 3b. Obstacle escape ----
+        // OBSTACLE alone latches until range > range_release_mm, and any fault zeroes the motors,
+        // so a robot stopped at a wall could never move away from it. With OBSTACLE the only fault,
+        // a command that reverses *both* tracks may run, capped: it moves away from what the
+        // forward sensor sees. Forward motion and spinning in place stay blocked.
+        const uint16_t faults = g_fault_flags.load(std::memory_order_relaxed);
+        const bool     escape = faults == static_cast<uint16_t>(Fault::OBSTACLE) && v_target_l < 0.0f &&
+                            v_target_r < 0.0f;
+        if (escape) {
+            const float cap = static_cast<float>(g_cfg.range_escape_max_mm_s);
+            v_target_l = clampf(v_target_l, -cap, 0.0f);
+            v_target_r = clampf(v_target_r, -cap, 0.0f);
+            // Never carry forward motion into an escape: forward ramps snap to zero, as the
+            // fault gate below would have done.
+            rl_target_l = fminf(rl_target_l, 0.0f);
+            rl_target_r = fminf(rl_target_r, 0.0f);
+        }
+
         // ---- 4. Rate limiting ----
         float max_a = static_cast<float>(g_cfg.max_a_mm_s2);
         rl_target_l = rate_limit(rl_target_l, v_target_l, max_a, dt_actual);
@@ -227,9 +245,11 @@ void control_task(void* arg)
         u_l = deadband_comp(u_l, rl_l);
         u_r = deadband_comp(u_r, rl_r);
 
-        // ---- 8. Fault gate: if any faults active, don't drive motors ----
-        uint16_t faults = g_fault_flags.load(std::memory_order_relaxed);
-        if (faults != 0) {
+        // ---- 8. Fault gate: if any faults active, don't drive motors (except an escape, 3b) ----
+        if (escape) {
+            u_l = fminf(u_l, 0.0f); // yaw damping or PI must not turn an escape into forward drive
+            u_r = fminf(u_r, 0.0f);
+        } else if (faults != 0) {
             // Safety task owns the stop behavior; we just zero our output
             u_l = 0.0f;
             u_r = 0.0f;

@@ -48,6 +48,11 @@ struct ReflexConfig {
     // -- Range sensor --
     uint16_t range_stop_mm;    // trigger soft stop when range < this
     uint16_t range_release_mm; // release stop when range > this (hysteresis)
+    uint16_t range_escape_max_mm_s; // with OBSTACLE the only fault, both tracks may reverse
+                                    // at up to this (no rear sensor: slow, and the
+                                    // release above ends it after ~100 mm)
+    uint16_t range_blind_release_ms; // ...or release once the range has read TIMEOUT this long
+    uint16_t range_blind_release_mm; // ...and the robot has reversed this far since the latch
     uint32_t range_timeout_us; // max echo wait (limits max measurable range)
     uint16_t range_hz;         // measurement rate
 };
@@ -100,6 +105,9 @@ constexpr ReflexConfig CFG_DEFAULTS = {
     // Range sensor
     .range_stop_mm = 250,      // soft stop when obstacle closer than this
     .range_release_mm = 350,   // release when obstacle farther than this
+    .range_escape_max_mm_s = 100, // reverse-only escape speed cap while OBSTACLE latched
+    .range_blind_release_ms = 1000, // grazing-angle walls echo nothing: TIMEOUT, not > release
+    .range_blind_release_mm = 100,  // ...so release on blind + backed off, never blind alone
     .range_timeout_us = 25000, // ~4.3 m max range (25 ms echo timeout)
     .range_hz = 20,            // 20 Hz measurement rate (50 ms period)
 };

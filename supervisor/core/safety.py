@@ -8,7 +8,7 @@ Vision fields now come from WorldState.
 
 from __future__ import annotations
 
-from supervisor.devices.protocol import RangeStatus
+from supervisor.devices.protocol import Fault, RangeStatus
 from supervisor.core.state import (
     DesiredTwist,
     MOTION_MODES,
@@ -21,6 +21,11 @@ from supervisor.core.state import (
 _vision_stale_ms: float = 500.0
 _vision_clear_low: float = 0.3
 _vision_clear_high: float = 0.6
+
+# Obstacle escape: with OBSTACLE the only fault, reversing is allowed at up to this. Mirrors the
+# reflex firmware's `range_escape_max_mm_s` (esp32-reflex/main/config.h) — defense in depth, the
+# MCU enforces the same rule (both tracks reversing) on its own.
+OBSTACLE_ESCAPE_MAX_MM_S: int = 100
 
 # Power-side safety: zero motion when SoC is at/below this. Updated from the
 # `power.soc_critical_pct` param via configure_power_policy(). PMIC undervoltage
@@ -60,10 +65,23 @@ def apply_safety(
         robot.speed_caps.append(SpeedCap(0.0, f"mode={robot.mode.value}"))
         return DesiredTwist(0, 0)
 
-    # 2. Fault gate — zero on any active fault
+    # 2. Fault gate — zero on any active fault, except an obstacle escape: OBSTACLE alone latches
+    # until the range clears, so without this a robot stopped at a wall could never leave it.
+    # Reverse only (away from what the forward sensor sees), capped; never forward, never a spin.
+    escape = False
     if robot.any_fault:
-        robot.speed_caps.append(SpeedCap(0.0, f"fault=0x{robot.fault_flags:04X}"))
-        return DesiredTwist(0, 0)
+        if robot.fault_flags == int(Fault.OBSTACLE) and v < 0:
+            escape = True
+            scale = min(1.0, OBSTACLE_ESCAPE_MAX_MM_S / -v)
+            # Always recorded, so the HUD shows the fault gate binding even under the cap.
+            robot.speed_caps.append(
+                SpeedCap(scale, f"fault=0x{robot.fault_flags:04X} escape")
+            )
+            v = int(v * scale)
+            w = int(w * scale)
+        else:
+            robot.speed_caps.append(SpeedCap(0.0, f"fault=0x{robot.fault_flags:04X}"))
+            return DesiredTwist(0, 0)
 
     # 3. Reflex not connected
     if not robot.reflex_connected:
@@ -77,8 +95,11 @@ def apply_safety(
         robot.speed_caps.append(SpeedCap(0.0, f"soc_critical={robot.power.soc_pct}%"))
         return DesiredTwist(0, 0)
 
-    # 5. Ultrasonic speed governor (defense-in-depth above reflex's 250mm stop)
-    if robot.range_status == RangeStatus.OK and robot.range_mm > 0:
+    # 5. Ultrasonic speed governor (defense-in-depth above reflex's 250mm stop). Not applied to an
+    # escape: the forward sonar's range says nothing about what is behind, and throttling the
+    # reverse by it (x0.25 under 300 mm) only stops the escape reaching the release distance.
+    # The escape's own cap above is the limit on reversing blind.
+    if not escape and robot.range_status == RangeStatus.OK and robot.range_mm > 0:
         if robot.range_mm < 300:
             scale = 0.25
             robot.speed_caps.append(SpeedCap(scale, f"range={robot.range_mm}mm<300"))
@@ -90,8 +111,11 @@ def apply_safety(
             v = int(v * scale)
             w = int(w * scale)
 
-    # 6. Stale range — if NOT_READY or TIMEOUT, be conservative
-    if robot.range_status in (RangeStatus.TIMEOUT, RangeStatus.NOT_READY):
+    # 6. Stale range — if NOT_READY or TIMEOUT, be conservative (forward range: not an escape)
+    if not escape and robot.range_status in (
+        RangeStatus.TIMEOUT,
+        RangeStatus.NOT_READY,
+    ):
         scale = 0.50
         robot.speed_caps.append(SpeedCap(scale, f"range_stale={robot.range_status}"))
         v = int(v * scale)

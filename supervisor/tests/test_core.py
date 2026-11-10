@@ -829,3 +829,166 @@ class TestPlannerSkillReachesBehavior:
         loop.robot.tick_mono_ms = 10_000.0 + loop._greet_hold_ms + 1
         await loop._tick()
         assert loop.world.active_skill == "patrol_drift"
+
+
+class TestObstacleEscape:
+    """OBSTACLE alone must not trap the robot: reverse is allowed, capped (mirrors the reflex)."""
+
+    def _robot(self, faults: int) -> RobotState:
+        return RobotState(
+            mode=Mode.WANDER, reflex_connected=True, fault_flags=faults, range_mm=214
+        )
+
+    def test_reverse_allowed_and_capped(self):
+        from supervisor.core.safety import OBSTACLE_ESCAPE_MAX_MM_S
+
+        r = self._robot(Fault.OBSTACLE)
+        out = apply_safety(DesiredTwist(-120, 400), r, WorldState())
+        assert out.v_mm_s < 0
+        assert -out.v_mm_s <= OBSTACLE_ESCAPE_MAX_MM_S
+        assert any(c.reason.endswith("escape") for c in r.speed_caps)
+
+    def test_slow_reverse_still_records_the_gate(self):
+        r = self._robot(Fault.OBSTACLE)
+        apply_safety(DesiredTwist(-40, 0), r, WorldState())
+        assert r.speed_caps[0].reason == "fault=0x0040 escape"
+
+    @pytest.mark.parametrize("v,w", [(100, 0), (0, 400), (0, 0)])
+    def test_forward_and_spin_stay_blocked(self, v, w):
+        out = apply_safety(
+            DesiredTwist(v, w), self._robot(Fault.OBSTACLE), WorldState()
+        )
+        assert (out.v_mm_s, out.w_mrad_s) == (0, 0)
+
+    def test_any_other_fault_blocks_reverse(self):
+        r = self._robot(Fault.OBSTACLE | Fault.STALL)
+        out = apply_safety(DesiredTwist(-100, 0), r, WorldState())
+        assert (out.v_mm_s, out.w_mrad_s) == (0, 0)
+
+    def test_motion_mode_can_be_entered_with_only_obstacle(self):
+        sm = SupervisorSM()
+        sm.update(reflex_connected=True, fault_flags=0)
+        ok, _ = sm.request_mode(Mode.TELEOP, True, int(Fault.OBSTACLE))
+        assert ok
+
+    def test_motion_mode_refused_with_other_faults(self):
+        sm = SupervisorSM()
+        sm.update(reflex_connected=True, fault_flags=0)
+        ok, why = sm.request_mode(Mode.TELEOP, True, int(Fault.OBSTACLE | Fault.TILT))
+        assert not ok and "faults active" in why
+
+    def test_wander_backs_away_while_latched_even_when_sonar_is_blind(self):
+        from supervisor.core.skill_executor import SkillExecutor
+        from supervisor.devices.protocol import RangeStatus
+
+        sk = SkillExecutor(obstacle_escape_max_mm=400, obstacle_escape_max_ms=8000)
+        r = self._robot(Fault.OBSTACLE)
+        r.range_mm, r.range_status = (
+            0,
+            int(RangeStatus.TIMEOUT),
+        )  # grazing wall: no echo
+        r.tick_dt_ms = 20.0
+        r.speed_l_mm_s = r.speed_r_mm_s = -100
+        r.tick_mono_ms = 1000.0
+        assert sk.step(r, active_skill="patrol_drift").v_mm_s < 0
+        out = None
+        for i in range(
+            1, 300
+        ):  # 100 mm/s for up to 6 s: the 400 mm bound ends it first
+            r.tick_mono_ms = 1000.0 + 20 * i
+            out = sk.step(r, active_skill="patrol_drift")
+            if out == DesiredTwist(0, 0):
+                break
+        assert out == DesiredTwist(0, 0)
+        assert 3900 <= r.tick_mono_ms - 1000.0 <= 4100
+        r.fault_flags = 0
+        r.range_status, r.range_mm = int(RangeStatus.OK), 2000
+        assert (
+            sk.step(r, active_skill="patrol_drift").v_mm_s > 0
+        )  # released: patrol resumes
+
+
+class TestNoProgress:
+    """WANDER notices it is pushing something it cannot see, and backs off."""
+
+    def test_commanded_but_wheels_still_triggers_one_retreat_cycle(self):
+        from supervisor.core.skill_executor import SkillExecutor
+
+        sk = SkillExecutor(no_progress_ms=1000)
+        r = RobotState(
+            mode=Mode.WANDER, reflex_connected=True, range_mm=0, range_status=1
+        )
+        r.twist_capped = DesiredTwist(40, -60)  # governed command was real...
+        r.speed_l_mm_s = r.speed_r_mm_s = 0  # ...and nothing turns
+        out = None
+        for t in range(0, 1200, 20):
+            r.tick_mono_ms = 5000.0 + t
+            out = sk.step(r, active_skill="patrol_drift")
+        assert out is not None and out.v_mm_s < 0, (
+            "should be reversing after > 1 s stalled"
+        )
+        cycle = 900 + 1100 + 350
+        r.speed_l_mm_s = r.speed_r_mm_s = -100  # it moves again
+        r.tick_mono_ms = 5000.0 + 1200 + cycle + 50
+        assert sk.step(r, active_skill="patrol_drift").v_mm_s > 0  # patrol resumes
+
+    def test_moving_robot_never_triggers(self):
+        from supervisor.core.skill_executor import SkillExecutor
+
+        sk = SkillExecutor(no_progress_ms=1000)
+        r = RobotState(
+            mode=Mode.WANDER, reflex_connected=True, range_mm=2000, range_status=0
+        )
+        r.twist_capped = DesiredTwist(80, 120)
+        r.speed_l_mm_s, r.speed_r_mm_s = 70, 90
+        for t in range(0, 5000, 20):
+            r.tick_mono_ms = 5000.0 + t
+            assert sk.step(r, active_skill="patrol_drift").v_mm_s > 0
+
+    def test_spin_in_place_that_does_not_turn_triggers(self):
+        from supervisor.core.skill_executor import SkillExecutor
+
+        sk = SkillExecutor(no_progress_ms=1000)
+        r = RobotState(
+            mode=Mode.WANDER, reflex_connected=True, range_mm=380, range_status=0
+        )
+        r.twist_capped = DesiredTwist(0, 200)
+        r.speed_l_mm_s, r.speed_r_mm_s, r.gyro_z_mrad_s = (
+            -14,
+            0,
+            5,
+        )  # tracks barely, body not
+        out = None
+        for t in range(0, 1200, 20):
+            r.tick_mono_ms = 5000.0 + t
+            out = sk.step(r, active_skill="patrol_drift")
+        assert out is not None and out.v_mm_s < 0
+
+    def test_one_encoder_count_of_jitter_still_counts_as_stalled(self):
+        from supervisor.core.skill_executor import SkillExecutor
+
+        sk = SkillExecutor(no_progress_ms=1000)
+        r = RobotState(
+            mode=Mode.WANDER, reflex_connected=True, range_mm=0, range_status=1
+        )
+        r.twist_capped = DesiredTwist(40, -60)
+        out = None
+        for i, t in enumerate(range(0, 1200, 20)):
+            r.speed_l_mm_s = 14 if i % 2 else 0
+            r.tick_mono_ms = 5000.0 + t
+            out = sk.step(r, active_skill="patrol_drift")
+        assert out is not None and out.v_mm_s < 0
+
+
+def test_escape_is_not_throttled_by_forward_range():
+    from supervisor.core.safety import OBSTACLE_ESCAPE_MAX_MM_S
+
+    r = RobotState(
+        mode=Mode.WANDER,
+        reflex_connected=True,
+        fault_flags=Fault.OBSTACLE,
+        range_mm=214,
+    )
+    out = apply_safety(DesiredTwist(-120, 400), r, WorldState())
+    assert out.v_mm_s == -OBSTACLE_ESCAPE_MAX_MM_S
+    assert not any(c.reason.startswith("range") for c in r.speed_caps)

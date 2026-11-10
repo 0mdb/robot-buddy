@@ -1,5 +1,6 @@
 #include "safety.h"
 #include "config.h"
+#include "encoder.h"
 #include "motor.h"
 #include "shared_state.h"
 
@@ -38,6 +39,8 @@ static bool     s_stall_active = false;
 
 // ---- Obstacle detection state (hysteresis) ----
 static bool s_obstacle_active = false;
+static int32_t  s_obstacle_enc_l = 0, s_obstacle_enc_r = 0; // encoder counts at the latch
+static uint32_t s_blind_since_us = 0;                       // first TIMEOUT while latched (0 = none)
 
 // ---- Helpers ----
 
@@ -167,17 +170,26 @@ static void check_stall(uint32_t now)
     }
 }
 
+static void release_obstacle(const char* why, uint16_t range_mm)
+{
+    s_obstacle_active = false;
+    s_blind_since_us = 0;
+    g_fault_flags.fetch_and(~static_cast<uint16_t>(Fault::OBSTACLE), std::memory_order_relaxed);
+    ESP_LOGI(TAG, "obstacle cleared (%s, %u mm)", why, range_mm);
+}
+
 static void check_obstacle()
 {
     const RangeSample* range = g_range.read();
 
-    // Only act on valid readings
-    if (range->status != RangeStatus::OK) return;
-
     if (!s_obstacle_active) {
+        // Only act on valid readings
+        if (range->status != RangeStatus::OK) return;
         // Not currently stopped — check if obstacle is too close
         if (range->range_mm < g_cfg.range_stop_mm) {
             s_obstacle_active = true;
+            s_blind_since_us = 0;
+            encoder_snapshot(&s_obstacle_enc_l, &s_obstacle_enc_r);
             uint16_t flags = g_fault_flags.load(std::memory_order_relaxed);
             if (!(flags & Fault::OBSTACLE)) {
                 g_fault_flags.fetch_or(static_cast<uint16_t>(Fault::OBSTACLE), std::memory_order_relaxed);
@@ -185,13 +197,31 @@ static void check_obstacle()
                 begin_soft_stop();
             }
         }
-    } else {
-        // Currently stopped — release only when obstacle is far enough (hysteresis)
-        if (range->range_mm > g_cfg.range_release_mm) {
-            s_obstacle_active = false;
-            g_fault_flags.fetch_and(~static_cast<uint16_t>(Fault::OBSTACLE), std::memory_order_relaxed);
-            ESP_LOGI(TAG, "obstacle cleared (%u mm > %u mm release)", range->range_mm, g_cfg.range_release_mm);
-        }
+        return;
+    }
+
+    // Currently stopped — release when the obstacle is far enough (hysteresis)...
+    if (range->status == RangeStatus::OK) {
+        s_blind_since_us = 0;
+        if (range->range_mm > g_cfg.range_release_mm) release_obstacle("range > release", range->range_mm);
+        return;
+    }
+    // ...or when the sensor has gone blind *and* the robot has backed off. A wall met at a grazing
+    // angle reflects the pulse away, so it reads TIMEOUT and never > release: without this, the
+    // latch could only be cleared by hand. Blind alone never releases — the wall may be right there.
+    if (range->status != RangeStatus::TIMEOUT) {
+        s_blind_since_us = 0;
+        return;
+    }
+    const uint32_t now = now_us();
+    if (s_blind_since_us == 0) s_blind_since_us = now;
+    int32_t enc_l, enc_r;
+    encoder_snapshot(&enc_l, &enc_r);
+    const float moved_mm = 0.5f * (encoder_delta_to_mm_s(enc_l - s_obstacle_enc_l, 1'000'000) +
+                                   encoder_delta_to_mm_s(enc_r - s_obstacle_enc_r, 1'000'000));
+    if (elapsed_ms(s_blind_since_us, now) >= g_cfg.range_blind_release_ms &&
+        moved_mm <= -static_cast<float>(g_cfg.range_blind_release_mm)) {
+        release_obstacle("blind after reversing", range->range_mm);
     }
 }
 

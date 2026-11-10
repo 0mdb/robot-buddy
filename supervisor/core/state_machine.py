@@ -84,7 +84,9 @@ class SupervisorSM:
                 return False, f"can only enter {target.value} from IDLE"
             if not reflex_connected:
                 return False, "reflex not connected"
-            if fault_flags != 0:
+            # OBSTACLE alone does not block entry: the governor and the MCU both allow a
+            # reverse-only escape from it, and refusing here would trap the robot at the wall.
+            if fault_flags not in (0, int(Fault.OBSTACLE)):
                 return False, f"faults active: 0x{fault_flags:04X}"
             if motion_blocked_by_power:
                 return False, "battery too low — please charge"
