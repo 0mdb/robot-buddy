@@ -1029,3 +1029,37 @@ class TestWanderTunables:
         assert loop._skill._patrol_v_mm_s == 120
         ok, _ = reg.set("wander.patrol_v_mm_s", 900)  # outside the bounds
         assert not ok and loop._skill._patrol_v_mm_s == 120
+
+
+# ── Relative heading from gyro_z ─────────────────────────────
+
+
+class TestRelativeHeading:
+    def _loop(self):
+        from unittest.mock import AsyncMock, MagicMock
+
+        from supervisor.core.tick_loop import TickLoop
+
+        workers = MagicMock()
+        workers.send_to = AsyncMock(return_value=True)
+        return TickLoop(reflex=None, face=None, workers=workers)
+
+    def test_turning_left_decreases_clockwise_heading(self):
+        t = self._loop()
+        t._integrate_heading(0, 0.0)
+        for i in range(1, 51):  # 1 s at 50 Hz, 0.5 rad/s left (CCW positive)
+            t._integrate_heading(500, i * 0.02)
+        assert abs(t.robot.heading_rel_deg - (360.0 - 28.6479)) < 0.1
+
+    def test_still_robot_does_not_creep(self):
+        t = self._loop()
+        t._integrate_heading(0, 0.0)
+        for i in range(1, 500):
+            t._integrate_heading(1, i * 0.02)  # 1 mrad/s of bias, under the deadband
+        assert t.robot.heading_rel_deg == 0.0
+
+    def test_a_telemetry_gap_is_not_a_turn(self):
+        t = self._loop()
+        t._integrate_heading(500, 0.0)
+        t._integrate_heading(500, 10.0)  # 10 s gap: integrate at most 0.2 s
+        assert abs((360.0 - t.robot.heading_rel_deg) - 5.7296) < 0.01

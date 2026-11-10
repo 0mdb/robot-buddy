@@ -168,6 +168,10 @@ class BuddyAdapter:
         v["mode"] = _MODE_VALUES.get(r.mode, 0)
         v["arm_state"] = 1 if r.mode in MOTION_MODES else 0
         v["vel_fwd_mms"] = max(-32768, min(32767, round(r.v_meas_mm_s)))
+        # Gyro yaw rate (channels.yaw_rate): 0.01 rad/s, CCW (left) positive, as gyro_z is.
+        v["rate_body_2"] = max(-32768, min(32767, round(r.gyro_z_mrad_s / 10)))
+        # Relative heading (channels.heading = "relative"), 0.01 deg clockwise from boot.
+        v["hdg_cdeg"] = round(r.heading_rel_deg * 100) % 36000
 
         p = r.power
         on_pack = p.source in _PACK_SOURCES and p.voltage_mv > 0

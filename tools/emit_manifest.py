@@ -200,9 +200,16 @@ def build() -> tuple[str, list[str]]:
     add("control   = { port = 5602, rate_hz = 100 }")
     add("")
     add("[channels]")
-    add("imu_quat       = true")
+    # The adapter sends an identity quaternion: only accelerometer tilt exists, with unverified
+    # axis signs (devices/vantage_adapter.py, "No attitude"). Declaring it would draw a
+    # confidently level horizon. Flip to true with the adapter, once bench-verified.
+    add("imu_quat       = false")
     add("track_measured = true")
     add("range_forward  = true")
+    # gyro_z from the reflex IMU, forwarded as rate_body[2]; the reflex's own yaw loop relies on
+    # its sign. Heading is integrated from it in TickLoop: relative to boot, drifting, no north.
+    add("yaw_rate       = true")
+    add('heading        = "relative"')
     add(
         'cell_voltages  = {{ series = {series}, parallel = {parallel}, chem = "{chem}" }}'.format(
             **pack

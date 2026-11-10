@@ -98,6 +98,9 @@ class RobotState:
     speed_l_mm_s: int = 0
     speed_r_mm_s: int = 0
     gyro_z_mrad_s: int = 0
+    # Heading relative to boot, degrees clockwise, integrated from gyro_z (TickLoop). Drifts and
+    # has no north: Buddy has no magnetometer. Served to Vantage as channels.heading="relative".
+    heading_rel_deg: float = 0.0
     accel_x_mg: int = 0
     accel_y_mg: int = 0
     accel_z_mg: int = 0

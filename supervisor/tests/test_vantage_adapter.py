@@ -381,3 +381,27 @@ def test_unknown_mode_value_is_ignored(rig) -> None:
     tick.robot.mode = Mode.IDLE
     adapter.request_mode(250, armed=True)
     assert tick.robot.mode == Mode.IDLE and tick.requests == []
+
+
+# ── Gyro yaw rate and relative heading (Vantage channels.yaw_rate / heading) ──
+
+
+def test_yaw_rate_and_relative_heading_are_served(rig) -> None:
+    adapter, tick, _, _ = rig
+    tick.robot.gyro_z_mrad_s = 350  # turning left at 0.35 rad/s
+    tick.robot.heading_rel_deg = 90.5
+    c = core(adapter)
+    assert c["rate_body_2"] == 35, "0.01 rad/s, left positive, as gyro_z"
+    assert c["hdg_cdeg"] == 9050
+    tick.robot.heading_rel_deg = 359.999
+    assert core(adapter)["hdg_cdeg"] < 36000, "wraps, never 36000"
+
+
+def test_manifest_declares_what_the_adapter_serves() -> None:
+    import tomllib
+
+    m = tomllib.loads((VANTAGE / "profiles/buddy.vehicle.toml").read_text())
+    ch = m["channels"]
+    assert ch["imu_quat"] is False, "identity quaternion is served: not an attitude"
+    assert ch["yaw_rate"] is True
+    assert ch["heading"] == "relative", "no magnetometer: never claim magnetic"

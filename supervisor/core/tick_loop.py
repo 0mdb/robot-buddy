@@ -426,12 +426,33 @@ class TickLoop:
             self._telem_counter = 0
             self._broadcast_telemetry()
 
+    # ── Relative heading ─────────────────────────────────────────
+
+    # A gap longer than this is lost telemetry, not a turn: integrate at most this much.
+    _HEADING_MAX_DT_S = 0.2
+    # Below this the gyro is read as still, so bias does not creep a parked robot's heading.
+    _HEADING_DEADBAND_MRAD_S = 2
+
+    def _integrate_heading(self, gyro_z_mrad_s: int, now_s: float) -> None:
+        """Integrate gyro_z into a heading relative to boot, degrees clockwise.
+
+        gyro_z is counter-clockwise positive: the reflex's yaw loop (K_yaw * (w - gyro_z), with w
+        CCW-positive) only works with that sign. Heading is clockwise, so it subtracts."""
+        last = getattr(self, "_heading_t", None)
+        self._heading_t = now_s
+        if last is None or abs(gyro_z_mrad_s) < self._HEADING_DEADBAND_MRAD_S:
+            return
+        dt = min(max(now_s - last, 0.0), self._HEADING_MAX_DT_S)
+        turned_deg = math.degrees(gyro_z_mrad_s / 1000.0 * dt)
+        self.robot.heading_rel_deg = (self.robot.heading_rel_deg - turned_deg) % 360.0
+
     # ── MCU telemetry callbacks ──────────────────────────────────
 
     def _on_reflex_telemetry(self, tel: Any) -> None:
         self.robot.speed_l_mm_s = tel.speed_l_mm_s
         self.robot.speed_r_mm_s = tel.speed_r_mm_s
         self.robot.gyro_z_mrad_s = tel.gyro_z_mrad_s
+        self._integrate_heading(tel.gyro_z_mrad_s, time.monotonic())
         self.robot.accel_x_mg = tel.accel_x_mg
         self.robot.accel_y_mg = tel.accel_y_mg
         self.robot.accel_z_mg = tel.accel_z_mg
