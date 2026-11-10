@@ -179,12 +179,27 @@ PushFn = Callable[[str, str], Awaitable[bool]]
 
 
 def home_assistant_push_from_env(env: dict[str, str] | None = None) -> PushFn | None:
-    """A push function from RB_HA_URL, RB_HA_TOKEN, RB_HA_NOTIFY, or None if unset.
+    """A push function from the environment, or None if unset. Two ways, webhook preferred:
+
+    - ``RB_HA_WEBHOOK_URL``: a Home Assistant automation with a webhook trigger that sends the
+      notification itself. Buddy holds no token and can do nothing else in Home Assistant.
+      The URL contains the webhook id, which is a secret.
+    - ``RB_HA_URL`` + ``RB_HA_TOKEN`` + ``RB_HA_NOTIFY``: call a notify service directly with a
+      token. Any HA token can do far more than notify; use a dedicated non-admin user.
 
     These live in /etc/robot-buddy/supervisor.env on the robot, never in the repo.
-    RB_HA_NOTIFY is the notify service, e.g. ``mobile_app_my_phone``.
     """
     env = dict(os.environ if env is None else env)
+    webhook = env.get("RB_HA_WEBHOOK_URL")
+    if webhook:
+        if not re.fullmatch(
+            r"https?://[^\s/]+/api/webhook/[A-Za-z0-9_-]{16,}", webhook
+        ):
+            log.warning(
+                "RB_HA_WEBHOOK_URL is not a Home Assistant webhook URL; pushes disabled"
+            )
+            return None
+        return _poster(webhook, headers={}, kind="webhook")
     url, token, service = (
         env.get("RB_HA_URL"),
         env.get("RB_HA_TOKEN"),
@@ -199,24 +214,26 @@ def home_assistant_push_from_env(env: dict[str, str] | None = None) -> PushFn | 
         )
         return None
     endpoint = f"{url.rstrip('/')}/api/services/notify/{service}"
+    return _poster(
+        endpoint, headers={"Authorization": f"Bearer {token}"}, kind="notify"
+    )
 
+
+def _poster(endpoint: str, *, headers: dict[str, str], kind: str) -> PushFn:
     async def push(title: str, message: str) -> bool:
         import httpx
 
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
                 r = await client.post(
-                    endpoint,
-                    headers={"Authorization": f"Bearer {token}"},
-                    json={"title": title, "message": message},
+                    endpoint, headers=headers, json={"title": title, "message": message}
                 )
             if r.status_code >= 300:
-                log.warning(
-                    "parent alert push: HTTP %s from Home Assistant", r.status_code
-                )
+                log.warning("parent alert push (%s): HTTP %s", kind, r.status_code)
             return r.status_code < 300
         except Exception as e:  # noqa: BLE001 -- a failed push must never touch the robot
-            log.warning("parent alert push failed: %s", e)
+            # Never log the exception text: it can carry the URL, and the webhook id is secret.
+            log.warning("parent alert push (%s) failed: %s", kind, type(e).__name__)
             return False
 
     return push

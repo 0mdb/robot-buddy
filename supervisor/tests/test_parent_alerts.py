@@ -172,6 +172,14 @@ def test_retention_cap(tmp_path):
     "env,on",
     [
         ({}, False),
+        (
+            {
+                "RB_HA_WEBHOOK_URL": "http://192.0.2.1:8123/api/webhook/abcdef0123456789abcdef"
+            },
+            True,
+        ),
+        ({"RB_HA_WEBHOOK_URL": "http://192.0.2.1:8123/api/services/notify/x"}, False),
+        ({"RB_HA_WEBHOOK_URL": "http://192.0.2.1:8123/api/webhook/short"}, False),
         ({"RB_HA_URL": "http://ha:8123", "RB_HA_TOKEN": "t"}, False),
         (
             {
