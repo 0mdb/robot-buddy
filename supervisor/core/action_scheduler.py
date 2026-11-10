@@ -133,13 +133,13 @@ class ActionScheduler:
         self._last_action_key_ms: dict[str, float] = {}
 
         self._cooldown_type_ms = {
-            "say": 3000,
+            "say": 30000,
             "emote": 600,
             "gesture": 800,
             "skill": 500,
         }
         self._cooldown_key_ms = {
-            "say": 12000,
+            "say": 120000,
             "emote": 1800,
             "gesture": 2000,
             "skill": 500,

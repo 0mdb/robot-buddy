@@ -339,12 +339,12 @@ class TestActionScheduler:
     def test_cooldown(self):
         s = ActionScheduler()
         v = PlanValidator()
-        plan1 = v.validate([{"action": "say", "text": "A"}], ttl_ms=5000)
+        plan1 = v.validate([{"action": "say", "text": "A"}], ttl_ms=50000)
         s.schedule_plan(plan1, now_mono_ms=1000, issued_mono_ms=1000)
         s.pop_due_actions(now_mono_ms=1000, face_locked=False, hold_say=False)
 
-        # Same type within cooldown (3s)
-        plan2 = v.validate([{"action": "say", "text": "B"}], ttl_ms=5000)
+        # Same type within cooldown (30s)
+        plan2 = v.validate([{"action": "say", "text": "B"}], ttl_ms=50000)
         s.schedule_plan(plan2, now_mono_ms=2000, issued_mono_ms=2000)
         due = s.pop_due_actions(now_mono_ms=2000, face_locked=False, hold_say=False)
         assert len(due) == 0  # dropped by cooldown
@@ -370,6 +370,64 @@ class TestActionScheduler:
         assert len(due2) == 1
         assert due2[0]["action"] == "say"
         assert due2[0]["text"] == "Hello"
+
+    def test_say_type_cooldown_is_30s(self):
+        """Say actions are rate-limited to one per 30s (anti-talkativeness)."""
+        s = ActionScheduler()
+        v = PlanValidator()
+        plan1 = v.validate([{"action": "say", "text": "A"}], ttl_ms=60000)
+        s.schedule_plan(plan1, now_mono_ms=0, issued_mono_ms=0)
+        s.pop_due_actions(now_mono_ms=0, face_locked=False, hold_say=False)
+
+        # At 15s (within 30s cooldown): blocked
+        plan2 = v.validate([{"action": "say", "text": "B"}], ttl_ms=60000)
+        s.schedule_plan(plan2, now_mono_ms=15000, issued_mono_ms=15000)
+        due = s.pop_due_actions(now_mono_ms=15000, face_locked=False, hold_say=False)
+        assert len(due) == 0
+
+        # At 31s (past cooldown): allowed
+        plan3 = v.validate([{"action": "say", "text": "C"}], ttl_ms=60000)
+        s.schedule_plan(plan3, now_mono_ms=31000, issued_mono_ms=31000)
+        due = s.pop_due_actions(now_mono_ms=31000, face_locked=False, hold_say=False)
+        assert len(due) == 1
+
+    def test_same_text_cooldown_is_120s(self):
+        """Identical text is blocked for 120s (key-level cooldown)."""
+        s = ActionScheduler()
+        v = PlanValidator()
+        plan1 = v.validate([{"action": "say", "text": "Hello!"}], ttl_ms=200000)
+        s.schedule_plan(plan1, now_mono_ms=0, issued_mono_ms=0)
+        s.pop_due_actions(now_mono_ms=0, face_locked=False, hold_say=False)
+
+        # At 60s (past type cooldown but within key cooldown): blocked
+        plan2 = v.validate([{"action": "say", "text": "Hello!"}], ttl_ms=200000)
+        s.schedule_plan(plan2, now_mono_ms=60000, issued_mono_ms=60000)
+        due = s.pop_due_actions(now_mono_ms=60000, face_locked=False, hold_say=False)
+        assert len(due) == 0
+
+        # At 121s (past key cooldown): allowed
+        plan3 = v.validate([{"action": "say", "text": "Hello!"}], ttl_ms=200000)
+        s.schedule_plan(plan3, now_mono_ms=121000, issued_mono_ms=121000)
+        due = s.pop_due_actions(now_mono_ms=121000, face_locked=False, hold_say=False)
+        assert len(due) == 1
+
+    def test_emote_cooldown_unchanged(self):
+        """Emote cooldown (600ms) is unaffected by say rate-limiting."""
+        s = ActionScheduler()
+        v = PlanValidator()
+        plan1 = v.validate(
+            [{"action": "emote", "name": "happy", "intensity": 0.8}], ttl_ms=5000
+        )
+        s.schedule_plan(plan1, now_mono_ms=0, issued_mono_ms=0)
+        s.pop_due_actions(now_mono_ms=0, face_locked=False, hold_say=False)
+
+        # At 700ms (past 600ms cooldown): allowed
+        plan2 = v.validate(
+            [{"action": "emote", "name": "curious", "intensity": 0.5}], ttl_ms=5000
+        )
+        s.schedule_plan(plan2, now_mono_ms=700, issued_mono_ms=700)
+        due = s.pop_due_actions(now_mono_ms=700, face_locked=False, hold_say=False)
+        assert len(due) == 1
 
 
 # ── Plan Validator ───────────────────────────────────────────────

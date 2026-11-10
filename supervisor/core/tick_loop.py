@@ -168,6 +168,8 @@ class TickLoop:
         # Planner state
         self._robot_id = robot_id
         self._last_plan_request_ms = 0.0
+        self._last_conv_ended_ms = 0.0
+        self._post_conv_cooldown_ms = 120_000.0  # 2 min post-conversation silence (bucket-4 §7.4)
 
         # Button debounce
         self._last_greet_ms = 0.0
@@ -1015,6 +1017,9 @@ class TickLoop:
     ) -> None:
         """Send actions to workers: speech, plan execution."""
         conversation_active = bool(self.world.session_id)
+        in_post_conv_cooldown = (
+            now_ms - self._last_conv_ended_ms < self._post_conv_cooldown_ms
+        )
 
         # Execute due planner actions
         face_locked = (
@@ -1026,7 +1031,7 @@ class TickLoop:
         due = self._scheduler.pop_due_actions(
             now_mono_ms=now_ms,
             face_locked=face_locked,
-            hold_say=conversation_active,
+            hold_say=conversation_active or in_post_conv_cooldown,
         )
 
         for action in due:
@@ -1041,8 +1046,9 @@ class TickLoop:
                 self._apply_gesture(action)
 
         # Speech policy (deterministic, idle-priority speech)
-        # Conversation owns priority-1 speech; suppress idle chatter during sessions.
-        if not conversation_active:
+        # Conversation owns priority-1 speech; suppress idle chatter during
+        # sessions and for 2 min after (bucket-4 §7.4 post-conversation cooldown).
+        if not conversation_active and not in_post_conv_cooldown:
             intents, drops = self._speech_policy.generate(
                 state=self.robot,
                 events=recent,
@@ -1053,9 +1059,9 @@ class TickLoop:
 
         # Periodic plan requests
         _plan_period_s = (
-            self._param_registry.get_value("planner.plan_period_s", 5.0)
+            self._param_registry.get_value("planner.plan_period_s", 60.0)
             if self._param_registry is not None
-            else 5.0
+            else 60.0
         )
         _planner_param_enabled = (
             bool(self._param_registry.get_value("planner.enabled", True))
@@ -1322,6 +1328,7 @@ class TickLoop:
         self.world.session_id = ""
         self.world.turn_id = 0
         self.world.conversation_trigger = ""
+        self._last_conv_ended_ms = time.monotonic() * 1000.0
 
     async def _request_plan(self, now_ms: float) -> None:
         """Send plan request to AI worker."""
