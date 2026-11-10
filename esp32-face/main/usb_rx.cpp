@@ -125,6 +125,9 @@ static void handle_common_cmd(const ParsedPacket& pkt)
 
 static void handle_packet(const ParsedPacket& pkt)
 {
+    // Any valid packet (incl. 2 Hz time sync) proves the host is alive.
+    g_last_host_rx_us.store(static_cast<uint32_t>(esp_timer_get_time()), std::memory_order_release);
+
     // Handle common protocol commands first (v2 handshake, time sync)
     if (pkt.type == static_cast<uint8_t>(CommonCmdId::SET_PROTOCOL_VERSION) ||
         pkt.type == static_cast<uint8_t>(CommonCmdId::TIME_SYNC_REQ)) {

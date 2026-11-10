@@ -24,8 +24,11 @@ struct UsbCdcDiagSnapshot {
 // Initialize TinyUSB CDC device.
 void usb_composite_init(void);
 
-// Write bytes to CDC. Non-blocking best-effort.
-void usb_cdc_write(const uint8_t* data, size_t len);
+// Write one COBS frame (including its trailing 0x00) to CDC. Frames are written
+// whole or not at all, and concurrent callers never interleave. Returns true
+// only if the entire frame was queued; on false the caller should treat the
+// frame as not sent (and retry later if it matters).
+bool usb_cdc_write(const uint8_t* data, size_t len);
 
 // Read bytes from CDC. Returns number of bytes read (0 if none available).
 int usb_cdc_read(uint8_t* buf, size_t max_len, uint32_t timeout_ms);

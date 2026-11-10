@@ -139,10 +139,6 @@ def main() -> int:
         BORDER_CORNER_R,
         BORDER_FRAME_W,
         BORDER_GLOW_W,
-        BTN_CORNER_H,
-        BTN_CORNER_INNER_R,
-        BTN_CORNER_W,
-        BTN_ICON_SIZE,
         DONE_FADE_SPEED,
         ERROR_DECAY_RATE,
         ERROR_FLASH_DURATION,
@@ -160,6 +156,16 @@ def main() -> int:
         THINKING_ORBIT_DOTS,
         THINKING_ORBIT_SPACING,
         THINKING_ORBIT_SPEED,
+    )
+    from tools.face_sim_v3.state.constants import (
+        TOUCH_GAZE_FOLLOW,
+        TOUCH_LONG_PRESS_MS,
+        TOUCH_MOVE_TOL_PX,
+        TOUCH_RING_FLASH_MS,
+        TOUCH_RING_RADIUS,
+        TOUCH_RING_SHOW_MS,
+        TOUCH_RING_THICKNESS,
+        TOUCH_TAP_MAX_MS,
     )
 
     # Read MCU source files
@@ -323,10 +329,6 @@ def main() -> int:
             ("ERROR_DECAY_RATE", ERROR_DECAY_RATE, True),
             ("DONE_FADE_SPEED", DONE_FADE_SPEED, True),
             ("LED_SCALE", LED_SCALE, True),
-            ("BTN_CORNER_W", BTN_CORNER_W, False),
-            ("BTN_CORNER_H", BTN_CORNER_H, False),
-            ("BTN_CORNER_INNER_R", BTN_CORNER_INNER_R, False),
-            ("BTN_ICON_SIZE", BTN_ICON_SIZE, False),
         ]:
             v = extract_value(border_cpp, cname)
             if is_float:
@@ -335,6 +337,28 @@ def main() -> int:
                 check(cname, parse_int(v) if v else None, sval)
     else:
         print("  SKIP  conv_border.cpp not found")
+
+    # ── Touch gestures (spec §9.5) ───────────────────────────────
+    print("-- Touch gestures --")
+    for cname, sval in [
+        ("TOUCH_TAP_MAX_MS", TOUCH_TAP_MAX_MS),
+        ("TOUCH_LONG_PRESS_MS", TOUCH_LONG_PRESS_MS),
+        ("TOUCH_RING_SHOW_MS", TOUCH_RING_SHOW_MS),
+        ("TOUCH_MOVE_TOL_PX", TOUCH_MOVE_TOL_PX),
+        ("TOUCH_RING_RADIUS", TOUCH_RING_RADIUS),
+        ("TOUCH_RING_THICKNESS", TOUCH_RING_THICKNESS),
+        ("TOUCH_RING_FLASH_MS", TOUCH_RING_FLASH_MS),
+        ("TOUCH_GAZE_FOLLOW", TOUCH_GAZE_FOLLOW),
+    ]:
+        v = extract_value(config_text, cname)
+        if v is None:
+            # Required by spec §9.5 — a missing constant is a divergence
+            print(f"  FAIL  {cname}: not found in config.h")
+            failed += 1
+        elif isinstance(sval, bool):
+            check(cname, int(v.strip().lower() == "true"), int(sval))
+        else:
+            check(cname, parse_int(v.rstrip("uUlL")), sval)
 
     # ── Mood colors ──────────────────────────────────────────────
     print("-- Mood colors --")
@@ -513,7 +537,7 @@ def main() -> int:
         failed += 3  # color + eye_scale + targets all missing
 
     # ── Semantic: system-mode border suppression ──────────────────
-    print("-- Semantic: system-mode border/button suppression --")
+    print("-- Semantic: system-mode border suppression --")
     face_ui_path = MCU_DIR / "face_ui.cpp"
     if face_ui_path.exists():
         face_ui_text = face_ui_path.read_text()
@@ -550,49 +574,10 @@ def main() -> int:
                     "        -> border renders during system overlays (spec 4.4 says suppress)"
                 )
                 failed += 1
-
-            # Same check for button rendering
-            btn_call_pos = _find_non_comment_call(
-                face_ui_text, "conv_border_render_buttons"
-            )
-            if btn_call_pos >= 0:
-                context_before_btn = face_ui_text[
-                    max(0, btn_call_pos - 300) : btn_call_pos
-                ]
-                has_btn_guard = (
-                    "system.mode == SystemMode::NONE" in context_before_btn
-                    or "system.mode != SystemMode::NONE" in context_before_btn
-                )
-                if has_btn_guard:
-                    passed += 1
-                else:
-                    print(
-                        "  FAIL  conv_border_render_buttons() not guarded by SystemMode check"
-                    )
-                    failed += 1
         else:
             print("  SKIP  conv_border_render() not found in face_ui.cpp")
     else:
         print("  SKIP  face_ui.cpp not found")
-
-    # ── Semantic: corner button icon enum parity ──────────────────
-    print("-- Semantic: corner button icon enum --")
-    from tools.face_sim_v3.state.constants import ButtonIcon
-
-    border_h_path = MCU_DIR / "conv_border.h"
-    if border_h_path.exists():
-        border_h_text = border_h_path.read_text()
-        for icon in ButtonIcon:
-            pattern = rf"\b{icon.name}\s*=\s*{icon.value}\b"
-            if re.search(pattern, border_h_text):
-                passed += 1
-            else:
-                print(
-                    f"  FAIL  BtnIcon::{icon.name} = {icon.value} missing from conv_border.h"
-                )
-                failed += 1
-    else:
-        print("  SKIP  conv_border.h not found")
 
     # ── Semantic: gesture enum parity ────────────────────────────
     print("-- Semantic: gesture enum parity --")

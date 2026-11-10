@@ -47,6 +47,7 @@ from tools.face_sim_v3.state.constants import (
     SCREEN_W,
     SystemMode,
 )
+from tools.face_sim_v3.render.touch_ring import TouchRing, render_touch_ring
 from tools.face_sim_v3.state.face_state import (
     FaceState,
     face_get_breath_scale,
@@ -547,10 +548,12 @@ def _render_mouth(buf: list, fs: FaceState) -> None:
 def render_face(
     fs: FaceState,
     border_renderer: object | None = None,
+    touch_ring: TouchRing | None = None,
 ) -> list[tuple[int, int, int]]:
     """Render a complete frame into a pixel buffer.
 
     border_renderer: optional BorderRenderer for conversation border.
+    touch_ring: optional long-press ring to draw over the face.
     """
     buf: list[tuple[int, int, int]] = [BG_COLOR] * (SCREEN_W * SCREEN_H)
 
@@ -612,24 +615,12 @@ def render_face(
     elif mode == SystemMode.UPDATING:
         _sys_updating_bar(buf, _clamp(fs.system.param, 0.0, 1.0))
 
-    # Corner buttons + border ring — suppress during system overlays (spec §4.4)
-    if (
-        show_border
-        and border_renderer is not None
-        and hasattr(border_renderer, "render_buttons")
-    ):
-        border_renderer.render_buttons(buf)  # type: ignore[attr-defined]
-
-    # Border ring re-pass over corner buttons for clean overlap
-    if (
-        show_border
-        and border_renderer is not None
-        and hasattr(border_renderer, "render")
-    ):
-        border_renderer.render(buf)  # type: ignore[attr-defined]
-
-    # Store frame for afterglow
+    # Store frame for afterglow (before the ring, so it never ghosts)
     if fs.fx.afterglow:
         fs.fx.afterglow_buf = buf[:]
+
+    # Long-press ring — suppressed during system overlays (spec §4.4, §9.5)
+    if touch_ring is not None and mode == SystemMode.NONE:
+        render_touch_ring(buf, touch_ring)
 
     return buf

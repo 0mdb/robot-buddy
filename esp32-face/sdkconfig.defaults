@@ -19,3 +19,9 @@ CONFIG_SPIRAM=y
 CONFIG_SPIRAM_MODE_OCT=y
 CONFIG_SPIRAM_SPEED_80M=y
 CONFIG_SPIRAM_USE_CAPS_ALLOC=y
+
+# Performance: the face renders per-pixel in software; -Og + 160 MHz ran ~13 FPS.
+CONFIG_COMPILER_OPTIMIZATION_PERF=y
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+# 1 ms ticks so the 30 FPS frame period (33 ms) is paced accurately.
+CONFIG_FREERTOS_HZ=1000

@@ -7,12 +7,14 @@ ESP32-S3 firmware for Robot Buddy face rendering + supervisor link.
 - Face animation renderer (landscape 320×240, ILI9341)
 - Sim V3 animation parity target (13 moods, gestures, system face screens, talking modulation)
 - USB CDC command/telemetry protocol
-- Touch telemetry + corner button hit-testing
-- Pixel-rendered corner button controls (SDF icons, not LVGL widgets):
-  - bottom-left `PTT` (MIC icon, 60×46 px zone, tap-toggle listening)
-  - bottom-right `ACTION` (X_MARK icon, 60×46 px zone, click event)
-  - Icon/state/color driven automatically by conversation state
-  - Suppressed (hidden + hit-testing disabled) during system overlays
+- Touch telemetry + whole-screen gestures (spec §9.5; classifier in `touch_gesture.cpp`):
+  - tap (< 300 ms) and long-press (≥ 700 ms, fires while held); dragging > 24 px cancels both
+  - long-press ring around the finger (appears at 200 ms, fills until 700 ms, flashes on fire)
+  - eyes follow the finger while touching; a tap while idle plays a local blink ("boop")
+  - the host decides what gestures mean (long-press = PTT toggle, tap = end utterance / cancel)
+  - all suppressed during system overlays
+- Host link watchdog: no supervisor packet for 3 s → local sleepy look-around; host state replayed on return
+- Host-side unit tests for pure logic: `just test-face-host`
 - Conversation border renderer (SDF frame + glow, 8 conv states)
 - WS2812 status LED:
   - talking: orange
@@ -35,7 +37,7 @@ System modes drive Buddy's face expression (eyes, mouth, eyelids, color) rather 
 
 Small SDF icon overlays appear in the lower-right corner: warning triangle (error), battery bar (low battery), progress bar (updating).
 
-The legacy abstract overlay renderer (`system_overlay_v2.cpp`) is retained but no longer called from the render path.
+The legacy abstract overlay renderer (`system_overlay_v2.cpp`) was removed; it is in Git history if needed.
 
 ## Command Path Reliability
 

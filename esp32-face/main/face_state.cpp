@@ -881,7 +881,9 @@ void face_trigger_gesture(FaceState& fs, GestureId gesture, uint16_t duration_ms
         if (duration_ms == 0) {
             return fallback;
         }
-        return fmaxf(0.08f, static_cast<float>(duration_ms) / 1000.0f);
+        // Same 0.08-10 s bound as set_active_gesture(), so the animation can never
+        // outlast the gesture FACE_STATUS reports.
+        return clampf(static_cast<float>(duration_ms) / 1000.0f, 0.08f, 10.0f);
     };
 
     switch (gesture) {
@@ -974,6 +976,10 @@ void face_set_system_mode(FaceState& fs, SystemMode mode, float param)
         return;
     }
     fs.system.mode = mode;
+    // system_face_apply() only runs while a system mode is active, so it can't clear
+    // its own colour override on the way out. Without this, leaving ERROR_DISPLAY
+    // (amber) left the eyes amber forever after the host sent NONE.
+    fs.color_override_active = false;
     fs.system.timer = now_s();
     fs.system.phase = 0;
     fs.system.param = param;

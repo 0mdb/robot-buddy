@@ -38,6 +38,7 @@ class DebugOverlay:
         border: BorderRenderer,
         sequencer: MoodSequencer,
         guardrails: Guardrails,
+        touch_status: str = "",
     ) -> None:
         if self.font is None:
             self.init_font()
@@ -112,6 +113,8 @@ class DebugOverlay:
                 gesture_s = f"?{fs.active_gesture}"
         sys_name = fs.system.mode.name if fs.system.mode != SystemMode.NONE else ""
         line5 = f"Gesture: {gesture_s}"
+        if touch_status:
+            line5 += f"  |  Touch: {touch_status}"
         if sys_name:
             line5 += f"  |  SYSTEM: {sys_name}"
         self._draw(surface, font, line5, (120, 130, 140), 10, y)
@@ -123,7 +126,8 @@ class DebugOverlay:
             "I:idle B:blink S:style M:mouth G:glow K:sparkle F:afterglow T:talk [/]:energy",
             "F7:attn F8:listen F9:ptt F10:think F11:speak F12:error  Sh+F7:done Sh+F8:idle  TAB:walk",
             "F1:boot F2:error F3:battery F4:update F5:shutdown F6:clear  +/-:brightness  Q/Esc:quit",
-            "Sh+1:birthday Sh+2:halloween Sh+3:christmas Sh+4:newyear Sh+`:off",
+            "Sh+1:birthday Sh+2:halloween Sh+3:christmas Sh+4:newyear Sh+`:off  "
+            "Mouse: tap  hold=PTT  drag=pet",
         ]
         for line in help_lines:
             self._draw(surface, font, line, (80, 85, 95), 10, y)

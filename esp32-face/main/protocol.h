@@ -42,20 +42,22 @@ enum class FaceCmdId : uint8_t {
 enum class FaceTelId : uint8_t {
     FACE_STATUS = 0x90,  // current mood/gesture/system/flags
     TOUCH_EVENT = 0x91,  // raw touch press/release/drag
-    BUTTON_EVENT = 0x92, // bottom control buttons (PTT/ACTION)
+    BUTTON_EVENT = 0x92, // touch gestures (SCREEN tap / long-press)
     HEARTBEAT = 0x93,    // periodic liveness + telemetry counters
 };
 
 enum class FaceButtonId : uint8_t {
-    PTT = 0,
-    ACTION = 1,
+    PTT = 0,    // reserved: legacy corner button, no longer sent
+    ACTION = 1, // reserved: legacy corner button, no longer sent
+    SCREEN = 2, // whole-screen gestures (spec §9.5)
 };
 
 enum class FaceButtonEventType : uint8_t {
     PRESS = 0,
     RELEASE = 1,
-    TOGGLE = 2,
-    CLICK = 3,
+    TOGGLE = 2,     // legacy (corner PTT), no longer sent
+    CLICK = 3,      // SCREEN: tap
+    LONG_PRESS = 4, // SCREEN: long-press, sent at the threshold while still held
 };
 
 // ---- Payload structs (packed, little-endian) ----
@@ -159,7 +161,9 @@ struct __attribute__((packed)) FaceHeartbeatPayload {
     uint8_t  reserved;
 };
 
-// Optional HEARTBEAT tail (appended by payload length when perf telemetry is enabled).
+// Optional HEARTBEAT tails, parsed by payload length:
+//   base (68) [+ perf tail (56) [+ sys tail (12)]]
+// The perf tail is always present (zeroed if perf telemetry is off) when the sys tail is sent.
 struct __attribute__((packed)) FaceHeartbeatPerfTailPayload {
     uint32_t window_frames;
     uint32_t frame_us_avg;
@@ -177,6 +181,14 @@ struct __attribute__((packed)) FaceHeartbeatPerfTailPayload {
     uint16_t perf_sample_div;
     uint8_t  dirty_rect_enabled;
     uint8_t  afterglow_downsample;
+};
+
+struct __attribute__((packed)) FaceHeartbeatSysTailPayload {
+    uint8_t  reset_reason; // esp_reset_reason_t of the current boot
+    uint8_t  flags;        // bit0: host link lost (no host packet for HOST_SILENCE_MS)
+    uint16_t reserved;
+    uint32_t boot_count;          // boots since power-on; >1 means soft resets happened
+    uint32_t min_free_heap_bytes; // internal-RAM heap low-water mark
 };
 
 // ---- v2 extended payloads ----

@@ -180,8 +180,6 @@ class TickLoop:
         self._last_plan_request_ms = 0.0
 
         # Button debounce
-        self._last_greet_ms = 0.0
-        self._greet_debounce_ms = 5000.0
         # How long greet_on_button holds WANDER still before patrol resumes. Without it, one
         # ACTION press would park WANDER until a planner skill happened to replace it.
         self._greet_hold_ms = 3000.0
@@ -623,85 +621,99 @@ class TickLoop:
                 )
 
     def _on_face_button(self, evt: Any) -> None:
-        """Handle face button events for PTT, cancel, and greet."""
+        """Handle whole-screen touch gestures (spec §9.5). The host owns PTT state.
+
+        - long-press: toggle PTT
+        - tap while PTT is held: end the utterance ("I'm done talking")
+        - tap during any other active conversation state: cancel the session
+        - tap outside a conversation: boop (the face already reacted locally)
+        """
         from supervisor.devices.protocol import FaceConvState
 
         self._event_bus.on_face_button(evt)
+        if evt.button_id != int(FaceButtonId.SCREEN):
+            return  # legacy corner-button ids; current firmware never sends them
 
-        # Notify personality worker (L0-10 button press)
-        if evt.event_type == int(FaceButtonEventType.CLICK):
-            asyncio.ensure_future(
-                self._workers.send_to(
-                    "personality",
-                    PERSONALITY_EVENT_BUTTON_PRESS,
-                    {"button_id": evt.button_id},
-                )
+        if evt.event_type == int(FaceButtonEventType.LONG_PRESS):
+            self._toggle_ptt()
+            return
+        if evt.event_type != int(FaceButtonEventType.CLICK):
+            return
+
+        # Notify personality worker (L0-10 button press) for every tap.
+        asyncio.ensure_future(
+            self._workers.send_to(
+                "personality",
+                PERSONALITY_EVENT_BUTTON_PRESS,
+                {"button_id": evt.button_id},
+            )
+        )
+        if self._ptt_on():
+            self._toggle_ptt()  # ends the utterance
+        elif self._conv.session_active:
+            self._conv.set_state(FaceConvState.DONE)
+            if self.world.session_id:
+                self._end_conversation()
+        else:
+            self._event_bus.emit(
+                "face.touch.boop", {}, float(getattr(evt, "timestamp_mono_ms", 0.0))
             )
 
-        # PTT toggle
-        if evt.button_id == int(FaceButtonId.PTT) and evt.event_type == int(
-            FaceButtonEventType.TOGGLE
-        ):
-            ptt_on = bool(evt.state)
-            self.world.ptt_active = ptt_on
-            if ptt_on:
-                if self.world.session_id:
-                    # Multi-turn resume: same session, new turn
-                    self._cancel_multi_turn_timeout()
-                    self.world.turn_id += 1
-                    self._conv.ptt_held = True
-                    self._conv.set_state(FaceConvState.ATTENTION)
-                    asyncio.ensure_future(
-                        self._workers.send_to("ear", EAR_CMD_START_LISTENING)
-                    )
-                    asyncio.ensure_future(
-                        self._workers.send_to(
-                            "ai",
-                            AI_CMD_START_CONVERSATION,
-                            {
-                                "session_id": self.world.session_id,
-                                "turn_id": self.world.turn_id,
-                            },
-                        )
-                    )
-                    self.robot.face_listening = True
-                else:
-                    # Fresh session
-                    self._start_conversation("ptt")
-                    self._conv.ptt_held = True
-                    self._conv.set_state(FaceConvState.ATTENTION)
-            else:
-                # PTT OFF: end utterance, not session
-                self._conv.ptt_held = False
-                if self.world.session_id:
-                    self._conv.set_state(FaceConvState.THINKING)
-                    asyncio.ensure_future(
-                        self._workers.send_to(
-                            "ai",
-                            AI_CMD_END_UTTERANCE,
-                            {"session_id": self.world.session_id},
-                        )
-                    )
-                    asyncio.ensure_future(
-                        self._workers.send_to("ear", EAR_CMD_STOP_LISTENING)
-                    )
-                    self.robot.face_listening = False
+    def _ptt_on(self) -> bool:
+        return self._conv.ptt_held and bool(self.world.session_id)
 
-        # ACTION click — context-gated: cancel during session, greet outside
-        if evt.button_id == int(FaceButtonId.ACTION) and evt.event_type == int(
-            FaceButtonEventType.CLICK
-        ):
-            if self._conv.session_active:
-                # Cancel active conversation
-                self._conv.set_state(FaceConvState.DONE)
-                if self.world.session_id:
-                    self._end_conversation()
+    def _toggle_ptt(self) -> None:
+        """Flip the host's PTT state (on: listen; off: end utterance, keep session)."""
+        from supervisor.devices.protocol import FaceConvState
+
+        ptt_on = not self._ptt_on()
+        self.world.ptt_active = ptt_on
+        if ptt_on:
+            if self.world.session_id:
+                # Multi-turn resume: same session, new turn
+                self._cancel_multi_turn_timeout()
+                self.world.turn_id += 1
+                self._conv.ptt_held = True
+                self._conv.set_state(FaceConvState.ATTENTION)
+                asyncio.ensure_future(
+                    self._workers.send_to("ear", EAR_CMD_START_LISTENING)
+                )
+                asyncio.ensure_future(
+                    self._workers.send_to(
+                        "ai",
+                        AI_CMD_START_CONVERSATION,
+                        {
+                            "session_id": self.world.session_id,
+                            "turn_id": self.world.turn_id,
+                        },
+                    )
+                )
+                self.robot.face_listening = True
             else:
-                # Greet routine (only outside conversation)
-                now_ms = time.monotonic() * 1000.0
-                if now_ms - self._last_greet_ms > self._greet_debounce_ms:
-                    self._last_greet_ms = now_ms
-                    self._trigger_greet(now_ms)
+                # Fresh session
+                self._start_conversation("ptt")
+                if not self.world.session_id:
+                    # Start refused (audio links down, daily limit): PTT stays off.
+                    self.world.ptt_active = False
+                    return
+                self._conv.ptt_held = True
+                self._conv.set_state(FaceConvState.ATTENTION)
+        else:
+            # PTT OFF: end utterance, not session
+            self._conv.ptt_held = False
+            if self.world.session_id:
+                self._conv.set_state(FaceConvState.THINKING)
+                asyncio.ensure_future(
+                    self._workers.send_to(
+                        "ai",
+                        AI_CMD_END_UTTERANCE,
+                        {"session_id": self.world.session_id},
+                    )
+                )
+                asyncio.ensure_future(
+                    self._workers.send_to("ear", EAR_CMD_STOP_LISTENING)
+                )
+                self.robot.face_listening = False
 
     # ── Face composition (§8.2) ──────────────────────────────────
 
@@ -1218,15 +1230,6 @@ class TickLoop:
             return
         self._face.send_gesture(gid, 500)
 
-    def _trigger_greet(self, now_ms: float) -> None:
-        """ACTION button greet routine."""
-        self._scheduler.active_skill = "greet_on_button"
-        if self._face and self._face.connected:
-            mood_id = EMOTION_TO_FACE_MOOD.get("excited", 2)
-            self._face.send_state(mood_id, 0.8)
-            gid = GESTURE_TO_FACE_ID.get("nod", 10)
-            self._face.send_gesture(gid, 500)
-
     # ── Conversation control ─────────────────────────────────────
 
     def _start_conversation(self, trigger: str = "ptt") -> None:
@@ -1422,6 +1425,9 @@ class TickLoop:
         self.world.session_id = ""
         self.world.turn_id = 0
         self.world.conversation_trigger = ""
+        # Session over: PTT is off no matter how it ended (cancel, timeout, error).
+        self.world.ptt_active = False
+        self._conv.ptt_held = False
 
     async def _request_plan(self, now_ms: float) -> None:
         """Send plan request to AI worker."""

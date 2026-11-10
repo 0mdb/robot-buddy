@@ -368,7 +368,9 @@ System overlays use Buddy's face features to communicate system states — the s
 | UPDATING | Thinking expression, gaze drifts up-right, blue-violet | Progress bar (bottom) | Highest |
 | SHUTTING_DOWN | Reverse of boot — yawn, droop, eyelids close, fade to black (~2.5 s) | None | Highest |
 
-System overlays suppress all other layers, including conversation border rendering and corner buttons. Corner button hit-testing is disabled while `SystemMode != NONE`. When a system overlay clears, the face returns to whatever tonic state was active (idle or conversation), and the border + buttons resume from their current conversation state.
+**Host link lost (MCU-local, not a SystemMode)** *(Amended 2026-11-10)*: if the face receives no packet from the supervisor for 3 s (the host time-syncs at 2 Hz, so this means it is gone), the MCU clears the conversation border, PTT mirror and talking state, and shows SLEEPY @ 0.5 with idle wander (a slow look-around). Touch reactions (gaze-follow, boop, ring) keep working. When any packet arrives it re-applies the last host-commanded mood, intensity, flags and conversation state. Reported as HEARTBEAT sys-tail flag bit0. A host-commanded SystemMode still takes priority over this look.
+
+System overlays suppress all other layers, including conversation border rendering and the long-press ring. Touch gestures (tap, long-press) are not reported, and local touch reactions are disabled, while `SystemMode != NONE`. When a system overlay clears, the face returns to whatever tonic state was active (idle or conversation), and the border resumes from its current conversation state. *(Amended 2026-11-10: corner buttons replaced by whole-screen gestures, §9.5.)*
 
 ---
 
@@ -445,7 +447,7 @@ These use the existing MCU exponential interpolation. No anticipation frames.
 | Metric | Budget | Rationale |
 |--------|--------|-----------|
 | Wake word → first visual change | < 200 ms | Must feel "immediate." **[Theory]** Clark (1996) discusses grounding in communication — listeners expect timely acknowledgment of communicative acts. **[Inference]** The 200–300 ms perceptual threshold for "immediate" causal attribution is drawn from general psychophysics (Exner, 1875; Pöppel, 2009), not Clark specifically. We adopt < 200 ms as our target. |
-| PTT press → first visual change | < 100 ms | Button press has stronger immediacy expectation than voice. |
+| PTT long-press → first visual change | Ring visible by 200 ms of hold; acknowledgment flash < 100 ms after the 700 ms threshold | Touch has stronger immediacy expectation than voice. The filling ring is local to the MCU, so the child sees progress before the host is involved. *(Amended 2026-11-10.)* |
 | End-of-utterance → THINKING visual | < 300 ms | Child should see the robot "start thinking" before silence feels awkward. |
 | THINKING → SPEAKING visual | < 100 ms after TTS audio begins | Gaze return and border shift must lead or coincide with first audio frame. |
 | Mood command → visible change begins | < 50 ms | MCU response time (1–2 render frames). |
@@ -646,19 +648,32 @@ The supervisor communicates with the face MCU over USB-CDC serial (COBS-encoded 
 
 ### 9.5 Touch Semantics for Conversation Control
 
-**PTT button** (FaceButtonId.PTT): Tap-toggle — each tap in the PTT zone inverts the listening state. First tap → ATTENTION → PTT (listening active). Second tap → THINKING (listening ended). Toggle fires on touch release within the same hit zone. Already defined in protocol.
+*(Amended 2026-11-10. Replaces the two corner soft buttons (PTT bottom-left, ACTION bottom-right). Reason: 40–60 px corner targets were hard for 4–6 year olds to hit, and drawing them cost frame time every frame. The whole screen is now the touch target.)*
 
-**ACTION button** (FaceButtonId.ACTION): Context-gated behavior:
-- **During active conversation** (`conversation_active == True`): CLICK → cancel session (→ DONE state). Provides a way to abort a conversation that's stuck or unwanted.
-- **Outside conversation** (`conversation_active == False`): CLICK → greet routine (current behavior, `tick_loop.py:331-337`).
+The face MCU classifies each touch into one gesture and reports it; the **host owns all meaning** (PTT state, cancel, etc.). The MCU never holds conversation state of its own beyond mirroring `SET_CONV_STATE`.
 
-**Implementation note**: Requires modifying the ACTION button handler in `tick_loop.py` to check `conversation_active` before deciding greet vs cancel.
+**Gesture classification** (MCU, constants `TOUCH_*` in `config.h`, mirrored in the sim):
 
-**Soft buttons**: Corner button hit zones are flush with screen edges (Fitts's Law — edge targets benefit from infinite depth). Constants defined in `BTN_CORNER_*` (parity-checked between sim and firmware):
-- PTT: bottom-left, 60×46 px zone — x ∈ [0, 60], y ∈ [194, 240], icon center (30, 217)
-- Cancel: bottom-right, 60×46 px zone — x ∈ [260, 320], y ∈ [194, 240], icon center (290, 217)
+| Gesture | Rule | Reported |
+|---------|------|----------|
+| **Tap** | Released within `TOUCH_TAP_MAX_MS` = 300 ms, finger moved ≤ `TOUCH_MOVE_TOL_PX` = 24 px from the touch-down point | `BUTTON_EVENT(button_id=SCREEN, event_type=CLICK)` on release |
+| **Long-press** | Held ≥ `TOUCH_LONG_PRESS_MS` = 700 ms, moved ≤ 24 px | `BUTTON_EVENT(button_id=SCREEN, event_type=LONG_PRESS)` **at the threshold**, while still held (release afterwards reports nothing) |
+| **Drag / pet** | Moved > 24 px at any point | Nothing (raw `TOUCH_EVENT` samples only). Stroking the face never triggers a gesture. |
+| In-between | Released between 300 and 700 ms without moving | Nothing (the ring fades out) |
 
-Corner buttons are hidden and hit-testing is disabled during system overlays (§4.4).
+**Host mapping** (tick loop):
+- **Long-press** → PTT toggle. Host flips its own PTT state: off → ATTENTION → PTT (listening); on → THINKING (end utterance). Deliberate gesture, so stray pokes never open the microphone.
+- **Tap during a conversation**:
+  - while PTT is held (ATTENTION-with-PTT or PTT) → end utterance (same as long-press off): "I'm done talking".
+  - any other active state (LISTENING, THINKING, SPEAKING, ERROR) → cancel the session (→ DONE).
+- **Tap outside a conversation** → "boop": no host conversation action. The personality worker still receives the button-press event. (The old ACTION-click greet routine is no longer bound to touch; a poke-happy child would trigger it constantly.)
+
+**Local MCU feedback** (no host round-trip; suppressed during system overlays):
+- **Gaze follows the finger** while touching (eyes look toward the touch point), returning to the host-commanded gaze on release.
+- **Long-press ring**: from 200 ms of hold, a ring around the touch point fills clockwise until 700 ms, then flashes once on fire. Colour: PTT amber when it will start listening, neutral white when it will stop.
+- **Boop**: a tap while `conv_state == IDLE` plays a quick local blink so the poke feels acknowledged.
+
+`FaceButtonId.PTT` (0) and `ACTION` (1) remain reserved in the protocol for compatibility but are no longer sent by the face firmware.
 
 ### 9.6 Supervisor Tick Loop Integration
 
@@ -742,7 +757,7 @@ Updated priority stack incorporating conversation state:
 | Current State | Event | Next State | Actions |
 |--------------|-------|-----------|---------|
 | IDLE | wake_word_detected | ATTENTION | Send CONV_STATE(ATTENTION), SET_FLAGS(wander=0), SET_STATE(gaze=center) |
-| IDLE | ptt_toggled_on | ATTENTION | Same as wake word. PTT flag set → advance to PTT after ATTENTION completes. If toggled off during ATTENTION → auto-advance to LISTENING. |
+| IDLE | ptt_toggled_on (long-press) | ATTENTION | Same as wake word. PTT flag set → advance to PTT after ATTENTION completes. If toggled off during ATTENTION → auto-advance to LISTENING. |
 | ATTENTION | 400 ms elapsed (PTT not active) | LISTENING | Send CONV_STATE(LISTENING), SET_STATE(gaze=center) |
 | ATTENTION | 400 ms elapsed (PTT active) | PTT | Send CONV_STATE(PTT) — tap-to-talk active, enter PTT listening |
 | ATTENTION | ptt_toggled_on (during ATTENTION) | PTT | Send CONV_STATE(PTT) — late tap also enters PTT |

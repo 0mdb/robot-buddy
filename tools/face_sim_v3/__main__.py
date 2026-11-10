@@ -19,8 +19,10 @@ from tools.face_sim_v3.input.command_bus import (
     SetStateCmd,
 )
 from tools.face_sim_v3.input.keyboard import KeyboardHandler
+from tools.face_sim_v3.input.touch import TouchClassifier, TouchGesture
 from tools.face_sim_v3.render.border import BorderRenderer
 from tools.face_sim_v3.render.face import render_face
+from tools.face_sim_v3.render.touch_ring import TouchRing
 from tools.face_sim_v3.state.constants import (
     ANIM_FPS,
     BG_COLOR,
@@ -29,10 +31,15 @@ from tools.face_sim_v3.state.constants import (
     ConvState,
     ERROR_AVERSION_DURATION,
     ERROR_AVERSION_GAZE_X,
+    GestureId,
     MAX_GAZE,
     PIXEL_SCALE,
     SCREEN_H,
     SCREEN_W,
+    SystemMode,
+    TOUCH_GAZE_FOLLOW,
+    TOUCH_RING_COLOR_START,
+    TOUCH_RING_COLOR_STOP,
 )
 from tools.face_sim_v3.state.conv_choreographer import ConvTransitionChoreographer
 from tools.face_sim_v3.state.conv_state import ConvStateMachine
@@ -55,6 +62,17 @@ LED_MARGIN = 12
 WINDOW_W = CANVAS_W + 40
 WINDOW_H = CANVAS_H + 200  # Room for LED + HUD + timeline
 WINDOW_BG = (20, 20, 25)
+CANVAS_OX = (WINDOW_W - CANVAS_W) // 2  # canvas top-left in the window
+CANVAS_OY = 10
+
+# Conversation states in which a tap cancels the session (spec §9.5)
+_TAP_CANCEL_STATES = (
+    ConvState.ATTENTION,
+    ConvState.LISTENING,
+    ConvState.THINKING,
+    ConvState.SPEAKING,
+    ConvState.ERROR,
+)
 
 
 # ── Drawing helpers ──────────────────────────────────────────────────
@@ -94,6 +112,138 @@ def _draw_led(
     pygame.draw.circle(surface, (60, 60, 65), (x, y), LED_SIZE // 2, 1)
 
 
+def _window_to_screen(wx: int, wy: int) -> tuple[int, int, bool]:
+    """Map window coords to 320x240 screen coords (clamped) + inside flag."""
+    sx = (wx - CANVAS_OX) // PIXEL_SCALE
+    sy = (wy - CANVAS_OY) // PIXEL_SCALE
+    inside = 0 <= sx < SCREEN_W and 0 <= sy < SCREEN_H
+    return (
+        max(0, min(SCREEN_W - 1, sx)),
+        max(0, min(SCREEN_H - 1, sy)),
+        inside,
+    )
+
+
+# ── Touch (mouse = finger) ───────────────────────────────────────────
+
+
+class SimTouch:
+    """Mouse-as-touch: gesture classification + local MCU-style feedback.
+
+    Local feedback mirrors the face firmware (spec §9.5): gaze follows the
+    finger, long-press ring, boop blink on tap while IDLE. All of it is
+    suppressed while a system overlay is active (spec §4.4).
+    """
+
+    def __init__(self) -> None:
+        self.clf = TouchClassifier()
+        self.pending: list[TouchGesture] = []
+        self.last: str = ""
+        self._saved_gaze: tuple[float, float, float, float] | None = None
+        self._flash_color: tuple[int, int, int] = TOUCH_RING_COLOR_START
+
+    def handle_event(self, event: pygame.event.Event, fs: FaceState) -> None:
+        now_ms = time.monotonic() * 1000.0
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            sx, sy, inside = _window_to_screen(*event.pos)
+            if inside and fs.system.mode == SystemMode.NONE:
+                self.clf.press(sx, sy, now_ms)
+                self._saved_gaze = (
+                    fs.eye_l.gaze_x_target,
+                    fs.eye_l.gaze_y_target,
+                    fs.eye_r.gaze_x_target,
+                    fs.eye_r.gaze_y_target,
+                )
+        elif event.type == pygame.MOUSEMOTION and self.clf.active:
+            sx, sy, _ = _window_to_screen(*event.pos)
+            self._queue(self.clf.move(sx, sy, now_ms))
+        elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            if self.clf.active:
+                sx, sy, _ = _window_to_screen(*event.pos)
+                self._queue(self.clf.release(sx, sy, now_ms))
+                self._restore_gaze(fs)
+
+    def _queue(self, g: TouchGesture) -> None:
+        if g != TouchGesture.NONE:
+            self.pending.append(g)
+
+    def _restore_gaze(self, fs: FaceState) -> None:
+        if self._saved_gaze is None:
+            return
+        lx, ly, rx, ry = self._saved_gaze
+        fs.eye_l.gaze_x_target, fs.eye_l.gaze_y_target = lx, ly
+        fs.eye_r.gaze_x_target, fs.eye_r.gaze_y_target = rx, ry
+        self._saved_gaze = None
+
+    def update(
+        self, fs: FaceState, conv_sm: ConvStateMachine, timeline: Timeline
+    ) -> None:
+        """Per-frame: fire long-press, run host mapping, apply gaze follow."""
+        now_ms = time.monotonic() * 1000.0
+        if fs.system.mode != SystemMode.NONE:
+            if self.clf.active:
+                self._restore_gaze(fs)
+            self.clf.cancel()
+            self.pending.clear()
+            return
+
+        self._queue(self.clf.update(now_ms))
+        for g in self.pending:
+            if g == TouchGesture.LONG_PRESS:
+                # Latch the colour the ring showed while filling
+                self._flash_color = self.ring_color(conv_sm)
+            elif g == TouchGesture.TAP and conv_sm.state == ConvState.IDLE:
+                face_trigger_gesture(fs, GestureId.BLINK)  # local boop
+                timeline.log_gesture(GestureId.BLINK)
+            self.last = g.name
+            _host_on_touch_gesture(g, conv_sm)
+        self.pending.clear()
+
+        if self.clf.active and TOUCH_GAZE_FOLLOW:
+            gx = (self.clf.x - SCREEN_W / 2) / (SCREEN_W / 2) * MAX_GAZE
+            gy = (self.clf.y - SCREEN_H / 2) / (SCREEN_H / 2) * MAX_GAZE
+            face_set_gaze(fs, gx, gy)
+            # Hold off idle wander so it doesn't yank the eyes away
+            fs.anim.next_idle = max(fs.anim.next_idle, time.monotonic() + 0.1)
+
+    @staticmethod
+    def ring_color(conv_sm: ConvStateMachine) -> tuple[int, int, int]:
+        """Amber when long-press will start listening, white when it stops."""
+        return TOUCH_RING_COLOR_STOP if conv_sm.ptt_on else TOUCH_RING_COLOR_START
+
+    def ring(self, conv_sm: ConvStateMachine) -> TouchRing | None:
+        now_ms = time.monotonic() * 1000.0
+        flash = self.clf.ring_flash(now_ms)
+        if flash is not None:
+            return TouchRing(
+                self.clf.flash_x, self.clf.flash_y, 1.0, self._flash_color, flash
+            )
+        progress = self.clf.ring_progress(now_ms)
+        if progress is None:
+            return None
+        return TouchRing(self.clf.x, self.clf.y, progress, self.ring_color(conv_sm))
+
+    def status(self) -> str:
+        state = "down" if self.clf.active else "up"
+        return f"{state} last={self.last or '-'}"
+
+
+def _host_on_touch_gesture(g: TouchGesture, conv_sm: ConvStateMachine) -> None:
+    """Stand-in for the supervisor tick loop's touch mapping (spec §9.5)."""
+    if g == TouchGesture.LONG_PRESS:
+        if conv_sm.ptt_on:
+            conv_sm.set_state(ConvState.THINKING)  # end utterance
+        else:
+            conv_sm.ptt_held = True
+            conv_sm.set_state(ConvState.ATTENTION)  # -> PTT after attention
+    elif g == TouchGesture.TAP:
+        if conv_sm.ptt_on:
+            conv_sm.set_state(ConvState.THINKING)  # "I'm done talking"
+        elif conv_sm.state in _TAP_CANCEL_STATES:
+            conv_sm.set_state(ConvState.DONE)  # cancel the session
+        # Outside a conversation: boop only (local), no host action
+
+
 # ── Main loop ────────────────────────────────────────────────────────
 
 
@@ -113,6 +263,7 @@ def main() -> None:
     # Input
     bus = CommandBus()
     keyboard = KeyboardHandler(bus)
+    touch = SimTouch()
 
     # Rendering
     border = BorderRenderer()
@@ -137,6 +288,12 @@ def main() -> None:
                 running = False
             elif event.type == pygame.KEYDOWN:
                 keyboard.handle_event(event, fs)
+            elif event.type in (
+                pygame.MOUSEBUTTONDOWN,
+                pygame.MOUSEMOTION,
+                pygame.MOUSEBUTTONUP,
+            ):
+                touch.handle_event(event, fs)
 
         if keyboard.quit_requested:
             running = False
@@ -157,6 +314,9 @@ def main() -> None:
         )
         if conv_changed:
             prev_conv_for_flags = conv_sm.state
+
+        # ── 4b. Touch gestures + local feedback (after conv gaze) ─
+        touch.update(fs, conv_sm, timeline)
 
         # ── 5. Update conversation state machine ─────────────────
         conv_sm.update(dt)
@@ -212,13 +372,12 @@ def main() -> None:
             prev_mood = fs.mood
 
         # ── 11. Render ───────────────────────────────────────────
-        buf = render_face(fs, border)
+        buf = render_face(fs, border, touch.ring(conv_sm))
 
         screen.fill(WINDOW_BG)
 
         # Canvas (centered)
-        ox = (WINDOW_W - CANVAS_W) // 2
-        oy = 10
+        ox, oy = CANVAS_OX, CANVAS_OY
         _draw_canvas(screen, buf, ox, oy)
 
         # LED indicator (top-right)
@@ -237,6 +396,7 @@ def main() -> None:
             border=border,
             sequencer=sequencer,
             guardrails=guardrails,
+            touch_status=touch.status(),
         )
 
         # Timeline strip
@@ -327,27 +487,6 @@ def _apply_conv_effects(
         fs.eye_r.width_scale_target = max(
             fs.eye_r.width_scale_target, conv_sm.interest_scale
         )
-
-    # Drive corner button visuals from conversation state
-    from tools.face_sim_v3.state.constants import (
-        ButtonIcon,
-        ButtonState,
-        CONV_COLORS,
-    )
-
-    if state in (ConvState.PTT, ConvState.LISTENING):
-        border.set_button_left(ButtonIcon.MIC, ButtonState.ACTIVE, CONV_COLORS[state])
-        border.set_button_right(
-            ButtonIcon.X_MARK, ButtonState.ACTIVE, CONV_COLORS[state]
-        )
-    elif state in (ConvState.THINKING, ConvState.SPEAKING):
-        border.set_button_left(ButtonIcon.MIC, ButtonState.IDLE)
-        border.set_button_right(
-            ButtonIcon.X_MARK, ButtonState.ACTIVE, CONV_COLORS[state]
-        )
-    else:
-        border.set_button_left(ButtonIcon.MIC, ButtonState.IDLE)
-        border.set_button_right(ButtonIcon.X_MARK, ButtonState.IDLE)
 
 
 if __name__ == "__main__":

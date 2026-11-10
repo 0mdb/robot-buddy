@@ -50,7 +50,7 @@ _10 items complete (Stage 4.0 spec/port/parity/buttons/gestures/docs) — see ar
 - [ ] Stage 4.0: Blink parity on hardware — eyelids must fully occlude eye fill at full closure (no blue eye outline leak during blink) `[sonnet]`
 - [ ] Stage 4.0: Refine THINKING face on hardware (currently reads as angry) `[sonnet]`
 - [ ] Stage 4.0: Tune timing values on hardware: ramp durations, hold times, border alpha curves `[sonnet]`
-- [ ] Stage 4.0: Face button UX: instant on-device confirmation on press; faster yellow LED blink on PTT error `[sonnet]`
+- [x] Stage 4.0: Face button UX — superseded 2026-11-10: corner buttons replaced by whole-screen tap/long-press with on-device ring + boop (see Stage 4.3)
 - [ ] Stage 4.1: Baseline integrity gate: revert to float `px_blend(..., float alpha)` as active path; keep fixed-point/u8 helpers disabled/commented with A/B notes; baseline build must pass (`just build-face`)
 - [ ] Stage 4.1: Protocol correctness: parse `FACE_STATUS` v1 (4B) and v2 (12B) in supervisor; expose `cmd_seq_last_applied` + `t_state_applied_us` in state/debug
 - [ ] Stage 4.1: Low-overhead perf instrumentation in firmware: frame/render/stage timing, dirty px, SPI bytes/s, cmd rx→apply latency (stage sample divisor=8, emit 1 Hz)
@@ -101,6 +101,20 @@ Stage 4.2 Dirty-Rect A/B Snapshot (2026-02-25, post-dirty firmware + updated sup
 - `rage_effects`: frame `69.80 -> 69.73 ms` (`-0.1%`), render `6.78 -> 6.86 ms` (`+1.2%`)
 - Caveat: idle/listening runs are not apples-to-apples with pre-dirty because `effects_us_avg` dropped from ~17k to ~13 (effects/flags mismatch), so those two gains cannot be fully attributed to dirty-rect changes
 - Outcome: keep Stage 4.2 dirty-rect task open; rerun A/B with fixed explicit flags before deciding completion
+
+**Stage 4.3 — Ultrareview fixes, perf pass, whole-screen gestures (2026-11-10, code done, NOT yet flashed)** `[opus]`
+- [x] Ultrareview fixes 1-10 (PTT drift, press origin, SPSC event queues, whole-frame USB writes + TX mutex, CONFUSED mood, 71.6-min timer wrap, latency avg, gesture duration cap, dead overlay_v2)
+- [x] Stuck-amber eyes after ERROR_DISPLAY: colour override now cleared on any system-mode change
+- [x] Perf: `-O2` + 240 MHz + 1 kHz tick; fixed-rate frame pacing (`xTaskDelayUntil`) with fixed-step animation catch-up; clear/redraw only dirty rects; span fills (rect/rounded rect/circle), row-wise eyelids, per-column mouth; perf tail `render_us_avg`/`dirty_px_avg` denominators fixed. Before: ~13 FPS, frame work 52.6 ms (live heartbeat 2026-11-10)
+- [x] Whole-screen gestures replace corner buttons (spec §9.5 amended): tap / long-press classifier (`touch_gesture.cpp`), long-press ring, finger gaze-follow, local boop; host owns meaning (`tick_loop._on_face_button`); sim V3 + parity updated
+- [x] Host-link watchdog (3 s) → local sleepy look-around, host state replayed on return (spec §4.4 amended)
+- [x] HEARTBEAT sys tail: reset_reason, boot_count, host_link_lost, min free heap; supervisor logs face soft-resets
+- [x] `just test-face-host`: gesture classifier + SPSC queue (ASan/UBSan; TSan clean)
+- [ ] On-device: flash, then confirm FPS ≈ 30 in heartbeat perf (`window_frames`), and record frame/render numbers vs the 13 FPS baseline
+- [ ] On-device: tap / long-press / drag feel with a child-size finger; tune `TOUCH_*` in `config.h` (+ sim) if needed; check ring visibility near screen edges
+- [ ] On-device: eyes return to mood colour after an ERROR_DISPLAY; unplug supervisor → sleepy look-around within 3 s → restores on reconnect
+- [ ] On-device: blink/eyelid look unchanged after the row-wise eyelid rewrite (should be pixel-identical)
+- [ ] On-device: watch `usb_tx_short_writes` / `tx_flush_timeout` in heartbeat after the all-or-nothing USB write change
 
 **Evaluation** `[opus]`
 - [ ] T1: Automated CI tests (parity check, unit tests, linting)

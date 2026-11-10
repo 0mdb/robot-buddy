@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable
 
 from supervisor.devices.protocol import (
+    FACE_RESET_REASON_NAMES,
     FACE_FLAGS_ALL,
     FaceButtonEventPayload,
     FaceCmdType,
@@ -111,6 +112,10 @@ class HeartbeatTelemetry:
     perf_sample_div: int = 0
     perf_dirty_rect_enabled: bool = False
     perf_afterglow_downsample: int = 0
+    reset_reason: int = 0
+    host_link_lost: bool = False
+    boot_count: int = 0
+    min_free_heap_bytes: int = 0
     seq: int = 0
     rx_mono_ms: float = 0.0
 
@@ -138,6 +143,7 @@ class FaceClient:
         self._rx_touch_packets = 0
         self._rx_button_packets = 0
         self._rx_heartbeat_packets = 0
+        self._last_face_boot_count = 0
         self._rx_bad_payload_packets = 0
         self._rx_unknown_packets = 0
         self.last_talking_energy_cmd = 0
@@ -416,6 +422,7 @@ class FaceClient:
                 log.warning("face: bad HEARTBEAT: %s", e)
                 return
             self._rx_heartbeat_packets += 1
+            self._note_face_boot(hb.boot_count, hb.reset_reason)
             self.last_heartbeat = HeartbeatTelemetry(
                 uptime_ms=hb.uptime_ms,
                 status_tx_count=hb.status_tx_count,
@@ -452,6 +459,10 @@ class FaceClient:
                 perf_sample_div=hb.perf_sample_div,
                 perf_dirty_rect_enabled=bool(hb.perf_dirty_rect_enabled),
                 perf_afterglow_downsample=hb.perf_afterglow_downsample,
+                reset_reason=hb.reset_reason,
+                host_link_lost=bool(hb.host_link_lost),
+                boot_count=hb.boot_count,
+                min_free_heap_bytes=hb.min_free_heap_bytes,
                 seq=pkt.seq,
                 rx_mono_ms=pkt.t_pi_rx_ns / 1_000_000.0
                 if pkt.t_pi_rx_ns
@@ -461,6 +472,21 @@ class FaceClient:
         else:
             self._rx_unknown_packets += 1
             log.debug("face: unknown packet type 0x%02X", pkt.pkt_type)
+
+    def _note_face_boot(self, boot_count: int, reset_reason: int) -> None:
+        """Log once per face boot; warn when the face soft-reset (crash/WDT/brownout)."""
+        if boot_count == 0 or boot_count == self._last_face_boot_count:
+            return  # old firmware (no sys tail) or same boot
+        self._last_face_boot_count = boot_count
+        name = FACE_RESET_REASON_NAMES.get(reset_reason, f"#{reset_reason}")
+        if boot_count > 1 or name not in ("POWERON", "USB", "EXT", "SW"):
+            log.warning(
+                "face MCU reset: reason=%s boot_count=%d since power-on",
+                name,
+                boot_count,
+            )
+        else:
+            log.info("face MCU boot: reason=%s", name)
 
     def _button_snapshot(self) -> dict | None:
         btn = self.last_button
@@ -499,6 +525,12 @@ class FaceClient:
                 "rts": hb.usb_rts,
             },
             "ptt_listening": hb.ptt_listening,
+            "reset_reason": FACE_RESET_REASON_NAMES.get(
+                hb.reset_reason, str(hb.reset_reason)
+            ),
+            "boot_count": hb.boot_count,
+            "host_link_lost": hb.host_link_lost,
+            "min_free_heap_bytes": hb.min_free_heap_bytes,
             "perf": {
                 "window_frames": hb.perf_window_frames,
                 "frame_us_avg": hb.perf_frame_us_avg,

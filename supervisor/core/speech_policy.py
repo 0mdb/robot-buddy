@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from supervisor.devices.protocol import Fault, FaceButtonId
+from supervisor.devices.protocol import Fault
 from supervisor.core.event_bus import PlannerEvent
 from supervisor.core.state import RobotState
 
@@ -39,7 +39,7 @@ class SpeechPolicy:
             "vision.ball_acquired": 60000.0,
             "mode.changed:WANDER": 7000.0,
             "fault.raised": 6000.0,
-            "face.button.click": 4000.0,
+            "face.touch.boop": 4000.0,
             # 2 min between low-battery nudges — long enough not to nag,
             # short enough to remind someone who wandered off.
             "power.undervoltage_raised": 120000.0,
@@ -64,10 +64,10 @@ class SpeechPolicy:
                 "Uh oh. I need to pause for safety.",
                 "I found a fault, stopping now.",
             ],
-            "face.button.click": [
-                "Nice click!",
-                "Button press detected.",
+            "face.touch.boop": [
                 "Boop!",
+                "Hee hee, that tickles!",
+                "Hi there!",
             ],
             "power.undervoltage_raised": [
                 "My battery is getting low — could you plug me in?",
@@ -122,12 +122,6 @@ class SpeechPolicy:
             if key is None:
                 continue
 
-            # ACTION click already runs an explicit greet routine in Runtime.
-            if key == "face.button.click":
-                button_id = int(evt.payload.get("button_id", -1))
-                if button_id == int(FaceButtonId.ACTION):
-                    continue
-
             if state.face_listening or state.face_talking:
                 # Hold for retry rather than silently dropping.
                 if key not in self._held and not self._on_cooldown(key, now_mono_ms):
@@ -170,8 +164,10 @@ class SpeechPolicy:
             if not (fault_flags & _SEVERE_FAULT_MASK):
                 return None  # Non-severe faults (e.g. CMD_TIMEOUT) don't warrant speech
             return "fault.raised"
-        if evt.type == "face.button.click":
-            return "face.button.click"
+        if evt.type == "face.touch.boop":
+            # Emitted by the tick loop only for taps outside a conversation, so
+            # taps that cancel or end an utterance never trigger chatter.
+            return "face.touch.boop"
         if evt.type == "mode.changed":
             to_mode = str(evt.payload.get("to", "")).upper()
             if to_mode == "WANDER":

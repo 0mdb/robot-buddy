@@ -99,15 +99,17 @@ class FaceTelType(IntEnum):
 
 
 class FaceButtonId(IntEnum):
-    PTT = 0
-    ACTION = 1
+    PTT = 0  # reserved: legacy corner button, no longer sent by firmware
+    ACTION = 1  # reserved: legacy corner button, no longer sent by firmware
+    SCREEN = 2  # whole-screen gestures (spec §9.5)
 
 
 class FaceButtonEventType(IntEnum):
     PRESS = 0
     RELEASE = 1
-    TOGGLE = 2
-    CLICK = 3
+    TOGGLE = 2  # legacy (corner PTT)
+    CLICK = 3  # SCREEN: tap
+    LONG_PRESS = 4  # SCREEN: long-press, sent at the threshold while held
 
 
 class FaceMood(IntEnum):
@@ -330,6 +332,27 @@ class FaceButtonEventPayload:
         return cls(*cls._FMT.unpack_from(data))
 
 
+# esp_reset_reason_t (ESP-IDF v5.4) -> name, for logs and the dashboard.
+FACE_RESET_REASON_NAMES: dict[int, str] = {
+    0: "UNKNOWN",
+    1: "POWERON",
+    2: "EXT",
+    3: "SW",
+    4: "PANIC",
+    5: "INT_WDT",
+    6: "TASK_WDT",
+    7: "WDT",
+    8: "DEEPSLEEP",
+    9: "BROWNOUT",
+    10: "SDIO",
+    11: "USB",
+    12: "JTAG",
+    13: "EFUSE",
+    14: "PWR_GLITCH",
+    15: "CPU_LOCKUP",
+}
+
+
 @dataclass(slots=True)
 class FaceHeartbeatPayload:
     uptime_ms: int
@@ -368,11 +391,19 @@ class FaceHeartbeatPayload:
     perf_sample_div: int = 0
     perf_dirty_rect_enabled: int = 0
     perf_afterglow_downsample: int = 0
+    # Optional sys tail (after the perf tail).
+    reset_reason: int = 0  # esp_reset_reason_t, see FACE_RESET_REASON_NAMES
+    host_link_lost: int = 0
+    boot_count: int = 0  # boots since power-on; >1 means the face soft-reset
+    min_free_heap_bytes: int = 0
 
     _BASE_FMT = struct.Struct("<IIII")  # 16 bytes
     _USB_FMT = struct.Struct("<IIIIIIIIIIII")  # 48 bytes
     _TAIL_FMT = struct.Struct("<BBBB")  # dtr, rts, ptt_listening, reserved
     _PERF_FMT = struct.Struct("<IIIIIIIIIIIIIHBB")
+    _SYS_FMT = struct.Struct(
+        "<BBHII"
+    )  # reset_reason, flags, reserved, boot_count, min_free_heap
 
     @classmethod
     def unpack(cls, data: bytes) -> FaceHeartbeatPayload:
@@ -429,6 +460,11 @@ class FaceHeartbeatPayload:
         if len(data) >= (perf_off + cls._PERF_FMT.size):
             perf = cls._PERF_FMT.unpack_from(data, perf_off)
 
+        sys_tail = (0, 0, 0, 0, 0)
+        sys_off = perf_off + cls._PERF_FMT.size
+        if len(data) >= (sys_off + cls._SYS_FMT.size):
+            sys_tail = cls._SYS_FMT.unpack_from(data, sys_off)
+
         return cls(
             uptime_ms=base[0],
             status_tx_count=base[1],
@@ -466,6 +502,10 @@ class FaceHeartbeatPayload:
             perf_sample_div=perf[13],
             perf_dirty_rect_enabled=perf[14],
             perf_afterglow_downsample=perf[15],
+            reset_reason=sys_tail[0],
+            host_link_lost=sys_tail[1] & 0x01,
+            boot_count=sys_tail[3],
+            min_free_heap_bytes=sys_tail[4],
         )
 
 

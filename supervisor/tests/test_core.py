@@ -823,7 +823,7 @@ class TestPlannerSkillReachesBehavior:
 
         loop = TickLoop(reflex=_Stub(), face=None, workers=_Stub())  # type: ignore[arg-type]
         loop.robot.tick_mono_ms = 10_000.0
-        loop._trigger_greet(10_000.0)
+        loop._scheduler.active_skill = "greet_on_button"  # planner-chosen
         await loop._tick()
         assert loop.world.active_skill == "greet_on_button"
         loop.robot.tick_mono_ms = 10_000.0 + loop._greet_hold_ms + 1
@@ -1063,3 +1063,122 @@ class TestRelativeHeading:
         t._integrate_heading(500, 0.0)
         t._integrate_heading(500, 10.0)  # 10 s gap: integrate at most 0.2 s
         assert abs((360.0 - t.robot.heading_rel_deg) - 5.7296) < 0.01
+
+
+# ── Whole-screen gestures (spec §9.5; host owns PTT state) ──────────────
+
+
+class TestScreenGestures:
+    _ts = 0.0
+
+    def _make_tick_loop(self):
+        from supervisor.core.tick_loop import TickLoop
+
+        workers = MagicMock()
+        workers.send_to = AsyncMock(return_value=True)
+        loop = TickLoop(reflex=None, face=None, workers=workers)
+        loop.world.mic_link_up = True
+        loop.world.spk_link_up = True
+        return loop
+
+    @classmethod
+    def _evt(cls, event_type: int, state: int = 0, button_id: int | None = None):
+        from types import SimpleNamespace
+
+        from supervisor.devices.protocol import FaceButtonId
+
+        cls._ts += 10.0
+        return SimpleNamespace(
+            button_id=int(FaceButtonId.SCREEN) if button_id is None else button_id,
+            event_type=event_type,
+            state=state,
+            timestamp_mono_ms=cls._ts,
+        )
+
+    def _long(self, state: int = 0):
+        from supervisor.devices.protocol import FaceButtonEventType
+
+        return self._evt(int(FaceButtonEventType.LONG_PRESS), state)
+
+    def _tap(self):
+        from supervisor.devices.protocol import FaceButtonEventType
+
+        return self._evt(int(FaceButtonEventType.CLICK))
+
+    @pytest.mark.asyncio
+    async def test_long_press_toggles_ptt_ignoring_face_hint(self):
+        loop = self._make_tick_loop()
+        loop._on_face_button(self._long(state=1))  # stale hint "on": still starts
+        assert loop.world.ptt_active
+        assert loop._conv.ptt_held
+        assert loop.world.session_id
+
+        loop._on_face_button(self._long(state=0))  # second long-press ends utterance
+        assert not loop.world.ptt_active
+        assert not loop._conv.ptt_held
+        assert loop.world.session_id  # session survives (multi-turn)
+
+    @pytest.mark.asyncio
+    async def test_tap_while_ptt_held_ends_utterance(self):
+        from supervisor.devices.protocol import FaceConvState
+
+        loop = self._make_tick_loop()
+        loop._on_face_button(self._long())
+        loop._on_face_button(self._tap())
+        assert not loop._conv.ptt_held
+        assert loop._conv.state == FaceConvState.THINKING
+        assert loop.world.session_id
+
+    @pytest.mark.asyncio
+    async def test_tap_in_other_conversation_state_cancels(self):
+        from supervisor.devices.protocol import FaceConvState
+
+        loop = self._make_tick_loop()
+        loop._on_face_button(self._long())
+        loop._on_face_button(self._long())  # -> THINKING, session active
+        loop._on_face_button(self._tap())
+        assert loop._conv.state == FaceConvState.DONE
+        assert not loop.world.session_id
+
+    @pytest.mark.asyncio
+    async def test_tap_outside_conversation_is_boop(self):
+        loop = self._make_tick_loop()
+        loop._on_face_button(self._tap())
+        assert not loop.world.session_id
+        assert not loop.world.ptt_active
+        assert "face.touch.boop" in [e.type for e in loop._event_bus.latest()]
+
+    @pytest.mark.asyncio
+    async def test_long_press_after_host_ends_session_starts_new_ptt(self):
+        loop = self._make_tick_loop()
+        loop._on_face_button(self._long())
+        loop._end_conversation()  # host ends it (cancel / timeout / error)
+        assert not loop.world.ptt_active
+        assert not loop._conv.ptt_held
+
+        loop._on_face_button(self._long(state=0))  # face still thinks "listening"
+        assert loop.world.ptt_active
+        assert loop._conv.ptt_held
+        assert loop.world.session_id
+
+    @pytest.mark.asyncio
+    async def test_refused_start_leaves_ptt_off(self):
+        loop = self._make_tick_loop()
+        loop.world.mic_link_up = False
+        loop._on_face_button(self._long())
+        assert not loop.world.ptt_active
+        assert not loop._conv.ptt_held
+        assert not loop.world.session_id
+
+    @pytest.mark.asyncio
+    async def test_legacy_button_ids_ignored(self):
+        from supervisor.devices.protocol import FaceButtonEventType, FaceButtonId
+
+        loop = self._make_tick_loop()
+        loop._on_face_button(
+            self._evt(
+                int(FaceButtonEventType.TOGGLE), 1, button_id=int(FaceButtonId.PTT)
+            )
+        )
+        assert not loop.world.ptt_active
+        assert not loop.world.session_id

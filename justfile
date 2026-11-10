@@ -9,6 +9,10 @@ project := justfile_directory()
 # Run all tests
 test-all: test-supervisor test-server test-dashboard
 
+# Host-side unit tests for pure face firmware logic (gesture classifier, SPSC queue)
+test-face-host:
+    cd {{project}}/esp32-face && mkdir -p build-host && g++ -std=c++17 -O1 -Wall -Wextra -Werror -fsanitize=address,undefined -pthread -Imain test/test_host.cpp main/touch_gesture.cpp -o build-host/test_host && ./build-host/test_host
+
 # Run supervisor tests (with optional filter)
 test-supervisor *filter:
     cd {{project}}/supervisor && uv run pytest tests/ -v {{filter}}

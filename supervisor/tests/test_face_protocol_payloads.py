@@ -118,3 +118,19 @@ def test_protocol_capture_decode_heartbeat_perf_tail() -> None:
     assert decoded["perf"]["window_frames"] == 33
     assert decoded["perf"]["sample_div"] == 8
     assert decoded["perf"]["dirty_rect_enabled"] is True
+
+
+def test_heartbeat_unpack_sys_tail() -> None:
+    sys_tail = struct.pack("<BBHII", 9, 0x01, 0, 3, 123456)  # BROWNOUT, link lost
+    hb = FaceHeartbeatPayload.unpack(_heartbeat_payload(with_perf=True) + sys_tail)
+    assert hb.perf_window_frames == 33
+    assert hb.reset_reason == 9
+    assert hb.host_link_lost == 1
+    assert hb.boot_count == 3
+    assert hb.min_free_heap_bytes == 123456
+
+
+def test_heartbeat_without_sys_tail_defaults() -> None:
+    hb = FaceHeartbeatPayload.unpack(_heartbeat_payload(with_perf=True))
+    assert hb.boot_count == 0
+    assert hb.host_link_lost == 0

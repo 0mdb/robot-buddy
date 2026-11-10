@@ -44,12 +44,19 @@ constexpr float BREATH_AMOUNT = 0.04f; // ±4% scale (subtler than LED)
 // ---- Brightness ----
 constexpr uint8_t DEFAULT_BRIGHTNESS = 200; // TFT backlight (0-255 via LEDC)
 
-// ---- UI controls (discreet corner icons) ----
-constexpr int     UI_ICON_DIAMETER = 32;     // visible icon button size
-constexpr int     UI_ICON_HITBOX = 40;       // interactive touch target
-constexpr int     UI_ICON_MARGIN = 8;        // edge inset
-constexpr uint8_t UI_ICON_IDLE_OPA = 140;    // ~55%
-constexpr uint8_t UI_ICON_PRESSED_OPA = 217; // ~85%
+// ---- Host link watchdog (spec §4.4 "host link lost") ----
+// The host time-syncs at 2 Hz, so silence this long means the supervisor is gone.
+constexpr uint32_t HOST_SILENCE_MS = 3000;
+
+// ---- Whole-screen touch gestures (spec §9.5; mirrored in tools/face_sim_v3) ----
+constexpr uint32_t TOUCH_TAP_MAX_MS = 300;    // release before this (and no drag) = tap
+constexpr uint32_t TOUCH_LONG_PRESS_MS = 700; // held this long (no drag) = long-press, fires while held
+constexpr uint32_t TOUCH_RING_SHOW_MS = 200;  // long-press ring appears after this much hold
+constexpr int      TOUCH_MOVE_TOL_PX = 24;    // moved further than this = drag/pet, no gesture
+constexpr int      TOUCH_RING_RADIUS = 30;    // ring outer radius around the finger
+constexpr int      TOUCH_RING_THICKNESS = 6;
+constexpr uint32_t TOUCH_RING_FLASH_MS = 150; // flash after long-press fires
+constexpr bool     TOUCH_GAZE_FOLLOW = true;  // eyes look toward the finger while touching
 
 // ---- System overlay FX toggles ----
 // Performance fallback order (disable first -> last): GLITCH, VIGNETTE, SCANLINES.

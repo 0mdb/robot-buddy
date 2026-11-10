@@ -104,27 +104,41 @@ Command channel semantics in `esp32-face`:
 | FACE_STATUS  | 0x90 | v1: mood_id(u8) active_gesture(u8) system_mode(u8) flags(u8) — 4 bytes; v2: adds cmd_seq_last_applied(u32) + t_state_applied_us(u32) — 12 bytes total |
 | TOUCH_EVENT  | 0x91 | event_type(u8) x(u16) y(u16) — 5 bytes                             |
 | BUTTON_EVENT | 0x92 | button_id(u8) event_type(u8) state(u8) reserved(u8) — 4 bytes      |
-| HEARTBEAT    | 0x93 | base payload: uptime + tx counters + USB diagnostics + ptt_listening (68 bytes) + optional perf tail (56 bytes, parsed by length) |
+| HEARTBEAT    | 0x93 | base (68 bytes: uptime, tx counters, USB diagnostics, ptt_listening) + perf tail (56) + sys tail (12), tails parsed by length |
 
 `BUTTON_EVENT` IDs:
-- button `0`: PTT (tap-toggle)
-- button `1`: ACTION (click)
-
-UI note: face-v2 renders these as small bottom-corner icon controls; telemetry IDs and event types are unchanged.
+- button `2`: SCREEN — whole-screen touch gestures (spec §9.5)
+- buttons `0` (PTT) and `1` (ACTION): reserved; the old corner buttons, no longer sent
 
 `BUTTON_EVENT` types:
-- `0`: PRESS
-- `1`: RELEASE
-- `2`: TOGGLE
-- `3`: CLICK
+- `3`: CLICK — SCREEN tap (released < 300 ms, moved ≤ 24 px)
+- `4`: LONG_PRESS — SCREEN long-press (held ≥ 700 ms, moved ≤ 24 px), sent at the threshold while still held; `state` = the face's PTT mirror at that moment (hint only)
+- `0` PRESS, `1` RELEASE, `2` TOGGLE: legacy, no longer sent
 
-`HEARTBEAT` optional perf tail fields (appended only when present):
+A drag (moved > 24 px) reports no gesture, only raw `TOUCH_EVENT` samples.
+
+Host mapping (the host owns PTT state; spec §9.5): long-press toggles PTT; a tap
+while PTT is held ends the utterance; a tap in any other active conversation state
+cancels the session; a tap outside a conversation is a "boop" (local blink on the
+face, `face.touch.boop` planner event). The face's `ptt_listening` (FACE_STATUS
+bit2, HEARTBEAT) mirrors `SET_CONV_STATE == PTT` and never changes on a touch.
+Touch and gesture events are queued and sent in order; frames are written whole or
+not at all.
+
+`HEARTBEAT` perf tail fields (zeroed when perf telemetry is off or not yet sampled):
 - `window_frames(u32)`
 - `frame_us_avg(u32)`, `frame_us_max(u32)`
 - `render_us_avg(u32)`, `render_us_max(u32)`
 - `eyes_us_avg(u32)`, `mouth_us_avg(u32)`, `border_us_avg(u32)`, `effects_us_avg(u32)`, `overlay_us_avg(u32)`
 - `dirty_px_avg(u32)`, `spi_bytes_per_s(u32)`, `cmd_rx_to_apply_us_avg(u32)`
 - `perf_sample_div(u16)`, `dirty_rect_enabled(u8)`, `afterglow_downsample(u8)`
+
+`HEARTBEAT` sys tail fields (after the perf tail):
+- `reset_reason(u8)`: `esp_reset_reason_t` of the current boot (1 POWERON, 4 PANIC, 6 TASK_WDT, 9 BROWNOUT, ...)
+- `flags(u8)`: bit0 = host link lost (no host packet for 3 s; the face shows a local sleepy look-around)
+- `reserved(u16)`
+- `boot_count(u32)`: boots since power-on; > 1 means the face soft-reset (the supervisor logs a warning)
+- `min_free_heap_bytes(u32)`: internal-RAM heap low-water mark
 
 ### Mood IDs (canonical — C++ `face_state.h` is source of truth)
 

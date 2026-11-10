@@ -6,8 +6,8 @@
 #include "led.h"
 #include "protocol.h"
 #include "touch.h"
+#include "touch_gesture.h"
 #include "system_face.h"
-#include "system_overlay_v2.h"
 #include "pixel.h"
 
 #include "esp_lvgl_port.h"
@@ -17,6 +17,8 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+#include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
@@ -48,10 +50,17 @@ static lv_obj_t* calib_label_touch = nullptr;
 static lv_obj_t* calib_label_tf = nullptr;
 static lv_obj_t* calib_label_flags = nullptr;
 
-static int     s_last_touch_x = SCREEN_W / 2;
-static int     s_last_touch_y = SCREEN_H / 2;
-static uint8_t s_last_touch_evt = 0xFF;
-static bool    s_last_touch_active = false;
+static int s_last_touch_x = SCREEN_W / 2;
+static int s_last_touch_y = SCREEN_H / 2;
+
+// Whole-screen gesture state (LVGL-lock protected; see root_touch_event_cb).
+static TouchGesture      s_gesture({TOUCH_TAP_MAX_MS, TOUCH_LONG_PRESS_MS, TOUCH_RING_SHOW_MS, TOUCH_MOVE_TOL_PX});
+static std::atomic<bool> s_boop_pending{false};
+// Latest finger position for gaze-follow (written in the LVGL task, read by face_ui_task).
+static std::atomic<int16_t> s_finger_x{SCREEN_W / 2};
+static std::atomic<int16_t> s_finger_y{SCREEN_H / 2};
+static uint8_t              s_last_touch_evt = 0xFF;
+static bool                 s_last_touch_active = false;
 
 struct RectI {
     int  x0 = 0;
@@ -73,8 +82,7 @@ struct PrevBoundsState {
     RectI eye_r = {};
     RectI mouth = {};
     RectI border = {};
-    RectI btn_left = {};
-    RectI btn_right = {};
+    RectI ring = {};
     bool  full = false;
     bool  valid = false;
 };
@@ -84,8 +92,6 @@ struct RenderPerfSnapshot {
     uint32_t eyes_us = 0;
     uint32_t mouth_us = 0;
     uint32_t border_us = 0;
-    uint32_t border_frame_us = 0;
-    uint32_t border_buttons_us = 0;
     uint32_t effects_us = 0;
     uint32_t overlay_us = 0;
     uint32_t dirty_px = 0;
@@ -101,7 +107,7 @@ static void        root_touch_event_cb(lv_event_t* e);
 static void        render_calibration(pixel_t* buf);
 static void        update_calibration_labels(uint32_t now_ms, uint32_t next_switch_ms);
 static void        afterglow_copy_from_canvas(const pixel_t* canvas);
-static DirtyRegion compute_dirty_region(const FaceState& fs);
+static DirtyRegion compute_dirty_region(const FaceState& fs, const RectI& ring);
 static uint32_t    dirty_region_area(const DirtyRegion& region);
 
 static float clampf(float v, float lo, float hi)
@@ -134,15 +140,25 @@ static pixel_t scale_color(pixel_t c, uint8_t num, uint8_t den)
 
 static void draw_filled_rect(pixel_t* buf, int x, int y, int w, int h, pixel_t color)
 {
-    for (int dy = 0; dy < h; dy++) {
-        int py = y + dy;
-        if (py < 0 || py >= SCREEN_H) continue;
-        for (int dx = 0; dx < w; dx++) {
-            int px = x + dx;
-            if (px < 0 || px >= SCREEN_W) continue;
-            buf[py * SCREEN_W + px] = color;
-        }
+    // Clip once, then fill whole rows (no per-pixel bounds checks).
+    int x0 = x < 0 ? 0 : x;
+    int y0 = y < 0 ? 0 : y;
+    int x1 = (x + w) > SCREEN_W ? SCREEN_W : (x + w);
+    int y1 = (y + h) > SCREEN_H ? SCREEN_H : (y + h);
+    if (x1 <= x0 || y1 <= y0) return;
+    const int span = x1 - x0;
+    for (int py = y0; py < y1; py++) {
+        std::fill_n(buf + py * SCREEN_W + x0, span, color);
     }
+}
+
+static void draw_span(pixel_t* buf, int y, int x0, int x1_incl, pixel_t color)
+{
+    if (y < 0 || y >= SCREEN_H) return;
+    if (x0 < 0) x0 = 0;
+    if (x1_incl >= SCREEN_W) x1_incl = SCREEN_W - 1;
+    if (x1_incl < x0) return;
+    std::fill_n(buf + y * SCREEN_W + x0, x1_incl - x0 + 1, color);
 }
 
 static void draw_hline(pixel_t* buf, int x0, int x1, int y, pixel_t color)
@@ -159,56 +175,40 @@ static void draw_vline(pixel_t* buf, int x, int y0, int y1, pixel_t color)
     draw_filled_rect(buf, x, y_lo, 1, y_hi - y_lo + 1, color);
 }
 
-static bool point_in_rect(int x, int y, int rx, int ry, int rw, int rh)
-{
-    return (x >= rx && x < (rx + rw) && y >= ry && y < (ry + rh));
-}
-
 static void draw_filled_rounded_rect(pixel_t* buf, int x, int y, int w, int h, int radius, pixel_t color)
 {
+    // Row spans: corner rows are inset by the circle; everything else is a full row.
+    if (w <= 0 || h <= 0) return;
+    if (radius < 0) radius = 0;
     const int r2 = radius * radius;
     for (int dy = 0; dy < h; dy++) {
-        int py = y + dy;
-        if (py < 0 || py >= SCREEN_H) continue;
-        for (int dx = 0; dx < w; dx++) {
-            int px = x + dx;
-            if (px < 0 || px >= SCREEN_W) continue;
-
-            bool inside = true;
-            if (dx < radius && dy < radius) {
-                int ddx = radius - dx, ddy = radius - dy;
-                if (ddx * ddx + ddy * ddy > r2) inside = false;
-            } else if (dx >= w - radius && dy < radius) {
-                int ddx = dx - (w - radius - 1), ddy = radius - dy;
-                if (ddx * ddx + ddy * ddy > r2) inside = false;
-            } else if (dx < radius && dy >= h - radius) {
-                int ddx = radius - dx, ddy = dy - (h - radius - 1);
-                if (ddx * ddx + ddy * ddy > r2) inside = false;
-            } else if (dx >= w - radius && dy >= h - radius) {
-                int ddx = dx - (w - radius - 1), ddy = dy - (h - radius - 1);
-                if (ddx * ddx + ddy * ddy > r2) inside = false;
-            }
-
-            if (inside) {
-                buf[py * SCREEN_W + px] = color;
-            }
+        int ddy = -1;
+        if (dy < radius) {
+            ddy = radius - dy;
+        } else if (dy >= h - radius) {
+            ddy = dy - (h - radius - 1);
         }
+        int lo = 0;
+        int hi = w - 1;
+        if (ddy >= 0) {
+            const int rem = r2 - ddy * ddy;
+            if (rem < 0) continue;
+            const int reach = static_cast<int>(sqrtf(static_cast<float>(rem)));
+            const int left = radius - reach;
+            const int right = (w - radius - 1) + reach;
+            if (left > lo) lo = left;
+            if (right < hi) hi = right;
+        }
+        draw_span(buf, y + dy, x + lo, x + hi, color);
     }
 }
 
 static void draw_filled_circle(pixel_t* buf, int cx, int cy, int radius, pixel_t color)
 {
-    int r2 = radius * radius;
+    const int r2 = radius * radius;
     for (int dy = -radius; dy <= radius; dy++) {
-        int py = cy + dy;
-        if (py < 0 || py >= SCREEN_H) continue;
-        for (int dx = -radius; dx <= radius; dx++) {
-            int px = cx + dx;
-            if (px < 0 || px >= SCREEN_W) continue;
-            if (dx * dx + dy * dy <= r2) {
-                buf[py * SCREEN_W + px] = color;
-            }
-        }
+        const int reach = static_cast<int>(sqrtf(static_cast<float>(r2 - dy * dy)));
+        draw_span(buf, cy + dy, cx - reach, cx + reach, color);
     }
 }
 
@@ -335,8 +335,17 @@ static void render_eye(pixel_t* buf, const EyeState& eye, const FaceState& fs, b
     const int   y0 = static_cast<int>(ey);
     const int   y1 = static_cast<int>(ey + eh);
 
-    for (int x = x0; x < x1; x++) {
-        if (x < 0 || x >= SCREEN_W) continue;
+    // Per-column lid limits, then fill row by row (contiguous PSRAM writes instead
+    // of one strided column at a time). Same pixels as the old per-column vlines:
+    // top lid covers y0..top[x] when top[x] > y0; bottom covers bot[x]..y1 when bot[x] < y1.
+    const int cx0 = x0 < 0 ? 0 : x0;
+    const int cx1 = x1 > SCREEN_W ? SCREEN_W : x1;
+    if (cx1 <= cx0) return;
+    static int lid_top_y[SCREEN_W]; // static: off the task stack
+    static int lid_bot_y[SCREEN_W];
+    int        top_max = y0 - 1;
+    int        bot_min = y1 + 1;
+    for (int x = cx0; x < cx1; x++) {
         float nx = (static_cast<float>(x) - (ex + ew * 0.5f)) / fmaxf(1.0f, ew * 0.5f);
         if (!is_left) {
             nx = -nx;
@@ -344,12 +353,26 @@ static void render_eye(pixel_t* buf, const EyeState& eye, const FaceState& fs, b
         const float slope_off = slope * 20.0f * nx;
         const int   top_limit = static_cast<int>((ey - 0.5f) + eh * 2.0f * lid_top + slope_off);
         const int   bot_limit = static_cast<int>((ey + eh) - eh * 2.0f * lid_bot);
-
-        if (top_limit > y0) {
-            draw_vline(buf, x, y0, top_limit, black);
+        lid_top_y[x] = (top_limit > y0) ? top_limit : (y0 - 1); // y0-1: no top lid
+        lid_bot_y[x] = (bot_limit < y1) ? bot_limit : (y1 + 1); // y1+1: no bottom lid
+        if (lid_top_y[x] > top_max) top_max = lid_top_y[x];
+        if (lid_bot_y[x] < bot_min) bot_min = lid_bot_y[x];
+    }
+    // A fully closed lid can run past the eye box (top lid below y1, bottom lid above
+    // y0), exactly as the old vlines did, so the row range covers that too.
+    int ry0 = (bot_min < y0) ? bot_min : y0;
+    int ry1 = (top_max > y1) ? top_max : y1;
+    if (ry0 < 0) ry0 = 0;
+    if (ry1 >= SCREEN_H) ry1 = SCREEN_H - 1;
+    for (int y = ry0; y <= ry1; y++) {
+        if (y > top_max && y < bot_min) {
+            continue; // row untouched by either lid
         }
-        if (bot_limit < y1) {
-            draw_vline(buf, x, bot_limit, y1, black);
+        pixel_t* row = buf + y * SCREEN_W;
+        for (int x = cx0; x < cx1; x++) {
+            if ((y >= y0 && y <= lid_top_y[x]) || (y >= lid_bot_y[x] && y <= y1)) {
+                row[x] = black;
+            }
         }
     }
 }
@@ -377,23 +400,46 @@ static void render_mouth(pixel_t* buf, const FaceState& fs)
     const int   y1 = static_cast<int>(cy + fabsf(curve) + openness + thick);
     const float half_thick = thick * 0.5f;
 
-    for (int y = (y0 < 0 ? 0 : y0); y < (y1 > SCREEN_H ? SCREEN_H : y1); y++) {
-        const int row = y * SCREEN_W;
-        for (int x = (x0 < 0 ? 0 : x0); x < (x1 > SCREEN_W ? SCREEN_W : x1); x++) {
-            const float px = static_cast<float>(x) + 0.5f;
-            const float py = static_cast<float>(y) + 0.5f;
-            const float nx = (px - cx) / w;
-            if (fabsf(nx) > 1.0f) continue;
+    // Per-column curve values are the same for every row: compute them once.
+    static constexpr int MAX_MOUTH_COLS = SCREEN_W;
+    static float         col_upper[MAX_MOUTH_COLS]; // static: keep ~3 KB off the 8 KB task stack
+    static float         col_lower[MAX_MOUTH_COLS];
+    static bool          col_valid[MAX_MOUTH_COLS];
+    const int            cx0 = x0 < 0 ? 0 : x0;
+    const int            cx1 = x1 > SCREEN_W ? SCREEN_W : x1;
+    float                ymin = 1e9f;
+    float                ymax = -1e9f;
+    for (int x = cx0; x < cx1; x++) {
+        const int   i = x - cx0;
+        const float nx = (static_cast<float>(x) + 0.5f - cx) / w;
+        col_valid[i] = fabsf(nx) <= 1.0f;
+        if (!col_valid[i]) continue;
+        const float shape = 1.0f - nx * nx;
+        const float curve_y = curve * shape;
+        col_upper[i] = cy + curve_y - openness * shape;
+        col_lower[i] = cy + curve_y + openness * shape;
+        ymin = fminf(ymin, col_upper[i]);
+        ymax = fmaxf(ymax, col_lower[i]);
+    }
+    const float reach = half_thick + 1.0f; // alpha is 0 beyond this distance
+    const bool  filled = openness > 1.0f;
+    int         ry0 = static_cast<int>(floorf(ymin - reach));
+    int         ry1 = static_cast<int>(ceilf(ymax + reach)) + 1;
+    if (ry0 < (y0 < 0 ? 0 : y0)) ry0 = (y0 < 0 ? 0 : y0);
+    if (ry1 > (y1 > SCREEN_H ? SCREEN_H : y1)) ry1 = (y1 > SCREEN_H ? SCREEN_H : y1);
 
-            const float shape = 1.0f - nx * nx;
-            const float curve_y = curve * shape;
-            const float upper_y = cy + curve_y - openness * shape;
-            const float lower_y = cy + curve_y + openness * shape;
+    for (int y = ry0; y < ry1; y++) {
+        const int   row = y * SCREEN_W;
+        const float py = static_cast<float>(y) + 0.5f;
+        for (int x = cx0; x < cx1; x++) {
+            const int i = x - cx0;
+            if (!col_valid[i]) continue;
+            const float upper_y = col_upper[i];
+            const float lower_y = col_lower[i];
+            if (py < upper_y - reach || py > lower_y + reach) continue;
 
             float dist = 0.0f;
-            if (openness > 1.0f && upper_y < py && py < lower_y) {
-                dist = 0.0f;
-            } else {
+            if (!(filled && upper_y < py && py < lower_y)) {
                 dist = fminf(fabsf(py - upper_y), fabsf(py - lower_y));
             }
 
@@ -474,10 +520,6 @@ static void render_calibration(pixel_t* buf)
     const pixel_t bg = rgb_to_color(8, 8, 10);
     const pixel_t grid = rgb_to_color(34, 34, 38);
     const pixel_t axis = rgb_to_color(74, 74, 84);
-    const pixel_t ptt_outline = rgb_to_color(34, 180, 102);
-    const pixel_t action_outline = rgb_to_color(190, 98, 54);
-    const pixel_t ptt_fill = rgb_to_color(20, 96, 64);
-    const pixel_t action_fill = rgb_to_color(148, 78, 42);
     const pixel_t touch = rgb_to_color(255, 228, 128);
     const pixel_t cross = rgb_to_color(240, 250, 255);
 
@@ -491,37 +533,6 @@ static void render_calibration(pixel_t* buf)
     }
     draw_vline(buf, SCREEN_W / 2, 0, SCREEN_H - 1, rgb_to_color(120, 120, 130));
     draw_hline(buf, 0, SCREEN_W - 1, SCREEN_H / 2, rgb_to_color(120, 120, 130));
-
-    const int hit = UI_ICON_HITBOX;
-    const int vis = UI_ICON_DIAMETER;
-    const int vis_r = vis / 2;
-    const int ptt_x = UI_ICON_MARGIN;
-    const int ptt_y = SCREEN_H - UI_ICON_MARGIN - hit;
-    const int action_x = SCREEN_W - UI_ICON_MARGIN - hit;
-    const int action_y = SCREEN_H - UI_ICON_MARGIN - hit;
-    const int ptt_cx = ptt_x + hit / 2;
-    const int ptt_cy = ptt_y + hit / 2;
-    const int action_cx = action_x + hit / 2;
-    const int action_cy = action_y + hit / 2;
-
-    draw_hline(buf, ptt_x, ptt_x + hit - 1, ptt_y, ptt_outline);
-    draw_hline(buf, ptt_x, ptt_x + hit - 1, ptt_y + hit - 1, ptt_outline);
-    draw_vline(buf, ptt_x, ptt_y, ptt_y + hit - 1, ptt_outline);
-    draw_vline(buf, ptt_x + hit - 1, ptt_y, ptt_y + hit - 1, ptt_outline);
-    draw_hline(buf, action_x, action_x + hit - 1, action_y, action_outline);
-    draw_hline(buf, action_x, action_x + hit - 1, action_y + hit - 1, action_outline);
-    draw_vline(buf, action_x, action_y, action_y + hit - 1, action_outline);
-    draw_vline(buf, action_x + hit - 1, action_y, action_y + hit - 1, action_outline);
-
-    draw_filled_circle(buf, ptt_cx, ptt_cy, vis_r, ptt_fill);
-    draw_filled_circle(buf, action_cx, action_cy, vis_r, action_fill);
-
-    if (s_last_touch_active && point_in_rect(s_last_touch_x, s_last_touch_y, ptt_x, ptt_y, hit, hit)) {
-        draw_filled_circle(buf, ptt_cx, ptt_cy, vis_r - 4, rgb_to_color(58, 214, 145));
-    }
-    if (s_last_touch_active && point_in_rect(s_last_touch_x, s_last_touch_y, action_x, action_y, hit, hit)) {
-        draw_filled_circle(buf, action_cx, action_cy, vis_r - 4, rgb_to_color(255, 140, 84));
-    }
 
     const int tx = (s_last_touch_x < 0) ? 0 : ((s_last_touch_x >= SCREEN_W) ? (SCREEN_W - 1) : s_last_touch_x);
     const int ty = (s_last_touch_y < 0) ? 0 : ((s_last_touch_y >= SCREEN_H) ? (SCREEN_H - 1) : s_last_touch_y);
@@ -545,7 +556,7 @@ static void update_calibration_labels(uint32_t now_ms, uint32_t next_switch_ms)
     char     line_flags[128];
     char     line_cycle[32];
     uint32_t secs_left = 0;
-    if (next_switch_ms > now_ms) {
+    if (static_cast<int32_t>(next_switch_ms - now_ms) > 0) {
         secs_left = (next_switch_ms - now_ms + 999U) / 1000U;
     }
 
@@ -739,7 +750,88 @@ static RectI compute_mouth_bounds(const FaceState& fs)
     return make_rect_xyxy(x0, y0, x1, y1);
 }
 
-static DirtyRegion compute_dirty_region(const FaceState& fs)
+// ---- Long-press ring (spec §9.5) ----
+// Ring state is read under the LVGL lock (face_ui_update), like s_gesture.
+static bool s_ring_listening_latched = false;
+
+static bool touch_ring_visible(const FaceState& fs, uint32_t now_ms, float& progress, float& flash)
+{
+    progress = -1.0f;
+    flash = 0.0f;
+    if (fs.system.mode != SystemMode::NONE) {
+        return false;
+    }
+    const uint32_t since_fire = s_gesture.ms_since_long_fire(now_ms);
+    if (since_fire < TOUCH_RING_FLASH_MS) {
+        flash = 1.0f - static_cast<float>(since_fire) / static_cast<float>(TOUCH_RING_FLASH_MS);
+        return true;
+    }
+    progress = s_gesture.ring_progress(now_ms);
+    return progress >= 0.0f && !s_gesture.long_fired();
+}
+
+static RectI touch_ring_bounds(const FaceState& fs, uint32_t now_ms)
+{
+    float progress = 0.0f;
+    float flash = 0.0f;
+    if (!touch_ring_visible(fs, now_ms, progress, flash)) {
+        return {};
+    }
+    const int r = TOUCH_RING_RADIUS + 3; // flash grows by up to 2 px, plus AA
+    return make_rect_xyxy(s_gesture.x() - r, s_gesture.y() - r, s_gesture.x() + r, s_gesture.y() + r);
+}
+
+static void render_touch_ring(pixel_t* buf, const FaceState& fs, uint32_t now_ms)
+{
+    float progress = 0.0f;
+    float flash = 0.0f;
+    if (!touch_ring_visible(fs, now_ms, progress, flash)) {
+        return;
+    }
+    if (!s_gesture.long_fired()) {
+        // Colour says what the long-press will do; latched at fire so the flash
+        // doesn't change colour when the host's PTT state flips.
+        s_ring_listening_latched = g_ptt_listening.load(std::memory_order_relaxed);
+    }
+    const bool    listening = s_ring_listening_latched;
+    const uint8_t cr = listening ? 230 : 255;
+    const uint8_t cg = listening ? 230 : 180;
+    const uint8_t cb = listening ? 230 : 40;
+
+    const float outer = static_cast<float>(TOUCH_RING_RADIUS) + 2.0f * flash;
+    const float inner = outer - static_cast<float>(TOUCH_RING_THICKNESS);
+    const float two_pi = 2.0f * static_cast<float>(M_PI);
+    const int   cx = s_gesture.x();
+    const int   cy = s_gesture.y();
+    const int   rr = static_cast<int>(ceilf(outer)) + 1;
+
+    for (int y = cy - rr; y <= cy + rr; y++) {
+        if (y < 0 || y >= SCREEN_H) continue;
+        const int   row = y * SCREEN_W;
+        const float dy = static_cast<float>(y - cy);
+        for (int x = cx - rr; x <= cx + rr; x++) {
+            if (x < 0 || x >= SCREEN_W) continue;
+            const float dx = static_cast<float>(x - cx);
+            const float d = sqrtf(dx * dx + dy * dy);
+            if (d < inner - 1.0f || d > outer + 1.0f) continue;
+            // Anti-aliased annulus edge.
+            float a = fminf(clampf(d - (inner - 1.0f), 0.0f, 1.0f), clampf((outer + 1.0f) - d, 0.0f, 1.0f));
+            if (flash > 0.0f) {
+                a *= flash;
+            } else {
+                // Clockwise from 12 o'clock (screen y grows downward).
+                float ang = atan2f(dx, -dy);
+                if (ang < 0.0f) ang += two_pi;
+                a *= (ang / two_pi <= progress) ? 0.95f : 0.25f; // filled arc vs faint track
+            }
+            if (a > 0.01f) {
+                buf[row + x] = px_blend(buf[row + x], cr, cg, cb, a);
+            }
+        }
+    }
+}
+
+static DirtyRegion compute_dirty_region(const FaceState& fs, const RectI& ring)
 {
     DirtyRegion region = {};
 
@@ -758,8 +850,6 @@ static DirtyRegion compute_dirty_region(const FaceState& fs)
     RectI eye_r = {};
     RectI mouth = {};
     RectI border = {};
-    RectI btn_left = make_rect_xywh(0, SCREEN_H - 46, 60, 46);              // must match conv_border.cpp
-    RectI btn_right = make_rect_xywh(SCREEN_W - 60, SCREEN_H - 46, 60, 46); // must match conv_border.cpp
 
     if (!full_now) {
         eye_l = compute_eye_bounds(fs, true, LEFT_EYE_CX, LEFT_EYE_CY);
@@ -775,9 +865,7 @@ static DirtyRegion compute_dirty_region(const FaceState& fs)
         dirty_region_add_prev_curr(region, s_prev_bounds.eye_r, eye_r);
         dirty_region_add_prev_curr(region, s_prev_bounds.mouth, mouth);
 
-        // Corner buttons are rendered in software and can animate independently.
-        dirty_region_add_rect(region, btn_left);
-        dirty_region_add_rect(region, btn_right);
+        dirty_region_add_prev_curr(region, s_prev_bounds.ring, ring);
 
         if (border.valid || s_prev_bounds.border.valid) {
             constexpr int edge = 20;
@@ -787,17 +875,14 @@ static DirtyRegion compute_dirty_region(const FaceState& fs)
             dirty_region_add_xywh(region, SCREEN_W - edge, edge, edge, SCREEN_H - 2 * edge);
         }
 
-        if (region.count == 0) {
-            region.full = true;
-        }
+        // count == 0: nothing visible changed (e.g. eyes closed, no border) -> no redraw.
     }
 
     s_prev_bounds.eye_l = eye_l;
     s_prev_bounds.eye_r = eye_r;
     s_prev_bounds.mouth = mouth;
     s_prev_bounds.border = border;
-    s_prev_bounds.btn_left = btn_left;
-    s_prev_bounds.btn_right = btn_right;
+    s_prev_bounds.ring = ring;
     s_prev_bounds.full = full_now;
     s_prev_bounds.valid = true;
 
@@ -817,29 +902,50 @@ static uint32_t dirty_region_area(const DirtyRegion& region)
         const uint32_t h = static_cast<uint32_t>(r.y1 - r.y0 + 1);
         sum += w * h;
     }
-    return (sum > 0U) ? sum : static_cast<uint32_t>(SCREEN_W * SCREEN_H);
+    return sum;
 }
 
 static void publish_touch_sample(uint8_t event_type, int x, int y)
 {
-    TouchSample* slot = g_touch.write_slot();
-    slot->event_type = event_type;
-    slot->x = static_cast<uint16_t>(x < 0 ? 0 : (x >= SCREEN_W ? SCREEN_W - 1 : x));
-    slot->y = static_cast<uint16_t>(y < 0 ? 0 : (y >= SCREEN_H ? SCREEN_H - 1 : y));
-    slot->timestamp_us = static_cast<uint32_t>(esp_timer_get_time());
-    g_touch.publish();
+    TouchSample sample = {};
+    sample.event_type = event_type;
+    sample.x = static_cast<uint16_t>(x < 0 ? 0 : (x >= SCREEN_W ? SCREEN_W - 1 : x));
+    sample.y = static_cast<uint16_t>(y < 0 ? 0 : (y >= SCREEN_H ? SCREEN_H - 1 : y));
+    sample.timestamp_us = static_cast<uint32_t>(esp_timer_get_time());
+    (void)g_touch.push(sample); // full: drop (PRESSING stream backs up first)
 }
 
 static void publish_button_event(FaceButtonId button_id, FaceButtonEventType event_type, uint8_t state)
 {
-    ButtonEventSample* slot = g_button.write_slot();
-    slot->button_id = static_cast<uint8_t>(button_id);
-    slot->event_type = static_cast<uint8_t>(event_type);
-    slot->state = state;
-    slot->timestamp_us = static_cast<uint32_t>(esp_timer_get_time());
-    g_button.publish();
+    ButtonEventSample ev = {};
+    ev.button_id = static_cast<uint8_t>(button_id);
+    ev.event_type = static_cast<uint8_t>(event_type);
+    ev.state = state;
+    ev.timestamp_us = static_cast<uint32_t>(esp_timer_get_time());
+    (void)g_button.push(ev);
 }
 
+static uint32_t touch_now_ms()
+{
+    return static_cast<uint32_t>(static_cast<uint64_t>(esp_timer_get_time()) / 1000ULL);
+}
+
+static void publish_gesture(TouchGestureEvent ev)
+{
+    if (ev == TouchGestureEvent::TAP) {
+        publish_button_event(FaceButtonId::SCREEN, FaceButtonEventType::CLICK, 0);
+        // Local "boop" acknowledgement when no conversation is running (spec §9.5).
+        if (g_cmd_conv_state.load(std::memory_order_relaxed) == static_cast<uint8_t>(FaceConvState::IDLE)) {
+            s_boop_pending.store(true, std::memory_order_relaxed);
+        }
+    } else if (ev == TouchGestureEvent::LONG_PRESS) {
+        publish_button_event(FaceButtonId::SCREEN, FaceButtonEventType::LONG_PRESS,
+                             g_ptt_listening.load(std::memory_order_relaxed) ? 1 : 0);
+    }
+}
+
+// Runs in the LVGL task with the LVGL lock held (as does face_ui_update), so
+// s_gesture needs no further locking. The face_ui_task loop reads only the atomics.
 static void root_touch_event_cb(lv_event_t* e)
 {
     if (!e) {
@@ -852,8 +958,15 @@ static void root_touch_event_cb(lv_event_t* e)
 
     lv_point_t p = {};
     lv_indev_get_point(indev, &p);
+    const uint32_t now_ms = touch_now_ms();
+    // Gestures are off during system overlays (spec §4.4); raw touch samples still flow.
+    const bool sys_overlay = g_system_mode.load(std::memory_order_relaxed) != 0;
 
     const lv_event_code_t code = lv_event_get_code(e);
+    if (code == LV_EVENT_PRESSED || code == LV_EVENT_PRESSING) {
+        s_finger_x.store(static_cast<int16_t>(p.x), std::memory_order_relaxed);
+        s_finger_y.store(static_cast<int16_t>(p.y), std::memory_order_relaxed);
+    }
     if (code == LV_EVENT_PRESSED) {
         s_last_touch_x = p.x;
         s_last_touch_y = p.y;
@@ -861,14 +974,10 @@ static void root_touch_event_cb(lv_event_t* e)
         s_last_touch_active = true;
         g_touch_active.store(true, std::memory_order_relaxed);
         publish_touch_sample(0, p.x, p.y);
-
-        // Corner button hit-testing — disabled during system overlays (spec §4.4)
-        const bool sys_overlay = g_system_mode.load(std::memory_order_relaxed) != 0;
-        if (!sys_overlay && conv_border_hit_test_left(p.x, p.y)) {
-            publish_button_event(FaceButtonId::PTT, FaceButtonEventType::PRESS,
-                                 g_ptt_listening.load(std::memory_order_relaxed) ? 1 : 0);
-        } else if (!sys_overlay && conv_border_hit_test_right(p.x, p.y)) {
-            publish_button_event(FaceButtonId::ACTION, FaceButtonEventType::PRESS, 0);
+        if (sys_overlay) {
+            s_gesture.reset();
+        } else {
+            s_gesture.press(p.x, p.y, now_ms);
         }
     } else if (code == LV_EVENT_PRESSING) {
         s_last_touch_x = p.x;
@@ -877,29 +986,21 @@ static void root_touch_event_cb(lv_event_t* e)
         s_last_touch_active = true;
         g_touch_active.store(true, std::memory_order_relaxed);
         publish_touch_sample(2, p.x, p.y);
+        if (sys_overlay) {
+            s_gesture.reset();
+        } else {
+            s_gesture.move(p.x, p.y, now_ms);
+            publish_gesture(s_gesture.tick(now_ms));
+        }
     } else if (code == LV_EVENT_RELEASED) {
-        const int press_x = s_last_touch_x;
-        const int press_y = s_last_touch_y;
         s_last_touch_x = p.x;
         s_last_touch_y = p.y;
         s_last_touch_evt = 1;
         s_last_touch_active = false;
         g_touch_active.store(false, std::memory_order_relaxed);
         publish_touch_sample(1, p.x, p.y);
-
-        // Corner button release + click detection — disabled during system overlays (spec §4.4)
-        const bool sys_overlay_r = g_system_mode.load(std::memory_order_relaxed) != 0;
-        if (!sys_overlay_r && conv_border_hit_test_left(press_x, press_y) && conv_border_hit_test_left(p.x, p.y)) {
-            publish_button_event(FaceButtonId::PTT, FaceButtonEventType::RELEASE,
-                                 g_ptt_listening.load(std::memory_order_relaxed) ? 1 : 0);
-            // Toggle PTT on click (press+release in same zone)
-            const bool listening = !g_ptt_listening.load(std::memory_order_relaxed);
-            g_ptt_listening.store(listening, std::memory_order_relaxed);
-            publish_button_event(FaceButtonId::PTT, FaceButtonEventType::TOGGLE, listening ? 1 : 0);
-        } else if (!sys_overlay_r && conv_border_hit_test_right(press_x, press_y) &&
-                   conv_border_hit_test_right(p.x, p.y)) {
-            publish_button_event(FaceButtonId::ACTION, FaceButtonEventType::RELEASE, 0);
-            publish_button_event(FaceButtonId::ACTION, FaceButtonEventType::CLICK, 0);
+        if (!sys_overlay) {
+            publish_gesture(s_gesture.release(p.x, p.y, now_ms));
         }
     }
 }
@@ -986,7 +1087,33 @@ void face_ui_update(const FaceState& fs)
     };
 
     RenderPerfSnapshot perf = {};
-    draw_filled_rect(canvas_buf, 0, 0, SCREEN_W, SCREEN_H, rgb_to_color(BG_R, BG_G, BG_B));
+    const uint32_t     now_ms = touch_now_ms();
+
+    // Long-press fires at the threshold even if LVGL sends no PRESSING event this frame.
+    if (fs.system.mode == SystemMode::NONE) {
+        publish_gesture(s_gesture.tick(now_ms));
+    }
+
+    // Work out what changes this frame first, then clear only those areas. Every
+    // element is drawn inside its own prev/curr dirty bounds, so pixels outside the
+    // dirty region are already correct from the last frame.
+    const RectI       ring = touch_ring_bounds(fs, now_ms);
+    const DirtyRegion dirty = compute_dirty_region(fs, ring);
+    perf.dirty_px = dirty_region_area(dirty);
+    const pixel_t bg = rgb_to_color(BG_R, BG_G, BG_B);
+    if (dirty.full) {
+        if (bg == 0) {
+            memset(canvas_buf, 0, CANVAS_BYTES);
+        } else {
+            std::fill_n(canvas_buf, SCREEN_W * SCREEN_H, bg);
+        }
+    } else {
+        for (uint8_t i = 0; i < dirty.count; i++) {
+            const RectI& r = dirty.rects[i];
+            if (!r.valid) continue;
+            draw_filled_rect(canvas_buf, r.x0, r.y0, r.x1 - r.x0 + 1, r.y1 - r.y0 + 1, bg);
+        }
+    }
 
     if (FACE_CALIBRATION_MODE) {
         render_calibration(canvas_buf);
@@ -1017,20 +1144,10 @@ void face_ui_update(const FaceState& fs)
         }
         sample_stage(perf.overlay_us);
 
-        // Conversation border overlay + corner buttons — suppress during system overlays (spec §4.4)
+        // Conversation border + long-press ring — suppressed during system overlays (spec §4.4)
         if (fs.system.mode == SystemMode::NONE) {
-            if (FACE_PERF_TELEMETRY && s_collect_render_perf) {
-                const uint64_t border_start_us = static_cast<uint64_t>(esp_timer_get_time());
-                conv_border_render(canvas_buf);
-                const uint64_t border_frame_done_us = static_cast<uint64_t>(esp_timer_get_time());
-                conv_border_render_buttons(canvas_buf);
-                const uint64_t border_done_us = static_cast<uint64_t>(esp_timer_get_time());
-                perf.border_frame_us = static_cast<uint32_t>(border_frame_done_us - border_start_us);
-                perf.border_buttons_us = static_cast<uint32_t>(border_done_us - border_frame_done_us);
-            } else {
-                conv_border_render(canvas_buf);
-                conv_border_render_buttons(canvas_buf);
-            }
+            conv_border_render(canvas_buf);
+            render_touch_ring(canvas_buf, fs, now_ms);
         }
         sample_stage(perf.border_us);
 
@@ -1039,9 +1156,7 @@ void face_ui_update(const FaceState& fs)
         }
     }
 
-    const DirtyRegion dirty = compute_dirty_region(fs);
-    perf.dirty_px = dirty_region_area(dirty);
-    if (FACE_DIRTY_RECT && !dirty.full && dirty.count > 0) {
+    if (FACE_DIRTY_RECT && !dirty.full) {
         for (uint8_t i = 0; i < dirty.count; i++) {
             const RectI& r = dirty.rects[i];
             if (!r.valid) continue;
@@ -1060,8 +1175,8 @@ void face_ui_update(const FaceState& fs)
 
     if (FACE_PERF_TELEMETRY && s_collect_render_perf && render_start_us > 0ULL) {
         perf.render_us = static_cast<uint32_t>(static_cast<uint64_t>(esp_timer_get_time()) - render_start_us);
-        s_last_render_perf = perf;
     }
+    s_last_render_perf = perf; // dirty_px every frame; stage timings only when sampled
 }
 
 static void apply_face_flags(FaceState& fs, uint8_t flags)
@@ -1102,12 +1217,14 @@ std::atomic<uint32_t> g_cmd_conv_state_us{0};
 
 GestureQueue g_gesture_queue;
 
-TouchBuffer           g_touch;
-ButtonEventBuffer     g_button;
+TouchQueue            g_touch;
+ButtonEventQueue      g_button;
 FacePerfBuffer        g_face_perf;
 std::atomic<bool>     g_touch_active{false};
 std::atomic<bool>     g_talking_active{false};
 std::atomic<bool>     g_ptt_listening{false};
+std::atomic<bool>     g_host_link_lost{false};
+std::atomic<uint32_t> g_last_host_rx_us{0};
 std::atomic<uint8_t>  g_current_mood{0};
 std::atomic<uint8_t>  g_active_gesture{0xFF};
 std::atomic<uint8_t>  g_system_mode{0};
@@ -1117,6 +1234,17 @@ std::atomic<uint32_t> g_cmd_applied_us{0};
 void face_ui_task(void* arg)
 {
     ESP_LOGI(TAG, "face_ui_task started (%d FPS)", ANIM_FPS);
+
+    static constexpr uint64_t ANIM_STEP_US = 1'000'000ULL / ANIM_FPS;
+    static constexpr uint32_t MAX_ANIM_CATCHUP_STEPS = 3;
+    const TickType_t          frame_period = pdMS_TO_TICKS(1000 / ANIM_FPS) > 0 ? pdMS_TO_TICKS(1000 / ANIM_FPS) : 1;
+    TickType_t                last_wake = xTaskGetTickCount();
+    uint64_t                  last_anim_us64 = 0;
+    uint64_t                  anim_accum_us = 0;
+    float                     host_gaze_x = 0.0f;
+    float                     host_gaze_y = 0.0f;
+    bool                      finger_gaze_prev = false;
+    bool                      host_lost = false;
 
     FaceState fs;
     uint32_t  last_state_cmd_us = 0;
@@ -1149,9 +1277,6 @@ void face_ui_task(void* arg)
     uint32_t  perf_cmd_latency_samples = 0;
     uint32_t  perf_window_frames = 0;
     uint32_t  latest_cmd_rx_us = 0;
-    uint64_t  log_border_frame_sum_us = 0;
-    uint64_t  log_border_buttons_sum_us = 0;
-    uint32_t  log_border_samples = 0;
 
     apply_face_flags(fs, g_cmd_flags.load(std::memory_order_relaxed));
     if (!afterglow_buf) {
@@ -1175,8 +1300,12 @@ void face_ui_task(void* arg)
 
     while (true) {
         const uint64_t frame_start_us = static_cast<uint64_t>(esp_timer_get_time());
-        const uint32_t now_us = static_cast<uint32_t>(esp_timer_get_time());
-        const uint32_t now_ms = now_us / 1000U;
+        // Command timestamps are 32-bit microseconds, so now_us wraps every ~71.6 min;
+        // only compare it by unsigned difference. now_ms comes from the 64-bit timer so
+        // it wraps every ~49.7 days, not when now_us does (deadlines use int32 diffs).
+        const uint64_t now_us64 = static_cast<uint64_t>(esp_timer_get_time());
+        const uint32_t now_us = static_cast<uint32_t>(now_us64);
+        const uint32_t now_ms = static_cast<uint32_t>(now_us64 / 1000ULL);
         // 1. Apply latest latched state command.
         const uint32_t state_cmd_us = g_cmd_state_us.load(std::memory_order_acquire);
         if (state_cmd_us != 0 && state_cmd_us != last_state_cmd_us) {
@@ -1188,14 +1317,14 @@ void face_ui_task(void* arg)
             const int8_t  gaze_y_i8 = g_cmd_state_gaze_y.load(std::memory_order_relaxed);
             const uint8_t brightness_u8 = g_cmd_state_brightness.load(std::memory_order_relaxed);
 
-            if (mood_id <= static_cast<uint8_t>(Mood::THINKING)) {
+            if (mood_id <= static_cast<uint8_t>(Mood::CONFUSED)) {
                 face_set_mood(fs, static_cast<Mood>(mood_id));
             }
             face_set_expression_intensity(fs, static_cast<float>(intensity_u8) / 255.0f);
 
-            const float gx = static_cast<float>(gaze_x_i8) / 127.0f * MAX_GAZE;
-            const float gy = static_cast<float>(gaze_y_i8) / 127.0f * MAX_GAZE;
-            face_set_gaze(fs, gx, gy);
+            host_gaze_x = static_cast<float>(gaze_x_i8) / 127.0f * MAX_GAZE;
+            host_gaze_y = static_cast<float>(gaze_y_i8) / 127.0f * MAX_GAZE;
+            face_set_gaze(fs, host_gaze_x, host_gaze_y);
 
             display_set_backlight(brightness_u8);
         }
@@ -1259,14 +1388,34 @@ void face_ui_task(void* arg)
         if (conv_state_cmd_us != 0 && conv_state_cmd_us != last_conv_state_cmd_us) {
             last_conv_state_cmd_us = conv_state_cmd_us;
             latest_cmd_rx_us = conv_state_cmd_us;
-            conv_border_set_state(g_cmd_conv_state.load(std::memory_order_relaxed));
+            const uint8_t conv_state = g_cmd_conv_state.load(std::memory_order_relaxed);
+            conv_border_set_state(conv_state);
+            g_ptt_listening.store(conv_state == static_cast<uint8_t>(FaceConvState::PTT), std::memory_order_relaxed);
         }
 
         // Feed talking energy to border for SPEAKING reactivity.
         conv_border_set_energy(fs.talking_energy);
 
+        // Fixed-timestep animation: face_state/conv_border advance in 1/ANIM_FPS steps
+        // (matches the Python sim). If a frame overran, run catch-up steps so motion
+        // keeps real-time speed instead of slowing down with the frame rate.
+        uint32_t anim_steps = 1;
+        if (last_anim_us64 != 0) {
+            anim_accum_us += now_us64 - last_anim_us64;
+            anim_steps = static_cast<uint32_t>(anim_accum_us / ANIM_STEP_US);
+            if (anim_steps > MAX_ANIM_CATCHUP_STEPS) {
+                anim_steps = MAX_ANIM_CATCHUP_STEPS;
+                anim_accum_us = 0; // long stall: drop the backlog, don't fast-forward
+            } else {
+                anim_accum_us -= static_cast<uint64_t>(anim_steps) * ANIM_STEP_US;
+            }
+        }
+        last_anim_us64 = now_us64;
+
         // Advance border animation.
-        conv_border_update(1.0f / ANIM_FPS);
+        for (uint32_t i = 0; i < anim_steps; i++) {
+            conv_border_update(1.0f / ANIM_FPS);
+        }
 
         if (FACE_CALIBRATION_MODE && CALIB_TOUCH_AUTOCYCLE_MS > 0) {
             const int32_t delta_ms = static_cast<int32_t>(now_ms - next_touch_cycle_ms);
@@ -1280,8 +1429,74 @@ void face_ui_task(void* arg)
             }
         }
 
+        // 5b2. Host link watchdog (spec §4.4). Any packet, incl. 2 Hz time sync, counts.
+        {
+            const uint32_t last_rx_us = g_last_host_rx_us.load(std::memory_order_acquire);
+            const bool     lost =
+                (last_rx_us == 0) ? (now_ms > HOST_SILENCE_MS) : ((now_us - last_rx_us) > HOST_SILENCE_MS * 1000U);
+            if (lost != host_lost) {
+                host_lost = lost;
+                g_host_link_lost.store(lost, std::memory_order_relaxed);
+                if (lost) {
+                    ESP_LOGW(TAG, "host link lost (no packet for %u ms): local sleepy face",
+                             static_cast<unsigned>(HOST_SILENCE_MS));
+                    // Stale conversation visuals would mislead: clear border, PTT, talking.
+                    conv_border_set_state(static_cast<uint8_t>(FaceConvState::IDLE));
+                    g_ptt_listening.store(false, std::memory_order_relaxed);
+                    fs.talking = false;
+                    fs.talking_energy = 0.0f;
+                } else {
+                    ESP_LOGI(TAG, "host link restored: re-applying latched host state");
+                    // Host only resends on change, so replay what it last told us (the
+                    // latched atomics hold boot defaults if it never sent anything).
+                    const uint8_t mood_id = g_cmd_state_mood.load(std::memory_order_relaxed);
+                    face_set_mood(fs, mood_id <= static_cast<uint8_t>(Mood::CONFUSED) ? static_cast<Mood>(mood_id)
+                                                                                      : Mood::NEUTRAL);
+                    face_set_expression_intensity(
+                        fs, static_cast<float>(g_cmd_state_intensity.load(std::memory_order_relaxed)) / 255.0f);
+                    apply_face_flags(fs, g_cmd_flags.load(std::memory_order_relaxed));
+                    if (!afterglow_buf) {
+                        fs.fx.afterglow = false;
+                    }
+                    const uint8_t conv_state = g_cmd_conv_state.load(std::memory_order_relaxed);
+                    conv_border_set_state(conv_state);
+                    g_ptt_listening.store(conv_state == static_cast<uint8_t>(FaceConvState::PTT),
+                                          std::memory_order_relaxed);
+                }
+            }
+            if (host_lost) {
+                face_set_mood(fs, Mood::SLEEPY);
+                face_set_expression_intensity(fs, 0.5f);
+                fs.anim.idle = true; // slow look-around, "where did everyone go?"
+            }
+        }
+
+        // 5c. Local touch reactions (spec §9.5), off during system overlays.
+        const bool sys_none = fs.system.mode == SystemMode::NONE;
+        if (s_boop_pending.exchange(false, std::memory_order_relaxed) && sys_none) {
+            face_trigger_gesture(fs, GestureId::BLINK, 0);
+        }
+        const bool finger_gaze = TOUCH_GAZE_FOLLOW && sys_none && g_touch_active.load(std::memory_order_relaxed);
+        const bool idle_wander_flag = fs.anim.idle;
+        if (finger_gaze) {
+            // Eyes look toward the finger; idle wander paused so it can't pull them away.
+            const float fx = static_cast<float>(s_finger_x.load(std::memory_order_relaxed));
+            const float fy = static_cast<float>(s_finger_y.load(std::memory_order_relaxed));
+            face_set_gaze(fs, (fx - SCREEN_W * 0.5f) / (SCREEN_W * 0.5f) * MAX_GAZE,
+                          (fy - SCREEN_H * 0.5f) / (SCREEN_H * 0.5f) * MAX_GAZE);
+            fs.anim.idle = false;
+        } else if (finger_gaze_prev) {
+            face_set_gaze(fs, host_gaze_x, host_gaze_y); // back to the host-commanded gaze
+        }
+        finger_gaze_prev = finger_gaze;
+
         // 6. Advance animations
-        face_state_update(fs);
+        for (uint32_t i = 0; i < anim_steps; i++) {
+            face_state_update(fs);
+        }
+        if (finger_gaze) {
+            fs.anim.idle = idle_wander_flag;
+        }
 
         // 6b. System face: override face state for system modes (before render)
         if (fs.system.mode != SystemMode::NONE) {
@@ -1340,31 +1555,32 @@ void face_ui_task(void* arg)
                 perf_frame_max_us = frame_us;
             }
 
+            // dirty_px is recorded every frame; timings only on sampled frames.
             const RenderPerfSnapshot rp = s_last_render_perf;
-            perf_render_sum_us += rp.render_us;
-            if (rp.render_us > perf_render_max_us) {
-                perf_render_max_us = rp.render_us;
-            }
             perf_dirty_px_sum += rp.dirty_px;
             perf_spi_bytes_sum += static_cast<uint64_t>(rp.dirty_px) * 2ULL;
 
             if ((frame_idx % FACE_PERF_SAMPLE_DIV) == 0U) {
                 perf_stage_samples++;
+                perf_render_sum_us += rp.render_us;
+                if (rp.render_us > perf_render_max_us) {
+                    perf_render_max_us = rp.render_us;
+                }
                 perf_eyes_sum_us += rp.eyes_us;
                 perf_mouth_sum_us += rp.mouth_us;
                 perf_border_sum_us += rp.border_us;
                 perf_effects_sum_us += rp.effects_us;
                 perf_overlay_sum_us += rp.overlay_us;
-                log_border_samples++;
-                log_border_frame_sum_us += rp.border_frame_us;
-                log_border_buttons_sum_us += rp.border_buttons_us;
             }
 
             if (latest_cmd_rx_us != 0U) {
                 const uint32_t applied_us = g_cmd_applied_us.load(std::memory_order_acquire);
-                if (applied_us > latest_cmd_rx_us) {
-                    perf_cmd_latency_sum_us += static_cast<uint64_t>(applied_us - latest_cmd_rx_us);
+                // Wrap-safe: both are truncated 32-bit microsecond stamps.
+                const int32_t latency_us = static_cast<int32_t>(applied_us - latest_cmd_rx_us);
+                if (latency_us > 0) {
+                    perf_cmd_latency_sum_us += static_cast<uint64_t>(latency_us);
                     perf_cmd_latency_samples++;
+                    latest_cmd_rx_us = 0U; // one sample per command, not one per frame
                 }
             }
 
@@ -1375,7 +1591,7 @@ void face_ui_task(void* arg)
                     perf_window_frames > 0U ? static_cast<uint32_t>(perf_frame_sum_us / perf_window_frames) : 0U;
                 out->frame_us_max = perf_frame_max_us;
                 out->render_us_avg =
-                    perf_window_frames > 0U ? static_cast<uint32_t>(perf_render_sum_us / perf_window_frames) : 0U;
+                    perf_stage_samples > 0U ? static_cast<uint32_t>(perf_render_sum_us / perf_stage_samples) : 0U;
                 out->render_us_max = perf_render_max_us;
                 out->eyes_us_avg =
                     perf_stage_samples > 0U ? static_cast<uint32_t>(perf_eyes_sum_us / perf_stage_samples) : 0U;
@@ -1419,27 +1635,21 @@ void face_ui_task(void* arg)
         }
         if (FRAME_TIME_LOG_INTERVAL_MS > 0 && static_cast<int32_t>(now_ms - next_frame_log_ms) >= 0) {
             const uint32_t avg_us = (frame_count > 0) ? static_cast<uint32_t>(frame_accum_us / frame_count) : 0U;
-            const float    fps = (avg_us > 0U) ? (1'000'000.0f / static_cast<float>(avg_us)) : 0.0f;
-            const uint32_t border_frame_avg =
-                (log_border_samples > 0) ? static_cast<uint32_t>(log_border_frame_sum_us / log_border_samples) : 0U;
-            const uint32_t border_buttons_avg =
-                (log_border_samples > 0) ? static_cast<uint32_t>(log_border_buttons_sum_us / log_border_samples) : 0U;
-            ESP_LOGI(TAG,
-                     "frame stats avg=%u us max=%u us fps=%.1f system=%u border_frame=%u border_buttons=%u samples=%u",
-                     static_cast<unsigned>(avg_us), static_cast<unsigned>(frame_max_us), fps,
-                     static_cast<unsigned>(fs.system.mode), static_cast<unsigned>(border_frame_avg),
-                     static_cast<unsigned>(border_buttons_avg), static_cast<unsigned>(log_border_samples));
+            // Real frame rate: frames delivered over the log interval (not 1/work-time).
+            const float fps =
+                static_cast<float>(frame_count) * 1000.0f / static_cast<float>(FRAME_TIME_LOG_INTERVAL_MS);
+            ESP_LOGI(TAG, "frame stats work_avg=%u us work_max=%u us fps=%.1f system=%u", static_cast<unsigned>(avg_us),
+                     static_cast<unsigned>(frame_max_us), fps, static_cast<unsigned>(fs.system.mode));
             frame_count = 0;
             frame_accum_us = 0;
             frame_max_us = 0;
-            log_border_samples = 0;
-            log_border_frame_sum_us = 0;
-            log_border_buttons_sum_us = 0;
             next_frame_log_ms = now_ms + FRAME_TIME_LOG_INTERVAL_MS;
         }
 
-        // 7. Sleep for frame period
+        // 7. Sleep until the next frame slot (fixed rate, not "work + delay").
         frame_idx++;
-        vTaskDelay(pdMS_TO_TICKS(1000 / ANIM_FPS));
+        if (xTaskDelayUntil(&last_wake, frame_period) == pdFALSE) {
+            last_wake = xTaskGetTickCount(); // overran: re-anchor instead of bursting
+        }
     }
 }

@@ -1,4 +1,5 @@
 #include "telemetry.h"
+#include "esp_heap_caps.h"
 #include "protocol.h"
 #include "config.h"
 #include "shared_state.h"
@@ -68,55 +69,57 @@ void telemetry_task(void* arg)
                     packet_build_v2(static_cast<uint8_t>(FaceTelId::FACE_STATUS), next_seq(), t_src,
                                     reinterpret_cast<const uint8_t*>(&status), sizeof(status), tx_buf, sizeof(tx_buf));
             }
-            if (len > 0) {
-                usb_cdc_write(tx_buf, len);
+            if (len > 0 && usb_cdc_write(tx_buf, len)) {
                 status_tx_count++;
             }
 
-            // Touch events — use t_src_us from the touch ISR timestamp
-            const TouchSample* touch = g_touch.read();
-            if (touch->event_type != 0xFF) {
+            // Touch events — drain the queue; use t_src_us from the touch timestamp.
+            // A sample is removed only once its frame is fully queued, so a full
+            // TX FIFO delays touch events instead of losing them.
+            TouchSample touch = {};
+            while (g_touch.peek(&touch)) {
                 TouchEventPayload tev = {};
-                tev.event_type = touch->event_type;
-                tev.x = touch->x;
-                tev.y = touch->y;
+                tev.event_type = touch.event_type;
+                tev.x = touch.x;
+                tev.y = touch.y;
 
-                const uint64_t touch_t = static_cast<uint64_t>(touch->timestamp_us);
+                const uint64_t touch_t = static_cast<uint64_t>(touch.timestamp_us);
                 const size_t   tlen =
                     packet_build_v2(static_cast<uint8_t>(FaceTelId::TOUCH_EVENT), next_seq(), touch_t,
                                     reinterpret_cast<const uint8_t*>(&tev), sizeof(tev), tx_buf, sizeof(tx_buf));
-                if (tlen > 0) {
-                    usb_cdc_write(tx_buf, tlen);
-                    touch_tx_count++;
-
-                    TouchSample* slot = g_touch.write_slot();
-                    slot->event_type = 0xFF;
-                    g_touch.publish();
+                if (tlen == 0) {
+                    g_touch.drop(); // cannot encode; skip it
+                    continue;
                 }
+                if (!usb_cdc_write(tx_buf, tlen)) {
+                    break; // retry next cycle
+                }
+                touch_tx_count++;
+                g_touch.drop();
             }
 
-            // Button events — use t_src_us from the button ISR timestamp
-            const ButtonEventSample* btn = g_button.read();
-            if (btn->event_type != 0xFF && btn->button_id != 0xFF) {
+            // Button events — same drain-until-sent rule, so PRESS, RELEASE and
+            // TOGGLE/CLICK all reach the host in order.
+            ButtonEventSample btn = {};
+            while (g_button.peek(&btn)) {
                 FaceButtonEventPayload bp = {};
-                bp.button_id = btn->button_id;
-                bp.event_type = btn->event_type;
-                bp.state = btn->state;
+                bp.button_id = btn.button_id;
+                bp.event_type = btn.event_type;
+                bp.state = btn.state;
 
-                const uint64_t btn_t = static_cast<uint64_t>(btn->timestamp_us);
+                const uint64_t btn_t = static_cast<uint64_t>(btn.timestamp_us);
                 const size_t   blen =
                     packet_build_v2(static_cast<uint8_t>(FaceTelId::BUTTON_EVENT), next_seq(), btn_t,
                                     reinterpret_cast<const uint8_t*>(&bp), sizeof(bp), tx_buf, sizeof(tx_buf));
-                if (blen > 0) {
-                    usb_cdc_write(tx_buf, blen);
-                    button_tx_count++;
-
-                    ButtonEventSample* slot = g_button.write_slot();
-                    slot->button_id = 0xFF;
-                    slot->event_type = 0xFF;
-                    slot->state = 0;
-                    g_button.publish();
+                if (blen == 0) {
+                    g_button.drop();
+                    continue;
                 }
+                if (!usb_cdc_write(tx_buf, blen)) {
+                    break; // retry next cycle
+                }
+                button_tx_count++;
+                g_button.drop();
             }
 
             last_status_us = now_us;
@@ -147,14 +150,17 @@ void telemetry_task(void* arg)
             hb.ptt_listening = g_ptt_listening.load(std::memory_order_relaxed) ? 1 : 0;
             hb.reserved = 0;
 
-            uint8_t payload[sizeof(FaceHeartbeatPayload) + sizeof(FaceHeartbeatPerfTailPayload)] = {};
+            uint8_t payload[sizeof(FaceHeartbeatPayload) + sizeof(FaceHeartbeatPerfTailPayload) +
+                            sizeof(FaceHeartbeatSysTailPayload)] = {};
             memcpy(payload, &hb, sizeof(hb));
             size_t payload_len = sizeof(hb);
 
-            if (FACE_PERF_TELEMETRY) {
-                const FacePerfSnapshot* perf = g_face_perf.read();
+            {
+                // Perf tail is always sent (zeroed when off/not yet sampled) so the sys
+                // tail after it lands at a fixed offset.
+                FaceHeartbeatPerfTailPayload tail = {};
+                const FacePerfSnapshot*      perf = FACE_PERF_TELEMETRY ? g_face_perf.read() : nullptr;
                 if (perf && perf->window_frames > 0) {
-                    FaceHeartbeatPerfTailPayload tail = {};
                     tail.window_frames = perf->window_frames;
                     tail.frame_us_avg = perf->frame_us_avg;
                     tail.frame_us_max = perf->frame_us_max;
@@ -171,9 +177,18 @@ void telemetry_task(void* arg)
                     tail.perf_sample_div = perf->perf_sample_div;
                     tail.dirty_rect_enabled = perf->dirty_rect_enabled;
                     tail.afterglow_downsample = perf->afterglow_downsample;
-                    memcpy(payload + payload_len, &tail, sizeof(tail));
-                    payload_len += sizeof(tail);
                 }
+                memcpy(payload + payload_len, &tail, sizeof(tail));
+                payload_len += sizeof(tail);
+            }
+            {
+                FaceHeartbeatSysTailPayload sys = {};
+                sys.reset_reason = g_reset_reason.load(std::memory_order_relaxed);
+                sys.flags = g_host_link_lost.load(std::memory_order_relaxed) ? 0x01 : 0x00;
+                sys.boot_count = g_boot_count.load(std::memory_order_relaxed);
+                sys.min_free_heap_bytes = static_cast<uint32_t>(heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL));
+                memcpy(payload + payload_len, &sys, sizeof(sys));
+                payload_len += sizeof(sys);
             }
 
             const size_t hlen = packet_build_v2(static_cast<uint8_t>(FaceTelId::HEARTBEAT), next_seq(), t_src, payload,

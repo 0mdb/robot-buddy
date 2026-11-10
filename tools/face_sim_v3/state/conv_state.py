@@ -38,12 +38,23 @@ class ConvStateMachine:
         self.nod_pending: bool = False
         self.interest_scale: float = 1.0
 
+    @property
+    def ptt_on(self) -> bool:
+        """True while PTT is held (ATTENTION-with-PTT or PTT)."""
+        return self.state == ConvState.PTT or (
+            self.state == ConvState.ATTENTION and self.ptt_held
+        )
+
     def set_state(self, new_state: ConvState) -> None:
         if new_state == self.state:
             return
         self.prev_state = self.state
         self.state = new_state
         self.timer = 0.0
+
+        # PTT is only held through ATTENTION -> PTT (spec §9.5)
+        if new_state not in (ConvState.ATTENTION, ConvState.PTT):
+            self.ptt_held = False
 
         # Track session lifecycle
         if new_state == ConvState.ATTENTION:

@@ -6,7 +6,11 @@
 #include "telemetry.h"
 #include "face_ui.h"
 
+#include "shared_state.h"
+
+#include "esp_attr.h"
 #include "esp_lvgl_port.h"
+#include "esp_system.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -34,9 +38,32 @@ static bool start_task(TaskFunction_t fn, const char* name, uint32_t stack_bytes
     return true;
 }
 
+// Boot counter in RTC memory: survives soft resets (panic, watchdog, brownout,
+// esp_restart) but not power-off. The magic word tells real data from garbage.
+static constexpr uint32_t       BOOT_MAGIC = 0xB0D7FACEu;
+RTC_NOINIT_ATTR static uint32_t s_boot_magic;
+RTC_NOINIT_ATTR static uint32_t s_boot_count;
+
+std::atomic<uint8_t>  g_reset_reason{0};
+std::atomic<uint32_t> g_boot_count{0};
+
+static void record_boot()
+{
+    const esp_reset_reason_t reason = esp_reset_reason();
+    if (s_boot_magic != BOOT_MAGIC || reason == ESP_RST_POWERON) {
+        s_boot_magic = BOOT_MAGIC;
+        s_boot_count = 0;
+    }
+    s_boot_count++;
+    g_reset_reason.store(static_cast<uint8_t>(reason), std::memory_order_relaxed);
+    g_boot_count.store(s_boot_count, std::memory_order_relaxed);
+    ESP_LOGI(TAG, "reset_reason=%d boot_count=%u", static_cast<int>(reason), static_cast<unsigned>(s_boot_count));
+}
+
 extern "C" void app_main(void)
 {
     ESP_LOGI(TAG, "Face-v2 MCU booting...");
+    record_boot();
 
     // 1. Display (SPI + ILI9341 + LVGL)
     lv_display_t* disp = display_init();

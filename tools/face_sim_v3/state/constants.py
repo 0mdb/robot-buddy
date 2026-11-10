@@ -668,40 +668,21 @@ ROSY_CHEEK_ALPHA = 0.3
 
 
 # ══════════════════════════════════════════════════════════════════════
-# BUTTON CORNER ZONES (sim rendering)
+# TOUCH GESTURES (spec §9.5 — whole-screen tap / long-press)
+# Must match TOUCH_* in esp32-face/main/config.h (parity-checked).
 # ══════════════════════════════════════════════════════════════════════
+TOUCH_TAP_MAX_MS = 300  # release before this (and no drag) = tap
+TOUCH_LONG_PRESS_MS = 700  # held this long (no drag) = long-press, fires while held
+TOUCH_RING_SHOW_MS = 200  # long-press ring appears after this much hold
+TOUCH_MOVE_TOL_PX = 24  # moved further than this = drag/pet, no gesture
+TOUCH_RING_RADIUS = 30  # ring outer radius around the finger
+TOUCH_RING_THICKNESS = 6
+TOUCH_RING_FLASH_MS = 150  # flash after long-press fires
+TOUCH_GAZE_FOLLOW = True  # eyes look toward the finger while touching
 
-
-class ButtonIcon(IntEnum):
-    NONE = 0  # No button / invisible
-    MIC = 1  # Microphone (PTT)
-    X_MARK = 2  # Cancel / dismiss
-    CHECK = 3  # Confirm / done
-    REPEAT = 4  # Say again / retry
-    STAR = 5  # Fun / favorite
-    SPEAKER = 6  # Audio / volume
-
-
-class ButtonState(IntEnum):
-    IDLE = 0  # Subtle, semi-transparent
-    ACTIVE = 1  # Colored, prominent
-    PRESSED = 2  # Bright flash (auto-decays to ACTIVE)
-
-
-# Corner zone dimensions
-BTN_CORNER_W = 60  # Zone width from screen edge
-BTN_CORNER_H = 46  # Zone height from screen bottom
-BTN_CORNER_INNER_R = 8  # Rounded inner corner radius
-BTN_ICON_SIZE = 18  # Icon half-extent (~36px total)
-
-# Derived positions
-BTN_ZONE_Y_TOP = SCREEN_H - BTN_CORNER_H  # 194
-BTN_LEFT_ZONE_X1 = BTN_CORNER_W  # 60
-BTN_RIGHT_ZONE_X0 = SCREEN_W - BTN_CORNER_W  # 260
-BTN_LEFT_ICON_CX = BTN_CORNER_W // 2  # 30
-BTN_LEFT_ICON_CY = SCREEN_H - BTN_CORNER_H // 2  # 217
-BTN_RIGHT_ICON_CX = SCREEN_W - BTN_CORNER_W // 2  # 290
-BTN_RIGHT_ICON_CY = BTN_LEFT_ICON_CY  # 217
+# Ring colours (sim + MCU local feedback)
+TOUCH_RING_COLOR_START = (255, 180, 40)  # PTT off: long-press will start listening
+TOUCH_RING_COLOR_STOP = (230, 230, 230)  # PTT on: long-press will stop listening
 
 # ══════════════════════════════════════════════════════════════════════
 # BRIGHTNESS

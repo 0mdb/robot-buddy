@@ -38,13 +38,15 @@ struct GestureEvent {
     uint32_t timestamp_us = 0;
 };
 
-struct GestureQueue {
-    static constexpr uint8_t CAP = 16;
-    GestureEvent             buf[CAP]{};
-    std::atomic<uint8_t>     head{0}; // next write index
-    std::atomic<uint8_t>     tail{0}; // next read index
+// Lock-free single-producer / single-consumer ring. Only the producer moves
+// head and only the consumer moves tail, so neither side ever writes the
+// other's index. Holds CAP-1 items; push() drops the new item when full.
+template <typename T, uint8_t CAP> struct SpscQueue {
+    T                    buf[CAP]{};
+    std::atomic<uint8_t> head{0}; // next write index (producer only)
+    std::atomic<uint8_t> tail{0}; // next read index (consumer only)
 
-    bool push(const GestureEvent& ev)
+    bool push(const T& item)
     {
         const uint8_t h = head.load(std::memory_order_relaxed);
         const uint8_t n = static_cast<uint8_t>((h + 1) % CAP);
@@ -52,12 +54,13 @@ struct GestureQueue {
         if (n == t) {
             return false; // full
         }
-        buf[h] = ev;
+        buf[h] = item;
         head.store(n, std::memory_order_release);
         return true;
     }
 
-    bool pop(GestureEvent* out)
+    // Copy the oldest item without removing it.
+    bool peek(T* out) const
     {
         const uint8_t t = tail.load(std::memory_order_relaxed);
         const uint8_t h = head.load(std::memory_order_acquire);
@@ -67,14 +70,33 @@ struct GestureQueue {
         if (out) {
             *out = buf[t];
         }
-        tail.store(static_cast<uint8_t>((t + 1) % CAP), std::memory_order_release);
+        return true;
+    }
+
+    // Remove the oldest item (call after a successful peek()).
+    void drop()
+    {
+        const uint8_t t = tail.load(std::memory_order_relaxed);
+        if (t != head.load(std::memory_order_acquire)) {
+            tail.store(static_cast<uint8_t>((t + 1) % CAP), std::memory_order_release);
+        }
+    }
+
+    bool pop(T* out)
+    {
+        if (!peek(out)) {
+            return false;
+        }
+        drop();
         return true;
     }
 };
 
+using GestureQueue = SpscQueue<GestureEvent, 16>;
+
 extern GestureQueue g_gesture_queue;
 
-// ---- Touch event buffer (writer: LVGL context, reader: telemetry_task) ----
+// ---- Touch event queue (writer: LVGL context, reader: telemetry_task) ----
 
 struct TouchSample {
     uint8_t  event_type = 0xFF; // 0xFF = no event
@@ -83,27 +105,11 @@ struct TouchSample {
     uint32_t timestamp_us = 0;
 };
 
-struct TouchBuffer {
-    TouchSample               buf[2]{};
-    std::atomic<TouchSample*> current{&buf[0]};
-    uint8_t                   write_idx = 0;
+// Touch samples are queued, not latched, so PRESS/RELEASE are never overwritten
+// by the PRESSING stream. When full, new samples are dropped.
+using TouchQueue = SpscQueue<TouchSample, 32>;
 
-    TouchSample* write_slot()
-    {
-        return &buf[write_idx];
-    }
-    void publish()
-    {
-        current.store(&buf[write_idx], std::memory_order_release);
-        write_idx ^= 1;
-    }
-    const TouchSample* read() const
-    {
-        return current.load(std::memory_order_acquire);
-    }
-};
-
-// ---- Button event buffer (writer: LVGL context, reader: telemetry_task) ----
+// ---- Button event queue (writer: LVGL context, reader: telemetry_task) ----
 
 struct ButtonEventSample {
     uint8_t  button_id = 0xFF;  // 0xFF = no event
@@ -112,25 +118,8 @@ struct ButtonEventSample {
     uint32_t timestamp_us = 0;
 };
 
-struct ButtonEventBuffer {
-    ButtonEventSample               buf[2]{};
-    std::atomic<ButtonEventSample*> current{&buf[0]};
-    uint8_t                         write_idx = 0;
-
-    ButtonEventSample* write_slot()
-    {
-        return &buf[write_idx];
-    }
-    void publish()
-    {
-        current.store(&buf[write_idx], std::memory_order_release);
-        write_idx ^= 1;
-    }
-    const ButtonEventSample* read() const
-    {
-        return current.load(std::memory_order_acquire);
-    }
-};
+// Queued so RELEASE + TOGGLE/CLICK published back to back all reach the host.
+using ButtonEventQueue = SpscQueue<ButtonEventSample, 16>;
 
 // ---- Face perf snapshot buffer (writer: face_ui_task, reader: telemetry_task) ----
 
@@ -174,12 +163,20 @@ struct FacePerfBuffer {
 };
 
 // ---- Globals ----
-extern TouchBuffer       g_touch;
-extern ButtonEventBuffer g_button;
+extern TouchQueue        g_touch;
+extern ButtonEventQueue  g_button;
 extern FacePerfBuffer    g_face_perf;
 extern std::atomic<bool> g_touch_active;
 extern std::atomic<bool> g_talking_active;
+// Mirror of host conversation state (true while conv_state == PTT). Written only
+// by face_ui_task when SET_CONV_STATE is applied; the host owns PTT state.
 extern std::atomic<bool> g_ptt_listening;
+
+// Boot diagnostics (app_main) and host-link state (face_ui_task), for HEARTBEAT.
+extern std::atomic<uint8_t>  g_reset_reason; // esp_reset_reason_t
+extern std::atomic<uint32_t> g_boot_count;   // boots since last power-on (1 = clean power-on)
+extern std::atomic<bool>     g_host_link_lost;
+extern std::atomic<uint32_t> g_last_host_rx_us; // any packet from the host (usb_rx_task)
 
 // Current face state (read by telemetry task for status reporting)
 extern std::atomic<uint8_t> g_current_mood;

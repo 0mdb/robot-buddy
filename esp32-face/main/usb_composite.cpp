@@ -4,6 +4,8 @@
 #include "tusb_cdc_acm.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/semphr.h"
+#include "tusb.h"
 
 #include <atomic>
 
@@ -22,6 +24,11 @@ static std::atomic<uint32_t> g_rx_errors{0};
 static std::atomic<uint32_t> g_line_state_events{0};
 static std::atomic<uint8_t>  g_line_dtr{0};
 static std::atomic<uint8_t>  g_line_rts{0};
+
+// Serialises frame writes from usb_rx_task and telemetry_task so frames never
+// interleave, and so usb_cdc_write's free-space check stays valid until we write.
+static SemaphoreHandle_t s_tx_mutex = nullptr;
+static StaticSemaphore_t s_tx_mutex_buf;
 
 static void record_flush_result(esp_err_t flush_ret)
 {
@@ -80,45 +87,70 @@ void usb_composite_init(void)
         .callback_line_coding_changed = nullptr,
     };
     ESP_ERROR_CHECK(tusb_cdc_acm_init(&acm_cfg));
+    s_tx_mutex = xSemaphoreCreateMutexStatic(&s_tx_mutex_buf);
 
     ESP_LOGI(TAG, "TinyUSB CDC initialized");
 }
 
-void usb_cdc_write(const uint8_t* data, size_t len)
+bool usb_cdc_write(const uint8_t* data, size_t len)
 {
-    if (len == 0) return;
+    if (len == 0) return true;
 
-    static constexpr uint32_t FLUSH_TIMEOUT_TICKS = 2;
-    static constexpr int      MAX_WRITE_ATTEMPTS = 6;
+    static const TickType_t FLUSH_TIMEOUT_TICKS =
+        pdMS_TO_TICKS(20) > 0 ? pdMS_TO_TICKS(20) : 1; // tick-rate independent
+    static constexpr int MAX_WAIT_ATTEMPTS = 6;
 
     g_tx_calls.fetch_add(1, std::memory_order_relaxed);
     g_tx_bytes_requested.fetch_add(static_cast<uint32_t>(len), std::memory_order_relaxed);
 
-    size_t written = 0;
-    for (int attempt = 0; attempt < MAX_WRITE_ATTEMPTS && written < len; ++attempt) {
-        const size_t queued = tinyusb_cdcacm_write_queue(TINYUSB_CDC_ACM_0, data + written, len - written);
-        g_tx_bytes_queued.fetch_add(static_cast<uint32_t>(queued), std::memory_order_relaxed);
-        if (queued < (len - written)) {
-            g_tx_short_writes.fetch_add(1, std::memory_order_relaxed);
-        }
-        written += queued;
+    if (!s_tx_mutex || xSemaphoreTake(s_tx_mutex, portMAX_DELAY) != pdTRUE) {
+        return false;
+    }
 
-        const esp_err_t flush_ret = tinyusb_cdcacm_write_flush(TINYUSB_CDC_ACM_0, FLUSH_TIMEOUT_TICKS);
-        record_flush_result(flush_ret);
-
-        if (written >= len || flush_ret == ESP_OK) {
-            if (written >= len) {
+    bool ok = false;
+    if (len <= CFG_TUD_CDC_TX_BUFSIZE) {
+        // All or nothing: wait for room for the whole frame, then queue it in one go.
+        // Under the mutex nobody else can take the space between check and write.
+        for (int attempt = 0; attempt < MAX_WAIT_ATTEMPTS; ++attempt) {
+            if (tud_cdc_n_write_available(TINYUSB_CDC_ACM_0) >= len) {
+                const size_t queued = tinyusb_cdcacm_write_queue(TINYUSB_CDC_ACM_0, data, len);
+                g_tx_bytes_queued.fetch_add(static_cast<uint32_t>(queued), std::memory_order_relaxed);
+                if (queued == len) {
+                    ok = true;
+                } else {
+                    // Should not happen; end the fragment so the host resyncs on 0x00.
+                    g_tx_short_writes.fetch_add(1, std::memory_order_relaxed);
+                    if (queued > 0 && data[queued - 1] != 0x00) {
+                        (void)tinyusb_cdcacm_write_queue_char(TINYUSB_CDC_ACM_0, 0x00);
+                    }
+                }
                 break;
             }
-        }
-        if (flush_ret == ESP_ERR_TIMEOUT) {
-            break;
-        }
-        if (queued == 0) {
-            // Give TinyUSB task a chance to run and free CDC TX buffer space.
+            // Not enough room: push out what is queued and give the TinyUSB task time.
+            const esp_err_t flush_ret = tinyusb_cdcacm_write_flush(TINYUSB_CDC_ACM_0, FLUSH_TIMEOUT_TICKS);
+            record_flush_result(flush_ret);
+            if (flush_ret == ESP_ERR_TIMEOUT) {
+                break; // host is not reading; drop this frame whole
+            }
             vTaskDelay(1);
         }
+        if (!ok) {
+            g_tx_short_writes.fetch_add(1, std::memory_order_relaxed);
+        }
+    } else {
+        // Larger than the TX FIFO: cannot reserve. Never produced today; refuse it
+        // rather than emit a frame that might be cut short.
+        g_tx_short_writes.fetch_add(1, std::memory_order_relaxed);
     }
+
+    if (ok) {
+        const esp_err_t flush_ret = tinyusb_cdcacm_write_flush(TINYUSB_CDC_ACM_0, FLUSH_TIMEOUT_TICKS);
+        record_flush_result(flush_ret);
+        // Bytes are queued in the FIFO either way; TinyUSB sends them when the host polls.
+    }
+
+    xSemaphoreGive(s_tx_mutex);
+    return ok;
 }
 
 int usb_cdc_read(uint8_t* buf, size_t max_len, uint32_t timeout_ms)
