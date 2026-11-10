@@ -73,6 +73,10 @@ _LEVEL_WINDOW_S = 1.0
 # Wake word cooldown — suppress re-triggers during active conversation
 _WW_COOLDOWN_S = 3.0
 
+# Mic socket: once this much un-sent audio piles up (~1 s at 16 kHz mono
+# s16, on top of the kernel buffer), the AI worker has stopped reading.
+_MIC_BACKLOG_MAX_BYTES = 32_000
+
 # XVF3800 control: retry an absent / failed board this often
 _XVF_RETRY_S = 5.0
 
@@ -184,6 +188,7 @@ class EarWorker(BaseWorker):
 
         # Socket + process
         self._mic_sock: socket.socket | None = None
+        self._mic_pending = bytearray()
         self._arecord_proc: asyncio.subprocess.Process | None = None
 
     def _reset_vad_runtime(self) -> None:
@@ -977,17 +982,28 @@ class EarWorker(BaseWorker):
     async def _forward_to_mic_socket(self, pcm_chunk: bytes) -> None:
         """Forward a PCM chunk to the AI worker via the rb-mic socket.
 
-        Uses ``loop.sock_sendall`` because the socket is non-blocking; the
-        blocking ``socket.sendall`` raises ``BlockingIOError`` (an OSError
-        subclass) whenever the send buffer fills before the AI worker drains,
-        which causes the mic link to bounce even during healthy listening.
+        Never blocks the capture loop: wake-word detection runs in the same
+        loop, so an awaited send to a reader that has stopped draining (e.g.
+        the AI worker failed to reach the server) froze the ear entirely
+        (2026-11-10). Sends are non-blocking; bytes the kernel won't take
+        wait in ``_mic_pending`` (keeps the length-prefixed framing intact),
+        and a backlog past ``_MIC_BACKLOG_MAX_BYTES`` means the reader is
+        gone, so the socket is dropped. ``_start_listening`` reconnects.
         """
         if not self._mic_sock:
             return
+        self._mic_pending += struct.pack("<H", len(pcm_chunk)) + pcm_chunk
         try:
-            frame = struct.pack("<H", len(pcm_chunk)) + pcm_chunk
-            loop = asyncio.get_running_loop()
-            await loop.sock_sendall(self._mic_sock, frame)
+            while self._mic_pending:
+                n = self._mic_sock.send(self._mic_pending)
+                del self._mic_pending[:n]
+        except BlockingIOError:
+            if len(self._mic_pending) > _MIC_BACKLOG_MAX_BYTES:
+                log.warning(
+                    "mic socket reader stalled (%d B backlog), disconnecting",
+                    len(self._mic_pending),
+                )
+                self._close_mic_socket()
         except (BrokenPipeError, ConnectionError, OSError):
             log.warning("mic socket write failed, disconnecting")
             self._close_mic_socket()
@@ -1019,6 +1035,7 @@ class EarWorker(BaseWorker):
             except OSError:
                 pass
             self._mic_sock = None
+        self._mic_pending.clear()
 
     # ── arecord lifecycle ─────────────────────────────────────────
 

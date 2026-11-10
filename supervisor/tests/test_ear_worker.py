@@ -318,6 +318,47 @@ class TestMicSocketFraming:
         w = EarWorker()
         await w._forward_to_mic_socket(b"\x00" * CHUNK_BYTES)  # should not raise
 
+    @pytest.mark.asyncio
+    async def test_stalled_reader_never_blocks_and_disconnects(self):
+        """A reader that stops draining (AI worker lost the server) must not
+        freeze the capture loop; the ear drops the socket instead (2026-11-10)."""
+        import asyncio
+        import socket
+
+        w = EarWorker()
+        ear_end, reader_end = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
+        ear_end.setblocking(False)
+        w._mic_sock = ear_end
+        try:
+            chunk = b"\x00" * CHUNK_BYTES
+            for _ in range(20_000):  # far more than kernel buffer + backlog cap
+                await asyncio.wait_for(w._forward_to_mic_socket(chunk), 0.5)
+                if w._mic_sock is None:
+                    break
+            assert w._mic_sock is None
+            assert not w._mic_pending
+        finally:
+            ear_end.close()
+            reader_end.close()
+
+    @pytest.mark.asyncio
+    async def test_draining_reader_gets_intact_frames(self):
+        import socket
+
+        w = EarWorker()
+        ear_end, reader_end = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
+        ear_end.setblocking(False)
+        w._mic_sock = ear_end
+        try:
+            pcm = b"\x01\x02" * (CHUNK_BYTES // 2)
+            await w._forward_to_mic_socket(pcm)
+            got = reader_end.recv(4096)
+            assert struct.unpack("<H", got[:2])[0] == len(pcm)
+            assert got[2:] == pcm
+        finally:
+            ear_end.close()
+            reader_end.close()
+
     def test_frame_format(self):
         """Verify binary framing: [chunk_len:u16-LE][pcm_data]."""
         pcm = b"\x01\x02" * 160  # 320 bytes
