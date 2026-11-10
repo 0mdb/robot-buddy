@@ -31,6 +31,11 @@ ear = [
 rpi = [
     "picamera2>=0.3.17",
 ]
+# --vantage-video: Vantage's media worker (~/vantage/supervisor/media_worker.py) runs on this
+# interpreter. aiortc brings PyAV, whose wheels bundle libx264.
+vantage-video = [
+    "aiortc>=1.9",
+]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",

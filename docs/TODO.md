@@ -243,6 +243,8 @@ _3 items complete (LLM session memory, TTS resampler hardening, conversation stu
 - [x] `[sonnet]` Camera calibration/CV settings in dashboard (HSV + min radius + safety thresholds + /video preview + eyedropper)
 - [x] `[sonnet]` Mask editor + camera calibration tooling in dashboard (floor + ball exclusion polygons; persisted to `./data/vision_mask.json`)
 - [x] `[sonnet]` Upgrade camera settings for new hardware (camera/ISP params + dashboard UI; Picamera2 controls + rotate/FOV/JPEG quality)
+- [x] `[opus]` Vantage video source (2026-11-10): with `--vantage --vantage-video` the vision worker writes each rotated full-res picture into a Vantage `frame_shm` slot (`RB_FRAME_SHM`, default `rb_camera`) before detection, stamped with SensorTimestamp when plausible; the bridge's media worker (aiortc, H.264) encodes it only while a client watches. A rotation change recreates the slot and the media worker follows. Tests: `tests/test_vision_frame_slot.py`; the Vantage side is `~/vantage/supervisor/media_selftest.py`.
+- [ ] `[sonnet]` Pi 5 bench gate for `--vantage-video` (operator): install the extra by hand (`uv pip install --python supervisor/.venv/bin/python 'aiortc>=1.9'`; deploy installs base deps only), run with a client watching, and record media-worker CPU and glass-to-glass against `~/vantage/docs/DECISIONS.md` #7 (720p30 under about one core, under about 150 ms). If it passes, add the install to `deploy/install.sh` and `update.sh`; if not, the webrtc-rs sidecar takes over behind the same seam.
 
 ---
 

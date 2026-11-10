@@ -9,10 +9,12 @@ from __future__ import annotations
 import asyncio
 import base64
 import concurrent.futures
+import importlib.util
 import logging
 import os
 import threading
 import time
+from pathlib import Path
 from typing import Any
 
 from supervisor.messages.envelope import Envelope
@@ -29,6 +31,23 @@ log = logging.getLogger(__name__)
 # Emission rate limits (Appendix C)
 _SNAPSHOT_MIN_INTERVAL_S = 1.0 / 10  # 10 Hz max
 _JPEG_MIN_INTERVAL_S = 1.0 / 5  # 5 Hz max
+
+
+def _load_frame_shm() -> Any:
+    """Vantage's frame_shm module, by file path: the slot layout has one source of truth, in
+    ~/vantage/supervisor (VANTAGE_SUPERVISOR_DIR overrides). Loaded by path rather than via
+    sys.path so nothing else in that directory can shadow a module here."""
+    d = Path(
+        os.environ.get("VANTAGE_SUPERVISOR_DIR") or Path.home() / "vantage/supervisor"
+    )
+    spec = importlib.util.spec_from_file_location(
+        "vantage_frame_shm", d / "frame_shm.py"
+    )
+    if spec is None or spec.loader is None:
+        raise ImportError(f"no frame_shm.py in {d}")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
 
 
 class VisionWorker(BaseWorker):
@@ -82,6 +101,15 @@ class VisionWorker(BaseWorker):
 
         # Camera format ("BGR888" preferred; fallback to "RGB888" + convert)
         self._camera_main_format = "RGB888"
+
+        # Vantage video (M4): the full-resolution, rotated picture into a frame_shm slot that
+        # Vantage's WebRTC media worker encodes. RB_FRAME_SHM names it (main.py --vantage-video);
+        # unset, nothing is written. Before detection, so video never waits on the detectors.
+        self._frame_shm_name = os.environ.get("RB_FRAME_SHM", "").strip()
+        self._frame_shm: Any | None = None
+        self._frame_writer: Any | None = None
+        self._frame_shm_failed = False
+        self._frames_published = 0
 
         # Vision masks (exclusion polys; applied to processed `small` frame)
         self._mask_obj: dict[str, Any] | None = None
@@ -201,7 +229,49 @@ class VisionWorker(BaseWorker):
             "frames_dropped": self._frames_dropped,
             "camera_ok": self._camera_ok,
             "last_error": self._last_error,
+            "frames_published": self._frames_published,
         }
+
+    def _publish_frame(self, frame: Any, t_cam_ns: int) -> None:
+        """Latest-wins into the frame slot; a size change (rotation) recreates it, and the
+        media worker reopens it by name. Never raises: video is secondary to vision."""
+        if not self._frame_shm_name or self._frame_shm_failed:
+            return
+        try:
+            import numpy as np
+
+            h, w = frame.shape[:2]
+            fw = self._frame_writer
+            if fw is None or (fw.width, fw.height) != (w, h):
+                if self._frame_shm is None:
+                    self._frame_shm = _load_frame_shm()
+                if fw is not None:
+                    fw.close()
+                self._frame_writer = fw = self._frame_shm.FrameWriter(
+                    self._frame_shm_name, w, h
+                )
+                log.info(
+                    "vantage video: frame slot %s at %dx%d", self._frame_shm_name, w, h
+                )
+            # The slot's clock is CLOCK_MONOTONIC. Picamera2's SensorTimestamp is the
+            # exposure time, on the same clock on a Pi that never suspends; anything
+            # implausible (absent, or a different clock) falls back to now.
+            now_ns = time.monotonic_ns()
+            t_ns = t_cam_ns if 0 < now_ns - t_cam_ns < 1_000_000_000 else now_ns
+            fw.write(np.ascontiguousarray(frame).reshape(-1).data, t_ns // 1000)
+            self._frames_published += 1
+        except Exception as e:  # noqa: BLE001 -- report once, keep vision running
+            self._frame_shm_failed = True
+            self._last_error = f"vantage video: {e}"
+            log.warning("vantage video disabled: %s", e)
+
+    def _close_frame_slot(self) -> None:
+        if self._frame_writer is not None:
+            try:
+                self._frame_writer.close()
+            except Exception:  # noqa: BLE001 -- shutting down
+                pass
+            self._frame_writer = None
 
     def _open_picamera2(self) -> Any:
         """Open and start the CSI camera via Picamera2/libcamera."""
@@ -419,6 +489,8 @@ class VisionWorker(BaseWorker):
                 elif self._rotate_deg == 270:
                     frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
 
+                self._publish_frame(frame, t_cam_ns)
+
                 small = cv2.resize(frame, self._process_size)
 
                 clear_conf = detect_clear_path(
@@ -489,6 +561,7 @@ class VisionWorker(BaseWorker):
             pass
         finally:
             cam_executor.shutdown(wait=False, cancel_futures=True)
+            self._close_frame_slot()
             if cap is not None:
                 cap.release()
             if cam:
