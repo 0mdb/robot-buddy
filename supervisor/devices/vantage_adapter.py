@@ -77,6 +77,7 @@ _REASON_PREFIX = [
     ("range=", w.Limit.RANGE_SCALING),
     ("vision_stale", w.Limit.STALE_VISION),
     ("clear_conf=", w.Limit.VISION_SCALING),
+    ("nearby=", w.Limit.NEARBY),
 ]
 
 _PACK_SOURCES = ("battery", "ac_charging")

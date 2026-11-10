@@ -284,6 +284,11 @@ class TickLoop:
     def stop(self) -> None:
         self._running = False
 
+    def set_audience(self, members: list) -> None:
+        """Who is near (governor layer 8). The sim's oracle and, later, detection both land here."""
+        self.world.audience = list(members)
+        self.world.audience_rx_mono_ms = time.monotonic() * 1000.0
+
     def set_teleop_twist(self, v_mm_s: int, w_mrad_s: int) -> None:
         self._behavior.set_teleop_twist(v_mm_s, w_mrad_s)
 
@@ -1291,6 +1296,10 @@ class TickLoop:
             self._sync_mood_seq_timing()
         if name.startswith("wander."):
             self._skill.set_tunable(name.removeprefix("wander."), _value)
+        if name.startswith("nearby."):
+            from supervisor.core import nearby
+
+            nearby.set_tunable(name.removeprefix("nearby."), _value)
 
     def _sync_mood_seq_timing(self) -> None:
         """Sync mood sequencer timing from param registry."""

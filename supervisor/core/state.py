@@ -299,6 +299,9 @@ class WorldState:
     ball_bearing_deg: float = 0.0
     vision_fps: float = 0.0
     vision_rx_mono_ms: float = 0.0
+    # Who is near (core/nearby.py): POST /api/audience -- the sim's oracle now, detection later.
+    audience: list = field(default_factory=list)
+    audience_rx_mono_ms: float = 0.0
     vision_frame_seq: int = 0
 
     # Audio / speech
@@ -359,6 +362,17 @@ class WorldState:
     personality_daily_time_s: float = 0.0
     personality_session_limit_reached: bool = False
     personality_daily_limit_reached: bool = False
+
+    def audience_now(self) -> list:
+        """The audience estimate if it is recent enough to act on (nearby.HOLD_MS), else []."""
+        if self.audience_rx_mono_ms <= 0:
+            return []
+        import time
+
+        from supervisor.core.nearby import HOLD_MS
+
+        age = time.monotonic() * 1000.0 - self.audience_rx_mono_ms
+        return list(self.audience) if age <= HOLD_MS else []
 
     @property
     def vision_age_ms(self) -> float:

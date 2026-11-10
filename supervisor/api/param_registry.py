@@ -1217,4 +1217,23 @@ def create_default_registry() -> ParamRegistry:
             )
         )
 
+    # Motion near people and animals (core/nearby.py). The min is the floor: no tuning can make
+    # Buddy faster or closer than it near anyone.
+    from supervisor.core.nearby import NEARBY_TUNABLES, nearby_defaults
+
+    nearby = nearby_defaults()
+    for key, (kind, lo, hi, step, doc) in NEARBY_TUNABLES.items():
+        reg.register(
+            ParamDef(
+                name=f"nearby.{key}",
+                type=kind,
+                min=lo,
+                max=hi,
+                step=step,
+                default=nearby[key],
+                owner="supervisor",
+                doc=doc,
+            )
+        )
+
     return reg

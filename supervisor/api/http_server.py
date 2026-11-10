@@ -412,6 +412,48 @@ def create_app(
     def _roster_error(e: Exception, status: int = 422) -> JSONResponse:
         return JSONResponse({"ok": False, "reason": str(e)}, status_code=status)
 
+    # -- Audience: who is near (governor layer 8, core/nearby.py) -----------
+    # The sim's oracle posts true positions here; a detection worker will later. It can only add
+    # caps: an empty list is today's behaviour, and an estimate expires after nearby.HOLD_MS.
+
+    @app.post("/api/audience")
+    async def post_audience(body: dict):
+        from supervisor.core.nearby import KINDS, Member
+
+        raw = body.get("members")
+        if not isinstance(raw, list) or len(raw) > 16:
+            return JSONResponse(
+                {"ok": False, "reason": "members must be a list (<= 16)"}, 422
+            )
+        members = []
+        for m in raw:
+            try:
+                kind = str(m.get("kind", "unknown"))
+                members.append(
+                    Member(
+                        kind=kind if kind in KINDS else "unknown",
+                        range_mm=max(0, int(m["range_mm"])),
+                        bearing_deg=float(m["bearing_deg"]),
+                        confidence=min(1.0, max(0.0, float(m.get("confidence", 1.0)))),
+                    )
+                )
+            except (KeyError, TypeError, ValueError, AttributeError):
+                return JSONResponse(
+                    {
+                        "ok": False,
+                        "reason": "each member needs range_mm and bearing_deg",
+                    },
+                    422,
+                )
+        tick.set_audience(members)
+        return JSONResponse({"ok": True, "members": len(members)})
+
+    @app.get("/api/audience")
+    async def get_audience():
+        from dataclasses import asdict
+
+        return JSONResponse({"members": [asdict(m) for m in tick.world.audience_now()]})
+
     @app.get("/api/household")
     async def get_household():
         try:

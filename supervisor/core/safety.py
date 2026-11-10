@@ -150,4 +150,15 @@ def apply_safety(
             v = int(v * scale)
             w = int(w * scale)
 
+    # 8. People and animals nearby (core/nearby.py): a cap and a standoff by the nearest
+    # member's kind. Holds whatever WANDER, the planner or teleop asked for; only lowers speed.
+    members = world.audience_now()
+    if members and v != 0:
+        from supervisor.core.nearby import limit
+
+        allowed, why = limit(v, members)
+        if why is not None:
+            robot.speed_caps.append(SpeedCap(abs(allowed) / abs(v), why))
+            v = allowed
+
     return DesiredTwist(v, w)
