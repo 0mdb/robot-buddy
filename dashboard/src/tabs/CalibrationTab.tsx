@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { CameraSettingsPanel } from '../components/CameraSettingsPanel'
+import { FaceEnrollment } from '../components/FaceEnrollment'
 import { Sparkline } from '../components/Sparkline'
 import { useParamsList, useUpdateParams } from '../hooks/useParams'
 import { useTelemetry } from '../hooks/useTelemetry'
@@ -432,6 +433,14 @@ export default function CalibrationTab() {
           IMU
         </summary>
         <IMUSection pmap={pmap} onApply={handleApply} applying={updateParams.isPending} />
+      </details>
+
+      {/* Face Enrollment */}
+      <details className={styles.card}>
+        <summary style={{ cursor: 'pointer', fontWeight: 600, fontSize: 14, marginBottom: 8 }}>
+          Face Enrollment
+        </summary>
+        <FaceEnrollment />
       </details>
     </div>
   )

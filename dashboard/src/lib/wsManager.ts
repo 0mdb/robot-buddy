@@ -8,12 +8,15 @@ const BACKOFF_MAX = 8000
  * WebSocket manager with exponential backoff reconnect.
  * Writes exclusively to TelemetryStore — no DOM touching.
  */
+export type WsListener = (msg: Record<string, unknown>) => void
+
 class WsManager {
   private ws: WebSocket | null = null
   private attempt = 0
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private disposed = false
   private receivedFirstMessage = false
+  private listeners: Set<WsListener> = new Set()
 
   connect(): void {
     if (this.disposed) return
@@ -38,16 +41,20 @@ class WsManager {
     ws.onmessage = (event) => {
       try {
         const envelope = JSON.parse(event.data as string) as WsEnvelope
-        if (envelope.type !== 'telemetry' || !envelope.payload) return
-
         if (!this.receivedFirstMessage) {
           this.receivedFirstMessage = true
           useTelemetryStore.getState().setWsState('open')
         }
 
-        useTelemetryStore
-          .getState()
-          .push(envelope.payload as unknown as Record<string, unknown>, envelope.ts_ms)
+        if (envelope.type === 'telemetry' && envelope.payload) {
+          useTelemetryStore
+            .getState()
+            .push(envelope.payload as unknown as Record<string, unknown>, envelope.ts_ms)
+        }
+
+        for (const fn of this.listeners) {
+          try { fn(envelope as unknown as Record<string, unknown>) } catch { /* */ }
+        }
       } catch {
         // Malformed message — ignore
       }
@@ -69,6 +76,9 @@ class WsManager {
       this.ws.send(JSON.stringify(msg))
     }
   }
+
+  addListener(fn: WsListener): void { this.listeners.add(fn) }
+  removeListener(fn: WsListener): void { this.listeners.delete(fn) }
 
   dispose(): void {
     this.disposed = true

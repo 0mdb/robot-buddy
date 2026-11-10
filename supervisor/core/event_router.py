@@ -45,6 +45,7 @@ from supervisor.messages.types import (
     PERSONALITY_STATUS_HEALTH,
     VISION_DETECTION_SNAPSHOT,
     VISION_FACE_DETECTED,
+    VISION_FACE_ENROLL_RESULT,
     VISION_FRAME_JPEG,
     VISION_LIFECYCLE_ERROR,
     VISION_STATUS_HEALTH,
@@ -65,10 +66,12 @@ class EventRouter:
         world: WorldState,
         scheduler: ActionScheduler,
         validator: PlanValidator,
+        ws_hub: Any | None = None,
     ) -> None:
         self._world = world
         self._scheduler = scheduler
         self._validator = validator
+        self._ws_hub = ws_hub
 
         # Plan dedup: plan_id → mono_ns
         self._seen_plans: OrderedDict[str, int] = OrderedDict()
@@ -93,6 +96,10 @@ class EventRouter:
             self._world.face_names = [f["name"] for f in faces if f.get("name")]
             self._world.face_count = len(faces)
             self._world.face_rx_mono_ms = now_ms
+
+        elif t == VISION_FACE_ENROLL_RESULT:
+            if self._ws_hub is not None:
+                self._ws_hub.broadcast_event("face.enroll_result", p)
 
         elif t == VISION_FRAME_JPEG:
             self._world.latest_jpeg_b64 = str(p.get("data_b64", ""))

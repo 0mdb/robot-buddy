@@ -16,9 +16,11 @@ from typing import Any
 
 from supervisor.messages.envelope import Envelope
 from supervisor.messages.types import (
+    VISION_CMD_FACE_ENROLL,
     VISION_CONFIG_UPDATE,
     VISION_DETECTION_SNAPSHOT,
     VISION_FACE_DETECTED,
+    VISION_FACE_ENROLL_RESULT,
     VISION_FRAME_JPEG,
     VISION_LIFECYCLE_ERROR,
 )
@@ -86,6 +88,7 @@ class VisionWorker(BaseWorker):
         self._face_enabled = False
         self._face_every_n = 3
         self._face_frame_counter = 0
+        self._last_frame: Any = None
 
         # Camera format ("BGR888" preferred; fallback to "RGB888" + convert)
         self._camera_main_format = "RGB888"
@@ -206,6 +209,43 @@ class VisionWorker(BaseWorker):
             if controls_changed:
                 self._queue_controls_apply()
             log.info("config updated")
+        elif envelope.type == VISION_CMD_FACE_ENROLL:
+            self._handle_face_enroll(envelope.payload)
+
+    def _handle_face_enroll(self, p: dict[str, Any]) -> None:
+        name = p.get("name", "").strip()
+        if not name:
+            self.send(VISION_FACE_ENROLL_RESULT, {"ok": False, "error": "No name provided"})
+            return
+        if self._face_recognizer is None:
+            self.send(VISION_FACE_ENROLL_RESULT, {"ok": False, "error": "Face recognition not available"})
+            return
+        if self._last_frame is None:
+            self.send(VISION_FACE_ENROLL_RESULT, {"ok": False, "error": "No camera frame available"})
+            return
+        faces = self._face_recognizer.detect_faces(self._last_frame)
+        if not faces:
+            self.send(VISION_FACE_ENROLL_RESULT, {"ok": False, "error": "No face detected in frame"})
+            return
+        if len(faces) > 1:
+            self.send(VISION_FACE_ENROLL_RESULT, {
+                "ok": False,
+                "error": f"Multiple faces detected ({len(faces)}) — position one person in frame",
+            })
+            return
+        face = faces[0]
+        if face.embedding is None:
+            self.send(VISION_FACE_ENROLL_RESULT, {"ok": False, "error": "Could not extract face embedding"})
+            return
+        self._face_recognizer.enroll(name, face.embedding)
+        count = self._face_recognizer.enrollment_count(name)
+        self.send(VISION_FACE_ENROLL_RESULT, {
+            "ok": True,
+            "name": name,
+            "count": count,
+            "confidence": round(face.confidence, 3),
+        })
+        log.info("enrolled face for %s (total: %d embeddings)", name, count)
 
     def health_payload(self) -> dict[str, Any]:
         return {
@@ -432,6 +472,7 @@ class VisionWorker(BaseWorker):
                     frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
 
                 small = cv2.resize(frame, self._process_size)
+                self._last_frame = small
 
                 clear_conf = detect_clear_path(
                     small,

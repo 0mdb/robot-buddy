@@ -166,6 +166,9 @@ def create_app(
     app.add_middleware(NoCacheIndexMiddleware)
     install_log_handler()
 
+    # Wire ws_hub into EventRouter so it can broadcast non-telemetry events
+    tick._event_router._ws_hub = ws_hub
+
     # Prime psutil CPU measurement (first call always returns 0.0)
     psutil.cpu_percent(interval=None)
 
@@ -430,6 +433,41 @@ def create_app(
             await workers.send_to("vision", "vision.config.update", {"mask": mask})
 
         return JSONResponse({"ok": True, "mask": mask})
+
+    # -- Face gallery (enrollment management) --------------------------------
+
+    FACE_GALLERY_PATH = Path("./data/face_embeddings.json")
+
+    @app.get("/face/gallery")
+    async def face_gallery():
+        if not FACE_GALLERY_PATH.is_file():
+            return JSONResponse({"people": {}})
+        try:
+            data = json.loads(FACE_GALLERY_PATH.read_text())
+            people = {}
+            for name, info in data.get("people", {}).items():
+                people[name] = {"count": len(info.get("embeddings", []))}
+            return JSONResponse({"people": people})
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, status_code=500)
+
+    @app.delete("/face/gallery/{name}")
+    async def face_gallery_delete(name: str):
+        if not FACE_GALLERY_PATH.is_file():
+            return JSONResponse({"error": "gallery not found"}, status_code=404)
+        try:
+            data = json.loads(FACE_GALLERY_PATH.read_text())
+            people = data.get("people", {})
+            if name not in people:
+                return JSONResponse(
+                    {"error": f"{name} not found"}, status_code=404
+                )
+            del people[name]
+            data["people"] = people
+            FACE_GALLERY_PATH.write_text(json.dumps(data, indent=2))
+            return JSONResponse({"ok": True, "deleted": name})
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, status_code=500)
 
     # -- MJPEG video stream --------------------------------------------------
 
@@ -884,3 +922,14 @@ async def _handle_ws_cmd(
         asyncio.ensure_future(
             tick._workers.send_to("ai", AI_CMD_CLEAR_GENERATION_OVERRIDES, {})
         )
+    # -- Face enrollment commands ----------------------------------------------
+    elif msg_type == "face.enroll":
+        from supervisor.messages.types import VISION_CMD_FACE_ENROLL
+
+        name = msg.get("name", "").strip()
+        if name:
+            asyncio.ensure_future(
+                tick._workers.send_to(
+                    "vision", VISION_CMD_FACE_ENROLL, {"name": name}
+                )
+            )
