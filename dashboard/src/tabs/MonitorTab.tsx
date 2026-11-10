@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { HouseholdPanel } from '../components/HouseholdPanel'
 import { Sparkline } from '../components/Sparkline'
 import { TimeSeriesChart } from '../components/TimeSeriesChart'
 import { FAULT_NAMES, RANGE_STATUS } from '../constants'
@@ -1013,6 +1014,9 @@ export default function MonitorTab() {
 
       {/* Personality memory (PE spec S2 §8.5) */}
       <MemoryPanel />
+
+      {/* Household roster (SIM-INTERACTION I3) */}
+      <HouseholdPanel />
     </div>
   )
 }

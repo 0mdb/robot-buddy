@@ -37,6 +37,8 @@ from supervisor.messages.types import (
     PERSONALITY_STATE_SNAPSHOT,
 )
 from supervisor.personality.memory import MemoryStore
+from supervisor.personality.roster import RosterFile
+from supervisor.personality.roster import default_path as roster_default_path
 from supervisor.personality.affect import (
     EMOTION_VA_TARGETS,
     AffectVector,
@@ -151,6 +153,8 @@ class PersonalityWorker(BaseWorker):
         self._memory_path: str = "./data/personality_memory.json"
         self._memory_consent: bool = False
         self._memory: MemoryStore | None = None
+        # Household roster (SIM-INTERACTION stage 3): opt-in, beside the memory file
+        self._roster: RosterFile | None = None
 
         # Affect state
         self._affect = AffectVector()
@@ -203,6 +207,9 @@ class PersonalityWorker(BaseWorker):
 
         # Load daily timer persistence
         self._load_daily_state()
+
+        # Household roster: re-read when the dashboard changes it
+        self._roster = RosterFile(roster_default_path(self._memory_path))
 
         # Load memory store (PE spec S2 §8)
         self._memory = MemoryStore(self._memory_path, self._memory_consent)
@@ -453,6 +460,11 @@ class PersonalityWorker(BaseWorker):
             tags = self._memory.tag_summary()
             if tags:
                 profile["memory_tags"] = tags
+        # Audience hint from the roster: only the youngest child's age, never names
+        if self._roster is not None:
+            hint = self._roster.get().audience_hint()
+            if hint is not None:
+                profile["audience"] = hint
         self.send(PERSONALITY_LLM_PROFILE, profile)
 
     # ── Guardrail Events ──────────────────────────────────────────

@@ -105,6 +105,8 @@ class Member:
 class Audience:
     present: tuple[Member, ...]
     speaking: int | None
+    # From the robot's opt-in household roster: only the youngest enrolled child's age.
+    youngest_kid_age: int | None = None
 
 
 def parse_audience(raw: object) -> Audience | None:
@@ -133,7 +135,17 @@ def parse_audience(raw: object) -> Audience | None:
     speaking = raw.get("speaking")
     if not (isinstance(speaking, int) and 0 <= speaking < len(present)):
         speaking = None
-    return Audience(tuple(present), speaking)
+    household = raw.get("household")
+    youngest = (
+        household.get("youngest_kid_age") if isinstance(household, dict) else None
+    )
+    if not (
+        isinstance(youngest, int)
+        and not isinstance(youngest, bool)
+        and 0 < youngest < 18
+    ):
+        youngest = None
+    return Audience(tuple(present), speaking, youngest)
 
 
 def _effective_kind(m: Member) -> str:
@@ -163,12 +175,15 @@ def _kid_profile_for_age(age: int) -> AudienceProfile:
 def resolve_profile(audience: Audience | None) -> AudienceProfile:
     """Pick the profile the fallback rules allow.
 
-    - Nothing known, or a child whose age is not known: the generic child profile (rule 1).
+    - Nothing known, or a child whose age is not known: the youngest enrolled child's profile
+      when the household roster says who that is, else the generic child profile (rule 1).
     - Any child present: the profile for the youngest child present (rule 2).
     - Only confident adults (animals may be there too): adult.
     - Only animals: animal (rule 3).
     """
     default = load_profile(DEFAULT_PROFILE_ID)
+    if audience is not None and audience.youngest_kid_age is not None:
+        default = _kid_profile_for_age(audience.youngest_kid_age)
     if audience is None or not audience.present:
         return default
     kids = [m for m in audience.present if _effective_kind(m) == "kid"]
@@ -176,6 +191,7 @@ def resolve_profile(audience: Audience | None) -> AudienceProfile:
         ages = [m.age if m.kind == "kid" else None for m in kids]
         if any(a is None for a in ages):
             return default
+        # Rule 2 is the youngest *present*; the roster only fills in an unknown (rule 1).
         return _kid_profile_for_age(min(a for a in ages if a is not None))
     kinds = {_effective_kind(m) for m in audience.present}
     if "adult" in kinds:

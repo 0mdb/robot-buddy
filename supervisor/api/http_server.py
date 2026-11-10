@@ -134,8 +134,15 @@ def create_app(
     capture: ProtocolCapture | None = None,
     conv_capture: ConversationCapture | None = None,
     tts_endpoint: str = "",
+    household_path: Path | None = None,
 ) -> FastAPI:
     import psutil
+
+    from supervisor.personality import roster as household
+
+    roster_path = household_path or household.default_path(
+        "./data/personality_memory.json"
+    )
 
     # -- MCP server --------------------------------------------------------
     # Built before FastAPI so the session manager can be driven from its
@@ -392,6 +399,80 @@ def create_app(
                 workers.send_to("personality", PERSONALITY_CMD_RESET_MEMORY, {})
             )
         return JSONResponse({"ok": True})
+
+    # -- Household roster (SIM-INTERACTION I3, stage 3) ----------------------
+    # Robot-local, opt-in, parent-managed. Nothing here is sent anywhere; the personality
+    # worker derives only the youngest child's age for the server's fallback rule.
+
+    def _roster_reply(r: household.Roster) -> JSONResponse:
+        return JSONResponse(r.to_dict())
+
+    def _roster_error(e: Exception, status: int = 422) -> JSONResponse:
+        return JSONResponse({"ok": False, "reason": str(e)}, status_code=status)
+
+    @app.get("/api/household")
+    async def get_household():
+        try:
+            return _roster_reply(household.load_strict(roster_path))
+        except household.RosterError as e:
+            return _roster_error(e, 409)
+
+    @app.put("/api/household/enabled")
+    async def set_household_enabled(body: dict):
+        enabled = body.get("enabled")
+        if not isinstance(enabled, bool):
+            return _roster_error(ValueError("enabled must be true or false"))
+        try:
+            r = household.load_strict(roster_path)
+        except household.RosterError as e:
+            return _roster_error(e, 409)
+        r = household.Roster(enabled=enabled, members=r.members)
+        household.save(roster_path, r)
+        return _roster_reply(r)
+
+    @app.post("/api/household/members")
+    async def add_household_member(body: dict):
+        try:
+            r = household.add_member(
+                household.load_strict(roster_path),
+                name=body.get("name"),
+                kind=body.get("kind"),
+                age=body.get("age"),
+            )
+        except household.RosterError as e:
+            return _roster_error(e)
+        household.save(roster_path, r)
+        return _roster_reply(r)
+
+    @app.patch("/api/household/members/{member_id}")
+    async def update_household_member(member_id: str, body: dict):
+        try:
+            r = household.update_member(
+                household.load_strict(roster_path), member_id, body
+            )
+        except household.RosterError as e:
+            return _roster_error(e)
+        except KeyError:
+            return _roster_error(KeyError("no such member"), 404)
+        household.save(roster_path, r)
+        return _roster_reply(r)
+
+    @app.delete("/api/household/members/{member_id}")
+    async def remove_household_member(member_id: str):
+        try:
+            r = household.remove_member(household.load_strict(roster_path), member_id)
+        except household.RosterError as e:
+            return _roster_error(e, 409)
+        except KeyError:
+            return _roster_error(KeyError("no such member"), 404)
+        household.save(roster_path, r)
+        return _roster_reply(r)
+
+    @app.delete("/api/household")
+    async def forget_household():
+        """Parent 'Forget everyone': delete the roster and everything stored beside it."""
+        household.forget_everyone(roster_path)
+        return _roster_reply(household.Roster())
 
     # -- Vision masks (dashboard mask editor) --------------------------------
 

@@ -192,3 +192,48 @@ def test_safety_nudges_are_for_children_only(kind, has_check):
     )
     assert (SAFETY_CHECK in systems) is has_check
     assert ("SAFETY: the child" in systems) is has_check
+
+
+@pytest.mark.parametrize(
+    "audience,expected",
+    [
+        # what the robot sends with a roster enabled: an unknown speaker, the youngest age
+        (
+            {
+                "present": [{"kind": "unknown", "confidence": 0.0}],
+                "household": {"youngest_kid_age": 5},
+            },
+            "kid_5",
+        ),
+        (
+            {
+                "present": [{"kind": "unknown", "confidence": 0.0}],
+                "household": {"youngest_kid_age": 8},
+            },
+            "kid_7",
+        ),
+        ({"present": [], "household": {"youngest_kid_age": 5}}, "kid_5"),
+        # rule 2 is the youngest present: a detected 7-year-old alone stays kid_7
+        (
+            {
+                "present": [{"kind": "kid", "age": 7, "confidence": 0.9}],
+                "household": {"youngest_kid_age": 5},
+            },
+            "kid_7",
+        ),
+        # a confident adult is still an adult
+        (
+            {
+                "present": [{"kind": "adult", "confidence": 0.9}],
+                "household": {"youngest_kid_age": 5},
+            },
+            "adult",
+        ),
+        # malformed hints are dropped
+        ({"present": [], "household": {"youngest_kid_age": True}}, "child"),
+        ({"present": [], "household": {"youngest_kid_age": 40}}, "child"),
+        ({"present": [], "household": "five"}, "child"),
+    ],
+)
+def test_household_hint_fills_in_rule_1(audience, expected):
+    assert resolve_profile(parse_audience(audience)).id == expected
