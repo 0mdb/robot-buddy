@@ -124,7 +124,7 @@ Stage 4.2 Dirty-Rect A/B Snapshot (2026-02-25, post-dirty firmware + updated sup
 **B6 — Evaluation** `[opus]`
 _2 items complete (B6 test extensions: guardrail/schema/privacy/RS limits) — see archive_
 - [ ] PE evaluation checklist: emotional coherence, guardrail compliance, child-safety validation (PE spec S2 §13 + §9 HC/RS) _(automated guardrail tests pass; child-safety T4 is a human protocol — tracked under Face Evaluation)_
-- [ ] `[opus]` Reduce baseline talkativeness (currently “talking non-stop”): review specs + annoyance research; set sane defaults (idle/backchannel frequency, cooldowns, auto-followup) + add tests
+- [x] `[opus]` Reduce baseline talkativeness (currently “talking non-stop”): review specs + annoyance research; set sane defaults (idle/backchannel frequency, cooldowns, auto-followup) + add tests _(shipped `6671d66`: say-type cooldown 3→30s, say-key cooldown 12→120s, plan_period_s fallback 5→60s, 120s post-conversation silence window; 3 new tests)_
 - [ ] `[sonnet]` Reduce server ping/poll frequency: make requests event-driven + add backoff/debounce so Buddy isn’t “talking non-stop” _(period now configurable + disableable via `planner.plan_period_s` / `planner.enabled` params in dashboard — event-driven still pending)_
 
 ---
