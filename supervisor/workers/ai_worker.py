@@ -20,6 +20,7 @@ import time
 from collections import OrderedDict
 from typing import Any
 
+from supervisor.audio.format import MAX_FRAME_BYTES
 from supervisor.messages.envelope import Envelope
 from supervisor.messages.types import (
     AI_CMD_CANCEL,
@@ -640,7 +641,7 @@ class AIWorker(BaseWorker):
                     break
 
                 chunk_len = struct.unpack("<H", header)[0]
-                if chunk_len == 0 or chunk_len > 4096:
+                if chunk_len == 0 or chunk_len > MAX_FRAME_BYTES:
                     continue
 
                 pcm = b""

@@ -128,6 +128,7 @@ class TickLoop:
         power_monitor: PowerMonitor | None = None,
         teleop_ttl_s: float = 0.5,
         parent_alerts: ParentAlerts | None = None,
+        barge_in: bool = False,
     ) -> None:
         self._reflex = reflex
         self._face = face
@@ -138,6 +139,11 @@ class TickLoop:
         self._param_registry = param_registry
         self._power_monitor: PowerMonitor = power_monitor or NullPowerMonitor()
         self._power_task: asyncio.Task[None] | None = None
+        # Full duplex (--barge-in): wake word stays live while the robot talks.
+        self._barge_in = barge_in
+        # The interrupted reply's TTS_EVENT_CANCELLED/FINISHED arrives after the
+        # new session has started; it must not end that session.
+        self._ignore_next_tts_end = False
 
         # State
         self.robot = RobotState()
@@ -808,7 +814,9 @@ class TickLoop:
 
         # Ear worker events
         elif env.type == EAR_EVENT_WAKE_WORD:
-            if not self.world.session_id and not self.world.speaking:
+            if self.world.speaking and self._barge_in:
+                self._barge_in_wake_word()
+            elif not self.world.session_id and not self.world.speaking:
                 self._start_conversation("wake_word")
                 self._conv.set_state(FaceConvState.ATTENTION)
 
@@ -832,7 +840,8 @@ class TickLoop:
 
         # TTS events → conversation state transitions
         elif env.type == TTS_EVENT_STARTED:
-            asyncio.ensure_future(self._workers.send_to("ear", EAR_CMD_PAUSE_VAD))
+            if not self._barge_in:  # half duplex: VAD would hear the robot
+                asyncio.ensure_future(self._workers.send_to("ear", EAR_CMD_PAUSE_VAD))
             asyncio.ensure_future(
                 self._workers.send_to(
                     "personality",
@@ -849,7 +858,13 @@ class TickLoop:
                     self._queued_emotion = ""
                     self._queued_intensity = 0.0
         elif env.type in (TTS_EVENT_FINISHED, TTS_EVENT_CANCELLED):
-            asyncio.ensure_future(self._workers.send_to("ear", EAR_CMD_RESUME_VAD))
+            if not self._barge_in:
+                asyncio.ensure_future(self._workers.send_to("ear", EAR_CMD_RESUME_VAD))
+            if self._ignore_next_tts_end:
+                # End of the reply a barge-in interrupted: the new session owns
+                # the conversation state now.
+                self._ignore_next_tts_end = False
+                return
             if env.type == TTS_EVENT_FINISHED:
                 # Trail the talking animation to cover OS/hardware audio buffer drain.
                 # CANCELLED stops immediately (user interrupted), so no grace needed.
@@ -1289,6 +1304,21 @@ class TickLoop:
 
         if not is_text:
             self.robot.face_listening = True
+
+    def _barge_in_wake_word(self) -> None:
+        """Wake word while the robot talks (--barge-in): stop the reply, end any
+        session, start a new wake-word turn."""
+        from supervisor.devices.protocol import FaceConvState
+
+        log.info("barge-in: wake word during speech")
+        self._ignore_next_tts_end = True
+        asyncio.ensure_future(self._workers.send_to("tts", TTS_CMD_CANCEL))
+        if self.world.session_id:
+            self._end_conversation()
+        self._talking_grace_ticks = 0
+        self._start_conversation("wake_word")
+        if self.world.session_id:
+            self._conv.set_state(FaceConvState.ATTENTION)
 
     def _on_param_change(self, name: str, _value: Any) -> None:
         """Handle param registry changes."""

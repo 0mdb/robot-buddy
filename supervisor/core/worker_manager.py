@@ -110,6 +110,27 @@ def _log_worker_stderr_line_with_context(
 EventCallback = Callable[[str, Envelope], Coroutine[Any, Any, None]]
 
 
+# Messages a restarted worker must get again: its init, then the latest of each
+# runtime setting. Without this a restarted worker waits for an init that never
+# comes (the ear worker exits after 10 s) and loses volume / tuning.
+_STICKY_TYPES = frozenset(
+    {
+        "tts.cmd.set_volume",
+        "tts.cmd.set_mute",
+        "tts.cmd.set_ring_mod",
+        "ear.cmd.set_threshold",
+        "ear.cmd.set_mic_channel",
+        "ear.cmd.stream_scores",
+    }
+)
+# Incremental: payload["settings"] is merged into the stored one.
+_MERGED_TYPES = frozenset({"ear.cmd.xvf_set"})
+
+
+def _is_init(msg_type: str) -> bool:
+    return msg_type.endswith(".config.init")
+
+
 @dataclass(slots=True)
 class WorkerInfo:
     """Runtime state for one managed worker."""
@@ -124,6 +145,8 @@ class WorkerInfo:
     alive: bool = False
     starting: bool = False
     last_health: dict = field(default_factory=dict)
+    # msg_type -> (payload, envelope kwargs), replayed after a restart
+    sticky: dict[str, tuple[dict, dict]] = field(default_factory=dict)
 
 
 class WorkerManager:
@@ -222,6 +245,8 @@ class WorkerManager:
     ) -> bool:
         """Send one NDJSON message to a worker's stdin."""
         info = self._workers.get(worker_name)
+        if info is not None:
+            self._remember(info, msg_type, payload, kwargs)
         if not info or not info.process or not info.process.stdin:
             return False
 
@@ -239,6 +264,26 @@ class WorkerManager:
         except (BrokenPipeError, ConnectionResetError, OSError) as e:
             log.warning("send_to %s failed: %s", worker_name, e)
             return False
+
+    @staticmethod
+    def _remember(
+        info: WorkerInfo, msg_type: str, payload: dict | None, kwargs: dict
+    ) -> None:
+        if _is_init(msg_type) or msg_type in _STICKY_TYPES:
+            info.sticky[msg_type] = (dict(payload or {}), dict(kwargs))
+        elif msg_type in _MERGED_TYPES:
+            old, _ = info.sticky.get(msg_type, ({"settings": {}}, {}))
+            merged = dict(old.get("settings") or {})
+            merged.update((payload or {}).get("settings") or {})
+            info.sticky[msg_type] = ({"settings": merged}, dict(kwargs))
+
+    async def _replay_sticky(self, info: WorkerInfo) -> None:
+        """Re-send init (first) and the latest settings to a relaunched worker."""
+        items = sorted(info.sticky.items(), key=lambda kv: not _is_init(kv[0]))
+        for msg_type, (payload, kwargs) in items:
+            await self.send_to(info.name, msg_type, payload, **kwargs)
+        if items:
+            log.info("%s: replayed %d message(s) after restart", info.name, len(items))
 
     def worker_alive(self, name: str) -> bool:
         info = self._workers.get(name)
@@ -421,6 +466,7 @@ class WorkerManager:
 
         if self._running:
             await self._launch(info)
+            await self._replay_sticky(info)
 
     async def _send_shutdown(self, info: WorkerInfo) -> None:
         """Send graceful shutdown to a worker."""

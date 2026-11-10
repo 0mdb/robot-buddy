@@ -25,8 +25,11 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
 from supervisor.api.param_persistence import load_params, on_param_changed
+from supervisor.api.param_registry import XVF_PARAMS
 from supervisor.mcp import McpAuditBroadcaster, build_mcp_server
 from supervisor.messages.types import (
+    EAR_CMD_SET_MIC_CHANNEL,
+    EAR_CMD_XVF_SET,
     TTS_CMD_SET_MUTE,
     TTS_CMD_SET_VOLUME,
     VISION_CONFIG_UPDATE,
@@ -186,6 +189,18 @@ def create_app(
         if name == "tts.speaker_volume":
             asyncio.ensure_future(
                 workers.send_to("tts", TTS_CMD_SET_VOLUME, {"volume": value})
+            )
+        elif name in XVF_PARAMS:
+            asyncio.ensure_future(
+                workers.send_to(
+                    "ear",
+                    EAR_CMD_XVF_SET,
+                    {"settings": {XVF_PARAMS[name][0]: float(value)}},  # type: ignore[arg-type]
+                )
+            )
+        elif name == "ear.mic_channel" and int(value) >= 0:  # type: ignore[call-overload]
+            asyncio.ensure_future(
+                workers.send_to("ear", EAR_CMD_SET_MIC_CHANNEL, {"channel": value})
             )
 
     registry.on_change(_on_param_change)

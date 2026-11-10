@@ -326,3 +326,96 @@ class TestMicSocketFraming:
         decoded_len = struct.unpack("<H", frame[:2])[0]
         assert decoded_len == 320
         assert frame[2:] == pcm
+
+
+# ── Multi-channel capture + XVF3800 voice direction ──────────────
+
+from array import array  # noqa: E402
+
+from supervisor.devices.xvf3800 import VoiceDirection  # noqa: E402
+from supervisor.messages.types import EAR_EVENT_DOA  # noqa: E402
+from supervisor.workers.ear_worker import select_channel  # noqa: E402
+
+
+def _interleave(*chans: list[int]) -> bytes:
+    out = array("h")
+    for frame in zip(*chans):
+        out.extend(frame)
+    return out.tobytes()
+
+
+class TestMultiChannel:
+    def test_select_channel(self):
+        data = _interleave([1, 2, 3], [10, 20, 30])
+        assert array("h", select_channel(data, 2, 0)).tolist() == [1, 2, 3]
+        assert array("h", select_channel(data, 2, 1)).tolist() == [10, 20, 30]
+
+    def test_mono_passthrough(self):
+        assert select_channel(b"\x01\x02", 1, 0) == b"\x01\x02"
+
+    def test_take_channel_handles_split_frames(self):
+        w = EarWorker()
+        w._mic_channels, w._mic_channel = 2, 1
+        data = _interleave([1, 2, 3, 4], [10, 20, 30, 40])
+        out = (
+            w._take_channel(data[:5])
+            + w._take_channel(data[5:11])
+            + w._take_channel(data[11:])
+        )
+        assert array("h", out).tolist() == [10, 20, 30, 40]
+        assert not w._capture_rem
+
+    async def test_config_parses_channels_and_xvf(self):
+        from supervisor.messages.envelope import make_envelope
+        from supervisor.messages.types import EAR_CONFIG_INIT
+
+        w = EarWorker()
+        env = make_envelope(
+            msg_type=EAR_CONFIG_INIT,
+            src="core",
+            seq=1,
+            payload={
+                "mic_device": "match:reSpeaker",
+                "mic_channels": 2,
+                "mic_channel": 5,  # clamped to 1
+                "xvf": {
+                    "enabled": True,
+                    "poll_hz": 200,
+                    "doa_offset_deg": 45,
+                    "doa_sign": -1,
+                },
+            },
+        )
+        await w.on_message(env)
+        assert (w._mic_channels, w._mic_channel) == (2, 1)
+        assert w._xvf_enabled is True
+        assert w._doa_poll_hz == 50.0
+        assert (w._doa_offset_deg, w._doa_sign) == (45.0, -1)
+
+
+class TestVoiceDirection:
+    def _worker(self, sent: list) -> EarWorker:
+        w = EarWorker()
+        w.send = lambda t, p=None, **kw: sent.append((t, p))  # type: ignore[method-assign]
+        return w
+
+    def test_speech_publishes_robot_frame_azimuth(self):
+        sent: list = []
+        w = self._worker(sent)
+        w._doa_offset_deg = -90.0
+        w._handle_voice_direction(VoiceDirection(100.0, True, 2.0, (0, 0, 0, 2.0)))
+        assert sent[0][0] == EAR_EVENT_DOA
+        assert sent[0][1]["speech"] is True
+        assert sent[0][1]["azimuth_deg"] == pytest.approx(10.0)
+        assert w.health_payload()["doa"]["azimuth_deg"] == pytest.approx(10.0)
+
+    def test_speech_end_sent_once(self):
+        sent: list = []
+        w = self._worker(sent)
+        quiet = VoiceDirection(None, False, 0.0, (0, 0, 0, 0))
+        w._handle_voice_direction(quiet)
+        assert sent == []
+        w._handle_voice_direction(VoiceDirection(0.0, True, 1.0, (0, 0, 0, 1.0)))
+        w._handle_voice_direction(quiet)
+        w._handle_voice_direction(quiet)
+        assert [p["speech"] for _, p in sent] == [True, False]

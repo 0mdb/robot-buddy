@@ -38,7 +38,7 @@ uv pip install --python "$SUPERVISOR_DIR/.venv/bin/python" -e .  # base deps onl
 
 # Ear worker deps (openwakeword needs --no-deps; see install.sh comment)
 uv pip install --python "$SUPERVISOR_DIR/.venv/bin/python" \
-    'onnxruntime>=1.16' 'scipy>=1.3' 'scikit-learn>=1' 'tqdm' 'requests'
+    'onnxruntime>=1.16' 'scipy>=1.3' 'scikit-learn>=1' 'tqdm' 'requests' 'pyusb>=1.2'
 uv pip install --python "$SUPERVISOR_DIR/.venv/bin/python" --no-deps 'openwakeword>=0.6'
 
 ok "dependencies up to date"

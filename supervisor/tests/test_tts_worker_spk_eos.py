@@ -1,9 +1,9 @@
-"""Test that the TTS worker ends a playback stream immediately on an
-explicit zero-length-frame EOS marker, without waiting for the idle watchdog.
+"""The TTS worker ends a conversation stream on the explicit zero-length EOS
+frame, without waiting for the idle watchdog, and only after the queued audio
+has been played through the mixer.
 
 The EOS marker is sent by ai_worker on the server's WS ``done`` event and is
-what lets us set the idle watchdog to 2.0 s without feeling laggy between
-turns — fast cases tear down promptly, slow cases still have a safety net.
+what lets the idle watchdog sit at 2.0 s without feeling laggy between turns.
 """
 
 from __future__ import annotations
@@ -14,100 +14,123 @@ import struct
 
 import pytest
 
-from supervisor.messages.types import TTS_EVENT_FINISHED
+from supervisor.messages.types import (
+    SYSTEM_AUDIO_LINK_UP,
+    TTS_EVENT_CANCELLED,
+    TTS_EVENT_FINISHED,
+    TTS_EVENT_STARTED,
+)
 from supervisor.workers.tts_worker import TTSWorker
 
 
-class _StubSpeaker:
-    """Pretends to be an aplay subprocess so _end_stream has something to drain."""
+class FakeSink:
+    def __init__(self, device: str = "fake") -> None:
+        self.device = device
+        self.frames: list[bytes] = []
 
-    def __init__(self) -> None:
-        self.returncode: int | None = None
-        self.stdin = None
-        self.killed = False
+    async def open(self) -> bool:
+        return True
 
-    async def wait(self) -> int:
-        return 0
+    async def write(self, pcm: bytes) -> bool:
+        self.frames.append(pcm)
+        return True
 
-    def kill(self) -> None:
-        self.killed = True
-        self.returncode = 0
+    async def close(self) -> None:
+        pass
 
 
-async def _setup_worker_with_connected_sockets() -> tuple[
-    TTSWorker, socket.socket, list[tuple[str, dict]]
-]:
-    """Build a TTSWorker with a socketpair already wired to _spk_sock."""
+async def _setup() -> tuple[TTSWorker, socket.socket, list[tuple[str, dict]]]:
     worker = TTSWorker()
-    # Capture sent envelopes instead of writing NDJSON to stdout.
     sent: list[tuple[str, dict]] = []
 
     def _capture(msg_type: str, payload: dict | None = None, **_kw) -> None:
         sent.append((msg_type, dict(payload or {})))
 
     worker.send = _capture  # type: ignore[assignment]
+    worker._sink_factory = FakeSink
+    worker._running = True
+    worker._start_playback()
 
-    # Build a connected AF_UNIX socketpair; give one end to the worker.
     a, b = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
     a.setblocking(False)
     b.setblocking(False)
-    worker._spk_sock = a  # the worker reads from `a`
-    worker._running = True
-
-    # Pre-seed playback state as if a stream were already underway.
-    worker._aplay_proc = _StubSpeaker()  # type: ignore[assignment]
-    worker._speaking = True
-
-    # Stub out _drain_aplay so _end_stream doesn't try to close a real stdin.
-    async def _fake_drain() -> None:
-        return None
-
-    worker._drain_aplay = _fake_drain  # type: ignore[assignment]
-
+    worker._spk_sock = a
+    worker._spk_sock_up = True
     return worker, b, sent
+
+
+async def _cleanup(
+    worker: TTSWorker, client: socket.socket, task: asyncio.Task
+) -> None:
+    worker._running = False
+    client.close()
+    task.cancel()
+    try:
+        await task
+    except (asyncio.CancelledError, Exception):
+        pass
+    assert worker._playback is not None
+    await worker._playback.stop()
+
+
+async def _wait_for(sent: list[tuple[str, dict]], t: str, timeout: float = 1.0) -> bool:
+    for _ in range(int(timeout / 0.02)):
+        if any(x == t for x, _ in sent):
+            return True
+        await asyncio.sleep(0.02)
+    return False
 
 
 @pytest.mark.asyncio
 async def test_zero_length_frame_ends_stream_without_waiting_for_watchdog() -> None:
-    worker, client_sock, sent = await _setup_worker_with_connected_sockets()
-
-    # Pre-populate the ``_spk_read_loop`` local state by priming it with one
-    # real PCM frame first so the worker has an active stream. We'll do this
-    # by scheduling the read loop, then writing frames from the other socket.
-    read_task = asyncio.create_task(worker._spk_read_loop())
-
+    worker, client, sent = await _setup()
+    task = asyncio.create_task(worker._spk_read_loop())
     loop = asyncio.get_running_loop()
-    # Drive a small PCM chunk so the stream is "open".
-    pcm = b"\x00\x01\x02\x03"
-    await loop.sock_sendall(client_sock, struct.pack("<H", len(pcm)) + pcm)
-    await asyncio.sleep(0.05)
 
-    # Now send the zero-length EOS frame.
-    await loop.sock_sendall(client_sock, struct.pack("<H", 0))
+    pcm = bytes(640) * 5  # 100 ms
+    await loop.sock_sendall(client, struct.pack("<H", len(pcm)) + pcm)
+    assert await _wait_for(sent, TTS_EVENT_STARTED)
+    await loop.sock_sendall(client, struct.pack("<H", 0))
 
-    # Give the worker a moment to process, but WELL under the 2.0 s watchdog.
-    for _ in range(20):
-        if any(t == TTS_EVENT_FINISHED for t, _ in sent):
-            break
-        await asyncio.sleep(0.02)
-
-    assert any(t == TTS_EVENT_FINISHED for t, _ in sent), (
-        f"EOS frame did not trigger TTS_EVENT_FINISHED; got: {[t for t, _ in sent]}"
-    )
-
-    # Stream state reset: no longer "speaking" and aplay_proc is cleared.
+    # Well under the 2.0 s watchdog: 100 ms of audio + the mixer lead.
+    assert await _wait_for(sent, TTS_EVENT_FINISHED, timeout=1.0), [t for t, _ in sent]
     assert worker._speaking is False
-    assert worker._aplay_proc is None
+    assert worker._playback is not None and not worker._playback.voice_active
+    await _cleanup(worker, client, task)
 
-    # Cleanup.
-    worker._running = False
-    client_sock.close()
-    try:
-        worker._spk_sock.close()  # type: ignore[union-attr]
-    except Exception:
-        pass
-    read_task.cancel()
-    try:
-        await read_task
-    except (asyncio.CancelledError, Exception):
-        pass
+
+@pytest.mark.asyncio
+async def test_link_up_needs_socket_and_playback() -> None:
+    worker, client, sent = await _setup()
+    assert await _wait_for(sent, SYSTEM_AUDIO_LINK_UP)  # playback opened, socket up
+    task = asyncio.create_task(worker._spk_read_loop())
+    await _cleanup(worker, client, task)
+
+
+@pytest.mark.asyncio
+async def test_cancel_discards_rest_of_stream() -> None:
+    worker, client, sent = await _setup()
+    task = asyncio.create_task(worker._spk_read_loop())
+    loop = asyncio.get_running_loop()
+
+    frame = struct.pack("<H", 640) + bytes(640)
+    await loop.sock_sendall(client, frame * 25)  # 500 ms queued
+    assert await _wait_for(sent, TTS_EVENT_STARTED)
+    worker._cancel()
+    assert any(t == TTS_EVENT_CANCELLED for t, _ in sent)
+    assert worker._playback is not None and worker._playback.voice_pending_ms == 0
+
+    # More of the same stream arrives after the cancel: dropped, no new STARTED.
+    await loop.sock_sendall(client, struct.pack("<H", 640) + bytes(640))
+    await asyncio.sleep(0.1)
+    assert sum(1 for t, _ in sent if t == TTS_EVENT_STARTED) == 1
+    assert worker._playback.voice_pending_ms == 0
+
+    # EOS closes the discarded stream; the next stream plays again.
+    await loop.sock_sendall(client, struct.pack("<H", 0))
+    await asyncio.sleep(0.05)
+    await loop.sock_sendall(client, struct.pack("<H", 640) + bytes(640))
+    await asyncio.sleep(0.05)
+    assert sum(1 for t, _ in sent if t == TTS_EVENT_STARTED) == 2
+    assert not any(t == TTS_EVENT_FINISHED for t, _ in sent)
+    await _cleanup(worker, client, task)

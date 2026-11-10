@@ -4,42 +4,57 @@ Owns the microphone (arecord). Continuously runs OpenWakeWord inference
 to detect "Hey Buddy".  During active conversations, forwards PCM to the
 AI worker via the rb-mic Unix socket and runs Silero VAD to detect
 end-of-utterance silence.
+
+arecord is supervised: if it exits (USB replug, card renumbered) the worker
+re-resolves the device and restarts it. With the reSpeaker Flex it also owns
+the board's USB control: voice direction, and the chip settings written each
+time the board is opened (never saved to its flash).
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import socket
 import struct
 import time
+from array import array
 from pathlib import Path
 from typing import Any
 
+from supervisor.audio.format import (
+    CHANNELS,
+    CHUNK_BYTES,
+    SAMPLE_RATE,
+    SAMPLE_WIDTH,
+    SOCKET_RETRY_INTERVAL_S,
+    SOCKET_RETRY_TIMEOUT_S,
+)
 from supervisor.messages.envelope import Envelope
 from supervisor.messages.types import (
     EAR_CMD_PAUSE_VAD,
     EAR_CMD_RESUME_VAD,
+    EAR_CMD_SET_MIC_CHANNEL,
     EAR_CMD_SET_THRESHOLD,
     EAR_CMD_START_LISTENING,
     EAR_CMD_STOP_LISTENING,
     EAR_CMD_STREAM_SCORES,
+    EAR_CMD_XVF_SET,
     EAR_CONFIG_INIT,
+    EAR_EVENT_DOA,
     EAR_EVENT_END_OF_UTTERANCE,
     EAR_EVENT_OWW_SCORE,
     EAR_EVENT_WAKE_WORD,
     SYSTEM_AUDIO_LINK_DOWN,
     SYSTEM_AUDIO_LINK_UP,
 )
+from supervisor.devices.alsa_device import resolve_alsa_device
 from supervisor.workers.base import BaseWorker, worker_main
 
 log = logging.getLogger(__name__)
 
-# Audio constants — must match TTS / AI workers
-SAMPLE_RATE = 16000
-SAMPLE_WIDTH = 2  # 16-bit signed LE
-CHANNELS = 1
-CHUNK_BYTES = 320  # 10 ms at 16 kHz mono
+__all__ = ["CHUNK_BYTES", "SAMPLE_RATE", "EarWorker", "select_channel"]
 
 # OpenWakeWord operates on 80 ms frames
 _OWW_FRAME_BYTES = int(SAMPLE_RATE * SAMPLE_WIDTH * 0.08)  # 2560
@@ -48,16 +63,31 @@ _OWW_FRAME_BYTES = int(SAMPLE_RATE * SAMPLE_WIDTH * 0.08)  # 2560
 _VAD_FRAME_SAMPLES = 512
 _VAD_FRAME_BYTES = _VAD_FRAME_SAMPLES * SAMPLE_WIDTH  # 1024
 
-# Socket retry
-_SOCKET_RETRY_INTERVAL_S = 0.1
-_SOCKET_RETRY_TIMEOUT_S = 30.0
+# arecord restart backoff (USB replug, card busy)
+_ARECORD_RETRY_MIN_S = 1.0
+_ARECORD_RETRY_MAX_S = 5.0
+
+# Input level window for the health payload
+_LEVEL_WINDOW_S = 1.0
 
 # Wake word cooldown — suppress re-triggers during active conversation
 _WW_COOLDOWN_S = 3.0
 
+# XVF3800 control: retry an absent / failed board this often
+_XVF_RETRY_S = 5.0
+
 _VAD_SCHEMA_DISABLED = "disabled"
 _VAD_SCHEMA_STATE = "state"
 _VAD_SCHEMA_HC = "hc"
+
+
+def select_channel(data: bytes, channels: int, index: int) -> bytes:
+    """One channel of interleaved S16_LE frames (``data`` = whole frames)."""
+    if channels <= 1:
+        return data
+    samples = array("h")
+    samples.frombytes(data)
+    return samples[index::channels].tobytes()
 
 
 class EarWorker(BaseWorker):
@@ -65,8 +95,33 @@ class EarWorker(BaseWorker):
 
     def __init__(self) -> None:
         super().__init__()
-        # Config (from ear.config.init)
+        # Config (from ear.config.init). _mic_spec is what was asked for
+        # (e.g. match:reSpeaker); _mic_device is what it resolved to last.
+        self._mic_spec: str = "default"
         self._mic_device: str = "default"
+        # Multi-channel capture (reSpeaker Flex: 6 ch, ch 0 = processed ASR
+        # beam). Everything downstream stays 16 kHz mono.
+        self._mic_channels: int = CHANNELS
+        self._mic_channel: int = 0
+        self._capture_rem = bytearray()
+        # XVF3800 voice direction (USB control). Off unless configured.
+        self._xvf_enabled = False
+        self._doa_poll_hz = 10.0
+        self._doa_offset_deg = 0.0
+        self._doa_sign = 1
+        self._xvf: Any = None
+        self._xvf_status = "off"  # off | ok | error
+        self._xvf_version = ""
+        self._doa_last_speech = False
+        self._doa_last: dict[str, Any] | None = None
+        self._xvf_settings: dict[str, Any] = {}
+        self._xvf_applied: list[str] = []
+        # Capture supervision + input level (selected channel)
+        self._arecord_restarts = 0
+        self._level_sumsq = 0.0
+        self._level_n = 0
+        self._level_t0 = 0.0
+        self._input_rms_dbfs: float | None = None
         self._mic_socket_path: str = ""
         self._wakeword_model_path: str = ""
         self._wakeword_threshold: float = 0.5
@@ -273,7 +328,18 @@ class EarWorker(BaseWorker):
         p = envelope.payload
 
         if t == EAR_CONFIG_INIT:
-            self._mic_device = str(p.get("mic_device", "default"))
+            self._mic_spec = str(p.get("mic_device", "default"))
+            self._mic_device = self._mic_spec
+            self._mic_channels = max(1, int(p.get("mic_channels", CHANNELS)))
+            self._mic_channel = min(
+                max(0, int(p.get("mic_channel", 0))), self._mic_channels - 1
+            )
+            xvf = p.get("xvf") or {}
+            self._xvf_enabled = bool(xvf.get("enabled", False))
+            self._doa_poll_hz = max(1.0, min(50.0, float(xvf.get("poll_hz", 10.0))))
+            self._doa_offset_deg = float(xvf.get("doa_offset_deg", 0.0))
+            self._doa_sign = -1 if int(xvf.get("doa_sign", 1)) < 0 else 1
+            self._xvf_settings = self._valid_xvf_settings(xvf.get("settings") or {})
             self._mic_socket_path = str(p.get("mic_socket_path", ""))
             self._wakeword_model_path = str(p.get("wakeword_model_path", ""))
             self._wakeword_threshold = float(p.get("wakeword_threshold", 0.5))
@@ -283,8 +349,11 @@ class EarWorker(BaseWorker):
                 p.get("vad_speech_prob_threshold", 0.3)
             )
             log.info(
-                "configured: mic=%s, ww_model=%s, threshold=%.2f",
+                "configured: mic=%s (ch %d of %d), xvf=%s, ww_model=%s, threshold=%.2f",
                 self._mic_device,
+                self._mic_channel,
+                self._mic_channels,
+                "on" if self._xvf_enabled else "off",
                 self._wakeword_model_path,
                 self._wakeword_threshold,
             )
@@ -298,9 +367,25 @@ class EarWorker(BaseWorker):
 
         elif t == EAR_CMD_PAUSE_VAD:
             self._vad_paused = True
+            self._vad_buffer.clear()
 
         elif t == EAR_CMD_RESUME_VAD:
             self._vad_paused = False
+            self._vad_buffer.clear()
+
+        elif t == EAR_CMD_SET_MIC_CHANNEL:
+            ch = min(max(0, int(p.get("channel", 0))), self._mic_channels - 1)
+            if ch != self._mic_channel:
+                self._mic_channel = ch
+                self._reset_level()
+                log.info("mic channel: %d of %d", ch, self._mic_channels)
+
+        elif t == EAR_CMD_XVF_SET:
+            new = self._valid_xvf_settings(p.get("settings") or {})
+            if new:
+                self._xvf_settings.update(new)
+                if self._xvf is not None:
+                    asyncio.create_task(self._apply_xvf_settings(new))
 
         elif t == EAR_CMD_STREAM_SCORES:
             self._stream_scores = bool(p.get("enabled", False))
@@ -366,6 +451,17 @@ class EarWorker(BaseWorker):
             "vad_schema": self._vad_schema,
             "wakeword_threshold": self._wakeword_threshold,
             "stream_scores": self._stream_scores,
+            "mic_device": self._mic_device,
+            "mic_channel": self._mic_channel,
+            "mic_channels": self._mic_channels,
+            "mic_running": self._arecord_proc is not None,
+            "arecord_restarts": self._arecord_restarts,
+            "input_rms_dbfs": self._input_rms_dbfs,
+            "xvf": self._xvf_status,
+            "xvf_version": self._xvf_version,
+            "xvf_settings": self._xvf_settings,
+            "xvf_applied": self._xvf_applied,
+            "doa": self._doa_last,
         }
 
     # ── Main loop ─────────────────────────────────────────────────
@@ -381,17 +477,63 @@ class EarWorker(BaseWorker):
         # Load models in background thread
         await asyncio.to_thread(self._load_models)
 
-        # Spawn arecord (always-on)
-        self._arecord_proc = await asyncio.create_subprocess_exec(
+        doa_task = asyncio.create_task(self._doa_loop()) if self._xvf_enabled else None
+        try:
+            await self._capture_supervisor()
+        except asyncio.CancelledError:
+            pass
+        finally:
+            if doa_task:
+                doa_task.cancel()
+            self._close_xvf()
+            await self._kill_arecord()
+
+    async def _capture_supervisor(self) -> None:
+        """Run arecord; when it exits, re-resolve the card and start it again."""
+        backoff = _ARECORD_RETRY_MIN_S
+        while self.running:
+            started = await self._start_arecord()
+            if started:
+                t0 = time.monotonic()
+                await self._capture_loop()
+                await self._kill_arecord()
+                if time.monotonic() - t0 > 10.0:
+                    backoff = _ARECORD_RETRY_MIN_S  # it ran fine for a while
+            if not self.running:
+                break
+            self._arecord_restarts += 1
+            await asyncio.sleep(backoff)
+            backoff = min(backoff * 2, _ARECORD_RETRY_MAX_S)
+
+    async def _start_arecord(self) -> bool:
+        resolved = resolve_alsa_device(self._mic_spec)
+        if resolved is None:
+            if self._arecord_restarts == 0:
+                log.warning("no ALSA card matches %r, using 'default'", self._mic_spec)
+            resolved = "default"
+        self._mic_device = resolved
+        self._reset_capture_buffers()
+        try:
+            self._arecord_proc = await self._spawn_arecord(resolved)
+        except OSError as e:
+            log.warning("cannot start arecord: %s", e)
+            self._arecord_proc = None
+            return False
+        log.info("arecord started (device=%s, %d ch)", resolved, self._mic_channels)
+        self.send(SYSTEM_AUDIO_LINK_UP, {"socket": "mic"})
+        return True
+
+    async def _spawn_arecord(self, device: str) -> Any:
+        return await asyncio.create_subprocess_exec(
             "arecord",
             "-D",
-            self._mic_device,
+            device,
             "-r",
             str(SAMPLE_RATE),
             "-f",
             "S16_LE",
             "-c",
-            str(CHANNELS),
+            str(self._mic_channels),
             "-t",
             "raw",
             "-q",
@@ -399,15 +541,34 @@ class EarWorker(BaseWorker):
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,
         )
-        log.info("arecord started (device=%s)", self._mic_device)
-        self.send(SYSTEM_AUDIO_LINK_UP, {"socket": "mic"})
 
-        try:
-            await self._capture_loop()
-        except asyncio.CancelledError:
-            pass
-        finally:
-            await self._kill_arecord()
+    def _reset_capture_buffers(self) -> None:
+        self._capture_rem.clear()
+        self._ww_buffer.clear()
+        self._vad_buffer.clear()
+        self._reset_vad_state()
+        self._reset_level()
+
+    def _reset_level(self) -> None:
+        self._level_sumsq = 0.0
+        self._level_n = 0
+        self._level_t0 = time.monotonic()
+
+    def _update_level(self, mono: bytes) -> None:
+        """Track the selected channel's RMS over a 1 s window (health)."""
+        samples = array("h")
+        samples.frombytes(mono[: len(mono) - len(mono) % 2])
+        self._level_sumsq += float(sum(x * x for x in samples))
+        self._level_n += len(samples)
+        now = time.monotonic()
+        if now - self._level_t0 >= _LEVEL_WINDOW_S and self._level_n:
+            rms = math.sqrt(self._level_sumsq / self._level_n)
+            self._input_rms_dbfs = (
+                round(20 * math.log10(rms / 32768.0), 1) if rms > 0 else -120.0
+            )
+            self._level_sumsq = 0.0
+            self._level_n = 0
+            self._level_t0 = now
 
     def _load_models(self) -> None:
         """Load OpenWakeWord and Silero VAD models (runs in thread)."""
@@ -473,9 +634,16 @@ class EarWorker(BaseWorker):
         assert self._arecord_proc and self._arecord_proc.stdout
 
         while self.running and self._arecord_proc.stdout:
-            data = await self._arecord_proc.stdout.read(CHUNK_BYTES)
+            data = await self._arecord_proc.stdout.read(
+                CHUNK_BYTES * self._mic_channels
+            )
             if not data:
                 break
+            if self._mic_channels > 1:
+                data = self._take_channel(data)
+                if not data:
+                    continue
+            self._update_level(data)
 
             # Always: accumulate for wake word detection
             self._ww_buffer.extend(data)
@@ -494,6 +662,104 @@ class EarWorker(BaseWorker):
                         vad_frame = bytes(self._vad_buffer[:_VAD_FRAME_BYTES])
                         del self._vad_buffer[:_VAD_FRAME_BYTES]
                         self._check_vad(vad_frame)
+
+    def _take_channel(self, data: bytes) -> bytes:
+        """Keep whole interleaved frames (reads can split one) and return the
+        configured channel as mono."""
+        frame = SAMPLE_WIDTH * self._mic_channels
+        self._capture_rem.extend(data)
+        n = len(self._capture_rem) - len(self._capture_rem) % frame
+        if n == 0:
+            return b""
+        whole = bytes(self._capture_rem[:n])
+        del self._capture_rem[:n]
+        return select_channel(whole, self._mic_channels, self._mic_channel)
+
+    # ── XVF3800 voice direction ───────────────────────────────────
+
+    async def _doa_loop(self) -> None:
+        """Poll the XVF3800's direction of arrival + speech energy over USB
+        control and publish ear.event.doa while someone is talking."""
+        from supervisor.devices.xvf3800 import Xvf3800
+
+        period = 1.0 / self._doa_poll_hz
+        while self.running:
+            if self._xvf is None:
+                try:
+                    self._xvf = await asyncio.to_thread(Xvf3800.open_usb)
+                    self._xvf_version = await asyncio.to_thread(self._xvf.version)
+                    self._xvf_status = "ok"
+                    log.info("XVF3800 control open (firmware %s)", self._xvf_version)
+                    self._xvf_applied = []
+                    if self._xvf_settings:
+                        await self._apply_xvf_settings(dict(self._xvf_settings))
+                except Exception as e:
+                    if self._xvf_status != "error":
+                        log.warning("XVF3800 control unavailable: %s", e)
+                    self._close_xvf()
+                    self._xvf_status = "error"
+                    await asyncio.sleep(_XVF_RETRY_S)
+                    continue
+            try:
+                vd = await asyncio.to_thread(self._xvf.voice_direction)
+            except Exception as e:
+                log.warning("XVF3800 read failed: %s", e)
+                self._close_xvf()
+                self._xvf_status = "error"
+                await asyncio.sleep(1.0)
+                continue
+            self._handle_voice_direction(vd)
+            await asyncio.sleep(period)
+
+    def _handle_voice_direction(self, vd: Any) -> None:
+        from supervisor.devices.xvf3800 import signed_deg, to_robot_deg
+
+        if vd.speech and vd.azimuth_deg is not None and not math.isnan(vd.azimuth_deg):
+            az = to_robot_deg(vd.azimuth_deg, self._doa_offset_deg, self._doa_sign)
+            payload = {
+                "speech": True,
+                "azimuth_deg": round(signed_deg(az), 1),  # robot frame, + = left
+                "energy": float(vd.energy),
+                "beam_energy": [float(x) for x in vd.beam_energy],
+            }
+            self.send(EAR_EVENT_DOA, payload)
+            self._doa_last = payload
+            self._doa_last_speech = True
+        elif self._doa_last_speech:
+            self.send(EAR_EVENT_DOA, {"speech": False})
+            self._doa_last_speech = False
+
+    @staticmethod
+    def _valid_xvf_settings(raw: dict[str, Any]) -> dict[str, Any]:
+        from supervisor.devices.xvf3800 import TUNABLE
+
+        good: dict[str, Any] = {}
+        for name, value in raw.items():
+            if name in TUNABLE:
+                good[name] = value
+            else:
+                log.warning("ignoring XVF setting %s (not tunable)", name)
+        return good
+
+    async def _apply_xvf_settings(self, settings: dict[str, Any]) -> None:
+        xvf = self._xvf
+        if xvf is None:
+            return
+        try:
+            done = await asyncio.to_thread(xvf.apply_settings, settings)
+        except Exception as e:
+            log.warning("XVF3800 settings failed: %s", e)
+            return
+        self._xvf_applied = sorted(set(self._xvf_applied) | set(done))
+        log.info("XVF3800 settings applied: %s", settings)
+
+    def _close_xvf(self) -> None:
+        if self._xvf is not None:
+            try:
+                self._xvf.close()
+            except Exception:
+                pass
+            self._xvf = None
 
     async def _check_wake_word(self, pcm_80ms: bytes) -> None:
         """Run OpenWakeWord inference on an 80 ms frame."""
@@ -733,7 +999,7 @@ class EarWorker(BaseWorker):
             return
 
         t0 = time.monotonic()
-        while self.running and (time.monotonic() - t0) < _SOCKET_RETRY_TIMEOUT_S:
+        while self.running and (time.monotonic() - t0) < SOCKET_RETRY_TIMEOUT_S:
             try:
                 sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
                 sock.connect(path)
@@ -742,9 +1008,9 @@ class EarWorker(BaseWorker):
                 log.info("connected to mic socket: %s", path)
                 return
             except (ConnectionRefusedError, FileNotFoundError, OSError):
-                await asyncio.sleep(_SOCKET_RETRY_INTERVAL_S)
+                await asyncio.sleep(SOCKET_RETRY_INTERVAL_S)
 
-        log.error("failed to connect mic socket after %.0fs", _SOCKET_RETRY_TIMEOUT_S)
+        log.error("failed to connect mic socket after %.0fs", SOCKET_RETRY_TIMEOUT_S)
 
     def _close_mic_socket(self) -> None:
         if self._mic_sock:

@@ -41,3 +41,11 @@
 
 # Face (TinyUSB CDC — serial defaults to "123456")
 #SUBSYSTEM=="tty", ATTRS{idVendor}=="303a", ATTRS{serial}=="123456", SYMLINK+="robot_face", MODE="0666"
+
+# ── reSpeaker XVF3800 (Flex / 4-Mic Array), USB firmware ────────────
+# Lets the supervisor (user in plugdev) send USB control requests for voice
+# direction and tuning (supervisor/devices/xvf3800.py). The audio side is a
+# normal ALSA card and needs nothing here.
+# 001a = 4-Mic Array firmware, 001e = Flex as shipped (C16K6Ch).
+SUBSYSTEM=="usb", ATTR{idVendor}=="2886", ATTR{idProduct}=="001a", MODE="0660", GROUP="plugdev"
+SUBSYSTEM=="usb", ATTR{idVendor}=="2886", ATTR{idProduct}=="001e", MODE="0660", GROUP="plugdev"
