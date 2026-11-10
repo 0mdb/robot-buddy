@@ -534,7 +534,7 @@ def main() -> int:
         border_call_pos = _find_non_comment_call(face_ui_text, "conv_border_render")
         if border_call_pos >= 0:
             context_before = face_ui_text[
-                max(0, border_call_pos - 300) : border_call_pos
+                max(0, border_call_pos - 500) : border_call_pos
             ]
             has_guard = (
                 "system.mode == SystemMode::NONE" in context_before
@@ -557,7 +557,7 @@ def main() -> int:
             )
             if btn_call_pos >= 0:
                 context_before_btn = face_ui_text[
-                    max(0, btn_call_pos - 300) : btn_call_pos
+                    max(0, btn_call_pos - 500) : btn_call_pos
                 ]
                 has_btn_guard = (
                     "system.mode == SystemMode::NONE" in context_before_btn
