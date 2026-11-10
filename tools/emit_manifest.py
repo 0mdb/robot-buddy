@@ -13,6 +13,9 @@ from the file that owns it:
   supervisor/config.py         governor thresholds, tick rate
   supervisor/core/state.py     the mode table
   supervisor/core/tick_loop.py teleop TTL
+  supervisor/workers/vision_worker.py
+                               the camera's capture size, which is what Vantage's
+                               video carries (the worker writes the full-res picture)
   docs/power.md                pack configuration, cross-checked against the
                                UPS monitor's discharge curve in code
 
@@ -66,6 +69,20 @@ POWER_DOC = REPO_ROOT / "docs" / "power.md"
 CELLS_RE = re.compile(r"(\d+)×\s*\d{5}\s+(Li-ion|LiPo|LiFePO4)\b[^(\n]*\((\d+)S\b")
 # Full-charge cell voltage per chemistry, for the cross-check against code.
 FULL_CELL_MV = {"li-ion": 4200, "lipo": 4200, "lifepo4": 3650}
+
+# The capture size the vision worker configures the camera with, and the size of the picture
+# it writes into the Vantage frame slot. Read from the worker's source rather than importing
+# it, which would pull in cv2 and picamera2. (VisionConfig.capture_width in config.py is a
+# duplicate nothing reads; the worker's literal is what the camera actually gets.)
+VISION_WORKER = REPO_ROOT / "supervisor" / "workers" / "vision_worker.py"
+CAPTURE_RE = re.compile(r"self\._capture_size\s*=\s*\((\d+),\s*(\d+)\)")
+
+# The media worker's encode clock: Vantage's bridge starts it with VANTAGE_MEDIA_FPS, default
+# 30 (~/vantage supervisor/bridge.py, MediaRelay). It repeats the latest picture when the camera
+# is slower, so this is the stream's rate, not the camera's (10-20 Hz on the Pi).
+VIDEO_FPS = 30
+# WireGuard leaves a 1420 MTU; RTP payloads stay at or under 1372 (Vantage CLAUDE.md).
+VIDEO_MAX_PAYLOAD = 1372
 
 # Client-side display threshold before the HUD says LINK_DEGRADED. Display only.
 WARN_MS = 150
@@ -148,6 +165,18 @@ def _pack() -> dict[str, int | str]:
     return {"series": series, "parallel": count // series, "chem": chem}
 
 
+def _capture_size() -> tuple[int, int]:
+    """The vision worker's camera capture size, from its own source."""
+    found = CAPTURE_RE.findall(VISION_WORKER.read_text())
+    if len(found) != 1:
+        sys.exit(
+            f"expected one `self._capture_size = (w, h)` in {VISION_WORKER}, found {len(found)}"
+            " — read the capture size properly"
+        )
+    w, h = found[0]
+    return int(w), int(h)
+
+
 def _teleop_ttl_s() -> float:
     """Read the tick loop's teleop TTL from its own signature, not a copy."""
     from supervisor.core.tick_loop import TickLoop
@@ -198,6 +227,14 @@ def build() -> tuple[str, list[str]]:
     add(f"telemetry = {{ port = 5601, fast_hz = {control.tick_hz} }}")
     add('status    = { datachannel = "status", hz = 1 }')
     add("control   = { port = 5602, rate_hz = 100 }")
+    # Served only with --vantage --vantage-video; without it the handshake answers "no video"
+    # and the client carries on with telemetry. The picture is rotated by vision.rotate_deg,
+    # so 90/270 swap these; the client sizes from the decoded picture, never from this line.
+    cap_w, cap_h = _capture_size()
+    add(
+        f'video     = {{ webrtc = true, codec = "h264", width = {cap_w}, height = {cap_h}, '
+        f"fps = {VIDEO_FPS}, max_payload = {VIDEO_MAX_PAYLOAD} }}"
+    )
     add("")
     add("[channels]")
     # The adapter sends an identity quaternion: only accelerometer tilt exists, with unverified
