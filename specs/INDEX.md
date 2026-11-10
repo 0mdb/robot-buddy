@@ -45,7 +45,7 @@ Research & decisions. 7 research buckets (safety psychology, temperament, memory
 - §6: Impulse catalog (stimulus → affect delta)
 - §7: Guardrails (duration caps, intensity caps, context gate)
 - §8: Layer 0 (deterministic) vs Layer 1 (LLM-enhanced) architecture
-- §9: Memory system (5 decay tiers, COPPA compliant)
+- §9: Memory system (5 decay tiers, per-family-member profiles)
 - §10: Worker protocol (personality snapshot struct)
 - §11: Tick loop integration (suppress-then-read model)
 - §13: Evaluation metrics

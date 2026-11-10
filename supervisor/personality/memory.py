@@ -1,6 +1,6 @@
 """Local memory store for the personality engine (PE spec S2 §8).
 
-COPPA-compliant: stores only semantic tags (no raw transcripts),
+Privacy-by-default: stores only semantic tags (no raw transcripts),
 local-only on Pi filesystem, consent-gated, parent-deletable.
 """
 

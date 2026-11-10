@@ -584,11 +584,11 @@ Memory is stored as a JSON file on the Pi 5 filesystem. Local-only — never tra
 | Local-only storage | Memory file never leaves Pi 5 | No memory content in server sync |
 | Parent data viewer | Dashboard panel shows all stored memories | REST endpoint + React component |
 | Parent deletion | "Forget everything" button wipes memory file | `personality.cmd.reset_memory` event |
-| Consent gate | Memory storage requires parental consent | `memory_consent` config flag, default false |
+| Consent gate | Memory storage configurable | `memory_consent` config flag, default true (family project) |
 | Retention limit | 50 entries max | Evict lowest-strength on overflow |
 | Recall framing | "I think we talked about..." not clinical recall | Enforced in LLM system prompt §12 |
 
-[PE-2: persistent memory with configurable constraints. COPPA compliance per Bucket 0 §8.]
+[PE-2: persistent memory with configurable constraints. Privacy-by-default per Bucket 0 §8; COPPA N/A (family project, not commercially operated).]
 
 ---
 
@@ -630,7 +630,7 @@ This implements HC-10: no sustained negative affect during idle. If a slowly-dec
 | ID | Rule | Enforcement Point | Default |
 |----|------|-------------------|---------|
 | HC-1 | Never claim sentience | LLM system prompt (§12) | On |
-| HC-2 | No biometric identification | No voice ID or face ID | On |
+| HC-2 | Identification limited to registered family | Face/voice ID for known household members only | On |
 | HC-3 | No emotional profiling | Memory stores semantic tags only | On |
 | HC-4 | Never direct negative affect at child | mood_reason validation (§13) | On |
 | HC-5 | No loneliness/abandonment | Idle rule filter (§7.4) | On |
@@ -1312,9 +1312,9 @@ Sent by Core to the personality worker at startup:
 | Decision | Option | Operationalized In | Verification |
 |----------|--------|-------------------|-------------|
 | PE-1 | C (Hybrid) | §2 (integrator), §3 (mappings), §5 (impulses), §9 (guardrail rules) | Continuous affect + discrete rules both specified |
-| PE-2 | C (Persistent) | §8 (memory system) | Decay tiers, COPPA constraints, storage schema |
+| PE-2 | C (Persistent) | §8 (memory system) | Decay tiers, privacy-by-default, storage schema |
 | PE-3 | A + noise | §7 (idle rules), §7.2 (noise injection) | Deterministic rules + Gaussian noise from Predictability |
-| PE-4 | A (Fixed) | §1 (axis positions static) | No per-child adaptation mechanism specified |
+| PE-4 | B (Per-child profiles) | §1 (axis positions static), §8 (per-person memory) | Face/voice ID for family members; content personalization per person |
 | PE-5 | C (Context-triggered) | §5 (L0 impulse catalog), §7.3 (suppression rules) | Zero verbal initiative; event-driven only |
 | PE-6 | B → C (Qwen3-8B → 14B) | §12.1 (config), §12.2 (guided decoding) | Config change, escalation criteria table |
 | PE-7 | C (Rules + pluggable) | §10 (worker architecture) | No LLM on device; pluggable classifier interface |
@@ -1339,10 +1339,10 @@ Sent by Core to the personality worker at startup:
 
 | Bucket | Key Findings Used | Sections |
 |--------|-------------------|----------|
-| 0 (Safety) | HC-1-10, RS-1-10, COPPA, EU AI Act | §8.5, §9.3, §12.4 |
+| 0 (Safety) | HC-1-10, RS-1-10, privacy-by-default | §8.5, §9.3, §12.4 |
 | 1 (Temperament) | TAME parametrization, VA anchors, sigmoid mapping | §1, §3, §4 |
 | 2 (Memory/Affect) | Phasic/tonic separation, D'Mello decay rates, asymmetric decay | §6, §8.2 |
-| 3 (Relationships) | Fixed personality rationale, ritual formation | §1 (PE-4), §8 |
+| 3 (Relationships) | Per-child profiles, ritual formation | §1 (PE-4), §8 |
 | 4 (Proactive/Reactive) | Idle catalog, context suppression, annoying threshold | §5 (L0), §7 |
 | 5 (LLM Selection) | 7B threshold, Qwen3-8B recommendation, guided decoding | §12.1, §12.2 |
 | 6 (Prompt Engineering) | System prompt v2, schema v2, few-shot examples, token budget | §12.3-12.7 |

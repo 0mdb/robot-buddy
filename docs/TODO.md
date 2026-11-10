@@ -35,6 +35,11 @@ Living section — reorder as priorities shift. Current recommended sequence:
 ### Track D: Infrastructure & Tooling
 _(all items completed)_
 
+### Track E: Person & Animal Identification
+1. Phase 1: Face detection & recognition (spike → enrollment UI → vision pipeline → per-person memory)
+2. Phase 2: Voice identification (spike → enrollment → ear pipeline → face+voice fusion)
+3. Phase 3: Person & animal detection (YOLO/MobileNet spike → detection pipeline → personality responses)
+
 ---
 
 ## Active Backlog
@@ -321,9 +326,34 @@ _138 items archived to `docs/TODO-archive.md` (latest: 2026-02-24). Sections: Fa
 ## Future Development & R&D
 
 ### Near-Term Ideas
-- `[opus]` Speaker personalization (HC-2 compliant): explicit per-child profiles via parent UI; no voice ID / biometric embeddings
 - Home Assistant light control via conversation (see `docs/home-assistant-integration.md`)
 - Additional modes: LINE_FOLLOW, BALL, CRANE, CHARGING
+
+### Track E: Person & Animal Identification (PE-4 revised)
+
+**Context**: HC-2 amended 2026-11-10 — project is family-use, not commercial. Biometric identification is expected and required. PE-4 revised from Option A (Fixed) to Option B (Per-Child Profiles).
+
+**Phase 1: Face Detection & Recognition** `[opus]`
+- [ ] Spike: evaluate face_recognition (dlib) vs MediaPipe Face Detection vs OpenCV DNN on Pi 5 (latency, accuracy, VRAM/CPU cost)
+- [ ] Family registration UI in dashboard: capture face embeddings for each household member (name + photo enrollment)
+- [ ] Vision worker: add face detection pipeline (separate from existing HSV color detection)
+- [ ] Vision worker: face recognition against registered family embeddings → emit `vision.person_identified` event
+- [ ] Per-person memory profiles: extend memory store (PE spec S2 §8) to partition by identified person
+- [ ] Personality engine: greet by name, recall per-person topics/rituals when face is recognized
+- [ ] Unknown face handling: "I see someone I don't know" → neutral greeting, no profile creation without parent action
+
+**Phase 2: Voice Identification** `[opus]`
+- [ ] Spike: evaluate speaker embedding models for Pi 5 (resemblyzer, speechbrain, pyannote) — latency, accuracy with children's voices
+- [ ] Voice enrollment UI: record voice samples per family member via dashboard
+- [ ] Ear worker: extract speaker embeddings after STT, match against enrolled voices → emit `ear.speaker_identified` event
+- [ ] Fuse face + voice ID for higher confidence (either modality sufficient, both = strongest match)
+- [ ] Per-user wake word sensitivity tuning (optional: personalized thresholds per voice profile)
+
+**Phase 3: Person & Animal Detection** `[sonnet]`
+- [ ] Spike: evaluate YOLO/MobileNet-SSD for person + animal detection on Pi 5 (latency, model size)
+- [ ] Vision worker: add person/animal detection (class labels: person, cat, dog, etc.)
+- [ ] Personality responses: "I see a dog!" / "Someone's here!" for unregistered detections
+- [ ] Pet profiles (optional): register household pets by appearance for named recognition
 
 ### Blue-Sky Personality Features
 - `[opus]` Homeostatic drives layer (energy/curiosity/social “batteries”) that slowly biases PE impulses over minutes
