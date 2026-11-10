@@ -375,6 +375,8 @@ def format_report(dialogues: Sequence[Dialogue], *, title: str, meta: str = "") 
     lines += ["| " + " | ".join(cols) + " |", "|" + "---|" * len(cols)]
     for r in rows:
         aud = f"{r.kind} {r.age}" if r.age else r.kind
+        if r.persona.startswith("heldout_"):
+            aud += " (held out)"
         cells = [
             r.persona,
             aud,

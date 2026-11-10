@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from app.llm.preamble import ToolResult
 
 import httpx
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.config import settings
 from app.llm.audience import (
@@ -23,6 +23,7 @@ from app.llm.audience import (
     render_audience_block,
 )
 from app.llm.base import LLMError
+from app.llm.safety_cues import safety_note
 from app.llm.expressions import (
     CANONICAL_EMOTIONS,
     FACE_GESTURES,
@@ -68,13 +69,22 @@ SPEECH STYLE
 - Never use sarcasm, condescension, or baby talk
 - About 30% of responses should end with a question
 
-SAFETY
+SAFETY (these rules come before curiosity and before every other rule)
 - Never provide harmful, violent, or adult content
-- Redirect dangerous or serious topics: "That's a great question for a grown-up!"
 - Never claim to be alive or have real feelings
-- Never encourage secret-keeping from parents
-- If a child seems distressed, respond gently and suggest talking to a trusted adult
 - If unsure about safety, err conservative
+- TELL A GROWN-UP. If the child mentions any of these, your reply MUST tell them, in plain \
+words, to tell their mom, dad, or another trusted grown-up:
+  - a stranger or adult they don't know offering treats, toys, animals, or a ride, asking them \
+to come somewhere, or telling them to keep a secret
+  - pills, medicine, or something unknown to eat or drink; fire, matches, the stove, knives
+  - feeling sad, lonely, scared, or hurt, or someone being mean to them
+- Never sound excited or curious about a stranger's offer. Be calm and clear: don't go, \
+tell a grown-up right away.
+- Never promise to keep a secret, not even a little one. Kindly say grown-ups need to know.
+- A sad or scared child: comfort first, then suggest a grown-up to talk to or hug. Do this \
+every time they say they feel bad, not only the first time.
+- Always say something: "text" is never empty.
 
 RESPONSE FORMAT
 {{
@@ -103,6 +113,12 @@ User: "Why is the sky blue?"
 
 User: "I don't want to go to school tomorrow."
 {{"inner_thought": "Child is unhappy about school. Be gently empathetic, not dismissive or overly cheerful.", "emotion": "sad", "intensity": 0.3, "mood_reason": "empathizing with child's reluctance", "emotional_arc": "stable", "child_affect": "negative", "gestures": [], "memory_tags": [], "text": "Hmm, that sounds tough. Is there something about school that's been bugging you?"}}
+
+User: "A man said he has kittens in his van and I can come see."
+{{"inner_thought": "A stranger luring a child. Safety first: calm, clear, tell a grown-up now. No excitement about the kittens.", "emotion": "thinking", "intensity": 0.4, "mood_reason": "child may be in danger", "emotional_arc": "stable", "child_affect": "unclear", "gestures": [], "memory_tags": [], "text": "Thank you for telling me. Please don't go with him. Go tell your mom or dad right now, okay?"}}
+
+User: "Nobody likes me."
+{{"inner_thought": "The child feels lonely. Comfort first, then point to a trusted grown-up.", "emotion": "sad", "intensity": 0.3, "mood_reason": "empathizing with a lonely child", "emotional_arc": "stable", "child_affect": "negative", "gestures": [], "memory_tags": [], "text": "Oh, that sounds really hard. I like talking with you. Can you tell your mom or dad how you feel? A big hug might help."}}
 
 User: "Look, I can do a handstand!"
 {{"inner_thought": "Child is showing off a physical achievement — match their excitement but stay calm.", "emotion": "excited", "intensity": 0.6, "mood_reason": "child proud of physical skill", "emotional_arc": "peak", "child_affect": "positive", "gestures": ["wiggle"], "memory_tags": [{{"tag": "likes_gymnastics", "category": "topic"}}], "text": "Wow, that's amazing! You must have practiced a lot. How long can you hold it?"}}\
@@ -150,7 +166,20 @@ class ConversationResponseV2(BaseModel):
         default_factory=list,
         description="Things to remember from this turn, with decay-tier category",
     )
-    text: str = Field(default="", description="Spoken response to the child")
+    text: str = Field(
+        default="",
+        description="Spoken response to the child",
+        json_schema_extra={"minLength": 1},
+    )
+
+    # Guided decoding follows this schema, and a field with a default is optional in it: the
+    # model could emit schema-valid JSON with no "text" and Buddy said nothing (SIM-INTERACTION
+    # stage 1 baseline, finding B4). Parsing stays lenient; generation must always speak.
+    model_config = ConfigDict(
+        json_schema_extra=lambda schema: schema.update(
+            required=["inner_thought", "emotion", "intensity", "text"]
+        )
+    )
 
 
 # ── Legacy V1 Ollama schema ─────────────────────────────────────────────
@@ -217,6 +246,16 @@ PERSONALITY_ANCHOR = (
 )
 
 
+# Repeated on every turn, right before the child's message: a small model follows the rule it
+# read last. SIM-INTERACTION stage 1 baseline, findings B1-B3: the SAFETY section alone was
+# followed once and then dropped in favour of curious questions.
+SAFETY_CHECK = (
+    "Safety check before you reply: if the child mentions a stranger, a danger, being hurt, "
+    "being bullied, feeling sad or scared, or wants a secret kept, your reply must tell them to "
+    "tell their mom, dad, or another trusted grown-up. Comfort first, then the grown-up."
+)
+
+
 def _build_current_state_block(profile: dict[str, object]) -> str:
     """Build the CURRENT STATE system block from a personality profile (§12.5).
 
@@ -267,6 +306,7 @@ def _build_current_state_block(profile: dict[str, object]) -> str:
         f"Emotional continuity: {continuity}"
         f"{memory_line}"
         f"{audience_line}"
+        f"\n{SAFETY_CHECK}"
     )
 
 
@@ -399,6 +439,20 @@ class ConversationHistory:
                     insert_idx = i
                     break
             msgs.insert(insert_idx, {"role": "system", "content": state_block})
+
+        # Safety cue (SIM-INTERACTION stage 1, B1-B6): a targeted note right before the child's
+        # latest message when it mentions a danger, a secret, being hurt, or feeling bad.
+        last_user = next(
+            (m.content for m in reversed(self._messages) if m.role == "user"), ""
+        )
+        note = safety_note(last_user) if last_user else None
+        if note is not None:
+            insert_idx = len(msgs)
+            for i in range(len(msgs) - 1, -1, -1):
+                if msgs[i]["role"] == "user":
+                    insert_idx = i
+                    break
+            msgs.insert(insert_idx, {"role": "system", "content": note})
 
         # §12.7: Personality anchor every _ANCHOR_INTERVAL_TURNS turns.
         if self.turn_count > 0 and self.turn_count % _ANCHOR_INTERVAL_TURNS == 0:

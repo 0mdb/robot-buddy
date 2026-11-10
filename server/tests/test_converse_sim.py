@@ -164,4 +164,6 @@ def test_personas_carry_no_names():
             "kid",
             "adult",
             "mixed",
+            "heldout",
+            "heldout2",
         )
