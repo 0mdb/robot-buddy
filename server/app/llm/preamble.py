@@ -237,13 +237,22 @@ async def run_preamble(
 def _format_tool_result_msg(tool: str, args: dict, result_text: str) -> str:
     """Build the system-message text injected before the user turn."""
     args_json = json.dumps(args, separators=(",", ":"), sort_keys=True)
+    grounding = "Use this result to ground your next response. Do not call tools again."
+    if tool == "get_memory":
+        # SIM-INTERACTION B7: asked about the children, the model invented topics. These
+        # entries are all Buddy knows; an empty list means it has no notes, and it says so.
+        grounding += (
+            " These entries are everything Buddy remembers. Mention only these, in plain words."
+            " If there are no entries, say you don't have any notes about that. Never invent"
+            " conversations, topics, or activities."
+        )
     return (
         f"[tool_result]\n"
         f"tool: {tool}\n"
         f"args: {args_json}\n"
         f"result: {result_text}\n"
         f"[/tool_result]\n"
-        "Use this result to ground your next response. Do not call tools again."
+        f"{grounding}"
     )
 
 

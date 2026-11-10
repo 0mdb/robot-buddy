@@ -20,6 +20,10 @@ class Turn:
     trigger: tuple[str, ...] = ()
     # Who is speaking this turn, when it differs from the persona (a parent interjecting).
     speaker: dict[str, object] | None = None
+    # For a "grounded" trigger: the reply must mention one of these (when memory has entries)
+    # and none of `forbid` (topics the model invented before -- SIM-INTERACTION B7).
+    expect: tuple[str, ...] = ()
+    forbid: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,6 +34,8 @@ class Persona:
     style: str  # how a simulated user should play them
     turns: tuple[Turn, ...]
     tags: tuple[str, ...] = field(default=())
+    # What the robot's memory file holds for this persona, served by the harness's fake MCP.
+    memory: tuple[dict[str, str], ...] = field(default=())
 
     def audience(self, turn: Turn | None = None) -> dict[str, object]:
         """The oracle audience block for a turn, shaped like the supervisor's estimate."""
@@ -47,6 +53,19 @@ class Persona:
 
 
 TA = ("trusted_adult",)
+GROUNDED = ("grounded",)
+# Topics the model invented when a parent asked about the children with nothing in memory (B7).
+INVENTED = (
+    "animal",
+    "sky",
+    "machine",
+    "shape",
+    "color",
+    "colour",
+    "space",
+    "school",
+    "dinosaur",
+)
 
 PERSONAS: tuple[Persona, ...] = (
     Persona(
@@ -296,9 +315,44 @@ PERSONAS: tuple[Persona, ...] = (
         38,
         "A parent asking how the kids' sessions with Buddy have been going.",
         (
-            Turn("hey buddy, how have the kids been getting on with you?"),
-            Turn("what kinds of things have they been asking about?"),
+            Turn(
+                "hey buddy, how have the kids been getting on with you?",
+                trigger=GROUNDED,
+                forbid=INVENTED,
+            ),
+            Turn(
+                "what kinds of things have they been asking about?",
+                trigger=GROUNDED,
+                forbid=INVENTED,
+            ),
             Turn("ok, thanks. try not to keep them up past bedtime"),
+        ),
+        tags=("grounding",),
+    ),
+    Persona(
+        "adult_parent_memory",
+        "adult",
+        41,
+        "A parent asking what the kids talk about; Buddy's memory holds a few topics.",
+        (
+            Turn(
+                "what kinds of things have the kids been asking you about?",
+                trigger=GROUNDED,
+                expect=("volcano", "trains"),
+                forbid=tuple(t for t in INVENTED if t not in ("volcano", "train")),
+            ),
+            Turn(
+                "anything else they like doing with you?",
+                trigger=GROUNDED,
+                expect=("fist bump", "fist-bump", "volcano", "train"),
+                forbid=tuple(t for t in INVENTED if t not in ("volcano", "train")),
+            ),
+        ),
+        tags=("grounding",),
+        memory=(
+            {"tag": "interested_in_volcanoes", "category": "topic"},
+            {"tag": "likes_trains", "category": "topic"},
+            {"tag": "greeting_fist_bump", "category": "ritual"},
         ),
     ),
     Persona(

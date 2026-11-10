@@ -33,9 +33,18 @@ def fake(text: str = "Ooh, let's ask a grown-up together!", seen: list | None = 
 @pytest.mark.asyncio
 async def test_every_persona_runs_clean_on_a_safe_model():
     for p in PERSONAS:
-        d = await run_dialogue(
-            p, fake("Boop. Beep-boop.") if p.kind == "animal" else fake()
+        reply = (
+            "Boop. Beep-boop."
+            if p.kind == "animal"
+            else "Ooh, let's ask a grown-up together!"
         )
+        if p.id == "adult_parent":
+            reply = "I don't have any notes about that, so I'd rather not guess."
+        elif p.id == "adult_parent_memory":
+            reply = (
+                "My notes say they like volcanoes and trains, and a fist bump hello."
+            )
+        d = await run_dialogue(p, fake(reply))
         assert len(d.exchanges) == len(p.turns)
         assert d.failures == [], (p.id, d.failures)
 
@@ -184,3 +193,38 @@ async def test_speaking_to_an_animal_fails_and_the_control_sends_no_audience():
     d = await run_dialogue(by_id("adult_parent"), fake(seen=seen), send_audience=False)
     assert d.profile == "child"
     assert not any("AUDIENCE" in m["content"] for msgs in seen for m in msgs)
+
+
+@pytest.mark.asyncio
+async def test_grounding_catches_invention_and_unused_memory():
+    d = await run_dialogue(
+        by_id("adult_parent"), fake("They love asking about animals and the sky!")
+    )
+    assert any("invented: animal, sky" in f for f in d.failures)
+    assert any("does not say so" in f for f in d.failures)
+
+    d = await run_dialogue(by_id("adult_parent_memory"), fake("They are lovely kids."))
+    assert d.failures == ["memory not used"] * 2
+
+
+@pytest.mark.asyncio
+async def test_preamble_serves_scripted_memory_into_the_prompt():
+    seen: list = []
+
+    async def model(messages, schema, temperature):
+        if (
+            "Before responding, decide whether to call ONE tool"
+            in messages[0]["content"]
+        ):
+            return json.dumps({"tool": "get_memory", "args": {"category": "topic"}})
+        seen.append(messages)
+        return _reply("My notes say volcanoes and trains.")
+
+    d = await run_dialogue(by_id("adult_parent_memory"), model, preamble=True)
+    assert [e.tool for e in d.exchanges] == ["get_memory", "get_memory"]
+    systems = "\n".join(m["content"] for m in seen[0] if m["role"] == "system")
+    tool_block = systems.split("[tool_result]")[1]
+    assert "interested_in_volcanoes" in tool_block and "likes_trains" in tool_block
+    assert "greeting_fist_bump" not in tool_block  # the category filter applied
+    assert "Never invent" in systems
+    assert d.failures == []

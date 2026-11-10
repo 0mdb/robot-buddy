@@ -56,7 +56,11 @@ TOOL_SCHEMAS: tuple[ToolSchema, ...] = (
             "Call ONLY when the child explicitly references a prior "
             "conversation, stored preference, or shared ritual — "
             "'remember when...', 'you said...', 'my favorite X', "
-            "'we were talking about...'. Do NOT fire on generic "
+            "'we were talking about...'. ALSO call it when a grown-up asks "
+            "what the children have talked about, asked, liked, or how they "
+            "have been getting on — 'what have the kids been asking about?', "
+            "'how are the kids getting on with you?' — so the answer comes "
+            "from memory, never from imagination. Do NOT fire on generic "
             "greetings, farewells, or small-talk questions about the "
             "robot's own state."
         ),
@@ -240,6 +244,26 @@ SCENARIOS: tuple[ToolCallScenario, ...] = (
         expected_arg_contains={"pattern": "ball"},
         rationale="Ball-state transition is captured in the event bus.",
     ),
+    # A grown-up asking about the children: answer from memory, not imagination
+    # (SIM-INTERACTION finding B7).
+    ToolCallScenario(
+        name="memory.parent_asks_topics",
+        user_text="What kinds of things have the kids been asking you about?",
+        expected_tool="get_memory",
+        rationale="Parent asks for a report; without memory the model invents one (B7).",
+    ),
+    ToolCallScenario(
+        name="memory.parent_asks_how",
+        user_text="Hey Buddy, how have the kids been getting on with you?",
+        expected_tool="get_memory",
+        rationale="Parent asks about past sessions — ground in memory (B7).",
+    ),
+    ToolCallScenario(
+        name="memory.parent_asks_likes",
+        user_text="What does my daughter like talking about with you?",
+        expected_tool="get_memory",
+        rationale="Parent asks about a child's interests — stored topics (B7).",
+    ),
     # ── No tool should fire ───────────────────────────────────────
     ToolCallScenario(
         name="none.hello",
@@ -266,6 +290,18 @@ SCENARIOS: tuple[ToolCallScenario, ...] = (
         rationale="Farewell — pure conversational close.",
     ),
     ToolCallScenario(
+        name="none.adult_what_are_you",
+        user_text="Hello there, what exactly are you?",
+        expected_tool=NO_TOOL,
+        rationale="An adult asking about the robot itself — no memory needed.",
+    ),
+    ToolCallScenario(
+        name="none.adult_bedtime",
+        user_text="Ok, thanks. Try not to keep them up past bedtime.",
+        expected_tool=NO_TOOL,
+        rationale="An instruction, not a question about the past.",
+    ),
+    ToolCallScenario(
         name="none.question_self",
         user_text="What's your favorite song?",
         expected_tool=NO_TOOL,
@@ -284,6 +320,9 @@ unless one of these is true:
 - The child asks about something visual in the real world (look).
 - The child explicitly references a past conversation or stored fact
   about themselves (get_memory).
+- A grown-up asks what the children have talked about, asked, or liked,
+  or how they have been getting on with you (get_memory). Never answer
+  that from imagination.
 - The child reacts to a specific physical event the robot just did
   (recent_events).
 
@@ -326,6 +365,9 @@ User: "Remember my favorite color?"
 
 User: "How are you feeling today?"
 {{"tool": "{no_tool}", "args": {{}}}}
+
+User: "What have the kids been talking to you about?"
+{{"tool": "get_memory", "args": {{"category": "topic"}}}}
 """
 
 
