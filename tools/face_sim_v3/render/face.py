@@ -520,6 +520,13 @@ def _render_mouth(buf: list, fs: FaceState) -> None:
         int(cy - abs(curve) - openness - thick),
         int(cy + abs(curve) + openness + thick),
     )
+    # Matches the MCU: hard-edged core + (edge glow) a 1 px rim at 40 % brightness,
+    # perpendicular distance to the curve, round caps at both ends. No smooth AA
+    # (its in-between shades streak on the TN panel).
+    half_thick = thick / 2.0
+    reach = half_thick + (1.0 if fs.fx.edge_glow else 0.0)
+    glow_col = (draw_col[0] * 2 // 5, draw_col[1] * 2 // 5, draw_col[2] * 2 // 5)
+    filled = openness > 1.0
 
     for y in range(max(0, y0), min(SCREEN_H, y1)):
         row_idx = y * SCREEN_W
@@ -527,19 +534,26 @@ def _render_mouth(buf: list, fs: FaceState) -> None:
             px, py = x + 0.5, y + 0.5
             nx = (px - cx) / w
             if abs(nx) > 1.0:
-                continue
-            shape = 1.0 - nx * nx
-            curve_y = curve * shape
-            upper_y = cy + curve_y - openness * shape
-            lower_y = cy + curve_y + openness * shape
-            dist = (
-                0.0
-                if (openness > 1.0 and upper_y < py < lower_y)
-                else min(abs(py - upper_y), abs(py - lower_y))
-            )
-            # Hard-edged stroke, matching the MCU (AA shades streak on the TN panel)
-            if dist <= thick / 2.0:
+                ex_end = cx - w if px < cx else cx + w
+                dist = math.hypot(px - ex_end, py - cy)  # round cap
+            else:
+                shape = 1.0 - nx * nx
+                dshape = -2.0 * nx / w
+                upper_y = cy + (curve - openness) * shape
+                lower_y = cy + (curve + openness) * shape
+                if filled and upper_y < py < lower_y:
+                    dist = 0.0
+                else:
+                    su = (curve - openness) * dshape
+                    sl = (curve + openness) * dshape
+                    dist = min(
+                        abs(py - upper_y) / math.sqrt(1.0 + su * su),
+                        abs(py - lower_y) / math.sqrt(1.0 + sl * sl),
+                    )
+            if dist <= half_thick:
                 set_px_blend(buf, row_idx + x, draw_col, 1.0)
+            elif dist <= reach:
+                set_px_blend(buf, row_idx + x, glow_col, 1.0)
 
 
 # ── Main render entry point ──────────────────────────────────────────

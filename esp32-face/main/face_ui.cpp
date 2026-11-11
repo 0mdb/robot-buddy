@@ -410,53 +410,75 @@ static void render_mouth(pixel_t* buf, const FaceState& fs)
     const float   half_thick = thick * 0.5f;
     const pixel_t mouth_color = rgb_to_color(r, g, b);
 
+    // Same look as the eyes: hard-edged core plus (with edge glow) a 1 px rim at 40 %
+    // brightness. No smooth AA: its in-between shades shift hue with viewing angle on
+    // this TN panel and streaked. Distance is measured perpendicular to the curve so
+    // the stroke keeps its width, and the ends get round caps instead of square cuts.
+    const bool    glow = fs.fx.edge_glow;
+    const pixel_t glow_color = scale_color(mouth_color, 2, 5);
+    const float   rim = glow ? 1.0f : 0.0f;
+    const float   reach = half_thick + rim;
+    const bool    filled = openness > 1.0f;
+
     // Per-column curve values are the same for every row: compute them once.
     static constexpr int MAX_MOUTH_COLS = SCREEN_W;
-    static float         col_upper[MAX_MOUTH_COLS]; // static: keep ~3 KB off the 8 KB task stack
+    static float         col_upper[MAX_MOUTH_COLS]; // static: keep ~4 KB off the 8 KB task stack
     static float         col_lower[MAX_MOUTH_COLS];
+    static float         col_cos_u[MAX_MOUTH_COLS]; // vertical -> perpendicular distance factors
+    static float         col_cos_l[MAX_MOUTH_COLS];
     static bool          col_valid[MAX_MOUTH_COLS];
     const int            cx0 = x0 < 0 ? 0 : x0;
     const int            cx1 = x1 > SCREEN_W ? SCREEN_W : x1;
-    float                ymin = 1e9f;
-    float                ymax = -1e9f;
+    float                ymin = cy;
+    float                ymax = cy;
     for (int x = cx0; x < cx1; x++) {
         const int   i = x - cx0;
         const float nx = (static_cast<float>(x) + 0.5f - cx) / w;
         col_valid[i] = fabsf(nx) <= 1.0f;
         if (!col_valid[i]) continue;
         const float shape = 1.0f - nx * nx;
-        const float curve_y = curve * shape;
-        col_upper[i] = cy + curve_y - openness * shape;
-        col_lower[i] = cy + curve_y + openness * shape;
+        const float dshape = -2.0f * nx / w; // d(shape)/dx
+        col_upper[i] = cy + (curve - openness) * shape;
+        col_lower[i] = cy + (curve + openness) * shape;
+        const float su = (curve - openness) * dshape;
+        const float sl = (curve + openness) * dshape;
+        col_cos_u[i] = 1.0f / sqrtf(1.0f + su * su);
+        col_cos_l[i] = 1.0f / sqrtf(1.0f + sl * sl);
         ymin = fminf(ymin, col_upper[i]);
         ymax = fmaxf(ymax, col_lower[i]);
     }
-    // Hard-edged stroke (no anti-aliasing): on this TN panel the in-between AA shades
-    // shift hue with viewing angle and showed as coloured streaks along the mouth.
-    const float reach = half_thick;
-    const bool  filled = openness > 1.0f;
-    int         ry0 = static_cast<int>(floorf(ymin - reach));
-    int         ry1 = static_cast<int>(ceilf(ymax + reach)) + 1;
+    int ry0 = static_cast<int>(floorf(ymin - reach));
+    int ry1 = static_cast<int>(ceilf(ymax + reach)) + 1;
     if (ry0 < (y0 < 0 ? 0 : y0)) ry0 = (y0 < 0 ? 0 : y0);
     if (ry1 > (y1 > SCREEN_H ? SCREEN_H : y1)) ry1 = (y1 > SCREEN_H ? SCREEN_H : y1);
+    const float x_left = cx - w; // both lines meet at (x_end, cy) where shape = 0
+    const float x_right = cx + w;
 
     for (int y = ry0; y < ry1; y++) {
         const int   row = y * SCREEN_W;
         const float py = static_cast<float>(y) + 0.5f;
         for (int x = cx0; x < cx1; x++) {
-            const int i = x - cx0;
-            if (!col_valid[i]) continue;
-            const float upper_y = col_upper[i];
-            const float lower_y = col_lower[i];
-            if (py < upper_y - reach || py > lower_y + reach) continue;
-
-            float dist = 0.0f;
-            if (!(filled && upper_y < py && py < lower_y)) {
-                dist = fminf(fabsf(py - upper_y), fabsf(py - lower_y));
+            const int   i = x - cx0;
+            const float px = static_cast<float>(x) + 0.5f;
+            float       dist = 0.0f;
+            if (col_valid[i]) {
+                const float upper_y = col_upper[i];
+                const float lower_y = col_lower[i];
+                if (py < upper_y - reach * 1.5f || py > lower_y + reach * 1.5f) continue;
+                if (!(filled && upper_y < py && py < lower_y)) {
+                    dist = fminf(fabsf(py - upper_y) * col_cos_u[i], fabsf(py - lower_y) * col_cos_l[i]);
+                }
+            } else {
+                // Round cap beyond either end.
+                const float ex_end = (px < cx) ? x_left : x_right;
+                const float dx = px - ex_end;
+                const float dy = py - cy;
+                dist = sqrtf(dx * dx + dy * dy);
             }
-
             if (dist <= half_thick) {
                 buf[row + x] = mouth_color;
+            } else if (dist <= reach) {
+                buf[row + x] = glow_color;
             }
         }
     }
