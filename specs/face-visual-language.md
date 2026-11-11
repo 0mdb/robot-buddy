@@ -84,6 +84,7 @@ All gaze, position, and layout values use **screen coordinates** (viewer facing 
 | **"Left eye"** | Screen-left eye (viewer's left). `LEFT_EYE_CX = 90` |
 | **"Right eye"** | Screen-right eye (viewer's right). `RIGHT_EYE_CX = 230` |
 | **Gaze units** | Abstract units scaled by `GAZE_PUPIL_SHIFT` (8.0) and `GAZE_EYE_SHIFT` (3.0) into pixels |
+| **Mouth follow** | The mouth shifts with the averaged eye gaze by `GAZE_MOUTH_SHIFT_X` (1.5) / `GAZE_MOUTH_SHIFT_Y` (0.75) px per gaze unit — half the eye body in X, a quarter in Y — so the face reads as turning rather than the eyes sliding over a fixed mouth. *(Amended 2026-11-10.)* |
 
 Examples:
 - `THINKING_GAZE_X = +6.0` → pupils shift right on screen (eyes look up-and-right)
@@ -93,6 +94,21 @@ Examples:
 Naming follows **viewer perspective** throughout.
 
 ---
+
+### 1.6 Life Motion
+
+*(Amended 2026-11-11.)* Mood-independent secondary motion that keeps the face from looking mechanical. All values live in `esp32-face/main/config.h` and are mirrored in the sim (parity-checked).
+
+| Behaviour | Rule |
+|---|---|
+| **Squash & stretch** | Each eye stretches along its gaze-spring velocity and thins across it: `stretch = min(abs(v) × SQUASH_STRETCH_GAIN (0.035), SQUASH_STRETCH_MAX (0.18))`; width × (1 + sx − sy/2), height × (1 + sy − sx/2). Recomputed every frame, so it vanishes when the eyes settle. |
+| **Blink pop** | When an eye reopens from a blink its height jumps by `BLINK_POP` (0.08) and tweens back — the blink lands with a little bounce. |
+| **Glance blink** | A jump in the (averaged) gaze target larger than `GLANCE_BLINK_DIST` (8 gaze units) triggers a blink, at most once per `GLANCE_BLINK_COOLDOWN_S` (1 s). People blink on large saccades. Only when auto-blink is on. |
+| **Double blink** | `DOUBLE_BLINK_CHANCE` (15%) of auto-blinks get a second blink `DOUBLE_BLINK_GAP_S` (0.3 s) later. |
+| **Speech eye pulse** | While talking, energy > 0.7 for 3 frames pulses both eyes taller by `SPEECH_EYE_PULSE_AMOUNT` (0.07), decaying ×0.85/frame. |
+| **Speech pause glance** | While talking, energy < 0.05 for 15 frames (~0.5 s) nudges the gaze ±2 units once per pause ("collecting a thought"). |
+| **Mouth follow** | See §1.5: the mouth moves with the averaged gaze. |
+| **Petting look** | While stroked (spec stage 2 §9.5): lower lids ≥ 0.35, top lids ≥ 0.12, no slope, mouth curve ≥ 0.6, held `PET_LINGER_S` (0.8 s) past the stroke. |
 
 ## 2. Per-Mood Visual Design
 

@@ -17,6 +17,14 @@ from dataclasses import dataclass, field
 
 from tools.face_sim_v3.state.constants import (
     BLINK_INTERVAL,
+    BLINK_POP,
+    DOUBLE_BLINK_CHANCE,
+    DOUBLE_BLINK_GAP_S,
+    GLANCE_BLINK_COOLDOWN_S,
+    GLANCE_BLINK_DIST,
+    PET_LINGER_S,
+    SQUASH_STRETCH_GAIN,
+    SQUASH_STRETCH_MAX,
     BLINK_VARIATION,
     BREATH_AMOUNT,
     BREATH_SPEED,
@@ -206,6 +214,9 @@ class EyeState:
     width_scale_target: float = 1.0
     height_scale: float = 1.0
     height_scale_target: float = 1.0
+    # Squash & stretch from gaze speed, recomputed every frame (render multiplies it in)
+    squash_w: float = 1.0
+    squash_h: float = 1.0
 
 
 @dataclass
@@ -298,6 +309,13 @@ class AnimTimers:
     micro_expr_type: int = 0  # 0=none, 1=curious, 2=sigh, 3=fidget
     micro_expr_timer: float = 0.0
     micro_expr_active: bool = False
+
+    # Life motion
+    last_gaze_tx: float = 0.0  # Averaged gaze target last frame (glance blink)
+    last_gaze_ty: float = 0.0
+    next_glance_blink_ok: float = 0.0
+    double_blink_at: float = -1.0  # Pending second blink of a double blink (<0 = none)
+    pet_until: float = 0.0  # Content "being petted" look active until this time
 
     h_flicker: bool = False
     h_flicker_alt: bool = False
@@ -679,6 +697,13 @@ def face_state_update(fs: FaceState) -> None:
         fs.mouth_curve_target = HEADSHAKE_MOUTH_CURVE
         # Gaze override is post-spring (see below) to bypass spring attenuation
 
+    # Being petted: content squint (lower lids up, soft top lids, smile)
+    if now < fs.anim.pet_until:
+        t_lid_bot = max(t_lid_bot, 0.35)
+        t_lid_top = max(t_lid_top, 0.12)
+        fs.eyelids.slope_target = 0.0
+        fs.mouth_curve_target = max(fs.mouth_curve_target, 0.6)
+
     # ── 3. GESTURE TIMEOUTS ──────────────────────────────────────
     if fs.anim.heart and now > fs.anim.heart_timer + fs.anim.heart_duration:
         fs.anim.heart = False
@@ -756,12 +781,20 @@ def face_state_update(fs: FaceState) -> None:
     if fs.anim.autoblink and now >= fs.anim.next_blink:
         face_blink(fs)
         fs.anim.next_blink = now + BLINK_INTERVAL + random.random() * BLINK_VARIATION
+        if random.random() < DOUBLE_BLINK_CHANCE:
+            fs.anim.double_blink_at = now + DOUBLE_BLINK_GAP_S
+    if fs.anim.double_blink_at >= 0.0 and now >= fs.anim.double_blink_at:
+        fs.anim.double_blink_at = -1.0
+        if fs.anim.autoblink:
+            face_blink(fs)
 
-    # Per-eye blink reopening
+    # Per-eye blink reopening; the eye pops slightly taller, then settles
     if not fs.eye_l.is_open and fs.eyelids.top_l > 0.95:
         fs.eye_l.is_open = True
+        fs.eye_l.height_scale += BLINK_POP
     if not fs.eye_r.is_open and fs.eyelids.top_r > 0.95:
         fs.eye_r.is_open = True
+        fs.eye_r.height_scale += BLINK_POP
 
     closure_l = 1.0 if not fs.eye_l.is_open else 0.0
     closure_r = 1.0 if not fs.eye_r.is_open else 0.0
@@ -960,10 +993,30 @@ def face_state_update(fs: FaceState) -> None:
         fs._speech_low_frames = 0
         fs._speech_pause_fired = False
 
+    # Glance blink: a big jump in where the eyes are headed earns a blink
+    tx = 0.5 * (fs.eye_l.gaze_x_target + fs.eye_r.gaze_x_target)
+    ty = 0.5 * (fs.eye_l.gaze_y_target + fs.eye_r.gaze_y_target)
+    jx, jy = tx - fs.anim.last_gaze_tx, ty - fs.anim.last_gaze_ty
+    if (
+        fs.anim.autoblink
+        and jx * jx + jy * jy > GLANCE_BLINK_DIST * GLANCE_BLINK_DIST
+        and now >= fs.anim.next_glance_blink_ok
+        and fs.eye_l.is_open
+        and fs.eye_r.is_open
+    ):
+        face_blink(fs)
+        fs.anim.next_glance_blink_ok = now + GLANCE_BLINK_COOLDOWN_S
+    fs.anim.last_gaze_tx, fs.anim.last_gaze_ty = tx, ty
+
     # ── 7. UPDATE TWEENS + SPRING ────────────────────────────────
     for eye in (fs.eye_l, fs.eye_r):
         eye.gaze_x, eye.vx = _spring(eye.gaze_x, eye.gaze_x_target, eye.vx)
         eye.gaze_y, eye.vy = _spring(eye.gaze_y, eye.gaze_y_target, eye.vy)
+        # Squash & stretch: eyes stretch along their motion and thin across it
+        sx = min(abs(eye.vx) * SQUASH_STRETCH_GAIN, SQUASH_STRETCH_MAX)
+        sy = min(abs(eye.vy) * SQUASH_STRETCH_GAIN, SQUASH_STRETCH_MAX)
+        eye.squash_w = 1.0 + sx - 0.5 * sy
+        eye.squash_h = 1.0 + sy - 0.5 * sx
         eye.width_scale = _tween(
             eye.width_scale, eye.width_scale_target, TWEEN_EYE_SCALE
         )
@@ -1274,6 +1327,11 @@ def face_wink_right(fs: FaceState) -> None:
     fs.eye_r.is_open = False
     fs.eye_r.openness_target = 0.0
     _set_active_gesture(fs, GestureId.WINK_R, 0.20)
+
+
+def face_pet(fs: FaceState) -> None:
+    """Being stroked: hold the content look for PET_LINGER_S past the last call."""
+    fs.anim.pet_until = time.monotonic() + PET_LINGER_S
 
 
 def face_set_gaze(fs: FaceState, x: float, y: float) -> None:

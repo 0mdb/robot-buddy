@@ -46,6 +46,7 @@ from tools.face_sim_v3.state.conv_state import ConvStateMachine
 from tools.face_sim_v3.state.face_state import (
     FaceState,
     face_set_flags,
+    face_pet,
     face_set_gaze,
     face_state_update,
     face_trigger_gesture,
@@ -131,7 +132,8 @@ class SimTouch:
     """Mouse-as-touch: gesture classification + local MCU-style feedback.
 
     Local feedback mirrors the face firmware (spec §9.5): gaze follows the
-    finger, long-press ring, boop blink on tap while IDLE. All of it is
+    finger, long-press ring, boop blink on tap while IDLE, content look while
+    stroking. All of it is
     suppressed while a system overlay is active (spec §4.4).
     """
 
@@ -198,6 +200,9 @@ class SimTouch:
             self.last = g.name
             _host_on_touch_gesture(g, conv_sm)
         self.pending.clear()
+
+        if self.clf.petting:
+            face_pet(fs)  # local content look while stroking (MCU: face_pet)
 
         if self.clf.active and TOUCH_GAZE_FOLLOW:
             gx = (self.clf.x - SCREEN_W / 2) / (SCREEN_W / 2) * MAX_GAZE

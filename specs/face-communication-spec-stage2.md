@@ -658,7 +658,8 @@ The face MCU classifies each touch into one gesture and reports it; the **host o
 |---------|------|----------|
 | **Tap** | Released within `TOUCH_TAP_MAX_MS` = 300 ms, finger moved ≤ `TOUCH_MOVE_TOL_PX` = 24 px from the touch-down point | `BUTTON_EVENT(button_id=SCREEN, event_type=CLICK)` on release |
 | **Long-press** | Held ≥ `TOUCH_LONG_PRESS_MS` = 700 ms, moved ≤ 24 px | `BUTTON_EVENT(button_id=SCREEN, event_type=LONG_PRESS)` **at the threshold**, while still held (release afterwards reports nothing) |
-| **Drag / pet** | Moved > 24 px at any point | Nothing (raw `TOUCH_EVENT` samples only). Stroking the face never triggers a gesture. |
+| **Drag** | Moved > 24 px at any point | No tap / long-press (raw `TOUCH_EVENT` samples only). |
+| **Pet** | A drag whose total finger path reaches `TOUCH_PET_PATH_PX` = 160 px while held | `BUTTON_EVENT(button_id=SCREEN, event_type=PET)` **once per touch**, while still held. A stroke that only qualifies on lift reports nothing. *(Amended 2026-11-11.)* |
 | In-between | Released between 300 and 700 ms without moving | Nothing (the ring fades out) |
 
 **Host mapping** (tick loop):
@@ -666,12 +667,14 @@ The face MCU classifies each touch into one gesture and reports it; the **host o
 - **Tap during a conversation**:
   - while PTT is held (ATTENTION-with-PTT or PTT) → end utterance (same as long-press off): "I'm done talking".
   - any other active state (LISTENING, THINKING, SPEAKING, ERROR) → cancel the session (→ DONE).
+- **Pet** → never changes conversation state. Outside a conversation the host emits `face.touch.pet` (speech policy may remark, 20 s cooldown); during one it is ignored. *(Amended 2026-11-11.)*
 - **Tap outside a conversation** → "boop": no host conversation action. The personality worker still receives the button-press event. (The old ACTION-click greet routine is no longer bound to touch; a poke-happy child would trigger it constantly.)
 
 **Local MCU feedback** (no host round-trip; suppressed during system overlays):
 - **Gaze follows the finger** while touching (eyes look toward the touch point), returning to the host-commanded gaze on release.
 - **Long-press ring**: from 200 ms of hold, a ring around the touch point fills clockwise until 700 ms, then flashes once on fire. Colour: PTT amber when it will start listening, neutral white when it will stop.
 - **Boop**: a tap while `conv_state == IDLE` plays a quick local blink so the poke feels acknowledged.
+- **Petting**: while stroking (PET fired), the face holds a content look — lower lids up, soft top lids, smile — for `PET_LINGER_S` = 0.8 s past the stroke, in any conversation state. *(Amended 2026-11-11.)*
 
 `FaceButtonId.PTT` (0) and `ACTION` (1) remain reserved in the protocol for compatibility but are no longer sent by the face firmware.
 

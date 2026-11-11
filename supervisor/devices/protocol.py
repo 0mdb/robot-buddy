@@ -110,6 +110,7 @@ class FaceButtonEventType(IntEnum):
     TOGGLE = 2  # legacy (corner PTT)
     CLICK = 3  # SCREEN: tap
     LONG_PRESS = 4  # SCREEN: long-press, sent at the threshold while held
+    PET = 5  # SCREEN: stroke (path >= 160 px), once per touch while held
 
 
 class FaceMood(IntEnum):

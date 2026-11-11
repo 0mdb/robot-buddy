@@ -89,6 +89,7 @@ class PlannerEventBus:
             int(FaceButtonEventType.TOGGLE): "toggle",
             int(FaceButtonEventType.CLICK): "click",
             int(FaceButtonEventType.LONG_PRESS): "long_press",
+            int(FaceButtonEventType.PET): "pet",
         }.get(evt.event_type, "unknown")
         self.emit(
             f"face.button.{event_name}",

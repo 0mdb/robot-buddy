@@ -1,12 +1,15 @@
 #include "touch_gesture.h"
 
 #include <climits>
+#include <cmath>
 
 void TouchGesture::press(int x, int y, uint32_t now_ms)
 {
     down_ = true;
     cancelled_ = false;
     long_fired_ = false;
+    pet_fired_ = false;
+    path_px_ = 0.0f;
     x0_ = x_ = x;
     y0_ = y_ = y;
     t0_ms_ = now_ms;
@@ -19,6 +22,9 @@ void TouchGesture::move(int x, int y, uint32_t now_ms)
     if (!down_) {
         return;
     }
+    const float sx = static_cast<float>(x - x_);
+    const float sy = static_cast<float>(y - y_);
+    path_px_ += std::sqrt(sx * sx + sy * sy);
     x_ = x;
     y_ = y;
     if (cancelled_ || long_fired_) {
@@ -34,7 +40,14 @@ void TouchGesture::move(int x, int y, uint32_t now_ms)
 
 TouchGestureEvent TouchGesture::tick(uint32_t now_ms)
 {
-    if (!down_ || cancelled_ || long_fired_) {
+    if (!down_ || long_fired_) {
+        return TouchGestureEvent::NONE;
+    }
+    if (cancelled_) {
+        if (!pet_fired_ && path_px_ >= static_cast<float>(cfg_.pet_path_px)) {
+            pet_fired_ = true;
+            return TouchGestureEvent::PET;
+        }
         return TouchGestureEvent::NONE;
     }
     if (elapsed(now_ms, t0_ms_) >= cfg_.long_press_ms) {
@@ -53,6 +66,9 @@ TouchGestureEvent TouchGesture::release(int x, int y, uint32_t now_ms)
     move(x, y, now_ms);
     // A long-press that crossed its threshold between the last tick and release still counts.
     TouchGestureEvent ev = tick(now_ms);
+    if (ev == TouchGestureEvent::PET) {
+        ev = TouchGestureEvent::NONE; // a stroke that only qualifies on lift is too late to react to
+    }
     if (ev == TouchGestureEvent::NONE && !cancelled_ && !long_fired_ && elapsed(now_ms, t0_ms_) < cfg_.tap_max_ms) {
         ev = TouchGestureEvent::TAP;
     }
@@ -65,6 +81,8 @@ void TouchGesture::reset()
     down_ = false;
     cancelled_ = false;
     long_fired_ = false;
+    pet_fired_ = false;
+    path_px_ = 0.0f;
     fire_ms_ = 0;
 }
 

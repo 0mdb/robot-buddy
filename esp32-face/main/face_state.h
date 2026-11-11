@@ -66,6 +66,10 @@ struct EyeState {
     float width_scale_target = 1.0f;
     float height_scale = 1.0f;
     float height_scale_target = 1.0f;
+
+    // Squash & stretch from gaze speed, recomputed every frame (render multiplies it in).
+    float squash_w = 1.0f;
+    float squash_h = 1.0f;
 };
 
 // ---- Eyelid overlay state (v2 model) ----
@@ -129,6 +133,13 @@ struct AnimTimers {
     bool  headshake = false;
     float headshake_timer = 0.0f;
     float headshake_duration = 0.35f;
+
+    // Life motion
+    float last_gaze_tx = 0.0f; // averaged gaze target last frame (glance blink)
+    float last_gaze_ty = 0.0f;
+    float next_glance_blink_ok = 0.0f;
+    float double_blink_at = -1.0f; // pending second blink of a double blink (<0 = none)
+    float pet_until = 0.0f;        // content "being petted" look active until this time
 
     // Flicker (driven by confused/laugh)
     bool  h_flicker = false;
@@ -212,6 +223,12 @@ struct FaceState {
     float talking_energy = 0.0f; // 0.0–1.0, current audio energy level
     float talking_phase = 0.0f;
 
+    // Speech rhythm (eye pulse on loud syllables, glance aside on pauses)
+    int   speech_high_frames = 0;
+    float speech_eye_pulse = 0.0f;
+    int   speech_low_frames = 0;
+    bool  speech_pause_fired = false;
+
     // Mouth state
     float mouth_curve = 0.2f;
     float mouth_curve_target = 0.2f;
@@ -244,6 +261,8 @@ void face_blink(FaceState& fs);
 void face_wink_left(FaceState& fs);
 void face_wink_right(FaceState& fs);
 void face_set_gaze(FaceState& fs, float x, float y);
+// Being stroked: hold the content look (lower lids up, smile) for PET_LINGER_S past the last call.
+void face_pet(FaceState& fs);
 void face_set_mood(FaceState& fs, Mood mood);
 void face_set_expression_intensity(FaceState& fs, float intensity);
 void face_trigger_gesture(FaceState& fs, GestureId gesture, uint16_t duration_ms = 0);

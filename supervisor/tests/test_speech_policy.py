@@ -251,3 +251,13 @@ class TestFaultSpeechFromTheRealBus:
                 now_mono_ms=1000.0,
             )
             assert intents == [], f.name
+
+
+class TestTouchPhrases:
+    def test_pet_is_spoken_once_per_cooldown(self):
+        p = SpeechPolicy()
+        evt = PlannerEvent("face.touch.pet", {}, 0.0)
+        intents, _ = p.generate(state=_free_state(), events=[evt], now_mono_ms=0.0)
+        assert len(intents) == 1
+        again, _ = p.generate(state=_free_state(), events=[evt], now_mono_ms=5000.0)
+        assert again == []

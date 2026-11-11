@@ -520,6 +520,14 @@ void face_state_update(FaceState& fs)
         fs.mouth_curve_target = -0.2f;
     }
 
+    // Being petted: content squint (lower lids up, soft top lids, smile).
+    if (now < fs.anim.pet_until) {
+        t_lid_bot = fmaxf(t_lid_bot, 0.35f);
+        t_lid_top = fmaxf(t_lid_top, 0.12f);
+        fs.eyelids.slope_target = 0.0f;
+        fs.mouth_curve_target = fmaxf(fs.mouth_curve_target, 0.6f);
+    }
+
     if (fs.anim.heart && now > fs.anim.heart_timer + fs.anim.heart_duration) {
         fs.anim.heart = false;
     }
@@ -572,13 +580,25 @@ void face_state_update(FaceState& fs)
     if (fs.anim.autoblink && now >= fs.anim.next_blink) {
         face_blink(fs);
         fs.anim.next_blink = now + BLINK_INTERVAL + randf() * BLINK_VARIATION;
+        if (randf() < DOUBLE_BLINK_CHANCE) {
+            fs.anim.double_blink_at = now + DOUBLE_BLINK_GAP_S;
+        }
+    }
+    if (fs.anim.double_blink_at >= 0.0f && now >= fs.anim.double_blink_at) {
+        fs.anim.double_blink_at = -1.0f;
+        if (fs.anim.autoblink) {
+            face_blink(fs);
+        }
     }
 
+    // Reopening from a blink pops the eye slightly taller, then it settles (squash & stretch).
     if (!fs.eye_l.is_open && fs.eyelids.top_l > 0.95f) {
         fs.eye_l.is_open = true;
+        fs.eye_l.height_scale += BLINK_POP;
     }
     if (!fs.eye_r.is_open && fs.eyelids.top_r > 0.95f) {
         fs.eye_r.is_open = true;
+        fs.eye_r.height_scale += BLINK_POP;
     }
 
     const float closure_l = fs.eye_l.is_open ? 0.0f : 1.0f;
@@ -662,12 +682,66 @@ void face_state_update(FaceState& fs)
         const float bounce = fabsf(sinf(fs.talking_phase)) * 0.05f * e;
         fs.eye_l.height_scale_target += bounce;
         fs.eye_r.height_scale_target += bounce;
+
+        // Speech rhythm: loud syllables pulse the eyes taller.
+        if (e > SPEECH_EYE_PULSE_THRESHOLD) {
+            if (++fs.speech_high_frames >= SPEECH_EYE_PULSE_FRAMES) {
+                fs.speech_eye_pulse = SPEECH_EYE_PULSE_AMOUNT;
+            }
+        } else {
+            fs.speech_high_frames = 0;
+        }
+        if (fs.speech_eye_pulse > 0.001f) {
+            fs.eye_l.height_scale_target += fs.speech_eye_pulse;
+            fs.eye_r.height_scale_target += fs.speech_eye_pulse;
+            fs.speech_eye_pulse *= SPEECH_EYE_PULSE_DECAY;
+        }
+
+        // Speech rhythm: a pause glances aside once ("collecting a thought").
+        if (e < SPEECH_PAUSE_THRESHOLD) {
+            if (++fs.speech_low_frames >= SPEECH_PAUSE_FRAMES && !fs.speech_pause_fired) {
+                const float shift = randf() < 0.5f ? SPEECH_PAUSE_GAZE_SHIFT : -SPEECH_PAUSE_GAZE_SHIFT;
+                fs.eye_l.gaze_x_target += shift;
+                fs.eye_r.gaze_x_target += shift;
+                fs.speech_pause_fired = true;
+            }
+        } else {
+            fs.speech_low_frames = 0;
+            fs.speech_pause_fired = false;
+        }
+    } else {
+        fs.speech_high_frames = 0;
+        fs.speech_eye_pulse = 0.0f;
+        fs.speech_low_frames = 0;
+    }
+
+    // Glance blink: a big jump in where the eyes are headed earns a blink, as people do.
+    {
+        const float tx = 0.5f * (fs.eye_l.gaze_x_target + fs.eye_r.gaze_x_target);
+        const float ty = 0.5f * (fs.eye_l.gaze_y_target + fs.eye_r.gaze_y_target);
+        const float jx = tx - fs.anim.last_gaze_tx;
+        const float jy = ty - fs.anim.last_gaze_ty;
+        if (fs.anim.autoblink && jx * jx + jy * jy > GLANCE_BLINK_DIST * GLANCE_BLINK_DIST &&
+            now >= fs.anim.next_glance_blink_ok && fs.eye_l.is_open && fs.eye_r.is_open) {
+            face_blink(fs);
+            fs.anim.next_glance_blink_ok = now + GLANCE_BLINK_COOLDOWN_S;
+        }
+        fs.anim.last_gaze_tx = tx;
+        fs.anim.last_gaze_ty = ty;
     }
 
     fs.eye_l.gaze_x = spring_step(fs.eye_l.gaze_x, fs.eye_l.gaze_x_target, fs.eye_l.vx);
     fs.eye_l.gaze_y = spring_step(fs.eye_l.gaze_y, fs.eye_l.gaze_y_target, fs.eye_l.vy);
     fs.eye_r.gaze_x = spring_step(fs.eye_r.gaze_x, fs.eye_r.gaze_x_target, fs.eye_r.vx);
     fs.eye_r.gaze_y = spring_step(fs.eye_r.gaze_y, fs.eye_r.gaze_y_target, fs.eye_r.vy);
+
+    // Squash & stretch: eyes stretch along their motion and thin across it.
+    for (EyeState* eye : {&fs.eye_l, &fs.eye_r}) {
+        const float sx = fminf(fabsf(eye->vx) * SQUASH_STRETCH_GAIN, SQUASH_STRETCH_MAX);
+        const float sy = fminf(fabsf(eye->vy) * SQUASH_STRETCH_GAIN, SQUASH_STRETCH_MAX);
+        eye->squash_w = 1.0f + sx - 0.5f * sy;
+        eye->squash_h = 1.0f + sy - 0.5f * sx;
+    }
 
     for (EyeState* eye : {&fs.eye_l, &fs.eye_r}) {
         eye->width_scale = tween(eye->width_scale, eye->width_scale_target, 0.2f);
@@ -864,6 +938,11 @@ void face_wink_right(FaceState& fs)
     fs.eye_r.is_open = false;
     fs.eye_r.openness_target = 0.0f;
     set_active_gesture(fs, GestureId::WINK_R, 0.20f, now_s());
+}
+
+void face_pet(FaceState& fs)
+{
+    fs.anim.pet_until = now_s() + PET_LINGER_S;
 }
 
 void face_set_gaze(FaceState& fs, float x, float y)

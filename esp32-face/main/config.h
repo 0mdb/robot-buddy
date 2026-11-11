@@ -23,6 +23,9 @@ constexpr float RIGHT_EYE_CY = 85.0f;
 constexpr float GAZE_EYE_SHIFT = 3.0f;   // eye body shift per unit gaze
 constexpr float GAZE_PUPIL_SHIFT = 8.0f; // pupil shift per unit gaze
 constexpr float MAX_GAZE = 12.0f;
+// Mouth follows the eyes part-way (face reads as turning, not eyes sliding over a fixed mouth).
+constexpr float GAZE_MOUTH_SHIFT_X = 1.5f; // mouth shift per unit gaze (half the eye body)
+constexpr float GAZE_MOUTH_SHIFT_Y = 0.75f;
 
 // ---- Mouth geometry ----
 constexpr float MOUTH_CX = 160.0f;
@@ -40,6 +43,23 @@ constexpr float IDLE_INTERVAL = 1.5f;
 constexpr float IDLE_VARIATION = 2.5f;
 constexpr float BREATH_SPEED = 1.8f;   // rad/s
 constexpr float BREATH_AMOUNT = 0.04f; // ±4% scale (subtler than LED)
+
+// ---- Life motion (spec face-visual-language "Life motion"; mirrored in tools/face_sim_v3) ----
+constexpr float SQUASH_STRETCH_GAIN = 0.035f; // eye stretch per gaze unit/frame of spring speed
+constexpr float SQUASH_STRETCH_MAX = 0.18f;   // cap on the stretch along the motion
+constexpr float BLINK_POP = 0.08f;            // eye height overshoot as it reopens from a blink
+constexpr float GLANCE_BLINK_DIST = 8.0f;     // gaze-target jump (gaze units) that earns a blink
+constexpr float GLANCE_BLINK_COOLDOWN_S = 1.0f;
+constexpr float DOUBLE_BLINK_CHANCE = 0.15f; // chance an auto-blink is followed by a second
+constexpr float DOUBLE_BLINK_GAP_S = 0.3f;
+constexpr float SPEECH_EYE_PULSE_THRESHOLD = 0.7f; // talking energy above this...
+constexpr int   SPEECH_EYE_PULSE_FRAMES = 3;       // ...for this many frames pulses the eyes
+constexpr float SPEECH_EYE_PULSE_AMOUNT = 0.07f;   // eye height boost per pulse
+constexpr float SPEECH_EYE_PULSE_DECAY = 0.85f;    // per-frame decay of the pulse
+constexpr float SPEECH_PAUSE_THRESHOLD = 0.05f;    // energy below this is a pause...
+constexpr int   SPEECH_PAUSE_FRAMES = 15;          // ...this long (~0.5 s) glances aside once
+constexpr float SPEECH_PAUSE_GAZE_SHIFT = 2.0f;
+constexpr float PET_LINGER_S = 0.8f; // content look holds this long after the stroke ends
 
 // ---- Brightness ----
 constexpr uint8_t DEFAULT_BRIGHTNESS = 200; // TFT backlight (0-255 via LEDC)
@@ -65,6 +85,7 @@ constexpr int      TOUCH_RING_RADIUS = 30;    // ring outer radius around the fi
 constexpr int      TOUCH_RING_THICKNESS = 6;
 constexpr uint32_t TOUCH_RING_FLASH_MS = 150; // flash after long-press fires
 constexpr bool     TOUCH_GAZE_FOLLOW = true;  // eyes look toward the finger while touching
+constexpr int      TOUCH_PET_PATH_PX = 160;   // a drag whose path reaches this is a pet (stroke)
 
 // ---- System overlay FX toggles ----
 // Performance fallback order (disable first -> last): GLITCH, VIGNETTE, SCANLINES.

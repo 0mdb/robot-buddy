@@ -113,14 +113,16 @@ Command channel semantics in `esp32-face`:
 `BUTTON_EVENT` types:
 - `3`: CLICK — SCREEN tap (released < 300 ms, moved ≤ 24 px)
 - `4`: LONG_PRESS — SCREEN long-press (held ≥ 700 ms, moved ≤ 24 px), sent at the threshold while still held; `state` = the face's PTT mirror at that moment (hint only)
+- `5`: PET — SCREEN stroke: a drag whose finger path reaches 160 px, sent once per touch while still held
 - `0` PRESS, `1` RELEASE, `2` TOGGLE: legacy, no longer sent
 
-A drag (moved > 24 px) reports no gesture, only raw `TOUCH_EVENT` samples.
+A short drag (moved > 24 px, path < 160 px) reports no gesture, only raw `TOUCH_EVENT` samples.
 
 Host mapping (the host owns PTT state; spec §9.5): long-press toggles PTT; a tap
 while PTT is held ends the utterance; a tap in any other active conversation state
 cancels the session; a tap outside a conversation is a "boop" (local blink on the
-face, `face.touch.boop` planner event). The face's `ptt_listening` (FACE_STATUS
+face, `face.touch.boop` planner event); a pet outside a conversation emits
+`face.touch.pet` (the face shows a content look locally) and is ignored during one. The face's `ptt_listening` (FACE_STATUS
 bit2, HEARTBEAT) mirrors `SET_CONV_STATE == PTT` and never changes on a touch.
 Touch and gesture events are queued and sent in order; frames are written whole or
 not at all.

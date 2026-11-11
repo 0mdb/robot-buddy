@@ -104,6 +104,8 @@ def main() -> int:
         FLAG_SOLID_EYE,
         FLAG_SPARKLE,
         GAZE_EYE_SHIFT,
+        GAZE_MOUTH_SHIFT_X,
+        GAZE_MOUTH_SHIFT_Y,
         GAZE_PUPIL_SHIFT,
         HEART_PUPIL_SCALE,
         HEART_SOLID_SCALE,
@@ -161,6 +163,22 @@ def main() -> int:
         THINKING_ORBIT_SPEED,
     )
     from tools.face_sim_v3.state.constants import (
+        BLINK_POP,
+        DOUBLE_BLINK_CHANCE,
+        DOUBLE_BLINK_GAP_S,
+        GLANCE_BLINK_COOLDOWN_S,
+        GLANCE_BLINK_DIST,
+        PET_LINGER_S,
+        SPEECH_EYE_PULSE_AMOUNT,
+        SPEECH_EYE_PULSE_DECAY,
+        SPEECH_EYE_PULSE_FRAMES,
+        SPEECH_EYE_PULSE_THRESHOLD,
+        SPEECH_PAUSE_FRAMES,
+        SPEECH_PAUSE_GAZE_SHIFT,
+        SPEECH_PAUSE_THRESHOLD,
+        SQUASH_STRETCH_GAIN,
+        SQUASH_STRETCH_MAX,
+        TOUCH_PET_PATH_PX,
         TOUCH_GAZE_FOLLOW,
         TOUCH_LONG_PRESS_MS,
         TOUCH_MOVE_TOL_PX,
@@ -231,6 +249,12 @@ def main() -> int:
     check("GAZE_EYE_SHIFT", parse_float(v) if v else None, GAZE_EYE_SHIFT)
     v = extract_value(all_text, "GAZE_PUPIL_SHIFT")
     check("GAZE_PUPIL_SHIFT", parse_float(v) if v else None, GAZE_PUPIL_SHIFT)
+    for name, val in (
+        ("GAZE_MOUTH_SHIFT_X", GAZE_MOUTH_SHIFT_X),
+        ("GAZE_MOUTH_SHIFT_Y", GAZE_MOUTH_SHIFT_Y),
+    ):
+        v = extract_value(all_text, name)
+        check(name, parse_float(v) if v else None, val)
 
     # ── Mouth ────────────────────────────────────────────────────
     print("-- Mouth --")
@@ -361,6 +385,7 @@ def main() -> int:
         ("TOUCH_RING_THICKNESS", TOUCH_RING_THICKNESS),
         ("TOUCH_RING_FLASH_MS", TOUCH_RING_FLASH_MS),
         ("TOUCH_GAZE_FOLLOW", TOUCH_GAZE_FOLLOW),
+        ("TOUCH_PET_PATH_PX", TOUCH_PET_PATH_PX),
     ]:
         v = extract_value(config_text, cname)
         if v is None:
@@ -371,6 +396,32 @@ def main() -> int:
             check(cname, int(v.strip().lower() == "true"), int(sval))
         else:
             check(cname, parse_int(v.rstrip("uUlL")), sval)
+
+    # ── Life motion (face-visual-language "Life motion") ─────────
+    print("-- Life motion --")
+    for cname, sval in [
+        ("SQUASH_STRETCH_GAIN", SQUASH_STRETCH_GAIN),
+        ("SQUASH_STRETCH_MAX", SQUASH_STRETCH_MAX),
+        ("BLINK_POP", BLINK_POP),
+        ("GLANCE_BLINK_DIST", GLANCE_BLINK_DIST),
+        ("GLANCE_BLINK_COOLDOWN_S", GLANCE_BLINK_COOLDOWN_S),
+        ("DOUBLE_BLINK_CHANCE", DOUBLE_BLINK_CHANCE),
+        ("DOUBLE_BLINK_GAP_S", DOUBLE_BLINK_GAP_S),
+        ("SPEECH_EYE_PULSE_THRESHOLD", SPEECH_EYE_PULSE_THRESHOLD),
+        ("SPEECH_EYE_PULSE_FRAMES", SPEECH_EYE_PULSE_FRAMES),
+        ("SPEECH_EYE_PULSE_AMOUNT", SPEECH_EYE_PULSE_AMOUNT),
+        ("SPEECH_EYE_PULSE_DECAY", SPEECH_EYE_PULSE_DECAY),
+        ("SPEECH_PAUSE_THRESHOLD", SPEECH_PAUSE_THRESHOLD),
+        ("SPEECH_PAUSE_FRAMES", SPEECH_PAUSE_FRAMES),
+        ("SPEECH_PAUSE_GAZE_SHIFT", SPEECH_PAUSE_GAZE_SHIFT),
+        ("PET_LINGER_S", PET_LINGER_S),
+    ]:
+        v = extract_value(config_text, cname)
+        if v is None:
+            print(f"  FAIL  {cname}: not found in config.h")
+            failed += 1
+        else:
+            check(cname, parse_float(v), float(sval))
 
     # ── Mood colors ──────────────────────────────────────────────
     print("-- Mood colors --")

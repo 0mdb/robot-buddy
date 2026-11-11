@@ -16,7 +16,7 @@ static int g_failures = 0;
         }                                                                                                              \
     } while (0)
 
-static const TouchGestureConfig CFG = {300, 700, 200, 24};
+static const TouchGestureConfig CFG = {300, 700, 200, 24, 160};
 using E = TouchGestureEvent;
 
 static void test_tap()
@@ -60,6 +60,31 @@ static void test_long_press_detected_at_release_if_no_tick()
     TouchGesture g(CFG);
     g.press(50, 50, 0);
     CHECK(g.release(50, 50, 750) == E::LONG_PRESS);
+}
+
+static void test_stroke_is_pet_once()
+{
+    TouchGesture g(CFG);
+    g.press(40, 120, 0);
+    int x = 40;
+    int pets = 0;
+    for (int i = 1; i <= 40; i++) { // back-and-forth stroke, 20 px per sample
+        x += (i / 6) % 2 ? -20 : 20;
+        g.move(x, 120, i * 30);
+        if (g.tick(i * 30) == E::PET) pets++;
+        if (i == 7) CHECK(!g.petting()); // path 140 px: not yet
+        if (i == 8) CHECK(g.petting());  // path 160 px: stroking
+    }
+    CHECK(pets == 1);
+    CHECK(g.petting());
+    CHECK(g.release(x, 120, 2000) == E::NONE);
+    CHECK(!g.petting());
+
+    TouchGesture shortdrag(CFG); // a single swipe under the path threshold is not a pet
+    shortdrag.press(0, 0, 0);
+    shortdrag.move(100, 0, 50);
+    CHECK(shortdrag.tick(60) == E::NONE);
+    CHECK(!shortdrag.petting());
 }
 
 static void test_drag_cancels_everything()
@@ -153,6 +178,7 @@ int main()
     test_slow_release_is_nothing();
     test_long_press_fires_once_while_held();
     test_long_press_detected_at_release_if_no_tick();
+    test_stroke_is_pet_once();
     test_drag_cancels_everything();
     test_ring_progress();
     test_reset();

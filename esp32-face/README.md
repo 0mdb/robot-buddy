@@ -11,8 +11,10 @@ ESP32-S3 firmware for Robot Buddy face rendering + supervisor link.
   - tap (< 300 ms) and long-press (≥ 700 ms, fires while held); dragging > 24 px cancels both
   - long-press ring around the finger (appears at 200 ms, fills until 700 ms, flashes on fire)
   - eyes follow the finger while touching; a tap while idle plays a local blink ("boop")
+  - stroking (finger path ≥ 160 px) sends PET once and shows a local content look
   - the host decides what gestures mean (long-press = PTT toggle, tap = end utterance / cancel)
   - all suppressed during system overlays
+- Life motion (spec face-visual-language §1.6): squash & stretch on eye moves and blink reopen, glance and double blinks, eye pulses on loud syllables, glance aside on speech pauses
 - Host link watchdog: no supervisor packet for 3 s → local sleepy look-around; host state replayed on return
 - Host-side unit tests for pure logic: `just test-face-host`
 - Conversation border renderer (SDF frame + glow, 8 conv states)

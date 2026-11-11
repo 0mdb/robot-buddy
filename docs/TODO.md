@@ -118,6 +118,9 @@ Stage 4.2 Dirty-Rect A/B Snapshot (2026-02-25, post-dirty firmware + updated sup
 - [ ] On-device: eyes return to mood colour after an ERROR_DISPLAY; unplug supervisor → sleepy look-around within 3 s → restores on reconnect
 - [ ] On-device: blink/eyelid look unchanged after the row-wise eyelid rewrite (should be pixel-identical)
 - [x] On-device (2026-11-10): flashed + supervisor deployed (`8573f93`): 31 FPS, frame work ~10 ms (was 52.6), dirty px ~22k (sparkle no longer forces full redraws), cmd latency ~20 ms, clean POWERON boot; USB short writes/flush timeouts only during startup
+- [x] Mouth follows the gaze part-way (`GAZE_MOUTH_SHIFT_X/Y` 1.5/0.75 px per gaze unit; visual-language §1.5) — flashed 2026-11-11
+- [x] Life motion (visual-language §1.6, 2026-11-11): squash & stretch on eye moves + blink-reopen pop, glance blink on big gaze jumps, 15% double blinks, speech eye pulse + pause glance (ported from the sim), petting (stroke ≥ 160 px → PET event, local content look, host `face.touch.pet` remark w/ 20 s cooldown) — flashed 2026-11-11
+- [ ] On-device: judge life motion by eye (stretch not too rubbery, glance blinks not too frequent, pet look reads as content); tune constants in `config.h` + sim
 - [ ] **Camera-driven gaze** (not implemented yet): no vision → face gaze path exists today; host gaze comes only from the conversation choreographer / conv state. Needs: a target (ball bearing exists, horizontal only; no person/face detection), bearing → gaze mapping from camera FOV to `MAX_GAZE`, smoothing, and priority vs conversation gaze and local finger-follow (finger wins while touching). Verify on hardware that the eyes point at the target. Blocked on the Pi camera ("camera unavailable: list index out of range" since 2026-11-10 13:20)
 
 **Evaluation** `[opus]`

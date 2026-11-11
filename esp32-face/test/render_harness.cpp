@@ -91,6 +91,7 @@ struct Scenario {
     uint8_t     flags;
     uint8_t     conv_state;
     bool        talking;
+    bool        think_cycle = false; // neutral -> THINKING (as the host sends it) -> neutral
 };
 
 static int run(const Scenario& sc, int frames, const char* dump_dir)
@@ -111,6 +112,15 @@ static int run(const Scenario& sc, int frames, const char* dump_dir)
         const float t = static_cast<float>(f) / 30.0f;
         face_set_gaze(fs, 12.0f * sinf(t * 1.3f), 6.0f * sinf(t * 0.7f));
         fs.talking = sc.talking;
+        if (sc.think_cycle && f == 100) {
+            face_set_mood(fs, Mood::THINKING);
+            face_set_expression_intensity(fs, 0.5f);
+            conv_border_set_state(4);
+        } else if (sc.think_cycle && f == 200) {
+            face_set_mood(fs, Mood::NEUTRAL);
+            face_set_expression_intensity(fs, 1.0f);
+            conv_border_set_state(0);
+        }
         fs.talking_energy = sc.talking ? 0.5f + 0.5f * sinf(t * 9.0f) : 0.0f;
         conv_border_update(1.0f / ANIM_FPS);
         face_state_update(fs);
@@ -197,6 +207,9 @@ int main(int argc, char** argv)
     if (argc > 2 && std::strcmp(argv[2], "moods") == 0) {
         // THINKING as the supervisor sends it in conv THINKING: intensity 0.5, gaze aversion up-right.
         snapshot(dump_dir, "neutral", Mood::NEUTRAL, 1.0f, 0, 0, 0);
+        snapshot(dump_dir, "look_left", Mood::NEUTRAL, 1.0f, -MAX_GAZE, 0, 0);
+        snapshot(dump_dir, "look_right", Mood::NEUTRAL, 1.0f, MAX_GAZE, 0, 0);
+        snapshot(dump_dir, "look_up_right", Mood::NEUTRAL, 1.0f, 0.7f * MAX_GAZE, -0.7f * MAX_GAZE, 0);
         snapshot(dump_dir, "thinking_conv", Mood::THINKING, 0.5f, 0.5f * MAX_GAZE, -0.3f * MAX_GAZE, 4);
         snapshot(dump_dir, "thinking_full", Mood::THINKING, 1.0f, 0, 0, 0);
         snapshot(dump_dir, "angry", Mood::ANGRY, 1.0f, 0, 0, 0);
@@ -238,6 +251,7 @@ int main(int argc, char** argv)
         {"talking", defaults, 5, true},
         {"listening_border", defaults, 2, false},
         {"thinking_border", defaults, 4, false},
+        {"think_cycle", defaults, 0, false, true},
     };
     int failures = 0;
     for (const auto& sc : scenarios) {

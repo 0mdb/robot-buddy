@@ -40,6 +40,8 @@ class SpeechPolicy:
             "mode.changed:WANDER": 7000.0,
             "fault.raised": 6000.0,
             "face.touch.boop": 4000.0,
+            # Petting comes in bursts; one remark per petting session, not per stroke.
+            "face.touch.pet": 20000.0,
             # 2 min between low-battery nudges — long enough not to nag,
             # short enough to remind someone who wandered off.
             "power.undervoltage_raised": 120000.0,
@@ -68,6 +70,11 @@ class SpeechPolicy:
                 "Boop!",
                 "Hee hee, that tickles!",
                 "Hi there!",
+            ],
+            "face.touch.pet": [
+                "Mmm, that's nice.",
+                "Aww, thank you!",
+                "Hee hee, I like that.",
             ],
             "power.undervoltage_raised": [
                 "My battery is getting low — could you plug me in?",
@@ -166,6 +173,9 @@ class SpeechPolicy:
             if not (fault_flags & _SEVERE_FAULT_MASK):
                 return None  # Non-severe faults (e.g. CMD_TIMEOUT) don't warrant speech
             return "fault.raised"
+        if evt.type == "face.touch.pet":
+            # Emitted by the tick loop only for strokes outside a conversation.
+            return "face.touch.pet"
         if evt.type == "face.touch.boop":
             # Emitted by the tick loop only for taps outside a conversation, so
             # taps that cancel or end an utterance never trigger chatter.

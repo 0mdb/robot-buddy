@@ -37,6 +37,8 @@ RIGHT_EYE_CY = 85.0
 # ══════════════════════════════════════════════════════════════════════
 MAX_GAZE = 12.0
 GAZE_EYE_SHIFT = 3.0  # Eye body shift per unit gaze
+GAZE_MOUTH_SHIFT_X = 1.5  # Mouth shift per unit gaze (follows the eyes part-way)
+GAZE_MOUTH_SHIFT_Y = 0.75
 GAZE_PUPIL_SHIFT = 8.0  # Pupil shift per unit gaze
 
 # ══════════════════════════════════════════════════════════════════════
@@ -74,6 +76,16 @@ TWEEN_MOUTH_OFFSET_X = 0.2
 BLINK_INTERVAL = 2.0  # Base seconds between blinks (MCU value)
 BLINK_VARIATION = 3.0  # Random extra seconds (total range: 2.0-5.0)
 BLINK_DURATION = 0.18  # 180 ms (gesture default)
+
+# Life motion — must match esp32-face/main/config.h (parity-checked)
+SQUASH_STRETCH_GAIN = 0.035  # Eye stretch per gaze unit/frame of spring speed
+SQUASH_STRETCH_MAX = 0.18  # Cap on the stretch along the motion
+BLINK_POP = 0.08  # Eye height overshoot as it reopens from a blink
+GLANCE_BLINK_DIST = 8.0  # Gaze-target jump (gaze units) that earns a blink
+GLANCE_BLINK_COOLDOWN_S = 1.0
+DOUBLE_BLINK_CHANCE = 0.15  # Chance an auto-blink is followed by a second
+DOUBLE_BLINK_GAP_S = 0.3
+PET_LINGER_S = 0.8  # Content look holds this long after the stroke ends
 
 # ══════════════════════════════════════════════════════════════════════
 # IDLE GAZE WANDER
@@ -133,7 +145,7 @@ TALKING_TIMEOUT_MS = 450  # MCU auto-stops after 450ms with no update
 # Speech rhythm sync (driven by existing talking_energy field)
 SPEECH_EYE_PULSE_THRESHOLD = 0.7  # Energy above this triggers eye pulse
 SPEECH_EYE_PULSE_FRAMES = 3  # Consecutive frames above threshold to trigger
-SPEECH_EYE_PULSE_AMOUNT = 0.04  # Eye height boost per pulse
+SPEECH_EYE_PULSE_AMOUNT = 0.07  # Eye height boost per pulse
 SPEECH_EYE_PULSE_DECAY = 0.85  # Per-frame decay of pulse
 
 SPEECH_BREATH_MOD = 0.8  # Breath speed modulation range during talking
@@ -688,6 +700,7 @@ TOUCH_RING_RADIUS = 30  # ring outer radius around the finger
 TOUCH_RING_THICKNESS = 6
 TOUCH_RING_FLASH_MS = 150  # flash after long-press fires
 TOUCH_GAZE_FOLLOW = True  # eyes look toward the finger while touching
+TOUCH_PET_PATH_PX = 160  # a drag whose path reaches this is a pet (stroke)
 
 # Ring colours (sim + MCU local feedback)
 TOUCH_RING_COLOR_START = (255, 180, 40)  # PTT off: long-press will start listening

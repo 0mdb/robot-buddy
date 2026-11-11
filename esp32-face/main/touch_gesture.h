@@ -7,7 +7,8 @@
 //   tap        : released < tap_max_ms after touch-down, never moved > move_tol_px
 //   long-press : held >= long_press_ms, never moved > move_tol_px; fires once at the
 //                threshold while still held (release afterwards reports nothing)
-//   drag / pet : moved > move_tol_px at any point -> no gesture for this touch
+//   drag       : moved > move_tol_px at any point -> no tap / long-press for this touch
+//   pet        : a drag whose finger path reaches pet_path_px; fires PET once (via tick)
 //   in-between : released between tap_max_ms and long_press_ms -> no gesture
 
 #include <cstdint>
@@ -17,12 +18,14 @@ struct TouchGestureConfig {
     uint32_t long_press_ms;
     uint32_t ring_show_ms;
     int      move_tol_px;
+    int      pet_path_px;
 };
 
 enum class TouchGestureEvent : uint8_t {
     NONE = 0,
     TAP = 1,
     LONG_PRESS = 2,
+    PET = 3,
 };
 
 class TouchGesture
@@ -33,7 +36,7 @@ class TouchGesture
     void              press(int x, int y, uint32_t now_ms);
     void              move(int x, int y, uint32_t now_ms); // may cancel; call tick() to fire long-press
     TouchGestureEvent release(int x, int y, uint32_t now_ms);
-    TouchGestureEvent tick(uint32_t now_ms); // returns LONG_PRESS exactly once at the threshold
+    TouchGestureEvent tick(uint32_t now_ms); // LONG_PRESS once at the threshold, or PET once per stroke
     void              reset();               // drop the current touch (e.g. system overlay shown)
 
     bool down() const
@@ -43,6 +46,10 @@ class TouchGesture
     bool cancelled() const
     {
         return cancelled_;
+    }
+    bool petting() const // finger down and stroking (PET has fired for this touch)
+    {
+        return down_ && pet_fired_;
     }
     bool long_fired() const
     {
@@ -81,6 +88,8 @@ class TouchGesture
     bool               down_ = false;
     bool               cancelled_ = false;
     bool               long_fired_ = false;
+    bool               pet_fired_ = false;
+    float              path_px_ = 0.0f;
     int                x0_ = 0;
     int                y0_ = 0;
     int                x_ = 0;

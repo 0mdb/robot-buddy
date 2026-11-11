@@ -54,8 +54,11 @@ static int s_last_touch_x = SCREEN_W / 2;
 static int s_last_touch_y = SCREEN_H / 2;
 
 // Whole-screen gesture state (LVGL-lock protected; see root_touch_event_cb).
-static TouchGesture      s_gesture({TOUCH_TAP_MAX_MS, TOUCH_LONG_PRESS_MS, TOUCH_RING_SHOW_MS, TOUCH_MOVE_TOL_PX});
+static TouchGesture      s_gesture({TOUCH_TAP_MAX_MS, TOUCH_LONG_PRESS_MS, TOUCH_RING_SHOW_MS, TOUCH_MOVE_TOL_PX,
+                                    TOUCH_PET_PATH_PX});
 static std::atomic<bool> s_boop_pending{false};
+// Finger is stroking the screen (local content look, spec §9.5).
+static std::atomic<bool> s_petting{false};
 // Latest finger position for gaze-follow (written in the LVGL task, read by face_ui_task).
 static std::atomic<int16_t> s_finger_x{SCREEN_W / 2};
 static std::atomic<int16_t> s_finger_y{SCREEN_H / 2};
@@ -291,8 +294,8 @@ static void render_eye(pixel_t* buf, const EyeState& eye, const FaceState& fs, b
     pixel_t black = rgb_to_color(0, 0, 0);
 
     const float breath = face_get_breath_scale(fs);
-    const float ew = EYE_WIDTH * eye.width_scale * breath;
-    const float eh = EYE_HEIGHT * eye.height_scale * fmaxf(0.25f, eye.openness) * breath;
+    const float ew = EYE_WIDTH * eye.width_scale * eye.squash_w * breath;
+    const float eh = EYE_HEIGHT * eye.height_scale * eye.squash_h * fmaxf(0.25f, eye.openness) * breath;
     if (eh < 2.0f) {
         return;
     }
@@ -386,6 +389,15 @@ static void render_eye(pixel_t* buf, const EyeState& eye, const FaceState& fs, b
     }
 }
 
+// Mouth centre: base position + mood offset + a fraction of the (averaged) eye gaze.
+static void mouth_center(const FaceState& fs, float& cx, float& cy)
+{
+    const float gx = 0.5f * (fs.eye_l.gaze_x + fs.eye_r.gaze_x);
+    const float gy = 0.5f * (fs.eye_l.gaze_y + fs.eye_r.gaze_y);
+    cx = MOUTH_CX + fs.mouth_offset_x * 10.0f + gx * GAZE_MOUTH_SHIFT_X;
+    cy = MOUTH_CY + gy * GAZE_MOUTH_SHIFT_Y;
+}
+
 static void render_mouth(pixel_t* buf, const FaceState& fs)
 {
     if (!fs.show_mouth) return;
@@ -393,8 +405,8 @@ static void render_mouth(pixel_t* buf, const FaceState& fs)
     uint8_t r, g, b;
     face_get_emotion_color(fs, r, g, b);
 
-    const float cx = MOUTH_CX + fs.mouth_offset_x * 10.0f;
-    const float cy = MOUTH_CY;
+    float cx, cy;
+    mouth_center(fs, cx, cy);
     const float w = MOUTH_HALF_W * fs.mouth_width;
     const float thick = MOUTH_THICKNESS;
     const float curve = fs.mouth_curve * 40.0f;
@@ -722,8 +734,8 @@ static RectI compute_eye_bounds(const FaceState& fs, bool is_left, float center_
 {
     const EyeState& eye = is_left ? fs.eye_l : fs.eye_r;
     const float     breath = face_get_breath_scale(fs);
-    const float     ew = EYE_WIDTH * eye.width_scale * breath;
-    const float     eh = EYE_HEIGHT * eye.height_scale * fmaxf(0.25f, eye.openness) * breath;
+    const float     ew = EYE_WIDTH * eye.width_scale * eye.squash_w * breath;
+    const float     eh = EYE_HEIGHT * eye.height_scale * eye.squash_h * fmaxf(0.25f, eye.openness) * breath;
     if (eh < 2.0f) {
         return {};
     }
@@ -794,8 +806,8 @@ static RectI compute_mouth_bounds(const FaceState& fs)
 {
     if (!fs.show_mouth) return {};
 
-    const float cx = MOUTH_CX + fs.mouth_offset_x * 10.0f;
-    const float cy = MOUTH_CY;
+    float cx, cy;
+    mouth_center(fs, cx, cy);
     const float w = MOUTH_HALF_W * fs.mouth_width;
     const float thick = MOUTH_THICKNESS;
     const float curve = fs.mouth_curve * 40.0f;
@@ -1016,7 +1028,10 @@ static void publish_gesture(TouchGestureEvent ev)
     } else if (ev == TouchGestureEvent::LONG_PRESS) {
         publish_button_event(FaceButtonId::SCREEN, FaceButtonEventType::LONG_PRESS,
                              g_ptt_listening.load(std::memory_order_relaxed) ? 1 : 0);
+    } else if (ev == TouchGestureEvent::PET) {
+        publish_button_event(FaceButtonId::SCREEN, FaceButtonEventType::PET, 0);
     }
+    s_petting.store(s_gesture.petting(), std::memory_order_relaxed);
 }
 
 // Runs in the LVGL task with the LVGL lock held (as does face_ui_update), so
@@ -1063,6 +1078,7 @@ static void root_touch_event_cb(lv_event_t* e)
         publish_touch_sample(2, p.x, p.y);
         if (sys_overlay) {
             s_gesture.reset();
+            s_petting.store(false, std::memory_order_relaxed);
         } else {
             s_gesture.move(p.x, p.y, now_ms);
             publish_gesture(s_gesture.tick(now_ms));
@@ -1077,6 +1093,7 @@ static void root_touch_event_cb(lv_event_t* e)
         if (!sys_overlay) {
             publish_gesture(s_gesture.release(p.x, p.y, now_ms));
         }
+        s_petting.store(false, std::memory_order_relaxed);
     }
 }
 
@@ -1574,6 +1591,9 @@ void face_ui_task(void* arg)
         const bool sys_none = fs.system.mode == SystemMode::NONE;
         if (s_boop_pending.exchange(false, std::memory_order_relaxed) && sys_none) {
             face_trigger_gesture(fs, GestureId::BLINK, 0);
+        }
+        if (sys_none && s_petting.load(std::memory_order_relaxed)) {
+            face_pet(fs);
         }
         const bool finger_gaze = TOUCH_GAZE_FOLLOW && sys_none && g_touch_active.load(std::memory_order_relaxed);
         const bool idle_wander_flag = fs.anim.idle;

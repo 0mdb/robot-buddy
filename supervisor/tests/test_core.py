@@ -1148,6 +1148,32 @@ class TestScreenGestures:
         assert not loop.world.ptt_active
         assert "face.touch.boop" in [e.type for e in loop._event_bus.latest()]
 
+    def _pet(self):
+        from supervisor.devices.protocol import FaceButtonEventType
+
+        return self._evt(int(FaceButtonEventType.PET))
+
+    @pytest.mark.asyncio
+    async def test_pet_outside_conversation_emits_pet(self):
+        loop = self._make_tick_loop()
+        loop._on_face_button(self._pet())
+        assert not loop.world.session_id
+        assert not loop.world.ptt_active
+        types = [e.type for e in loop._event_bus.latest()]
+        assert "face.touch.pet" in types
+        assert "face.touch.boop" not in types
+
+    @pytest.mark.asyncio
+    async def test_pet_during_conversation_changes_nothing(self):
+        from supervisor.devices.protocol import FaceConvState
+
+        loop = self._make_tick_loop()
+        loop._on_face_button(self._long())  # PTT on
+        loop._on_face_button(self._pet())
+        assert loop._conv.ptt_held
+        assert loop._conv.state != FaceConvState.DONE
+        assert "face.touch.pet" not in [e.type for e in loop._event_bus.latest()]
+
     @pytest.mark.asyncio
     async def test_long_press_after_host_ends_session_starts_new_ptt(self):
         loop = self._make_tick_loop()

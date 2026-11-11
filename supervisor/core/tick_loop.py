@@ -631,6 +631,7 @@ class TickLoop:
         - tap while PTT is held: end the utterance ("I'm done talking")
         - tap during any other active conversation state: cancel the session
         - tap outside a conversation: boop (the face already reacted locally)
+        - pet (stroke) outside a conversation: face.touch.pet (face shows a content look locally)
         """
         from supervisor.devices.protocol import FaceConvState
 
@@ -640,6 +641,13 @@ class TickLoop:
 
         if evt.event_type == int(FaceButtonEventType.LONG_PRESS):
             self._toggle_ptt()
+            return
+        if evt.event_type == int(FaceButtonEventType.PET):
+            # Stroking never changes conversation state; only remark on it when idle.
+            if not self._ptt_on() and not self._conv.session_active:
+                self._event_bus.emit(
+                    "face.touch.pet", {}, float(getattr(evt, "timestamp_mono_ms", 0.0))
+                )
             return
         if evt.event_type != int(FaceButtonEventType.CLICK):
             return

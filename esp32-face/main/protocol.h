@@ -42,7 +42,7 @@ enum class FaceCmdId : uint8_t {
 enum class FaceTelId : uint8_t {
     FACE_STATUS = 0x90,  // current mood/gesture/system/flags
     TOUCH_EVENT = 0x91,  // raw touch press/release/drag
-    BUTTON_EVENT = 0x92, // touch gestures (SCREEN tap / long-press)
+    BUTTON_EVENT = 0x92, // touch gestures (SCREEN tap / long-press / pet)
     HEARTBEAT = 0x93,    // periodic liveness + telemetry counters
 };
 
@@ -58,6 +58,7 @@ enum class FaceButtonEventType : uint8_t {
     TOGGLE = 2,     // legacy (corner PTT), no longer sent
     CLICK = 3,      // SCREEN: tap
     LONG_PRESS = 4, // SCREEN: long-press, sent at the threshold while still held
+    PET = 5,        // SCREEN: stroke (drag path >= TOUCH_PET_PATH_PX), sent once per touch while held
 };
 
 // ---- Payload structs (packed, little-endian) ----

@@ -30,6 +30,8 @@ from tools.face_sim_v3.state.constants import (
     EYE_HEIGHT,
     EYE_WIDTH,
     GAZE_EYE_SHIFT,
+    GAZE_MOUTH_SHIFT_X,
+    GAZE_MOUTH_SHIFT_Y,
     GAZE_PUPIL_SHIFT,
     HEART_PUPIL_SCALE,
     HEART_SOLID_SCALE,
@@ -365,8 +367,8 @@ def _render_eye(buf: list, fs: FaceState, is_left: bool) -> None:
     cx_base = LEFT_EYE_CX if is_left else RIGHT_EYE_CX
     cy_base = LEFT_EYE_CY if is_left else RIGHT_EYE_CY
     breath = face_get_breath_scale(fs)
-    w = (EYE_WIDTH / 2.0) * eye.width_scale * breath
-    h = (EYE_HEIGHT / 2.0) * eye.height_scale * breath
+    w = (EYE_WIDTH / 2.0) * eye.width_scale * eye.squash_w * breath
+    h = (EYE_HEIGHT / 2.0) * eye.height_scale * eye.squash_h * breath
 
     # Clamp pupil offset so it stays inside the eye
     max_offset_x = w - PUPIL_R - 5.0
@@ -508,7 +510,10 @@ def _render_eye(buf: list, fs: FaceState, is_left: bool) -> None:
 def _render_mouth(buf: list, fs: FaceState) -> None:
     if not fs.show_mouth:
         return
-    cx, cy = MOUTH_CX + fs.mouth_offset_x * 10.0, MOUTH_CY
+    gx = 0.5 * (fs.eye_l.gaze_x + fs.eye_r.gaze_x)
+    gy = 0.5 * (fs.eye_l.gaze_y + fs.eye_r.gaze_y)
+    cx = MOUTH_CX + fs.mouth_offset_x * 10.0 + gx * GAZE_MOUTH_SHIFT_X
+    cy = MOUTH_CY + gy * GAZE_MOUTH_SHIFT_Y
     w, thick = MOUTH_HALF_W * fs.mouth_width, MOUTH_THICKNESS
     curve, openness = fs.mouth_curve * 40.0, fs.mouth_open * 40.0
     col = face_get_emotion_color(fs)
