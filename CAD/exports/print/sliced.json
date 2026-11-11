@@ -44,14 +44,14 @@
   "up": "+z"
  },
  "RB-PRT-001_base_plate": {
-  "cad_g": 129.8703630512357,
-  "cm3": 81.46,
-  "grams": 105.09,
+  "cad_g": 130.96274150627912,
+  "cm3": 81.83,
+  "grams": 105.55,
   "mat": "PET-CF",
   "mismatch": [],
   "qty": 1,
   "support": false,
-  "time": "3h 27m 14s",
+  "time": "3h 28m 8s",
   "up": "+z"
  },
  "RB-PRT-002_bulkhead": {

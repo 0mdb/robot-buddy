@@ -431,6 +431,29 @@ teardrop the horizontal motor-screw holes; ≥ 2 mm fillet at the inside corner.
 >   Rev (tick 66, Q22 F2): each bar is now a **side plate** (2.4 PET-CF, rounded rectangle
 >   x −69.3…59.7, z −10…38, r 8) over the belt loop's window, so the lug ↔ pocket nips are
 >   behind it (kid safety, `docs/cad/loop/S2_pinch.md`). 19.1 g per side.
+>   Amendment (Ben, 2026-11-10): **road-axle retention.** Until now nothing held the road
+>   axles or the inner discs along y: the inner 684 sat flush with the axle's inboard end and a
+>   pivot turn's lug thrust would push it off, the axle could walk out of either bore, and the
+>   outer disc could slide 1 mm onto the Ø10 boss and drag. Now:
+>   - the side-plate road bores are **blind press bores** (Ø3.95, as the dowel, 0.8 mm skin
+>     outboard): the axle presses in from inboard through the blade's Ø4.1 slip bore, can't
+>     walk outboard or turn, and the outer face stays plain;
+>   - **one DIN 6799 E-clip (size 3.2) per axle** in a groove at the inboard end, on the inner
+>     684's inner race (y 55.86…56.46, 0.04 float); the axle runs on to y 54.3, under the
+>     plate edge (its top 0.4 below the belly). It fits the 1.5 mm SIDE_GAP: the clip is 0.86
+>     off the plate edge;
+>   - a **Ø6 × 0.9 land** on the side plate's inner face round each road bore takes the outer
+>     684's inner race only (0.1 float), so the outer disc can't reach the boss.
+>   Axle: **Ø4 × 42 ground shaft, one E-ring groove ~1.9 from the inboard end** (07 F20).
+>   Assembly: hold the outer disc + its spacer in the gap, push the axle from inboard through
+>   the blade into the press bore, then the inner spacer + disc, then the clip.
+>   FEA (2026-11-10, 1 mm mesh, PET-CF, `fea.py S9 S9i`): **S9** (centred, as tick 91): blade
+>   9.38 MPa, bores 0.35 mm ✓ (unchanged by the blind bores). **S9i** (the whole ×3 bump on
+>   the inner disc of both axles): blade **16.7 MPa (SF ~2.1)**, bores **0.63 mm** (0.42 of it
+>   the plate leaning outboard), over S9's SF 3 / 0.5 mm gates. Accepted (Ben to confirm): it
+>   stacks two worst cases (one-edge loading and the ×3 bump); at ×1 it is 5.6 MPa / 0.21 mm.
+>   Both runs' peak (13.0 / 23.1 MPa) sits on the idler slot's fixture edge, which S9 reports
+>   but doesn't judge. If wanted: a thicker shelf (RA_ARM_T) is the stiffening lever.
 
 **Followers:** per `05_follower_spec.md` (carriage in plate slots, clamp from
 below, 624 bearing on a Ø4 shoulder bolt).

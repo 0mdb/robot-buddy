@@ -222,30 +222,35 @@ def s6() -> dict:
 ROBOT_KG = 1.4  # 🟡 drivetrain MASS_G (891 g) + belts/wheels/frames (~300 g) + margin
 
 
-def s9() -> dict:
+def s9(inner: bool = False) -> dict:
     """P13d (tick 91, Q24 (a)): the left track frame carrying both road-wheel axles. Held
     where it is held in use: the sprocket's dowel bore (the outboard 624) and the idler
     axle's slot. Each road axle pushes up through its two bores (side-plate boss + blade)
     with 1/4 of the robot's weight x 3 (07 §3.4 bump factor), as a remote load at the
-    axle centre."""
-    g = chassis.trackframe_geom()
+    axle centre. S9i (2026-11-10): the whole axle load on the INNER disc's 684 (a step edge
+    or cable under the belt's inner edge), 16 mm inboard of the blade: the blade takes
+    ~1.75x and the side-plate bore pulls the other way."""
     w = chassis.dt.wheels()
     zr = w[1][2]
     f = 0.25 * ROBOT_KG * 9.81 * 3
+    xs, zs = w[3][1], w[3][2]
     lines = [
         "discard_open",
-        f"fix cyl 0 1 0 {chassis.TF_DOWEL / 2} 0.05",  # sprocket dowel / outboard 624
+        # sprocket dowel / outboard 624 (boxed: the road axles' press bores share its Ø)
+        f"fix cyl 0 1 0 {chassis.TF_DOWEL / 2} 0.05 box {xs - 4:.2f} 85 {zs - 4:.2f} {xs + 4:.2f} 100 {zs + 4:.2f}",
         f"fix cyl 0 1 0 {chassis.TF_SLOT[1] / 2} 0.05",  # idler axle in its slot ends
     ]
+    yi = chassis.track_y()[0]
+    yl = yi + chassis.dt.RW_BRG_W / 2 if inner else sum(chassis.track_y()) / 2
     cases = []
     for name, x in (("road1", w[1][1]), ("road2", w[2][1])):
-        lines.append(
-            f"remote {name} {x:.2f} {sum(chassis.track_y()) / 2:.2f} {zr:.2f} cyl 0 1 0 "
-            f"{chassis.RA_BORE / 2} 0.05 box {x - 4:.2f} 70 {zr - 4:.2f} {x + 4:.2f} 97 {zr + 4:.2f}"
+        lines.append(  # both bores: blade slip Ø4.1 + side-plate press Ø3.95
+            f"remote {name} {x:.2f} {yl:.2f} {zr:.2f} cyl 0 1 0 "
+            f"{chassis.RA_BORE / 2} 0.1 box {x - 4:.2f} 70 {zr - 4:.2f} {x + 4:.2f} 97 {zr + 4:.2f}"
         )
         cases.append(f"{name}:0,0,{f:.2f}")
     lines += [
-        f"disp bores cyl 0 1 0 {chassis.RA_BORE / 2} 0.05",
+        f"disp bores cyl 0 1 0 {chassis.RA_BORE / 2} 0.1",
         "probe blade -30 70 -14 30 77 6",
         "probe boss -30 92 -14 30 97 -5",
         "hotspots 5",
@@ -253,8 +258,8 @@ def s9() -> dict:
         "case bump " + " ".join(cases),
     ]
     return {
-        "name": "S9",
-        "title": "Track frame carrying the road axles (1/4 weight x 3 each)",
+        "name": "S9i" if inner else "S9",
+        "title": "Track frame carrying the road axles (1/4 weight x 3 each" + (", all on the inner disc)" if inner else ")"),
         "part": r"\CAD\parts\RB-PRT-040_trackframe_L.SLDPRT",
         "lines": lines,
         "applied": (0, 0, 2 * f),
@@ -467,6 +472,7 @@ STUDIES = {
     "S1e": s1e,
     "S6": s6,
     "S9": s9,
+    "S9i": lambda: s9(inner=True),
     "S1a": s1a,
     "S1b": s1b,
     "S2": s2,

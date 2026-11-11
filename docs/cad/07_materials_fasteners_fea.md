@@ -318,6 +318,13 @@ before ordering (screw engagement ≥ 1.3 d, tip ≥ 0.5 mm short of the pocket 
 > boss on its top, Ø3.6 pocket through; 3.4 engaged). Fit the IMU to the deck before the deck
 > goes on its posts. Bill above: +4 M2.5 × 8, +4 M2.5 × 4 inserts, +4 spacers (`hwbom`).
 
+> Amendment (Ben, 2026-11-10, road-axle retention, 06 §7): **new F20: 4 × E-clip DIN 6799
+> size 3.2** (Ø4 shaft, 0.6 thick, Ø7.3) at the road axles' inboard ends, and the road
+> axles become **4 × Ø4 × 42 ground shaft (h6), one E-ring groove (Ø3.2 × 0.64) centred
+> 1.86 from the inboard end**, pressed into blind Ø3.95 bores in the track frames (the
+> dowel's press fit, tune on the same coupon). Buy grooved shafts; grooving hardened dowel
+> pins at home is not practical.
+
 **Totals (stale, see the 2026-11-10 bill above; per robot, +20 % spares when ordering):** M3 inserts ~34 (F1, F2, F5, F7, F8,
 F9, F10, F11), M2.5 inserts 4 (F12); M3 × 6 ×12, M3 × 8 ×15, M3 × 8 button ×4,
 M3 × 10 ×3, M3 × 30 ×4 (kit), M2.5 × 6 ×4, M2.5 × 8 ×4, M3 nyloc ×8, M3 washers ×8.

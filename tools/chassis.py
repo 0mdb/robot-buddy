@@ -1337,7 +1337,7 @@ def rebuild_manifest(win: str) -> list[str]:
             for ib in (True, False)
         ],
         *[
-            f"comp|raxle{i + 1}_{sd}|{road_axle}|{row(ROT_I, (x, s * track_y()[0] if s > 0 else -track_y()[1], z))}"
+            f"comp|raxle{i + 1}_{sd}|{road_axle}|{row(ROT_I if s > 0 else ROT_Z180, (x, s * track_y()[0], z))}"
             for i, (x, z) in enumerate(road_axles())
             for sd, s in (("L", +1), ("R", -1))
         ],
@@ -3188,13 +3188,21 @@ def road_axle_lines(path: str) -> list[str]:
     # P13c (tick 91): the frame's blade sits mid-span (belt centre, RA_T thick), so the
     # spacer is two tubes, inner race -> blade face (0.1 clear)
     m0, m1 = bw / 2 - RA_T / 2 - 0.1, bw / 2 + RA_T / 2 + 0.1
-    v = math.pi * (4.0 * bw + (RW_SPACER_R**2 - 4.0) * ((m0 - bd - 0.05) + (bw - bd - 0.05 - m1)))
+    # 2026-11-10 retention: the shaft runs from its grooved inboard end to the side plate's
+    # blind bore (skin), drawn at RA_PRESS where it presses into the land + plate
+    yi = track_y()[0]
+    y0f, y1f = trackframe_geom()["y"]
+    p0, p1 = y0f - RA_LAND[1] - yi, y1f - RA_SKIN - yi  # press bore span, part frame
+    e0 = p1 - RA_AXLE_L  # inboard end (under the plate edge: axle top 0.4 below the belly)
+    v = math.pi * (4.0 * (p0 - e0) + (RA_PRESS / 2) ** 2 * (p1 - p0)
+                   + (RW_SPACER_R**2 - 4.0) * ((m0 - bd - 0.05) + (bw - bd - 0.05 - m1)))
     return [
         f"part|{path}",
-        f"cyl|y|0 0|0 {bw}|2.0|boss",
+        f"cyl|y|0 0|{e0:.3f} {p0:.3f}|2.0|boss",
+        f"cyl|y|0 0|{p0 - 0.01:.3f} {p1:.3f}|{RA_PRESS / 2}|boss",
         f"cyl|y|0 0|{bd + 0.05} {m0}|{r}|boss",
         f"cyl|y|0 0|{m1} {bw - bd - 0.05}|{r}|boss",
-        f"expect|vol {v:.1f} {v * 0.005:.1f}|box {-r} {r} 0 {bw} {-r} {r} 0.05",
+        f"expect|vol {v:.1f} {v * 0.005:.1f}|box {-r} {r} {e0:.3f} {p1:.3f} {-r} {r} 0.05",
         "save",
     ]
 
@@ -4680,6 +4688,15 @@ RA_HALF_X = 5.0  # blade half-length along x (6 -> 5, tick 91c: the shelf's end 
 RA_T = 4.0  # blade thickness (tick 91b: 3 -> 4; 3.1 to each disc)
 RA_ARM_T = 5.0  # the shelf joining both blades to the plate (tick 91b: S9 3 mm arms 22 MPa / 1.24 mm)
 RA_GAP = 1.0  # arm over the disc top, blade over the lug tips
+# Road-axle retention (Ben 2026-11-10, 06 §7 amendment): the axle presses in from inboard
+# into a BLIND bore in the side plate (as the sprocket dowel: TF_DOWEL, 0.8 skin), so it can't
+# walk outboard or turn; one DIN 6799 E-clip (size 3.2) in a groove at its inboard end holds
+# the inner disc's 684 (inner race) on. A land on the plate's inner face takes the outer
+# 684's inner race only (0.1 float), so the outer disc can't drag on the Ø10 boss.
+RA_PRESS, RA_SKIN = TF_DOWEL, TF_DOWEL_SKIN
+RA_LAND = (6.0, 0.9)  # Ø, height off the plate's inner face (outer disc face is 1.0 off it)
+RA_AXLE_L = 42.0  # Ø4 ground shaft, one E-ring groove
+RA_CLIP = (7.3, 0.6, 0.04)  # E-clip OD, thickness, float to the inner race
 
 
 def road_axle_carrier(side: int) -> tuple[list[str], float, tuple[float, float]]:
@@ -4714,11 +4731,18 @@ def road_axle_carrier(side: int) -> tuple[list[str], float, tuple[float, float]]
         lines.append(f"cyl|y|{x:.3f} {zr:.3f}|{p0:.2f} {p1:.2f}|{RA_BOSS_R}|boss")
         b0, b1 = Y(ba, bb)
         lines.append(f"box|{x - RA_HALF_X:.3f} {x + RA_HALF_X:.3f}|{b0:.2f} {b1:.2f}|{zb0:.3f} {za1:.3f}")
-        c0, c1 = Y(ba - 0.1, y1 + 0.1)
+        lr, lh = RA_LAND[0] / 2, RA_LAND[1]
+        l0, l1 = Y(y0 - lh, y0 + 0.01)
+        lines.append(f"cyl|y|{x:.3f} {zr:.3f}|{l0:.2f} {l1:.2f}|{lr}|boss")  # land
+        c0, c1 = Y(ba - 0.1, bb + 0.1)  # blade: slip bore
         lines.append(f"cyl|y|{x:.3f} {zr:.3f}|{c0:.2f} {c1:.2f}|{RA_BORE / 2}|cut")
+        c0, c1 = Y(y0 - lh - 0.1, y1 - RA_SKIN)  # land + plate: blind press bore
+        lines.append(f"cyl|y|{x:.3f} {zr:.3f}|{c0:.2f} {c1:.2f}|{RA_PRESS / 2}|cut")
         vol += seg * TF_T  # boss below the plate edge
         vol += 2 * RA_HALF_X * RA_T * (za1 - zb0)  # blade (its top overlaps the shelf's end)
-        vol -= math.pi * (RA_BORE / 2) ** 2 * (TF_T + RA_T)
+        vol -= math.pi * (RA_BORE / 2) ** 2 * RA_T
+        vol += math.pi * lr * lr * lh
+        vol -= math.pi * (RA_PRESS / 2) ** 2 * (lh + TF_T - RA_SKIN)
     return lines, vol, (s * ba, s * y1)
 
 
@@ -4845,6 +4869,11 @@ def hardware_layout() -> list[tuple[str, "hw.Item", list, str]]:
     yi, yo = track_y()
     add("Road wheel", hw.bearing("684", 4.0, 9.0, 4.0),
         [((x, s * y0, z), (0.0, s, 0.0)) for x, z in road_axles() for s in (1, -1) for y0 in (yi, yo - 4.0)])
+    # F20 (2026-11-10): road-axle retention, an E-clip at each axle's inboard end on the inner
+    # 684's inner race (drawn on the shaft Ø; the groove isn't modelled)
+    cd, ct, cf = RA_CLIP
+    add("F20", hw.ring_part("hw_eclip_3.2", f"Retaining washer (E-clip) DIN 6799 size 3.2, for Ø4 shaft ({cd:g} x {ct:g})", cd, 4.02, ct),
+        [((x, s * (yi - cf - ct), z), (0.0, s, 0.0)) for x, z in road_axles() for s in (1, -1)])
     # F5: Pi deck -> plate posts
     add("F5", hw.screw("shcs", 3.0, 8.0), [((x, y, DECK_Z + DECK_T), UP) for x, y in DECK_POSTS])
     add("F5", I3, [((x, y, DECK_Z - 5.7), UP) for x, y in DECK_POSTS])
