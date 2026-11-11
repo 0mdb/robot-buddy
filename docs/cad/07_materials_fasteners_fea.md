@@ -199,7 +199,14 @@ before ordering (screw engagement ≥ 1.3 d, tip ≥ 0.5 mm short of the pocket 
 | F3 | TT motor → mount v2 | **M3 × 28 SHCS** through the motor into **M3 inserts pressed through the 6 mm upright** from the motor face (amended tick 6: no nuts, which used to sit against the foot) | M3 inserts | motor 22.6 → 5.4 | 4 |
 | F4 | Follower axle + clamp | per `05_follower_spec.md`: Ø4 shoulder bolt (M3 thread) as the axle; clamp M3 × 16 SHCS + washer + nyloc from below | — | — | 2 + 2–4 |
 
-> Amendment (Ben, 2026-11-11, PETG fit check): **F3's lower insert hole goes through the mount
+> Amendment (Ben, 2026-11-11, later the same day — **supersedes the one below**): **inserts sit in
+> pockets, never through holes.** Both F3 inserts are pressed from the motor face into blind
+> pockets 6.7 deep (the 5.7 insert + 1.0 for the displaced melt, as the plate's mount pockets):
+> the lower in D10's 3.8 mm inboard boss (floor 3.1), the upper in a new 2.0 × Ø8.2 inboard
+> boss (floor 1.3; Ø8.2, not 9.2, to stay under the upright's top). The M3 × 28's tip reaches
+> 5.4 past the motor face, inside the insert. S2 to re-run on the rebuilt mount.
+
+> Amendment (Ben, 2026-11-11, PETG fit check; superseded above): **F3's lower insert hole goes through the mount
 > too** (it was blind since loop D10, 1.2 mm inside a 1.8 boss; the screw had nowhere to go). The
 > inboard boss now runs 3.8 mm, past the root chamfer's toe, so the hole exits the boss's flat
 > face and never crosses the root corner D10 cleared. S2 to re-run on the rebuilt mount.

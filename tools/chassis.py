@@ -3124,12 +3124,22 @@ MM_GUSSETS = (
 MM_GUSSET_T, MM_GUSSET_Y, MM_GUSSET_Z = 2.4, -45.5, 20.0
 MM_CHAMFER = 3.6  # root chamfer on the inboard side (stands in for a fillet until T7)
 MM_ROOT_R = 2.2  # 07 fil_in at load roots (D1); not 2.0: an r 2.0 y-cylinder is what S2 selects as a motor insert
-MM_INS_DEPTH = MM_T  # M3 inserts through the upright, pressed from the motor face (F3)
-# D10: local boss on the inboard face around the lower insert. 2026-11-11 (Ben, PETG fit
-# check): the lower hole goes THROUGH like the upper one (it was blind, 1.2 inside a 1.8
-# boss). The hole (z 2.7..6.8) dips below the foot top, so the boss now runs past the root
-# chamfer's toe (3.6) and the hole exits its flat face, never the root corner D10 cleared.
+# 2026-11-11 (Ben): inserts sit in POCKETS, never through holes. Both F3 inserts are pressed
+# from the motor face into blind pockets MOUNT_INS_DEPTH deep (the 5.7 insert + 1.0 for the
+# displaced melt), each backed by a boss on the inboard face so the floor stays >= 1.3 (the
+# 1.2 wall rule): the lower one in D10's 3.8 boss (floor 3.1), the upper one in its own.
+MM_INS_DEPTH = (
+    MOUNT_INS_DEPTH  # 6.7 from the motor face; the upright is only MM_T (6.0)
+)
+# D10: local boss on the inboard face around the lower insert. Its pocket (z 2.7..6.8) dips
+# below the foot top, so the boss runs past the root chamfer's toe (3.6): the pocket stays
+# clear of the root corner D10 cleared. (A same-day amendment ran this hole through; reverted:
+# inserts get pockets.)
 MM_INS_BOSS_H = MM_CHAMFER + 0.2  # 3.8
+# Upper insert's boss: 6.7 pocket + 1.3 floor - 6.0 upright = 2.0 proud of the inboard face.
+# Ø8.2 (2.05 wall round the 4.1 hole), not INS_BOSS 9.2: the hole is at z 22.25 and the
+# upright's top at 26.5, so 9.2 would stand 0.35 above the top edge.
+MM_INS_BOSS_UP_H, MM_INS_BOSS_UP_D = 2.0, 8.2
 
 
 def mount_v2_features(mirror: bool) -> list[tuple]:
@@ -3166,10 +3176,13 @@ def mount_v2_features(mirror: bool) -> list[tuple]:
     hx, _, hz = MOUNT_HOLE
     bz = hz - MOT_HOLE_PITCH / 2
     ops.append(("add", ("cyly", hx, bz, yi - MM_INS_BOSS_H, yi + 0.5, INS_BOSS / 2)))
+    tz = hz + MOT_HOLE_PITCH / 2
+    ops.append(
+        ("add", ("cyly", hx, tz, yi - MM_INS_BOSS_UP_H, yi + 0.5, MM_INS_BOSS_UP_D / 2))
+    )
     for dz in (-MOT_HOLE_PITCH / 2, MOT_HOLE_PITCH / 2):
-        y0 = (
-            yi - MM_INS_BOSS_H - 0.1 if dz < 0 else MM_FACE - MM_INS_DEPTH - 0.1
-        )  # both through
+        # blind pockets from the motor face: neither breaks through its boss
+        y0 = MM_FACE - MM_INS_DEPTH
         ops.append(("cut", ("cyly", hx, hz + dz, y0, MM_FACE + 0.1, INS_HOLE / 2)))
     for x, y in MOUNT_FOOT_HOLES:
         ops.append(("cut", ("cylz", x, y, -0.1, MM_FOOT_T + 0.1, CLR_M3 / 2)))
