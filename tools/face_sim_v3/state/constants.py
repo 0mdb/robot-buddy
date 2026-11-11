@@ -207,7 +207,7 @@ MOOD_TARGETS: dict[Mood, tuple[float, float, float, float, float, float]] = {
         1.0,
         0.0,
         0.0,
-        0.0,
+        0.06,
         0.0,
     ),  # No slope (read as angry); one raised brow via THINKING_BROW_OFFSET
     Mood.CONFUSED: (

@@ -328,7 +328,7 @@ Naming follows **viewer perspective** throughout.
 | Channel | Description |
 |---------|---|
 | Eyes | Open; asymmetric. |
-| Eyelids | **No slope** (lid_slope 0) — an inward slope is the ANGRY cue. **One brow raised**: right eye hooded by `THINKING_BROW_OFFSET` = 0.22 extra lid_top (× intensity), left eye fully open so it reads as raised (same mechanism as CURIOUS). lid_top 0. |
+| Eyelids | **No slope** (lid_slope 0) — an inward slope is the ANGRY cue. **One brow raised**: right eye hooded by `THINKING_BROW_OFFSET` = 0.22 extra lid_top (× intensity), left eye only slightly lidded so it reads as raised (same mechanism as CURIOUS). lid_top 0.06 (both eyes; focused, not droopy). |
 | Mouth | Very slight frown (curve -0.05). Closed. Offset slightly to one side (mouth_offset_x). |
 | Color | Cool blue (80, 135, 220). Cerebral, calm. |
 | Gaze | **Aversion to up-right** — deliberate "looking away to think" cue (spec §4.2.2). |

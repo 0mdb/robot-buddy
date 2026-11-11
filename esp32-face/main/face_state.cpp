@@ -316,6 +316,7 @@ void face_state_update(FaceState& fs)
         // One raised brow (right eye hooded below), no inward slope: the slope is
         // the ANGRY cue and made THINKING read as a glare (spec amended 2026-11-10).
         t_curve = -0.05f;
+        t_lid_top = 0.06f; // slight focus on both eyes; the right eye's hood is larger
         break;
     case Mood::CONFUSED:
         t_curve = -0.2f;
