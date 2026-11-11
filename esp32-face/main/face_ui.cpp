@@ -894,7 +894,7 @@ static DirtyRegion compute_dirty_region(const FaceState& fs, const RectI& ring)
 {
     DirtyRegion region = {};
 
-    if (!FACE_DIRTY_RECT || FACE_CALIBRATION_MODE) {
+    if (!FACE_DIRTY_RECT || FACE_CALIBRATION_MODE || PANEL_TUNE_MODE) {
         region.full = true;
         s_prev_bounds = {};
         s_prev_bounds.valid = true;
@@ -1145,6 +1145,24 @@ void face_ui_create(lv_obj_t* parent)
              AFTERGLOW_H);
 }
 
+// Big 7-segment digit for PANEL_TUNE_MODE (which preset is active).
+static void draw_digit(pixel_t* buf, int x, int y, int d, pixel_t c)
+{
+    // Segments a..g as bits; 0-9.
+    static constexpr uint8_t SEG[10] = {0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F};
+    const uint8_t            m = SEG[d % 10];
+    constexpr int            W = 22, H = 40, T = 5;
+    if (m & 0x01) draw_filled_rect(buf, x, y, W, T, c);                     // a
+    if (m & 0x02) draw_filled_rect(buf, x + W - T, y, T, H / 2, c);         // b
+    if (m & 0x04) draw_filled_rect(buf, x + W - T, y + H / 2, T, H / 2, c); // c
+    if (m & 0x08) draw_filled_rect(buf, x, y + H - T, W, T, c);             // d
+    if (m & 0x10) draw_filled_rect(buf, x, y + H / 2, T, H / 2, c);         // e
+    if (m & 0x20) draw_filled_rect(buf, x, y, T, H / 2, c);                 // f
+    if (m & 0x40) draw_filled_rect(buf, x, y + H / 2 - T / 2, W, T, c);     // g
+}
+
+static int s_panel_preset_shown = -1;
+
 void face_ui_update(const FaceState& fs)
 {
     if (!canvas_buf) return;
@@ -1223,6 +1241,9 @@ void face_ui_update(const FaceState& fs)
         if (fs.system.mode == SystemMode::NONE) {
             conv_border_render(canvas_buf);
             render_touch_ring(canvas_buf, fs, now_ms);
+        }
+        if (PANEL_TUNE_MODE && s_panel_preset_shown >= 0) {
+            draw_digit(canvas_buf, 8, 8, s_panel_preset_shown, rgb_to_color(255, 255, 255));
         }
         sample_stage(perf.border_us);
 
@@ -1320,6 +1341,7 @@ void face_ui_task(void* arg)
     float                     host_gaze_y = 0.0f;
     bool                      finger_gaze_prev = false;
     bool                      host_lost = false;
+    uint32_t                  next_panel_preset_ms = 0;
 
     FaceState fs;
     uint32_t  last_state_cmd_us = 0;
@@ -1607,6 +1629,11 @@ void face_ui_task(void* arg)
         s_collect_render_perf = FACE_PERF_TELEMETRY && ((frame_idx % FACE_PERF_SAMPLE_DIV) == 0U);
         s_last_render_perf = {};
         if (lvgl_port_lock(100)) {
+            if (PANEL_TUNE_MODE && static_cast<int32_t>(now_ms - next_panel_preset_ms) >= 0) {
+                s_panel_preset_shown = (s_panel_preset_shown + 1) % display_panel_preset_count();
+                display_apply_panel_preset(s_panel_preset_shown);
+                next_panel_preset_ms = now_ms + PANEL_TUNE_PERIOD_MS;
+            }
             face_ui_update(fs);
             if (FACE_CALIBRATION_MODE) {
                 update_calibration_labels(now_ms, next_touch_cycle_ms);

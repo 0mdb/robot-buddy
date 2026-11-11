@@ -44,6 +44,14 @@ constexpr float BREATH_AMOUNT = 0.04f; // ±4% scale (subtler than LED)
 // ---- Brightness ----
 constexpr uint8_t DEFAULT_BRIGHTNESS = 200; // TFT backlight (0-255 via LEDC)
 
+// ---- Panel drive tuning (ILI9341 row crosstalk) ----
+// PANEL_PRESET: index into PANEL_PRESETS in display.cpp applied at boot; -1 keeps the
+// driver library's vendor init. PANEL_TUNE_MODE cycles all presets every
+// PANEL_TUNE_PERIOD_MS with the preset number drawn top-left, for picking by eye.
+constexpr int      PANEL_PRESET = -1;
+constexpr bool     PANEL_TUNE_MODE = false;
+constexpr uint32_t PANEL_TUNE_PERIOD_MS = 6000;
+
 // ---- Host link watchdog (spec §4.4 "host link lost") ----
 // The host time-syncs at 2 Hz, so silence this long means the supervisor is gone.
 constexpr uint32_t HOST_SILENCE_MS = 3000;

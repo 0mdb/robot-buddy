@@ -12,6 +12,45 @@
 
 static const char* TAG = "display";
 
+static esp_lcd_panel_io_handle_t s_io = nullptr;
+
+// ILI9341 drive presets for row-crosstalk tuning (see PANEL_TUNE_MODE in config.h).
+// Each preset sets all four registers so presets are independent of each other.
+//   0xC5 VCOM control 1 (VCOMH, VCOML), 0xC7 VCOM offset, 0xB4 display inversion
+//   control (bit set = frame inversion, clear = line inversion; bit2 = normal mode),
+//   0xB1 frame rate (DIVA, RTNA: 0x1B = 70 Hz, 0x1F = 61 Hz, 0x13 = 100 Hz).
+struct PanelPreset {
+    const char* name;
+    uint8_t     vcom1[2];
+    uint8_t     vcom_offset;
+    uint8_t     inversion;
+    uint8_t     frame_rate;
+};
+static constexpr PanelPreset PANEL_PRESETS[] = {
+    {"vendor default", {0x43, 0x4C}, 0xA0, 0x02, 0x1B}, {"frame inversion", {0x43, 0x4C}, 0xA0, 0x07, 0x1B},
+    {"vcom offset -", {0x43, 0x4C}, 0x90, 0x02, 0x1B},  {"vcom offset +", {0x43, 0x4C}, 0xB0, 0x02, 0x1B},
+    {"alt vcom", {0x3E, 0x28}, 0x86, 0x02, 0x1B},       {"alt vcom + frame inv", {0x3E, 0x28}, 0x86, 0x07, 0x1B},
+    {"61 Hz refresh", {0x43, 0x4C}, 0xA0, 0x02, 0x1F},  {"100 Hz refresh", {0x43, 0x4C}, 0xA0, 0x02, 0x13},
+};
+
+int display_panel_preset_count(void)
+{
+    return static_cast<int>(sizeof(PANEL_PRESETS) / sizeof(PANEL_PRESETS[0]));
+}
+
+void display_apply_panel_preset(int index)
+{
+    if (!s_io || index < 0 || index >= display_panel_preset_count()) return;
+    const PanelPreset& p = PANEL_PRESETS[index];
+    const uint8_t      b1[2] = {0x00, p.frame_rate};
+    // tx_param waits for in-flight pixel transfers, so this is safe between flushes.
+    esp_lcd_panel_io_tx_param(s_io, 0xC5, p.vcom1, 2);
+    esp_lcd_panel_io_tx_param(s_io, 0xC7, &p.vcom_offset, 1);
+    esp_lcd_panel_io_tx_param(s_io, 0xB4, &p.inversion, 1);
+    esp_lcd_panel_io_tx_param(s_io, 0xB1, b1, 2);
+    ESP_LOGI(TAG, "panel preset %d: %s", index, p.name);
+}
+
 // Backlight via LEDC
 static void backlight_init(void)
 {
@@ -83,6 +122,10 @@ lv_display_t* display_init(void)
     ESP_ERROR_CHECK(esp_lcd_panel_init(panel_handle));
     ESP_ERROR_CHECK(esp_lcd_panel_invert_color(panel_handle, true));
     ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(panel_handle, true));
+    s_io = io_handle;
+    if (PANEL_PRESET >= 0) {
+        display_apply_panel_preset(PANEL_PRESET);
+    }
 
     // 5. LVGL port
     lvgl_port_cfg_t lvgl_cfg = ESP_LVGL_PORT_INIT_CONFIG();
