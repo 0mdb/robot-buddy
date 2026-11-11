@@ -191,7 +191,7 @@ def test_pmic_rail_is_never_reported_as_pack_voltage(rig) -> None:
     c = core(adapter)
     assert c["pack_mv"] == w.Sentinel.NO_READING_U16
     assert c["soc_pct"] == w.Sentinel.SOC_UNKNOWN
-    assert c["current_ca"] == 0
+    assert c["current_ca"] == w.Sentinel.NO_READING_I16  # not 0.0 A off the pack
     p.source, p.voltage_mv, p.current_ma, p.soc_pct = "battery", 7650, 820, 61
     c = core(adapter)
     assert (c["pack_mv"], c["current_ca"], c["soc_pct"]) == (7650, 82, 61)

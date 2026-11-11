@@ -25,8 +25,8 @@ Honest gaps — the alternative is a HUD that looks confident and is wrong:
   source is `battery` / `ac_charging`; under the PMIC-only monitor it is a Pi 3V3 rail. Anything
   else is sent as `Sentinel.NO_READING_U16`, and an unknown SoC as `Sentinel.SOC_UNKNOWN`.
 * **No per-cell sense** (the cells are inside the UPS HAT) and **no temperature sensor**. Cell
-  is the sentinel; `temp_max_c` is 0, which nothing on the HUD displays yet — it needs its own
-  sentinel before a widget does.
+  is the sentinel, and `temp_max_c` is `Sentinel.NO_READING_I8` (added 2026-11-11, with
+  `NO_READING_I16` for current off the pack).
 
 Control goes to `TickLoop.set_teleop_twist`, never to an MCU, so every gate in
 `core/safety.py` still applies. See `~/vantage/docs/CONTROL.md`.
@@ -180,7 +180,12 @@ class BuddyAdapter:
             min(0xFFFE, p.voltage_mv) if on_pack else w.Sentinel.NO_READING_U16
         )
         v["cell_min_mv"] = w.Sentinel.NO_READING_U16
-        v["current_ca"] = max(-32768, min(32767, p.current_ma // 10)) if on_pack else 0
+        v["current_ca"] = (
+            max(-32767, min(32767, p.current_ma // 10))
+            if on_pack
+            else w.Sentinel.NO_READING_I16
+        )
+        v["temp_max_c"] = w.Sentinel.NO_READING_I8  # no temperature sensor on Buddy
         v["soc_pct"] = p.soc_pct if 0 <= p.soc_pct <= 100 else w.Sentinel.SOC_UNKNOWN
 
         warn = 0
