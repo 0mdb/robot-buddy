@@ -11,7 +11,12 @@
 int64_t g_fake_time_us = 1'000'000;
 
 // ---- Platform stubs for symbols face_ui.cpp links against ----
-void        display_set_backlight(uint8_t) {}
+void display_set_backlight(uint8_t) {}
+int  display_panel_preset_count(void)
+{
+    return 1;
+}
+void        display_apply_panel_preset(int) {}
 void        led_set_rgb(uint8_t, uint8_t, uint8_t) {}
 std::size_t touch_transform_preset_count()
 {
