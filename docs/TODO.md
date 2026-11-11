@@ -112,6 +112,7 @@ Stage 4.2 Dirty-Rect A/B Snapshot (2026-02-25, post-dirty firmware + updated sup
 - [x] `just test-face-host`: gesture classifier + SPSC queue (ASan/UBSan; TSan clean)
 - [x] `just test-face-render`: real `face_ui.cpp` drawing on the host vs a full-clear reference (dirty-rect correctness); `render_harness <dir> moods` dumps mood stills for design review
 - [x] Mouth drawn hard-edged (firmware + sim): AA shades shifted hue on the TN panel and streaked along the mouth
+- [x] Mouth light/dark banding that moved with the eyes = panel row crosstalk (panel mounted sideways: screen columns are panel rows). Fixed by ILI9341 frame inversion (`PANEL_PRESET = 1`, chosen by eye with `PANEL_TUNE_MODE`; preset 5 also worked). Re-tune with `PANEL_TUNE_MODE` if the panel is ever swapped
 - [ ] On-device: flash, then confirm FPS ≈ 30 in heartbeat perf (`window_frames`), and record frame/render numbers vs the 13 FPS baseline
 - [ ] On-device: tap / long-press / drag feel with a child-size finger; tune `TOUCH_*` in `config.h` (+ sim) if needed; check ring visibility near screen edges
 - [ ] On-device: eyes return to mood colour after an ERROR_DISPLAY; unplug supervisor → sleepy look-around within 3 s → restores on reconnect

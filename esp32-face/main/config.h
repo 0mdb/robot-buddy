@@ -48,7 +48,7 @@ constexpr uint8_t DEFAULT_BRIGHTNESS = 200; // TFT backlight (0-255 via LEDC)
 // PANEL_PRESET: index into PANEL_PRESETS in display.cpp applied at boot; -1 keeps the
 // driver library's vendor init. PANEL_TUNE_MODE cycles all presets every
 // PANEL_TUNE_PERIOD_MS with the preset number drawn top-left, for picking by eye.
-constexpr int      PANEL_PRESET = -1;
+constexpr int      PANEL_PRESET = 1; // frame inversion: fixes row crosstalk (chosen by eye 2026-11-10; 5 also worked)
 constexpr bool     PANEL_TUNE_MODE = false;
 constexpr uint32_t PANEL_TUNE_PERIOD_MS = 6000;
 
