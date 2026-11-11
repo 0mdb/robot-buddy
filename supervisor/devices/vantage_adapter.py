@@ -203,7 +203,7 @@ class BuddyAdapter:
         r = self._tick.robot
         g = {n: 0 for n in w.GROUND_CLASS_FIELDS}
         g["clearance_arc"] = bytes(8)
-        g["reserved"] = bytes(38)
+        g["reserved"] = bytes(34)
 
         # Per-wheel command, split from the capped twist exactly as the MCU does (control.cpp).
         half_wb = self._param("reflex.wheelbase_mm", 150) / 2.0
