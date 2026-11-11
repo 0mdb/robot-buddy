@@ -1262,3 +1262,35 @@ class TestPlannerNewEvents:
         ws = await self._request(loop)
         assert ws["faults"] == ["STALL", "OBSTACLE"]
         assert ws["clear_confidence"] == 0.23
+
+
+class TestConvStateKeyframe:
+    """The face only hears conv state on change; a keyframe re-sends it every 2 s."""
+
+    def test_conv_state_resent_periodically(self):
+        from supervisor.core.state import DesiredTwist
+        from supervisor.core.tick_loop import _CONV_KEYFRAME_MS, TickLoop
+
+        face = MagicMock()
+        face.connected = True
+        face.telemetry = None
+        workers = MagicMock()
+        workers.send_to = AsyncMock(return_value=True)
+        loop = TickLoop(reflex=None, face=face, workers=workers)
+
+        def conv_sends() -> list:
+            return [c for c in face.send_conv_state.call_args_list]
+
+        loop.robot.tick_mono_ms = 10_000.0
+        loop._emit_mcu(DesiredTwist(), 10_000.0)
+        first = len(conv_sends())
+        assert first >= 1  # initial keyframe
+
+        loop.robot.tick_mono_ms = 10_000.0 + _CONV_KEYFRAME_MS / 2
+        loop._emit_mcu(DesiredTwist(), loop.robot.tick_mono_ms)
+        assert len(conv_sends()) == first  # not yet
+
+        loop.robot.tick_mono_ms = 10_000.0 + _CONV_KEYFRAME_MS + 1
+        loop._emit_mcu(DesiredTwist(), loop.robot.tick_mono_ms)
+        assert len(conv_sends()) == first + 1
+        assert conv_sends()[-1].kwargs.get("force") is True

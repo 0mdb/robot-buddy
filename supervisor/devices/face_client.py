@@ -287,13 +287,17 @@ class FaceClient:
                 struct.pack("<B", flags_u8),
             )
 
-    def send_conv_state(self, conv_state: int) -> None:
-        """Send SET_CONV_STATE command (conversation phase for border animation)."""
+    def send_conv_state(self, conv_state: int, *, force: bool = False) -> None:
+        """Send SET_CONV_STATE command (conversation phase for border animation).
+
+        force=True bypasses dedup (periodic keyframe so the face can't stay out of
+        sync, e.g. after either side restarts).
+        """
         if not self.connected:
             return
 
         # Dedup: skip if unchanged
-        if conv_state == self._last_conv_state_val:
+        if not force and conv_state == self._last_conv_state_val:
             self._tx_dedup_skips += 1
             return
         self._last_conv_state_val = conv_state

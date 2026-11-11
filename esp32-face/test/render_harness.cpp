@@ -98,6 +98,7 @@ static int run(const Scenario& sc, int frames, const char* dump_dir)
     conv_border_set_state(sc.conv_state);
     std::vector<pixel_t> ref(SCREEN_W * SCREEN_H);
     int                  bad_frames = 0;
+    uint64_t             dirty_sum = 0;
 
     for (int f = 0; f < frames; f++) {
         g_fake_time_us += 33'333;
@@ -119,6 +120,7 @@ static int run(const Scenario& sc, int frames, const char* dump_dir)
             std::snprintf(p, sizeof(p), "%s/%s_f%03d.ppm", dump_dir, sc.name, f);
             write_ppm(p, canvas_buf);
         }
+        dirty_sum += s_last_render_perf.dirty_px;
         const Diff d = compare(canvas_buf, ref.data());
         if (d.count > 0) {
             if (bad_frames < 3) {
@@ -135,7 +137,8 @@ static int run(const Scenario& sc, int frames, const char* dump_dir)
             bad_frames++;
         }
     }
-    std::printf("%-22s %s (%d/%d frames differ)\n", sc.name, bad_frames ? "FAIL" : "ok", bad_frames, frames);
+    std::printf("%-22s %s (%d/%d frames differ)  dirty_px_avg=%llu\n", sc.name, bad_frames ? "FAIL" : "ok", bad_frames,
+                frames, static_cast<unsigned long long>(dirty_sum / frames));
     return bad_frames ? 1 : 0;
 }
 

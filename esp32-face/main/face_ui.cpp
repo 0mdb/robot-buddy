@@ -660,17 +660,43 @@ static void rect_union_inplace(RectI& a, const RectI& b)
     a.valid = true;
 }
 
+static int rect_area(const RectI& r)
+{
+    return r.valid ? (r.x1 - r.x0 + 1) * (r.y1 - r.y0 + 1) : 0;
+}
+
+static bool rects_overlap(const RectI& a, const RectI& b)
+{
+    return a.valid && b.valid && !(a.x1 < b.x0 || b.x1 < a.x0 || a.y1 < b.y0 || b.y1 < a.y0);
+}
+
 static void dirty_region_add_rect(DirtyRegion& region, RectI rect)
 {
     if (!rect.valid || region.full) return;
 
-    // Merge with any touching/overlapping rectangles to keep rect count small.
-    for (int i = 0; i < region.count; i++) {
-        if (!rects_touch_or_overlap(region.rects[i], rect)) continue;
-        rect_union_inplace(rect, region.rects[i]);
-        region.rects[i] = region.rects[region.count - 1];
-        region.count--;
-        i--;
+    // Merge with a rect only when they overlap (must merge: no pixel may be cleared
+    // or flushed twice) or when touching and the bounding box wastes little. Never
+    // merge thin strips into a huge box: the four border strips touch at the corners
+    // and used to collapse into the whole screen. Re-scan after every merge so the
+    // grown rect is checked against all others again.
+    bool merged = true;
+    while (merged) {
+        merged = false;
+        for (int i = 0; i < region.count; i++) {
+            const RectI& other = region.rects[i];
+            bool         take = rects_overlap(other, rect);
+            if (!take && rects_touch_or_overlap(other, rect)) {
+                RectI u = rect;
+                rect_union_inplace(u, other);
+                take = rect_area(u) <= (rect_area(rect) + rect_area(other)) * 5 / 4;
+            }
+            if (!take) continue;
+            rect_union_inplace(rect, other);
+            region.rects[i] = region.rects[region.count - 1];
+            region.count--;
+            merged = true;
+            break;
+        }
     }
 
     if (region.count >= DirtyRegion::MAX_RECTS) {
@@ -1507,10 +1533,12 @@ void face_ui_task(void* arg)
                     if (!afterglow_buf) {
                         fs.fx.afterglow = false;
                     }
-                    const uint8_t conv_state = g_cmd_conv_state.load(std::memory_order_relaxed);
-                    conv_border_set_state(conv_state);
-                    g_ptt_listening.store(conv_state == static_cast<uint8_t>(FaceConvState::PTT),
-                                          std::memory_order_relaxed);
+                    // Conversation state is NOT replayed: a restarted supervisor starts idle
+                    // and only sends conv state on change, so a replayed PTT/LISTENING
+                    // would stick. Stay idle until the host says otherwise.
+                    g_cmd_conv_state.store(static_cast<uint8_t>(FaceConvState::IDLE), std::memory_order_relaxed);
+                    conv_border_set_state(static_cast<uint8_t>(FaceConvState::IDLE));
+                    g_ptt_listening.store(false, std::memory_order_relaxed);
                 }
             }
             if (host_lost) {

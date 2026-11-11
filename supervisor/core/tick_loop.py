@@ -99,6 +99,9 @@ _REFLEX_STALE_MS = 2000.0
 # just heats /proc and burns battery on a Pi-side subprocess for no signal.
 _POWER_POLL_S = 1.0
 
+# Re-send the conversation state to the face this often even when unchanged.
+_CONV_KEYFRAME_MS = 2000.0
+
 log = logging.getLogger(__name__)
 
 TICK_HZ = 50
@@ -211,6 +214,7 @@ class TickLoop:
 
         # Face flags sent on reconnect
         self._face_flags_sent = False
+        self._conv_keyframe_ms = 0.0
         self._last_face_system_mode: int | None = None
         self._last_face_system_param: int = 0
 
@@ -970,6 +974,14 @@ class TickLoop:
                 self._face.send_flags(flags)
             self._face.send_conv_state(int(self._conv.state))
             self._conv_choreo.on_transition(self._conv.prev_state, self._conv.state)
+        elif self.robot.tick_mono_ms - self._conv_keyframe_ms >= _CONV_KEYFRAME_MS:
+            # Keyframe: the face only hears conv state on change, so a restart on
+            # either side (or a lost packet) could leave a stale border/PTT showing.
+            self._face.send_conv_state(int(self._conv.state), force=True)
+        if conv_changed or (
+            self.robot.tick_mono_ms - self._conv_keyframe_ms >= _CONV_KEYFRAME_MS
+        ):
+            self._conv_keyframe_ms = self.robot.tick_mono_ms
 
         # Advance transition choreographer and dispatch actions
         choreo_actions = self._conv_choreo.update(self.robot.tick_dt_ms)
