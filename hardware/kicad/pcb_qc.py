@@ -463,7 +463,9 @@ SIGNOFF.append(
     "2026-11-09): C3 Rubycon 16ZLH1000MEFC10X16 is 10 x 16; U2 on female headers ~11 mm"
 )
 SIGNOFF.append(
-    "USB-C plug for the Pi link fits the rear bay (7 mm to the carriages): right-angle plug or adapter"
+    "USB-C plug for the Pi link: STRAIGHT plug, overmold + boot <= ~22 mm from the receptacle, "
+    "cable <= 4 mm, bends up through the deck's rear notch (an up-angle plug hits the IMU). "
+    "Modelled 2026-11-10: 0 interference, 4.4 mm under the IMU (control run at +8 mm did hit it)"
 )
 
 # ── 6 Fab package ────────────────────────────────────────────────────────────

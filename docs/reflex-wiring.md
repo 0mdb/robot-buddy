@@ -64,6 +64,26 @@ brownout risk. A failed readback holds the side at PWM 0 and raises `Fault::MOTO
 Footprint: the module is plugged in chip-up on 2×8 female headers. The footprint was a
 mirror image until 2026-11-09 (register M1); seating a module on a v1 board shorts the supply.
 
+### Motor harness: encoder TT socket → J1 / J2 (XH 6-pin)
+
+The motor's 6-pin socket and the board's XH header use **different orders**, so the harness
+is not straight-through. Motor socket pinout from the vendor sheet (13-line metal TT, 1:45,
+Hall AB encoder, 3.3–5 V, outputs pulled up on the encoder board; 2026-11-10):
+
+| Motor socket pin | Function | → J1/J2 XH pin | Board net (J1 / J2) |
+|---:|---|---:|---|
+| 5 | Motor + | 1 | AO1 / BO1 |
+| 6 | Motor − | 2 | AO2 / BO2 |
+| 4 | Encoder power | 3 | +3V3 |
+| 1 | Encoder ground | 4 | GND |
+| 2 | Encoder A | 5 | ENC_LA / ENC_RA |
+| 3 | Encoder B | 6 | ENC_LB / ENC_RB |
+
+Wire colours vary by batch: identify each bare wire by continuity to its socket-pin position,
+not by colour. Pins 4 and 1 swapped reverse-power the encoder; a motor or A/B swap only
+inverts direction / count sign (firmware). J1 = MOTOR L, J2 = MOTOR R (identical headers,
+silk only). The encoder's pull-ups go to its own supply, so at 3V3 A/B are 3.3 V logic.
+
 ---
 
 ### IMU: SparkFun Qwiic BMI270 (via J5)
