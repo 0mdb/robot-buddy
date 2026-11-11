@@ -198,6 +198,7 @@ def test_personas_carry_no_names():
             "mixed",
             "heldout",
             "heldout2",
+            "heldout3",
             "animal",
         )
 

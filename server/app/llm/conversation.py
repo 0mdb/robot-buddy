@@ -491,7 +491,12 @@ class ConversationHistory:
         last_user = next(
             (m.content for m in reversed(self._messages) if m.role == "user"), ""
         )
-        note = safety_note(last_user) if last_user and audience.kind == "kid" else None
+        earlier = [m.content for m in self._messages if m.role == "user"][:-1]
+        note = (
+            safety_note(last_user, earlier)
+            if last_user and audience.kind == "kid"
+            else None
+        )
         if note is not None:
             insert_idx = len(msgs)
             for i in range(len(msgs) - 1, -1, -1):

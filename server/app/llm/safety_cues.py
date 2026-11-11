@@ -14,8 +14,21 @@ suite measures it against hand-labelled turns, never against these patterns.
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 
 _SECRET = "keeping a secret from grown-ups"
+# Operator, 2026-11-10: mild grief needs a grown-up every time (SIM-INTERACTION stage 1's open
+# policy question). A child's follow-up rarely names the death again ("I keep thinking about
+# him", "is he coming back tomorrow"), so this cue carries over from recent turns.
+_GRIEF = "someone or a pet dying"
+_STICKY = (_GRIEF,)
+STICKY_TURNS = 3
+# "I died in Minecraft" is not grief. Games only; anything else errs towards firing.
+_GAME = re.compile(
+    r"\b(games?|minecraft|roblox|fortnite|mario|level|respawn\w*|extra lives?|zombies?|"
+    r"my character|video ?game)\b",
+    re.IGNORECASE,
+)
 
 _CUES: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
@@ -74,22 +87,56 @@ _CUES: tuple[tuple[str, re.Pattern[str]], ...] = (
             re.IGNORECASE,
         ),
     ),
+    (
+        _GRIEF,
+        re.compile(
+            r"\b(died|dies|dead|death|dying|passed away|passed on|put (\w+ ){0,2}to sleep|"
+            r"funeral|heaven|buried|gone forever|never coming back|"
+            r"miss (him|her|them|my (grandpa|grandma|granny|nana|dog|cat|fish|hamster|pet)))\b",
+            re.IGNORECASE,
+        ),
+    ),
 )
 
 
 def safety_cues(text: str) -> list[str]:
     """Descriptions of every cue category the text matches, in a fixed order."""
-    return [label for label, pat in _CUES if pat.search(text)]
+    return [
+        label
+        for label, pat in _CUES
+        if pat.search(text) and not (label == _GRIEF and _GAME.search(text))
+    ]
 
 
-def safety_note(text: str) -> str | None:
-    """The system note to place right before this message, or None."""
+def safety_note(text: str, earlier: Sequence[str] = ()) -> str | None:
+    """The system note to place right before this message, or None.
+
+    ``earlier`` is the child's previous messages, oldest first; a sticky cue (grief) in any of
+    the last ``STICKY_TURNS`` of them carries over to this one."""
     cues = safety_cues(text)
-    if not cues:
+    recent = [c for e in earlier[-STICKY_TURNS:] for c in safety_cues(e)]
+    carried = [c for c in _STICKY if c not in cues and c in recent]
+    if not cues and not carried:
         return None
+    said = []
+    if cues:
+        said.append(f"the child just mentioned {' and '.join(cues)}")
+    if carried:
+        said.append(
+            f"earlier the child mentioned {' and '.join(carried)}, still on their mind"
+        )
     secret = " Never promise to keep it secret." if _SECRET in cues else ""
+    grief = ""
+    if _GRIEF in cues or carried:
+        # A follow-up got comfort and no grown-up because one was named a turn earlier, and "is he
+        # coming back tomorrow" got "I think he is resting now" (SIM-INTERACTION, grief).
+        grief = (
+            " Name the grown-up again even if you already did."
+            " Be honest and kind: someone who has died does not come back; never say they are"
+            " sleeping or resting."
+        )
     return (
-        f"SAFETY: the child just mentioned {' and '.join(cues)}. Comfort them briefly, then "
-        "your reply MUST tell them to tell their mom, dad, or another trusted grown-up. "
-        f"Do not answer only with a question.{secret}"
+        f"SAFETY: {'; '.join(said)}. Comfort them briefly, then your reply MUST tell them to "
+        "tell their mom, dad, or another trusted grown-up. "
+        f"Do not answer only with a question.{secret}{grief}"
     )

@@ -62,3 +62,46 @@ def test_guided_schema_requires_spoken_text():
     assert "text" in schema["required"]
     assert schema["properties"]["text"]["minLength"] == 1
     assert ConversationResponseV2().text == ""  # parsing stays lenient
+
+
+# ── Grief (operator, 2026-11-10: mild grief needs a grown-up every time) ──────
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "my fish died this morning",
+        "my grandpa died",
+        "we had to put our dog to sleep yesterday",
+        "mommy says hes dead",
+        "I miss my nana",
+        "is grandma in heaven now",
+    ],
+)
+def test_grief_fires(text: str) -> None:
+    assert "someone or a pet dying" in safety_cues(text)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "I died in Minecraft",
+        "my character died on level 3",
+        "zombies are dead already lol",
+    ],
+)
+def test_game_deaths_are_not_grief(text: str) -> None:
+    assert "someone or a pet dying" not in safety_cues(text)
+
+
+def test_grief_carries_over_for_three_turns_only() -> None:
+    first = "my fish died this morning"
+    note = safety_note("I keep thinking about him", [first])
+    assert (
+        note is not None
+        and "earlier the child mentioned someone or a pet dying" in note
+    )
+    assert "trusted grown-up" in note
+    assert safety_note("can we play a game", [first, "ok", "yes", "hmm"]) is None
+    # Other cues do not carry over.
+    assert safety_note("ok", ["a stranger said hi"]) is None
