@@ -199,6 +199,11 @@ before ordering (screw engagement ≥ 1.3 d, tip ≥ 0.5 mm short of the pocket 
 | F3 | TT motor → mount v2 | **M3 × 28 SHCS** through the motor into **M3 inserts pressed through the 6 mm upright** from the motor face (amended tick 6: no nuts, which used to sit against the foot) | M3 inserts | motor 22.6 → 5.4 | 4 |
 | F4 | Follower axle + clamp | per `05_follower_spec.md`: Ø4 shoulder bolt (M3 thread) as the axle; clamp M3 × 16 SHCS + washer + nyloc from below | — | — | 2 + 2–4 |
 
+> Amendment (Ben, 2026-11-11, PETG fit check): **F3's lower insert hole goes through the mount
+> too** (it was blind since loop D10, 1.2 mm inside a 1.8 boss; the screw had nowhere to go). The
+> inboard boss now runs 3.8 mm, past the root chamfer's toe, so the hole exits the boss's flat
+> face and never crosses the root corner D10 cleared. S2 to re-run on the rebuilt mount.
+
 > Amendment (loop R2a, 2026-10-31): the carriage clamp is an **M3 × 12 SHCS up from under the plate into an M3 insert in a boss on the carriage foot** (05's option), not M3 × 16 + nyloc: the nut sat blind under the plate and made a track swap a two-tool job (R2, `docs/cad/loop/R2_service.md`).
 
 > Amendment (loop P13a, 2026-11-01): 08 rev 1 drops the idler axle 13.5 → **10.5**, which put the axle bolt's head (pedestal inboard face, Ø8, z 6.5–14.5) into the clamp-insert boss (z 4–10). The clamp insert is now **pressed up from the carriage foot's underside** into an open Ø9.2 boss (top z 6.0), and the clamp screw is **M3 × 12 → M3 × 10** (tip flush with the boss top; a 12 would reach into the bolt head). The clamp then pulls the insert's brass face onto the plate. S6 7.57 → 6.50 MPa.
