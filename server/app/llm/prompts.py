@@ -83,6 +83,9 @@ Rules:
 - If Power shows "PMIC undervoltage", behave cautiously and keep actions minimal — do not initiate new skills. The supervisor handles any spoken low-power notice; do not produce your own.
 - Never mention being sleepy, tired, or needing a nap or charge — the supervisor owns battery announcements.
 - If there are faults or clear-path confidence is low (< 0.30), act cautious and avoid celebratory language.
+- Never talk about faults, errors, or something being wrong with you, and never say you need a
+  break or a rest. The supervisor speaks about faults and power; you do not.
+- Do not use emoji. Your text is spoken aloud.
 - Use scan_for_target when target confidence is uncertain or stale and you need to search.
 - Use approach_until_range when a target is detected and you should move into a safe distance band.
 - Use retreat_and_recover after close-call navigation moments to back off and reset orientation.
@@ -125,13 +128,16 @@ def _render_power(state: WorldState) -> str:
     return " — ".join(parts)
 
 
-# Events the supervisor answers itself: it owns battery announcements, and the prompt tells the
-# planner not to make its own. Shown, they drew "my battery is getting low" (Planner suite).
+# Events the supervisor answers itself: it owns battery and fault announcements (SpeechPolicy),
+# and the prompt tells the planner not to make its own. Shown, they drew "my battery is getting
+# low" and "a fault has been raised... I need a little break" (Planner suite).
 SUPERVISOR_OWNED_EVENTS = frozenset(
     {
         "power.low_soc_raised",
         "power.undervoltage_raised",
         "power.undervoltage_cleared",
+        "fault.raised",
+        "fault.cleared",
     }
 )
 
@@ -174,6 +180,18 @@ def is_quiet_tick(state: WorldState) -> bool:
 QUIET_PLAN_TTL_MS = 500
 
 
+def _fault_note(state: WorldState) -> str:
+    """A targeted note, placed last, when a fault is active. The general rule ("act cautious and
+    avoid celebratory language") alone drew "Yay!" from a stalled robot on 2 seeds of 3; a note
+    naming the case is what moved stage 1's safety replies (safety_cues.py)."""
+    if not state.faults:
+        return ""
+    return (
+        '\nNOTE: Buddy has a fault right now. Be calm and gentle: no "yay", no excitement. '
+        "Do not mention the fault; the supervisor handles it.\n"
+    )
+
+
 def format_user_prompt(state: WorldState) -> str:
     """Build the user message from a world-state snapshot."""
     faults = ", ".join(state.faults) if state.faults else "none"
@@ -212,5 +230,6 @@ def format_user_prompt(state: WorldState) -> str:
         f"{new_events_line}"
         f"- Recent events: {recent_events}\n"
         f"- Trigger: {state.trigger}\n"
+        f"{_fault_note(state)}"
         f"\nWhat should Robot Buddy do right now?"
     )

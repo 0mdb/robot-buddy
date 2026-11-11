@@ -160,7 +160,9 @@ class SpeechPolicy:
         if evt.type == "vision.ball_acquired":
             return "vision.ball_acquired"
         if evt.type == "fault.raised":
-            fault_flags = int(evt.payload.get("fault_flags", 0))
+            # PlannerEventBus emits the bitmask as "flags". Reading "fault_flags" made every fault
+            # look non-severe, so none was ever spoken (found 2026-11-10).
+            fault_flags = int(evt.payload.get("flags", 0))
             if not (fault_flags & _SEVERE_FAULT_MASK):
                 return None  # Non-severe faults (e.g. CMD_TIMEOUT) don't warrant speech
             return "fault.raised"

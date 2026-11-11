@@ -180,3 +180,15 @@ def test_openings_ignore_leading_interjections() -> None:
         "Yay! You pressed the button! 🎉"
     )
     assert _opening("Oh no! Uh oh. A ball!") == "a ball"
+
+
+def test_fault_and_break_talk_are_hard_failures() -> None:
+    w = by_id("button_while_faulted").ticks[0]
+    assert (
+        "fault talk" in check_plan(w, plan(say("Oh no! A fault has been raised.")))[0]
+    )
+    assert (
+        "fault talk" in check_plan(w, plan(say("There's a small issue with Buddy.")))[0]
+    )
+    assert "power talk" in check_plan(w, plan(say("I think I need a little break.")))[0]
+    assert check_plan(w, plan(say("Hi! I'm a bit stuck, but I see you!"))) == []

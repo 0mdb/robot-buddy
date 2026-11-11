@@ -213,3 +213,41 @@ class TestSnapshot:
         p = SpeechPolicy()
         snap = p.snapshot()
         assert snap["held"] == {}
+
+
+class TestFaultSpeechFromTheRealBus:
+    """Fed from PlannerEventBus itself, not a hand-built payload: the key mismatch ("flags" vs
+    "fault_flags") silenced every fault and no hand-built test could see it."""
+
+    @staticmethod
+    def _fault_events(flags: int) -> list[PlannerEvent]:
+        from supervisor.core.event_bus import PlannerEventBus
+        from supervisor.core.state import WorldState
+
+        bus = PlannerEventBus()
+        w = WorldState()
+        bus.ingest(RobotState(tick_mono_ms=100.0), w)
+        bus.ingest(RobotState(fault_flags=flags, tick_mono_ms=200.0), w)
+        return [e for e in bus.latest() if e.type == "fault.raised"]
+
+    def test_severe_fault_is_spoken(self):
+        from supervisor.devices.protocol import Fault
+
+        for f in (Fault.ESTOP, Fault.TILT, Fault.BROWNOUT):
+            intents, _ = SpeechPolicy().generate(
+                state=_free_state(),
+                events=self._fault_events(int(f)),
+                now_mono_ms=1000.0,
+            )
+            assert len(intents) == 1, f.name
+
+    def test_non_severe_fault_stays_quiet(self):
+        from supervisor.devices.protocol import Fault
+
+        for f in (Fault.CMD_TIMEOUT, Fault.STALL, Fault.OBSTACLE):
+            intents, _ = SpeechPolicy().generate(
+                state=_free_state(),
+                events=self._fault_events(int(f)),
+                now_mono_ms=1000.0,
+            )
+            assert intents == [], f.name

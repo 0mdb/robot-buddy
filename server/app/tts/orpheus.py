@@ -16,6 +16,7 @@ import io
 import logging
 import os
 import queue
+import re
 import shutil
 import subprocess
 import threading
@@ -83,6 +84,29 @@ ORPHEUS_TOTAL_TIMEOUT_S = settings.orpheus_total_timeout_s
 
 class TTSBusyError(RuntimeError):
     """Raised when Orpheus is busy and no fallback backend is available."""
+
+
+# Pictographs, dingbats, flags, keycaps and the joiners/selectors that build emoji sequences. A
+# TTS model either reads them out or stumbles on them; nobody should hear "party popper".
+_NOT_SPEAKABLE = re.compile(
+    "["
+    "\U0001f000-\U0001faff"  # emoji, pictographs, symbols, flags (regional indicators)
+    "\u2600-\u27bf"  # misc symbols, dingbats
+    "\u2b00-\u2bff"  # arrows, stars
+    "\ufe00-\ufe0f"  # variation selectors
+    "\u200d"  # zero-width joiner
+    "\u20e3"  # combining keycap
+    "]+"
+)
+
+
+def speakable(text: str) -> str:
+    """Text as it should reach a TTS backend: no emoji, whitespace collapsed.
+
+    Applied at ``synthesize``/``stream`` so every source (planner ``say``, conversation,
+    speech policy) and every backend (Orpheus, espeak) gets it (TODO "Emoji reach TTS").
+    """
+    return re.sub(r"\s+", " ", _NOT_SPEAKABLE.sub(" ", text)).strip()
 
 
 def apply_prosody_tag(emotion: str, text: str, *, intensity: float = 0.5) -> str:
@@ -690,7 +714,10 @@ class OrpheusTTS:
         (0.0–1.0) gates high-intensity paralinguistic cues such as
         ``<gasp>`` for peak surprise.
         """
-        if not isinstance(text, str) or not text.strip():
+        if not isinstance(text, str):
+            return b""
+        text = speakable(text)
+        if not text:
             return b""
 
         should_shed_to_espeak = False
@@ -815,7 +842,10 @@ class OrpheusTTS:
 
         Yields 16-bit 16 kHz mono PCM in CHUNK_SAMPLES (10 ms) increments.
         """
-        if not isinstance(text, str) or not text.strip():
+        if not isinstance(text, str):
+            return self._empty_stream()
+        text = speakable(text)
+        if not text:
             return self._empty_stream()
 
         should_shed_to_espeak = False

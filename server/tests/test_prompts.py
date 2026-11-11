@@ -215,3 +215,11 @@ def test_supervisor_owned_and_gated_events_are_hidden_and_quiet():
     open_ = shut.model_copy(update={"ball_confidence": 0.9})
     assert not is_quiet_tick(open_)
     assert "- New events: vision.ball_acquired\n" in format_user_prompt(open_)
+
+
+def test_fault_note_only_when_faulted():
+    base = dict(robot_id="r", seq=1, monotonic_ts_ms=0, mode="WANDER", range_mm=900)
+    assert "NOTE: Buddy has a fault" not in format_user_prompt(WorldState(**base))
+    p = format_user_prompt(WorldState(**base, faults=["STALL"]))
+    assert "NOTE: Buddy has a fault" in p
+    assert p.index("NOTE: Buddy has a fault") < p.index("What should Robot Buddy do")
