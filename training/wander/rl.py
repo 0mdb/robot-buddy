@@ -16,7 +16,7 @@ generation's ranking stays exact; the draws change between generations. The best
 then biased toward easy draws, so each generation also scores the distribution's mean, and the
 result is the best-scoring mean.
 
-  uv run python rl.py                                 # ~150 generations, ~3 h on 30 workers
+  uv run python rl.py                                 # 150 generations, ~8 h on 30 workers (~185 s each)
   uv run python rl.py --generations 3 --popsize 6 --episode 30 --name smoke
   uv run python rl.py --name rl1 --resume             # continue from out/rl1/es.pkl
 
