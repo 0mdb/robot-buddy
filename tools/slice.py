@@ -583,15 +583,12 @@ PLATES = {
         "RB-PRT-010_motor_mount_R",
         "RB-PRT-011_motor_mount_L",
     ],
-    "fit2": [  # 2026-11-11 (Ben): the rest of the chassis in PETG (--mat PETG) after `fit`;
-        # wheels (sprocket / idler / road-disc seats are tuned for PET-CF) stay out
+    "fit2": [  # 2026-11-11 (Ben): bulkhead group + Pi deck in PETG (--mat PETG) after `fit`;
+        # track frames / carriages and the wheels stay out
         "RB-PRT-002_bulkhead",
         "RB-PRT-070_sonar_holder",
-        "RB-PRT-040_trackframe_L",
-        "RB-PRT-041_trackframe_R",
-        "RB-PRT-030_carriage_L",
-        "RB-PRT-031_carriage_R",
         "RB-PRT-060_speaker_clamp",
+        "RB-PRT-003_pi_deck",
     ],
     "petcf4": [  # waits on the M2.5 insert row (deck)
         "RB-PRT-003_pi_deck",
