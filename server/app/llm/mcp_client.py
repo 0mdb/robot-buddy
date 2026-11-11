@@ -19,6 +19,7 @@ import io
 import logging
 from contextlib import AsyncExitStack
 from typing import Any
+from urllib.parse import urlsplit
 
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
@@ -78,6 +79,12 @@ class McpClient:
 
     async def _connect_locked(self) -> bool:
         """Caller must hold self._lock."""
+        # Probe the port first. With nothing listening, the mcp transport's task group
+        # cancels the *calling* task (CancelledError out of initialize()), which no
+        # except clause here can absorb safely -- it killed server startup.
+        if not await self._reachable():
+            self._connect_attempts += 1
+            return False
         stack = AsyncExitStack()
         try:
             r, w, _ = await stack.enter_async_context(streamablehttp_client(self._url))
@@ -85,13 +92,39 @@ class McpClient:
             await session.initialize()
         except Exception as exc:
             log.warning("MCP connect to %s failed: %s", self._url, exc)
-            await stack.aclose()
+            try:
+                await stack.aclose()
+            except Exception:
+                log.debug(
+                    "MCP stack close after failed connect raised (ignored)",
+                    exc_info=True,
+                )
             self._connect_attempts += 1
             return False
         self._session = session
         self._stack = stack
         self._connect_attempts = 0
         log.info("MCP client connected to %s", self._url)
+        return True
+
+    async def _reachable(self, timeout_s: float = 2.0) -> bool:
+        parts = urlsplit(self._url)
+        host = parts.hostname or "localhost"
+        port = parts.port or (443 if parts.scheme == "https" else 80)
+        try:
+            _, writer = await asyncio.wait_for(
+                asyncio.open_connection(host, port), timeout_s
+            )
+        except (OSError, asyncio.TimeoutError) as exc:
+            log.warning(
+                "MCP server %s unreachable: %s", self._url, exc or type(exc).__name__
+            )
+            return False
+        writer.close()
+        try:
+            await writer.wait_closed()
+        except OSError:
+            pass
         return True
 
     async def close(self) -> None:
