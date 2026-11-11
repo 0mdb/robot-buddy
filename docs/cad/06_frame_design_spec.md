@@ -450,7 +450,7 @@ teardrop the horizontal motor-screw holes; ≥ 2 mm fillet at the inside corner.
 >   FEA (2026-11-10, 1 mm mesh, PET-CF, `fea.py S9 S9i`): **S9** (centred, as tick 91): blade
 >   9.38 MPa, bores 0.35 mm ✓ (unchanged by the blind bores). **S9i** (the whole ×3 bump on
 >   the inner disc of both axles): blade **16.7 MPa (SF ~2.1)**, bores **0.63 mm** (0.42 of it
->   the plate leaning outboard), over S9's SF 3 / 0.5 mm gates. Accepted (Ben to confirm): it
+>   the plate leaning outboard), over S9's SF 3 / 0.5 mm gates. **Accepted for rev 0 (Ben, 2026-11-10)**: it
 >   stacks two worst cases (one-edge loading and the ×3 bump); at ×1 it is 5.6 MPa / 0.21 mm.
 >   Both runs' peak (13.0 / 23.1 MPa) sits on the idler slot's fixture edge, which S9 reports
 >   but doesn't judge. If wanted: a thicker shelf (RA_ARM_T) is the stiffening lever.
