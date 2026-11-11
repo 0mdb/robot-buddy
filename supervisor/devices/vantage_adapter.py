@@ -218,6 +218,15 @@ class BuddyAdapter:
         g["track_right_cmd"] = _norm(r.twist_capped.v_mm_s + w_rad * half_wb, cap)
         g["track_left_meas"] = _norm(r.speed_l_mm_s, cap)
         g["track_right_meas"] = _norm(r.speed_r_mm_s, cap)
+        # How far measured falls short of commanded (the HUD warns past 25 %), on the mean of the
+        # two sides. 0 near a standstill, where the ratio is noise rather than traction loss.
+        cmd = (g["track_left_cmd"] + g["track_right_cmd"]) / 2
+        meas = (g["track_left_meas"] + g["track_right_meas"]) / 2
+        g["slip_pct"] = (
+            0
+            if abs(cmd) < 500
+            else max(-100, min(100, round((cmd - meas) * 100 / cmd)))
+        )
 
         # RangeStatus.OK == 0; anything else is no reading, not a distance of zero.
         ok = r.range_status == 0 and r.range_mm > 0
