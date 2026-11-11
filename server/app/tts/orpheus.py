@@ -371,6 +371,7 @@ class OrpheusTTS:
                         max_model_len=settings.orpheus_max_model_len,
                         max_num_seqs=settings.orpheus_max_num_seqs,
                         max_num_batched_tokens=settings.orpheus_max_num_batched_tokens,
+                        kv_cache_memory_bytes=settings.orpheus_kv_cache_memory_bytes,
                     )
                     future = asyncio.run_coroutine_threadsafe(
                         self._create_engine_async(engine_args),

@@ -106,6 +106,14 @@ class Settings:
     orpheus_max_num_batched_tokens: int = int(
         os.environ.get("ORPHEUS_MAX_NUM_BATCHED_TOKENS", "512")
     )
+    # Fixed KV cache size, skipping vLLM's profiling estimate. Under WSL the second engine's
+    # start snapshot misses the first engine's VRAM and then counts it as its own, so the
+    # estimate goes negative. Unset = vLLM derives it from ORPHEUS_GPU_MEMORY_UTILIZATION.
+    orpheus_kv_cache_memory_bytes: int | None = (
+        int(os.environ["ORPHEUS_KV_CACHE_MEMORY_BYTES"])
+        if os.environ.get("ORPHEUS_KV_CACHE_MEMORY_BYTES")
+        else None
+    )
     orpheus_idle_timeout_s: float = float(
         os.environ.get("ORPHEUS_IDLE_TIMEOUT_S", "8.0")
     )
