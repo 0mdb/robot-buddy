@@ -1068,6 +1068,29 @@ class TestRelativeHeading:
 # ── Whole-screen gestures (spec §9.5; host owns PTT state) ──────────────
 
 
+class TestFaceConnectFlags:
+    def test_connect_sends_conv_flags_without_afterglow(self):
+        from supervisor.core.tick_loop import TickLoop
+        from supervisor.devices.protocol import FACE_FLAG_AFTERGLOW
+
+        face = MagicMock()
+        face.connected = True
+        face.telemetry = None
+        loop = TickLoop(reflex=None, face=face, workers=MagicMock())
+        loop._snapshot_face()
+        face.send_flags.assert_called_once()
+        flags = face.send_flags.call_args[0][0]
+        assert not flags & FACE_FLAG_AFTERGLOW
+
+        loop._snapshot_face()  # no resend while connected
+        assert face.send_flags.call_count == 1
+        face.connected = False
+        loop._snapshot_face()
+        face.connected = True
+        loop._snapshot_face()  # resend after a reconnect
+        assert face.send_flags.call_count == 2
+
+
 class TestScreenGestures:
     _ts = 0.0
 

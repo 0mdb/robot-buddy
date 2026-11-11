@@ -90,6 +90,9 @@ _FLAGS_NO_WANDER_NO_SPARKLE = (
     | FACE_FLAG_EDGE_GLOW
 )
 
+# Sent on (re)connect when the current state has no override. No AFTERGLOW (full redraws).
+DEFAULT_FACE_FLAGS = _FLAGS_DEFAULT
+
 _CONV_FLAGS: dict[FaceConvState, int] = {
     FaceConvState.IDLE: _FLAGS_DEFAULT,
     FaceConvState.ATTENTION: _FLAGS_NO_WANDER,

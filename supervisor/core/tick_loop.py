@@ -514,12 +514,17 @@ class TickLoop:
 
         self.robot.face_connected = self._face.connected
 
-        if self._face.connected and not self._face_flags_sent:
+        if not self._face.connected:
+            self._face_flags_sent = False  # resend on the next connect
+        elif not self._face_flags_sent:
             self._face_flags_sent = True
-            # Send default flags on reconnect
-            from supervisor.devices.protocol import FACE_FLAGS_ALL
+            # (Re)connect: send the current conversation state's flags. Not FACE_FLAGS_ALL:
+            # that includes AFTERGLOW, which forces a full-screen redraw every frame
+            # (~27 FPS) until the next conversation transition overwrote it.
+            from supervisor.core.conv_state import DEFAULT_FACE_FLAGS
 
-            self._face.send_flags(FACE_FLAGS_ALL)
+            flags = self._conv.get_flags()
+            self._face.send_flags(flags if flags != -1 else DEFAULT_FACE_FLAGS)
 
         tel = self._face.telemetry
         if tel:
