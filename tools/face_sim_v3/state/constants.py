@@ -203,13 +203,13 @@ MOOD_TARGETS: dict[Mood, tuple[float, float, float, float, float, float]] = {
     Mood.LOVE: (0.6, 1.0, 0.0, 0.0, 0.0, 0.3),
     Mood.SILLY: (0.5, 1.1, 0.0, 0.0, 0.0, 0.0),
     Mood.THINKING: (
-        -0.05,
-        1.0,
+        0.0,
+        0.4,
         0.0,
         0.0,
         0.06,
         0.0,
-    ),  # No slope (read as angry); one raised brow via THINKING_BROW_OFFSET
+    ),  # No slope (read as angry); one raised brow; short side mouth
     Mood.CONFUSED: (
         -0.2,
         1.0,
@@ -264,7 +264,7 @@ MOOD_EYE_SCALE: dict[Mood, tuple[float, float]] = {
 # Thinking-mood gaze and mouth offset
 THINKING_GAZE_X = 6.0
 THINKING_GAZE_Y = -5.0
-THINKING_MOUTH_OFFSET_X = 1.5
+THINKING_MOUTH_OFFSET_X = 2.2  # short mouth pushed toward the gaze side
 
 # Curious-mood asymmetric brow ("one eyebrow raised" look)
 # Extra lid_top closure on right eye → left eye appears raised by contrast

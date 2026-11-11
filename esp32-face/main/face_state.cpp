@@ -37,6 +37,8 @@ static float tween(float current, float target, float speed)
 // Mirrored in tools/face_sim_v3/state/constants.py; parity-checked.
 static constexpr float CURIOUS_BROW_OFFSET = 0.25f;
 static constexpr float THINKING_BROW_OFFSET = 0.22f;
+// THINKING mouth: short line shifted toward the gaze side (x10 px). Parity-checked.
+static constexpr float THINKING_MOUTH_OFFSET_X = 2.2f;
 
 static float spring_step(float current, float target, float& vel, float k = 0.25f, float d = 0.65f)
 {
@@ -315,7 +317,8 @@ void face_state_update(FaceState& fs)
     case Mood::THINKING:
         // One raised brow (right eye hooded below), no inward slope: the slope is
         // the ANGRY cue and made THINKING read as a glare (spec amended 2026-11-10).
-        t_curve = -0.05f;
+        t_curve = 0.0f;
+        t_width = 0.4f;    // short "hmm" line pushed to one side; the eyes do the emoting
         t_lid_top = 0.06f; // slight focus on both eyes; the right eye's hood is larger
         break;
     case Mood::CONFUSED:
@@ -405,7 +408,7 @@ void face_state_update(FaceState& fs)
     fs.eyelids.slope_target = t_lid_slope;
 
     if (fs.mood == Mood::THINKING) {
-        fs.mouth_offset_x_target = 1.5f;
+        fs.mouth_offset_x_target = THINKING_MOUTH_OFFSET_X;
         fs.eye_l.gaze_x_target = 6.0f;
         fs.eye_l.gaze_y_target = -5.0f;
         fs.eye_r.gaze_x_target = 6.0f;

@@ -329,7 +329,7 @@ Naming follows **viewer perspective** throughout.
 |---------|---|
 | Eyes | Open; asymmetric. |
 | Eyelids | **No slope** (lid_slope 0) — an inward slope is the ANGRY cue. **One brow raised**: right eye hooded by `THINKING_BROW_OFFSET` = 0.22 extra lid_top (× intensity), left eye only slightly lidded so it reads as raised (same mechanism as CURIOUS). lid_top 0.06 (both eyes; focused, not droopy). |
-| Mouth | Very slight frown (curve -0.05). Closed. Offset slightly to one side (mouth_offset_x). |
+| Mouth | Short, flat, closed line (width 0.4, curve 0) pushed to one side toward the gaze (`THINKING_MOUTH_OFFSET_X` = 2.2). Kept small and quiet: the eyes carry the expression; the mouth is mainly for speech. *(Amended 2026-11-10.)* |
 | Color | Cool blue (80, 135, 220). Cerebral, calm. |
 | Gaze | **Aversion to up-right** — deliberate "looking away to think" cue (spec §4.2.2). |
 

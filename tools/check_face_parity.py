@@ -125,6 +125,7 @@ def main() -> int:
         SPARKLE_CHANCE,
         CURIOUS_BROW_OFFSET,
         THINKING_BROW_OFFSET,
+        THINKING_MOUTH_OFFSET_X,
         SPRING_D,
         SPRING_K,
         TALKING_BASE_OPEN,
@@ -285,6 +286,7 @@ def main() -> int:
     for cname, sval in [
         ("CURIOUS_BROW_OFFSET", CURIOUS_BROW_OFFSET),
         ("THINKING_BROW_OFFSET", THINKING_BROW_OFFSET),
+        ("THINKING_MOUTH_OFFSET_X", THINKING_MOUTH_OFFSET_X),
     ]:
         v = extract_value(state_cpp, cname)
         check(cname, parse_float(v) if v else None, sval)
