@@ -86,7 +86,7 @@ silk only). The encoder's pull-ups go to its own supply, so at 3V3 A/B are 3.3 V
 
 ---
 
-### IMU: SparkFun Qwiic BMI270 (via J5)
+### IMU: SparkFun Micro 6DoF BMI270, Qwiic Micro SEN-22398 (via J5)
 
 ```
    J5 (JST-SH, Qwiic):  1 GND   2 +3V3   3 SDA (GPIO7)   4 SCL (GPIO8)

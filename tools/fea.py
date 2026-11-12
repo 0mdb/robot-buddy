@@ -288,9 +288,10 @@ def s2() -> dict:
             "discard_open",
             "fix plane 0 0 1 0",  # foot underside on the plate
             f"fix cyl 0 0 1 {chassis.CLR_M3 / 2} 0.05",  # 4 foot screw holes
-            f"remote axle {gx:.2f} {gy:.2f} {hz:.2f} cyl 0 1 0 {chassis.INS_HOLE / 2} 0.05",  # motor-screw inserts
+            # 2026-11-11: motor screws go through (CLR_M3) into drop-in nuts, no inserts
+            f"remote axle {gx:.2f} {gy:.2f} {hz:.2f} cyl 0 1 0 {chassis.CLR_M3 / 2} 0.05",
             f"remote axle {gx:.2f} {gy:.2f} {hz:.2f} plane 0 1 0 {hy}",  # motor bears on the face
-            f"disp motorholes cyl 0 1 0 {chassis.INS_HOLE / 2} 0.05",
+            f"disp motorholes cyl 0 1 0 {chassis.CLR_M3 / 2} 0.05",
             "hotspots 5",  # T9: where the peaks are
             "probe root -22 -40 -1 21 -27 9",  # upright-to-foot junction, inboard chamfer
             "probe holes 10 -35 0 19 -27 27",

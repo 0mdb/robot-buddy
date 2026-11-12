@@ -454,6 +454,16 @@ teardrop the horizontal motor-screw holes; ≥ 2 mm fillet at the inside corner.
 >   stacks two worst cases (one-edge loading and the ×3 bump); at ×1 it is 5.6 MPa / 0.21 mm.
 >   Both runs' peak (13.0 / 23.1 MPa) sits on the idler slot's fixture edge, which S9 reports
 >   but doesn't judge. If wanted: a thicker shelf (RA_ARM_T) is the stiffening lever.
+>
+> Amendment (Ben, 2026-11-11, road-axle retention, option A): **no E-clip.** No stocked Ø4
+> shaft comes with a groove, and nothing bigger than the clip fits the 1.5 mm SIDE_GAP under
+> the plate edge. The inner 684's inner race is bonded to the axle with **retaining compound
+> (Loctite 641, bearing fit, removable with heat)**: a fixed axle with a turning outer race,
+> so the inner race never needs to slide. The axle is **Ø4 h6 hardened linear rod cut to 42**
+> (one 300 rod makes 7), ends deburred and chamfered. Geometry unchanged: if a wheel has to
+> come off often, a hand-cut groove for the DIN 6799 3.2 clip still fits the same space.
+> Assembly: as above, but wipe 641 on the axle where the inner 684 sits before sliding it on,
+> hold the inner disc against its spacer while it cures.
 
 **Followers:** per `05_follower_spec.md` (carriage in plate slots, clamp from
 below, 624 bearing on a Ø4 shoulder bolt).
@@ -535,4 +545,33 @@ No new interferences.
 > through), and the vent slots start at x −38 (was −45) to clear the IMU's front insert bosses.
 > Board dimensions are TBC (25.4 square, Ø3.3 on a 20.32 square: measure before printing).
 
+> Amendment (Ben, 2026-11-11, IMU board): the board is the **SparkFun Micro 6DoF BMI270
+> (SEN-22398, Qwiic Micro): 7.62 × 19.05, one Ø3.3 hole** on its centreline 2.54 from one end,
+> the right-angle Qwiic socket at the other (dimensions from SparkFun's board file). Long axis
+> along x, socket end forward, centre still (−54, 0). No spacers: its flat back seats in a
+> **1.0 deep locating pocket recessed up into the deck underside** (outline + 0.25/side, Ø1.5
+> corner reliefs), so the board's back is at z 25.0 and its parts layer at z ≥ 20.4 (8.9 over
+> the USB-C plug). Walls hanging below the deck were rejected: the deck prints underside on
+> the bed. One insert boss (Ø6 × 2.5) on the deck top at (−60.985, 0) replaces the four.
+
 > Amendment (loop P4b, 2026-10-31): rear deck posts (−48, ±20) → (−70, ±20), deck rear edge x −66 → −75. At −48 the deck's M3 screws sat under the Pi board and could not be reached with the stack fitted (R1-F1, `docs/cad/loop/R1_assembly.md`).
+
+> Amendment (Ben, 2026-11-11, §5 camera): the camera is located by its 4 bosses only (PCB
+> front 4.0 behind the wall's back face). RPi's STEP puts the lens block's front 4.85 off the
+> PCB (Ø8.2 ring 0.55 beyond), not the drawing's 3.875, so the block no longer bears on the
+> wall: it sits in an 11.5 square × 1.15 back-face pocket, the ring in a Ø8.8 × 1.7
+> counterbore. Lens tip 0.05 inside the front face, as before.
+
+> Amendment (Ben, 2026-11-12, §5 knee gusset / RB-PRT-070, S5c): S5c read 22.3 MPa (gate
+> 11.7) at the sonar notch, all at sharp corners. Old → new: knee gusset y 1.2–3.6 → **0.8–3.2**
+> (flush with the window side; the 0.4 overhang left a 0.05 skin, 98 MPa); **r 1.5** where the
+> gusset meets the back face above and below the notch (r 0.9 on the +y side, which meets the
+> speaker rim 0.9 away), trimmed flat at the gusset top; **r 1.5** in the notch's two rear
+> corners; **r 1.2** in the window's four inside corners (the outboard pair cut back to the
+> cap's r 8 side round). RB-PRT-070: **1.0 × 45°** on
+> the box's top- and bottom-rear edges, **r 1.0** on its four long edges from the trim to the
+> wall face (window clearance stays 0.2). Why: each sharp corner was a stress singularity the
+> mesh moved between (22 → 131 MPa with the same stiffness).
+> Result: S5c screen 22.3 → **18.0 MPa** (still over 11.7), bezel 5.9 MPa / 0.09 mm. The
+> peak is now the 0.2 ledge between the window's outboard end (y −47.2) and the inner side
+> flange's outer face (y −47.0), open in TODO.

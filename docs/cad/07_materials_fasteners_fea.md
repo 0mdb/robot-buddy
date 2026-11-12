@@ -330,12 +330,72 @@ before ordering (screw engagement ≥ 1.3 d, tip ≥ 0.5 mm short of the pocket 
 > boss on its top, Ø3.6 pocket through; 3.4 engaged). Fit the IMU to the deck before the deck
 > goes on its posts. Bill above: +4 M2.5 × 8, +4 M2.5 × 4 inserts, +4 spacers (`hwbom`).
 
+> Amendment (Ben, 2026-11-11, IMU board, 06): **F19 is now 1 × M2.5 × 6 SHCS up through the
+> Micro board's single Ø3.3 hole into 1 × M2.5 × 4 heat-set insert** pressed up into the
+> ceiling of the deck's locating pocket (2.0 deck + 2.5 boss over it, Ø3.6 through; 4.0
+> engaged). No spacers. Bill: −4 M2.5 × 8, −4 spacers, +1 M2.5 × 6, M2.5 × 4 inserts 4 → 1.
+
+> Amendment (Ben, 2026-11-11, bulkhead flush foot): **F1's three foot screws move to x 80.5
+> (from 81.5) into M3 × 4 short inserts** (pocket Ø4.1 × 4.6) so the foot's front can be
+> coplanar with the 15° face (face-down print). The locating tabs stay at x 81.5. The foot
+> grows a Ø6.5 boss round each hole where it pokes past its back face (x 78.5); the motor-mount
+> feet are notched round the outer two (0.7 clear). Screws stay M3 × 10 low head. The knee
+> screw keeps its M3 × 5.7 insert. Bill: M3 × 5.7 inserts −3, +3 M3 × 4.
+
+> Amendment (Ben, 2026-11-11, F3 nuts): **F3 drops its inserts: 4 × M3 × 35 SHCS through the
+> gearbox and the mount into 4 × M3 hex nuts (ISO 4032)** that drop in from above into slots
+> in the upright's inboard bosses (slot 6.6 × 2.7, floor 0.15 under the nut's lower flat; nut
+> seat 0.2 inboard of the upright, which stays uncut). A nut can't slide in from the inboard
+> side: the lower hole is 1.75 above the foot. The upper boss becomes a block with a 45°
+> underside (foot-down print). The screw tip stands ~2.6 past the boss face, over the foot
+> (× 32 isn't stock). Supersedes the blind-pocket amendment above. **Re-run S2.** Bill: −4 M3
+> × 5.7 inserts, M3 × 28 → × 35, +4 M3 nuts.
+
+> Amendment (Ben, 2026-11-11, F4 idler axle): **Ø4 × 50 shoulder bolt** (Ø4 comes in 45 / 50; the
+> 55 is Ø5). Its head sits in an Ø8.6 × 3.5 counterbore in the carriage boss's inboard end
+> (head y 39.5–43.5, underside 43.5 + 50 = 93.5 = the frame plate's inner face, as before).
+> M3 thread ≥ 8 needed (frame 3.6 + nyloc). **Re-run S6** (~130 mm³ from the boss core).
+
+> Amendment (Ben, 2026-11-11, carriage location): **the carriage self-centres when clamped.** The
+> plate's guide slots get a 45° × 0.8 chamfer on their outer top edges only (inner slot's
+> inboard edge, outer slot's outboard edge, x −75 … −45); the carriage rails a matching wedge,
+> line to line, stopping 0.2 above the chamfer's foot. The clamp pulls the two flanks together
+> from opposite sides: centred in y, square in yaw. The foot still lands on the plate (z datum).
+> The 1.45 webs to the clamp slot stay square. Carriage foot inboard edge 28.0 → 27.2.
+
+> Amendment (Ben, 2026-11-11, spacers): **the carriage-side DIN 988 shim is printed**: a Ø6 × 0.5
+> land on the carriage boss end, on the inboard 624's inner race only. F4 shims 6 → 4 (the two
+> per side at the frame plate stay: the axle slides in the frame's slot there). RB-PRT-023
+> (between the idler's inner races) stays a separate part: it is fixed to the axle while the
+> idler turns.
+
 > Amendment (Ben, 2026-11-10, road-axle retention, 06 §7): **new F20: 4 × E-clip DIN 6799
 > size 3.2** (Ø4 shaft, 0.6 thick, Ø7.3) at the road axles' inboard ends, and the road
 > axles become **4 × Ø4 × 42 ground shaft (h6), one E-ring groove (Ø3.2 × 0.64) centred
 > 1.86 from the inboard end**, pressed into blind Ø3.95 bores in the track frames (the
 > dowel's press fit, tune on the same coupon). Buy grooved shafts; grooving hardened dowel
 > pins at home is not practical.
+
+> Amendment (Ben, 2026-11-11, 06 §7 option A): **F20 is retaining compound, not an E-clip.**
+> Grooved Ø4 shafts aren't stocked (Misumi's is a JIS E-3 groove, made to order), Ø4 shoulder
+> bolts stop at 30 mm, and 4 × 40–45 dowels are m6 (too tight for a 684). Road axles: **4 ×
+> Ø4 h6 hardened linear rod cut to 42** (e.g. VXB 4 × 300 or RS / Ewellix h6 300, one rod per
+> robot + spares); F20: **Loctite 641** on the inner 684's inner race. The 8 E-clips leave
+> the assembly and the bill.
+
+> Amendment (Ben, 2026-11-11, motor mounts): **the gearbox end stop runs full height
+> (MM_TOP)**, one top height instead of two; the D1 r 2.2 fillet in the old step is gone with
+> the step. Free edges get 1.0 × 45° breaks, the foot's outer corners 2.0. S2 now loads the
+> Ø3.4 motor-screw through holes (F3 nuts); re-run it before the PET-CF mounts.
+> F4 idler bolt: Ben's stock is MECCANIXITY 304 Ø4 × 50, M3 × 0.5; measure head and thread.
+>
+> Result (2026-11-11, after the rebuild): the full-height stop met the HC-SR04's back-parts
+> zone (21 mm³), so its front is bevelled parallel to the 15° bulkhead, 1.0 behind the zone
+> (`stop_sonar_bevel`); the upright's inboard top edge is 2.0 × 45° (clears the sonar's
+> Dupont plug, 0.7 mm³ before). First S2 with the F3 nut slots peaked at 11.75 MPa on the
+> lower slot's inner corner (1.3 walls): nuts turned flats-to-sides, slot 6.6 → 5.8 wide
+> (walls 1.7, the nut can't turn). **S2: 9.61 MPa (SF 3.6), 0.049 mm.** **S6** (carriage
+> counterbore + land): **6.67 MPa, 0.028 mm**. Mount 14.3 g.
 
 **Totals (stale, see the 2026-11-10 bill above; per robot, +20 % spares when ordering):** M3 inserts ~34 (F1, F2, F5, F7, F8,
 F9, F10, F11), M2.5 inserts 4 (F12); M3 × 6 ×12, M3 × 8 ×15, M3 × 8 button ×4,

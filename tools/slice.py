@@ -147,7 +147,14 @@ PARTS = {
         False,
         "rev 2: flat belly down, top pockets; no support (0.1 g if enabled)",
     ),
-    "RB-PRT-002_bulkhead": ("PET-CF", "-x", 1, False, "face down (D3)"),
+    # 2026-11-11 (Ben, fit2): "-x" tipped the 15° face off the bed; up = minus the face normal
+    "RB-PRT-002_bulkhead": (
+        "PET-CF",
+        "v:-0.965926,0,-0.258819",
+        1,
+        False,
+        "face down along its 15° normal (D3)",
+    ),
     "RB-PRT-003_pi_deck": ("PET-CF", "+z", 1, False, "flat"),
     "RB-PRT-004_canopy": (
         "PC",
@@ -357,9 +364,12 @@ def oriented(stem: str, up: str) -> trimesh.Trimesh:
     m = trimesh.load(
         os.path.join(src, stem + ".stl") if src else os.path.join(GEN, stem + ".STL")
     )
-    ax = {"x": 0, "y": 1, "z": 2}[up[1]]
-    v = np.zeros(3)
-    v[ax] = 1.0 if up[0] == "+" else -1.0
+    if up.startswith("v:"):  # arbitrary up vector, part frame: "v:x,y,z"
+        v = np.array([float(u) for u in up[2:].split(",")])
+        v /= np.linalg.norm(v)
+    else:
+        v = np.zeros(3)
+        v[{"x": 0, "y": 1, "z": 2}[up[1]]] = 1.0 if up[0] == "+" else -1.0
     R = trimesh.geometry.align_vectors(v, [0, 0, 1])
     m.apply_transform(R)
     lo, hi = m.bounds

@@ -305,6 +305,20 @@ GUIDE_W = (
     4.5  # 4.0 rail + 0.25/side; slide coupon RB-CPN-001 (Ben 2026-11-08, 05 amendment)
 )
 RAIL_L = 20.0  # TBD with the carriage design
+# 2026-11-11 (Ben: "a v-block ... so it self-aligns when tightened"): the plate's guide slots
+# get a 45° chamfer CAR_V on their OUTER top edges only (the inner slot's inboard edge, the
+# outer slot's outboard edge; the 1.45 webs to the clamp slot stay square), and the carriage
+# rails a matching wedge, line to line. The clamp pulls the two flanks together from opposite
+# sides: centred in y, square in yaw over the rail length. The foot still lands on the plate
+# (z datum, idler height unchanged); the wedges stop CAR_V_LIP above the chamfer's foot.
+CAR_V, CAR_V_LIP = 0.8, 0.2
+
+
+def guide_v_edges() -> list[tuple[float, int]]:
+    """(slot wall |y| at the plate top, +1 if the chamfer opens outboard, -1 inboard)."""
+    return [(GUIDE_Y[0] - GUIDE_W / 2, -1), (GUIDE_Y[1] + GUIDE_W / 2, 1)]
+
+
 JACK_BLOCK_X, JACK_BLOCK_Y, JACK_BLOCK_Z = (-38.0, -28.0), (31.0, 42.0), (0.0, 10.0)
 JACK_Y, JACK_Z = 36.5, 5.0  # F4b: M3 jack screw in an insert along X
 
@@ -312,7 +326,12 @@ JACK_Y, JACK_Z = 36.5, 5.0  # F4b: M3 jack screw in an insert along X
 BELL_POCKET = ((-11.0, 20.0), (31.0, 53.0), 2.0)
 
 # Bulkhead foot (06 §5, F1): only x >= 78.5 is clear of the motor-mount feet.
-BULK_X = 81.5
+BULK_X = 81.5  # locating tabs (and, until 2026-11-11, the F1 screws)
+# 2026-11-11 (Ben): the bulkhead foot's front goes flush with the face (face-down print), so
+# the three F1 screws move 1.0 aft and take short inserts (M3 x 4, pocket BH_FOOT_INS_DEPTH):
+# at x 81.5 a 7.2 pocket's top edge sat 0.37 mm in FRONT of the face plane. The tabs stay.
+BULK_HOLE_X = 80.5
+BH_FOOT_INS_LEN, BH_FOOT_INS_DEPTH = 4.0, 4.6  # M3 x 4 short insert + 0.6 relief
 BULK_HOLES_Y = (-22.0, 0.0, 22.0)
 BULK_TAB_Y, BULK_TAB = 11.0, (4.6, 10.4)  # locating-tab slots (X x Y)
 
@@ -553,7 +572,7 @@ def plate_features() -> list[tuple[str, tuple, float, float]]:
     # (and the foot is too narrow to move the screw line back, D4). Low-head M3 (DIN 7984,
     # 2 mm head) sits on the belly instead.
     for y in BULK_HOLES_Y:
-        cut.append(("all", ("circle", BULK_X, y, CLR_M3 / 2), 0, 0))
+        cut.append(("all", ("circle", BULK_HOLE_X, y, CLR_M3 / 2), 0, 0))
     kx, ky = BH_KNEE_HOLE
     cut.append(("all", ("circle", kx, ky, CLR_M3 / 2), 0, 0))
     cut.append(
@@ -755,6 +774,25 @@ def plate_lines(plate: str) -> list[str]:
             f"|loops:{tx0 - 3} {ya} {tx1 + 3} {yb}"
         )
         vol -= dvts
+    # 2026-11-11: carriage locating V, 45° x CAR_V on the guide slots' outer top edges,
+    # along the slots' straight run (the rail's travel); raw Right-plane cuts (sketch -z, y)
+    xr0, xr1 = a0 - RAIL_L / 2, a1 + RAIL_L / 2
+    c = CAR_V
+    for sgn in (-1, 1):
+        for yw, o in guide_v_edges():
+            tri = [
+                (yw - o * 0.5, -c),
+                (yw, -c),
+                (yw + o * (c + 0.1), 0.1),
+                (yw - o * 0.5, 0.1),
+            ]
+            pts = [(-z, sgn * y) for y, z in tri]
+            lines.append(
+                f"prof|{xr0} {xr1}|M {pts[0][0]:.4f} {pts[0][1]:.4f}"
+                + "".join(f" L {u:.4f} {v:.4f}" for u, v in pts[1:])
+                + "|cut|right"
+            )
+            vol -= c * c / 2 * (xr1 - xr0)
     # D1b (tick 82, REJECTED): an r 2 round of each jack block's root (one 4-edge feature)
     # made S1m 9.97 -> 13.3, S1a 11.6 -> 14.8, S1b 3.7 -> 4.3 (half mesh 5.0 -> 7.9) at the
     # vertex where the fillet's corner blend meets the plate (-40 / -26, +-29, 0). Removed.
@@ -801,28 +839,39 @@ DECK_CABLE_REAR = (-76.0, -68.0, -4.0, 4.0)  # to level 0 (reflex board)
 # on 4 nylon spacers, M2.5 x 8 SHCS up through board + spacer into M2.5 x 4 inserts pressed
 # into the deck from below (the deck prints top up, so the bosses for the insert length go on
 # its top, under the Pi). The USB-C plug below (z 5..11.5) has 4.9 to the parts layer.
-# TBC (Ben's calipers): 25.4 x 25.4 board, Ø3.3 holes on a 20.32 square, 3.0 parts height.
-IMU_PCB = (25.4, 25.4, 1.6)
-IMU_HOLES = (10.16, 10.16)  # half pattern
+# 2026-11-11 (Ben): wrong board. Ours is the SparkFun MICRO 6DoF BMI270 (SEN-22398, Qwiic
+# Micro): 7.62 x 19.05, ONE Ø3.3 hole on the centreline 2.54 from one end, the right-angle
+# Qwiic socket at the other (SparkFun's Hardware/Qwiic Micro .brd: hole (3.81, 16.51), J1
+# (3.81, 5.08)). All parts are on one face; the back has only flat solder jumpers. So no
+# spacers: the board's back seats in a locating pocket recessed up into the deck underside
+# (the deck prints underside on the bed, so walls hanging below it would need support), and
+# one M2.5 x 6 SHCS goes up through the hole into an M2.5 x 4 insert pressed in from below.
+# Long axis along x, socket end forward (toward J5). Board centre stays at (-54, 0).
+IMU_PCB = (19.05, 7.62, 1.6)  # x (long), y, t
+IMU_HOLE_DX = -(16.51 - 19.05 / 2)  # hole from the board centre along x (aft): -6.985
+# Qwiic socket centre from the board centre (fwd): 4.445
+IMU_SOCKET_DX = 19.05 / 2 - 5.08
 IMU_HOLE_D, IMU_PARTS_H = 3.3, 3.0
 IMU_AT = (-54.0, 0.0)  # board centre (x, y)
-IMU_SPACER = (5.0, 2.7, 3.0)  # OD, ID, length
-IMU_BOSS_D, IMU_BOSS_H, IMU_INS_D = (
-    6.0,
-    1.5,
-    3.6,
-)  # deck-top boss, M2.5 x 4 insert pocket
+# pocket depth, clearance per side, corner relief r
+IMU_POCKET_D, IMU_POCKET_CLR, IMU_POCKET_CR = 1.0, 0.25, 0.75
+IMU_INS_LEN = 4.0
+IMU_BOSS_D, IMU_INS_D = 6.0, 3.6  # deck-top boss, M2.5 x 4 insert pocket
+# the insert + 0.5 must fit above the pocket ceiling: boss = 4.5 - (3.0 - 1.0) = 2.5
+IMU_BOSS_H = IMU_INS_LEN + 0.5 - (DECK_T - IMU_POCKET_D)
 
 
 def imu_geom() -> dict:
     cx, cy = IMU_AT
     w, h, t = IMU_PCB
-    zt = DECK_Z - IMU_SPACER[2]  # board back
+    zt = DECK_Z + IMU_POCKET_D  # board back on the pocket ceiling
+    c = IMU_POCKET_CLR
     return {
         "x": (cx - w / 2, cx + w / 2),
         "y": (cy - h / 2, cy + h / 2),
         "z_pcb": (zt - t, zt),
-        "holes": [(cx + dx, cy + dy) for dx, dy in corners(*IMU_HOLES)],
+        "holes": [(cx + IMU_HOLE_DX, cy)],
+        "pocket": (cx - w / 2 - c, cx + w / 2 + c, cy - h / 2 - c, cy + h / 2 + c),
     }
 
 
@@ -1001,7 +1050,15 @@ def deck_features() -> list[tuple[str, tuple, float, float]]:
     cut.append(("all", ("rect", *DECK_CABLE_REAR), 0, 0))
     fx0, fx1, fy, fr = DECK_CABLE_FRONT
     cut.append(("all", ("slot", fx0, fy, fx1, fy, fr), 0, 0))
-    for x, y in imu_geom()["holes"]:  # IMU: insert bosses on the top, pockets through
+    ig = imu_geom()  # IMU (2026-11-11): locating pocket up into the underside, 1 insert
+    px0, px1, py0, py1 = ig["pocket"]
+    cut.append(("cut", ("rect", px0, px1, py0, py1), z0 - 0.1, z0 + IMU_POCKET_D))
+    for x in (px0, px1):  # corner reliefs: the board's corners are square
+        for y in (py0, py1):
+            cut.append(
+                ("cut", ("circle", x, y, IMU_POCKET_CR), z0 - 0.1, z0 + IMU_POCKET_D)
+            )
+    for x, y in ig["holes"]:  # insert boss on the top (under the Pi), pocket through
         add.append(("add", ("circle", x, y, IMU_BOSS_D / 2), z1, z1 + IMU_BOSS_H))
         cut.append(("all", ("circle", x, y, IMU_INS_D / 2), 0, 0))
     return add + cut
@@ -1390,8 +1447,8 @@ def rebuild_manifest(win: str) -> list[str]:
         *carriage_lines(car_r, mirror=True),
         *mount_v2_lines(mount_r, mirror=False),
         *mount_v2_lines(mount_l, mirror=True),
-        *wheel_lines(sprocket, dt.sprocket_layers(True), SPROCKET_SPOKES),
-        *wheel_lines(idler, dt.idler_layers(2)),
+        *wheel_lines(sprocket, dt.sprocket_layers(True), SPROCKET_SPOKES, windows=True),
+        *wheel_lines(idler, dt.idler_layers(2), windows=True),
         *wheel_lines(road, dt.road_wheel_layers()),
         *road_axle_lines(road_axle),
         # P7 / P8 (tick 93): speaker clamp, gasket and module envelope
@@ -1702,15 +1759,19 @@ def camera_module_lines(path: str) -> list[str]:
     cy, cz, _ = BH_CAM
     w, h, t = CAM_PCB
     zb = cz - CAM_LENS_UP
-    xf = x0 - CAM_BLOCK_D - 0.02  # PCB front
+    xf = x0 - CAM_PCB_OFF - 0.02  # PCB front (0.02 off the boss tops)
     cw, chh, cd = CAM_CONN
     hb = CAM_BLOCK / 2
-    xbf = x0 - 0.02  # block front
+    xbf = xf + CAM_BLOCK_D  # block front
+    xrf = xbf + CAM_RING_H  # ring front
+    tz0, tz1, ty, tp = CAM_TAB
     lines = [
         f"part|{path}",
         f"box|{xf - t:.3f} {xf:.3f}|{cy - w / 2} {cy + w / 2}|{zb:.3f} {zb + h:.3f}",
         f"box|{xf:.3f} {xbf:.3f}|{cy - hb} {cy + hb}|{cz - hb} {cz + hb}",
-        f"cyl|x|{cy} {cz}|{xbf - 0.1:.3f} {xbf + CAM_BARREL_L:.3f}|{CAM_BARREL_R}|boss",
+        f"cyl|x|{cy} {cz}|{xbf - 0.1:.3f} {xrf:.3f}|{CAM_RING_R}|boss",
+        f"cyl|x|{cy} {cz}|{xrf - 0.1:.3f} {xrf + CAM_BARREL_L:.3f}|{CAM_BARREL_R}|boss",
+        f"box|{xf - 0.01:.3f} {xf + tp:.3f}|{cy - ty} {cy + ty}|{zb + tz0:.3f} {zb + tz1:.3f}",
         f"box|{xf - t - cd:.3f} {xf - t:.3f}|{cy - cw / 2} {cy + cw / 2}|{zb + h - chh:.3f} {zb + h:.3f}",
         # 2026-11-10: the PCB's 4 x Ø2.2 mounting holes (F16)
         *[
@@ -1721,12 +1782,14 @@ def camera_module_lines(path: str) -> list[str]:
     v = (
         w * h * t
         + CAM_BLOCK**2 * (xbf - xf)
+        + math.pi * CAM_RING_R**2 * CAM_RING_H
         + math.pi * CAM_BARREL_R**2 * CAM_BARREL_L
         + cw * chh * cd
+        + 2 * ty * (tz1 - tz0) * tp
     )
     v -= len(CAM_HOLES) * math.pi * 1.1**2 * t
     lines += [
-        f"expect|vol {v:.1f} {v * 0.01:.1f}|box {xf - t - cd:.2f} {xbf + CAM_BARREL_L:.2f} {cy - w / 2:.2f} {cy + w / 2:.2f} {zb:.2f} {zb + h:.2f} 0.05",
+        f"expect|vol {v:.1f} {v * 0.01:.1f}|box {xf - t - cd:.2f} {xrf + CAM_BARREL_L:.2f} {cy - w / 2:.2f} {cy + w / 2:.2f} {zb:.2f} {zb + h:.2f} 0.05",
         "save",
     ]
     return lines
@@ -2198,6 +2261,16 @@ def sonar_holder_features() -> list[tuple]:
                 ),
             )
         )
+    # 2026-11-12 (S5c, Ben: a + b): SR_TRIM_CH x 45° on the top-rear and bottom-rear edges,
+    # clear of the r KNEE_FIL rounds in the bulkhead notch's rear corners (gap ~0.37)
+    c = SR_TRIM_CH
+    ya, za = sr_map(56.0, 25.0)
+    yb, zb = sr_map(6.0, 0.0)
+    y0, y1 = min(ya, yb) - 0.1, max(ya, yb) + 0.1
+    zt, zl = max(za, zb), min(za, zb)
+    xs = SR_TRIM
+    f.append(("cut", ("prismy", [(xs - 0.1, zt - c - 0.1), (xs - 0.1, zt + 0.1), (xs + c + 0.1, zt + 0.1)], y0, y1)))
+    f.append(("cut", ("prismy", [(xs - 0.1, zl - 0.1), (xs - 0.1, zl + c + 0.1), (xs + c + 0.1, zl - 0.1)], y0, y1)))
     return f
 
 
@@ -2254,6 +2327,27 @@ def _pre_volume(feats: list[tuple], lo: tuple, hi: tuple, step: float = 0.1) -> 
     return vol
 
 
+def sr_corner_lines(
+    y0: float, y1: float, z0: float, z1: float, r: float, x0: float, x1: float, kind: str
+) -> tuple[list[str], float]:
+    """(manifest lines, |dvol|): the four corner regions of the (y, z) rectangle outside an
+    r round (8 chords), extruded x0 -> x1 on the Right plane (sketch x = -z, y = y); 'boss'
+    fills a cut opening's corners, 'cut' rounds a solid's edges. 0.05 overlap outward."""
+    o, n = 0.05, 8
+    out = []
+    for yc, dy in ((y0, 1), (y1, -1)):
+        for zc, dz in ((z0, 1), (z1, -1)):
+            arc = [
+                (yc + dy * (r - r * math.cos(a)), zc + dz * (r - r * math.sin(a)))
+                for a in (i * math.pi / 2 / n for i in range(n + 1))
+            ]  # (yc, zc + dz r) -> (yc + dy r, zc)
+            pts = [(yc - dy * o, zc - dz * o), (yc - dy * o, zc + dz * r), *arc]
+            pts.append((yc + dy * r, zc - dz * o))
+            segs = "M " + " L ".join(f"{-z:.4f} {y:.4f}" for y, z in pts)
+            out.append(f"prof|{x0:.4f} {x1:.4f}|{segs}|{kind}|right")
+    return out, 4 * (1 - math.pi / 4) * r**2 * (x1 - x0)
+
+
 def sonar_holder_lines(path: str) -> list[str]:
     """RB-PRT-070: the HC-SR04 holder alone, pre-tilt frame (placed with speaker_tilt(), like
     the speaker clamp). Prints front face down."""
@@ -2283,10 +2377,18 @@ def sonar_holder_lines(path: str) -> list[str]:
         0.05,
     )
     vol += sum(dv for _, dv in sonar_holder_rounds())
+    ya_, za_ = sr_map(56.0, 25.0)
+    yb_, zb_ = sr_map(6.0, 0.0)
+    rc, rdv = sr_corner_lines(
+        min(ya_, yb_), max(ya_, yb_), min(za_, zb_), max(za_, zb_),
+        SR_WIN_R - SR_WIN_CLR, SR_TRIM - 0.1, BH_XF, "cut",
+    )  # 2026-11-12: the box's long edges, in step with the bulkhead window's corners
+    vol -= rdv * (BH_XF - SR_TRIM) / (BH_XF - SR_TRIM + 0.1)
     return [
         f"part|{path}",
         *[emit(op, sh) for op, sh in f if op == "add"],
         *[emit(op, sh) for op, sh in f if op == "cut"],
+        *rc,
         *[ln for ln, _ in sonar_holder_rounds()],
         f"expect|vol {vol:.1f} {vol * 0.015:.1f}|box {' '.join(f'{v:.2f}' for v in bb)} 0.1",
         "save",
@@ -2366,8 +2468,19 @@ CAM_HOLES = (
     (-10.5, -12.4),
     (10.5, -12.4),
 )  # (dy, dz) from the lens
-CAM_BLOCK, CAM_BLOCK_D = 10.8, 3.875  # lens block side, depth off the PCB front
-CAM_BARREL_R, CAM_BARREL_L = 5.75 / 2, 3.105
+# 2026-11-11 (Ben: the camera doesn't sit flat): RPi's STEP (RP-008154, std model) disagrees
+# with the drawing: the block is 10.9 square, its front 4.85 off the PCB front (not 3.875),
+# with a Ø8.2 ring 0.55 proud of it, then the Ø5.78 barrel to its tip 6.95 off the PCB. So the
+# block hit the wall ~1 mm before the PCB reached its bosses. Now ONLY the bosses locate the
+# PCB (CAM_PCB_OFF behind the wall's back face) and the block + ring sit in a back-face pocket.
+# The sensor flex tab under the block (8.9 wide, PCB bottom +1.7..+9.0, 1.37 proud) stays
+# 2.6 clear of the wall.
+CAM_BLOCK, CAM_BLOCK_D = 10.9, 4.85  # lens block side, its front off the PCB front
+CAM_RING_R, CAM_RING_H = 4.1, 0.55  # lens ring proud of the block
+CAM_BARREL_R, CAM_BARREL_L = 5.78 / 2, 1.55  # beyond the ring: tip 6.95 off the PCB front
+CAM_PCB_OFF = 4.0  # PCB front behind the wall's back face: barrel tip 0.05 inside the face
+CAM_POCKET_CLR = 0.3  # pocket clearance, sides and floor
+CAM_TAB = (1.7, 9.0, 5.75, 1.37)  # flex tab: z from the PCB bottom, |y| envelope, proud
 CAM_CONN = (
     19.61,
     5.71,
@@ -2393,27 +2506,35 @@ BH_FOOT = (
     (0.0, 9.0),
 )  # chassis box; x >= 78.5 clears the mount feet
 BH_FLANGE_GAP = 0.3  # side-flange bottoms clear the plate (2026-11-06)
-# 2026-11-09 (Ben): the foot's vertical front stood 2.4 proud of the tilted wall at its top.
-# Flush is impossible: the F1 pockets (BULK_X, Ø4.1 x 7.2) would break the wall's plane, and
-# moving them aft hits the motor-mount feet (0.7 mm behind the foot). So the front goes to
-# the wall's 15° above the pockets, BH_FOOT_SKIN in front of each pocket's top edge.
+# 2026-11-09 (Ben): the foot's vertical front stood 2.4 proud of the tilted wall at its top;
+# the first fix sloped it at the wall's angle but kept 1.5 proud, clear of the F1 pockets.
+# 2026-11-11 (Ben, PETG fit2: face-down, only that lip touched the bed): the front is now
+# COPLANAR with the wall's front face, so the face is the part's lowest flat. The F1 holes moved
+# aft (BULK_HOLE_X) with short pockets, BH_FOOT_SKIN in front of each pocket's top edge, and a
+# boss of the same wall round each where it pokes out of the foot's back face (x 78.5): the
+# motor-mount feet are notched for the outer two (MM_BH_GAP).
 BH_FOOT_SKIN = 1.2
 
 
-def bh_foot_slope() -> tuple[float, float, float]:
-    """(x0, z_kink, x_top): the foot's sloped front is x = x0 - z tan(BH_TILT); it leaves the
-    vertical face at z_kink and meets the foot top at x_top."""
-    t = math.tan(math.radians(BH_TILT))
-    (_, fx1), _, (_, fz1) = BH_FOOT
-    x0 = BULK_X + INS_HOLE / 2 + BH_FOOT_SKIN + INS_DEPTH * t
-    return x0, (x0 - fx1) / t, x0 - fz1 * t
+def bh_face_x(z: float) -> float:
+    """Chassis x of the wall's (tilted) front face at height z."""
+    t = math.radians(BH_TILT)
+    return BH_PIVOT[0] + (BH_T - math.sin(t) * z) / math.cos(t)
+
+
+def bh_foot_boss_r() -> float:
+    return INS_HOLE / 2 + BH_FOOT_SKIN
 
 
 BH_TAB = (4.0, 9.8, 3.6)  # into the 4.6 x 10.4 plate slots (0.3/side)
 # Knee gusset (P1b): the only clear slot behind the lower band is between the sonar
 # sleeves (y <= 0.8) and the speaker (y >= 4); it stays below the face board (z <= 44).
 # Its tail pad is bolted down through the plate (M3 up into an insert, like F1).
-BH_KNEE_Y = (1.2, 3.6)  # 2.4 thick
+# 2.4 thick. 2026-11-12: 1.2-3.6 -> 0.8-3.2, its outboard face flush with the sonar window's
+# (y 3.2 = holder 3.0 + SR_WIN_CLR): 0.4 past it the notch left a 0.05 x 0.4 x 25 gusset skin
+# on the back face beside the window and S5c read 98 MPa at its corner (run flush to the
+# face instead, the 0.4 strip would not mesh)
+BH_KNEE_Y = (0.8, 3.2)
 BH_KNEE_TOP = 44.0  # top of the gusset, chassis z
 BH_KNEE_TAIL = 56.0  # rear end on the plate (the wire slot ends at x 55)
 # 2026-11-09: the split HC-SR04 holder (RB-PRT-070) runs through the gusset's plane (y 0..3
@@ -2422,6 +2543,15 @@ BH_KNEE_TAIL = 56.0  # rear end on the plate (the wire slot ends at x 55)
 # runs round the holder's back: the wall above the holder (z 37..44) still braces to the tail.
 BH_KNEE_TOP_X = 60.0
 SR_NOTCH_CLR = 0.2
+# 2026-11-12 (S5c 22.3 MPa at the notch, Ben: a + b): r KNEE_FIL where the knee gusset meets
+# the wall's back face above and below the notch, and in the notch's two rear corners; the
+# holder's rear edges are chamfered SR_TRIM_CH to clear those
+KNEE_FIL = 1.5
+SR_TRIM_CH = 1.0
+# ... and the window's four inside corners r SR_WIN_R (they took the peak next, 12-18 MPa), the
+# holder box's four long edges r SR_WIN_R - SR_WIN_CLR from the trim to the wall face, so the
+# clearance stays even round them
+SR_WIN_R = 1.2
 BH_KNEE_PAD = ((56.0, 66.0), (-2.2, 7.0), (0.0, 9.0))
 BH_KNEE_HOLE = (61.0, 2.4)
 
@@ -2590,14 +2720,19 @@ def bulkhead_features() -> tuple[list[tuple], list[tuple]]:
             pre.append(("cut", ("cylx", ye, sz + dz, x0 - 0.1, x1 + 0.1, sr_end)))
     cy, cz, cr = BH_CAM
     pre.append(("cut", ("cylx", cy, cz, x0 - 0.1, x1 + 0.1, cr)))
-    # camera bosses (2026-11-09): from the wall's back face to the PCB front, which sits
-    # CAM_BLOCK_D behind it (the lens block bears on the wall)
-    xc = x0 - CAM_BLOCK_D
+    # camera bosses (2026-11-09): from the wall's back face to the PCB front, CAM_PCB_OFF
+    # behind it; 2026-11-11 they alone locate the camera (block + ring in a pocket, below)
+    xc = x0 - CAM_PCB_OFF
     for dy, dz in CAM_HOLES:
         pre.append(("add", ("cylx", cy + dy, cz + dz, xc, x0 + 0.5, CAM_BOSS_R)))
         pre.append(
             ("cut", ("cylx", cy + dy, cz + dz, xc - 0.1, xc + CAM_PILOT_D, CAM_PILOT_R))
         )
+    hp = CAM_BLOCK / 2 + CAM_POCKET_CLR
+    dp = CAM_BLOCK_D - CAM_PCB_OFF + CAM_POCKET_CLR  # 1.15 (wall 3.0)
+    dr = dp + CAM_RING_H  # 1.7
+    pre.append(("cut", ("box", x0 - 0.1, x0 + dp, cy - hp, cy + hp, cz - hp, cz + hp)))
+    pre.append(("cut", ("cylx", cy, cz, x0 - 0.1, x0 + dr, CAM_RING_R + CAM_POCKET_CLR)))
     # P7 (tick 92, Q25 (a) Ben 2026-11-02): pocket for a pre-boxed micro speaker on the back
     # face, behind the grille's inboard half: a 1.6 rim standing SPK_DEPTH off the face round
     # the module + gasket, and two M3 insert bosses above it for the clamp plate's screws
@@ -2655,10 +2790,12 @@ def bulkhead_features() -> tuple[list[tuple], list[tuple]]:
     # post-tilt, chassis frame: foot, tabs, foot insert pockets (F1)
     (fx0, fx1), (fy0, fy1), (fz0, fz1) = BH_FOOT
     post: list[tuple] = [("add", ("box", fx0, fx1, fy0, fy1, fz0, fz1))]
-    # 2026-11-09: the front slopes at the wall's angle above the F1 pockets (bh_foot_slope)
-    sx0, szk, _ = bh_foot_slope()
-    st, za, zb = math.tan(math.radians(BH_TILT)), szk - 0.3, fz1 + 0.3
-    wedge = [(sx0 - za * st, za), (fx1 + 1.0, za), (fx1 + 1.0, zb), (sx0 - zb * st, zb)]
+    for y in BULK_HOLES_Y:  # 2026-11-11: F1 pocket bosses past the foot's back face
+        post.append(("add", ("cylz", BULK_HOLE_X, y, fz0, fz1, bh_foot_boss_r())))
+    # 2026-11-11: the front is cut on the wall's front-face plane (coplanar: it only trims the
+    # foot, never the wall), so face-down the face and the foot's front are one flat
+    za, zb = -0.3, fz1 + 0.3
+    wedge = [(bh_face_x(za), za), (fx1 + 1.0, za), (fx1 + 1.0, zb), (bh_face_x(zb), zb)]
     post.append(("cut", ("prismy", wedge, fy0 - 0.5, fy1 + 0.5)))
     # 2026-11-06: the tilt swings the side flanges' bottoms ~1 mm under the plate top at
     # |y| 45-47, x ~78; the old front chamfer had no plate there. Trim them to BH_FLANGE_GAP
@@ -2730,7 +2867,9 @@ def bulkhead_features() -> tuple[list[tuple], list[tuple]]:
     (px0, px1), (py0, py1), (pz0, pz1) = BH_KNEE_PAD
     post.append(("add", ("box", px0, px1, py0, py1, pz0, pz1)))
     for y in BULK_HOLES_Y:
-        post.append(("cut", ("cylz", BULK_X, y, -0.1, INS_DEPTH, INS_HOLE / 2)))
+        post.append(
+            ("cut", ("cylz", BULK_HOLE_X, y, -0.1, BH_FOOT_INS_DEPTH, INS_HOLE / 2))
+        )
     post.append(("cut", ("cylz", *BH_KNEE_HOLE, -0.1, INS_DEPTH, INS_HOLE / 2)))
     return pre, post
 
@@ -2901,9 +3040,6 @@ def cap_round_lines() -> list[str]:
 
 SEAM_R = 0.5  # P6m4: edge break on both seam edges (cap back, canopy front): a 1 mm V shadow line
 FLANGE_END_R = 1.0  # P6m4: the cap side flanges' bottom ends (kid rule r >= 1)
-FOOT_TOP_R = (
-    2.0  # P6m4: foot ledge top front edge (it stands 2.5 proud of the wall there)
-)
 
 
 def seam_break_lines(xs: float, z_low: float) -> list[tuple[str, float]]:
@@ -2962,6 +3098,77 @@ def flange_end_dv() -> float:
 def flange_end_line() -> str:
     dv = flange_end_dv()
     return f"fillet|{FLANGE_END_R}|vmid|{';'.join(_flange_end_edges())}|6|{dv:.2f} {abs(dv) * 0.4 + 1:.2f}"
+
+
+def knee_fillet_lines() -> tuple[list[str], list[str], float]:
+    """(pre-tilt lines, post-tilt lines, dvol): r KNEE_FIL rounds, built as arc-profile bosses
+    (a SolidWorks fillet on these edges selects them but will not run out onto the window's
+    ceiling). Pre-tilt, where the back face is the plane x = x0: the knee gusset's four
+    junction edges with the wall (both sides, above and below the RB-PRT-070 notch), front
+    plane (x, y) extruded along z. Post-tilt: the notch's two rear corners, top plane
+    (x, -z) extruded across the gusset."""
+    r, o = KNEE_FIL, 0.05  # o: overlap into the solid so each boss merges
+    c_ = SR_NOTCH_CLR
+    za = sr_map(56.0, 25.0)[1]
+    zb = sr_map(6.0, 0.0)[1]
+    z0, z1 = min(za, zb) - c_, max(za, zb) + c_
+    x0 = BH_XF - BH_T
+    ct = math.cos(math.radians(BH_TILT))
+    ztop = BH_KNEE_TOP / ct  # back face meets the gusset top (post z 44)
+    zrun = 46.5  # the upper rounds run on to here (post z <= 44.9), then are trimmed flat at
+    # the gusset top after the tilt (a square end left a 15° step there: 94 MPa)
+    zlow = 8.0  # just under it, and buried in the foot (top post z 9) at the bottom
+    ky0, ky1 = BH_KNEE_Y
+    # +y side: the speaker pocket's inboard rim stands on the back face 0.9 outboard of the
+    # gusset; r 1.5 would cross its face at a grazing angle (a knife-edge void the mesher
+    # rejects), so the round there ends tangent to the back face at the rim's corner
+    g = _spk_geom()
+    rp = min(r, g["oy"][0] - ky1)
+    pre: list[str] = []
+    for za_, zb_ in ((z1, zrun), (zlow, z0)):
+        # -y side of the gusset: arc (x0, y-r) -> (x0-r, y), CCW about (x0-r, y-r)
+        y = ky0
+        pre.append(
+            f"prof|{za_:.4f} {zb_:.4f}|M {x0 + o:.4f} {y + o:.4f} L {x0 + o:.4f} {y - r:.4f}"
+            f" L {x0:.4f} {y - r:.4f} A {x0 - r:.4f} {y - r:.4f} {x0 - r:.4f} {y:.4f}"
+            f" L {x0 - r:.4f} {y + o:.4f}|boss|front"
+        )
+        y = ky1  # +y side: arc (x0, y+rp) -> (x0-rp, y), CW about (x0-rp, y+rp)
+        pre.append(
+            f"prof|{za_:.4f} {zb_:.4f}|M {x0 + o:.4f} {y - o:.4f} L {x0 + o:.4f} {y + rp:.4f}"
+            f" L {x0:.4f} {y + rp:.4f} a {x0 - rp:.4f} {y + rp:.4f} {x0 - rp:.4f} {y:.4f}"
+            f" L {x0 - rp:.4f} {y - o:.4f}|boss|front"
+        )
+    k = 1 - math.pi / 4
+    dv = k * (r**2 + rp**2) * ((ztop - z1) + (z0 - zlow))
+    R, t = speaker_tilt()
+
+    def T(x: float, z: float) -> str:  # pre (x, z) -> top-plane sketch (x, -z), post frame
+        return f"{R[0] * x + R[2] * z + t[0]:.4f} {-(R[6] * x + R[8] * z + t[2]):.4f}"
+
+    xs = SR_TRIM - c_  # the notch's rear face
+    # (an arc in this tilted top-plane sketch came back null: 8-chord polylines, 11.25° apart)
+    n = 8
+    post = []
+    for zc, sg in ((z1, -1), (z0, 1)):  # top-rear (centre below), bottom-rear (centre above)
+        arc = [
+            (xs + r - r * math.cos(a), zc + sg * (r - r * math.sin(a)))
+            for a in (i * math.pi / 2 / n for i in range(n + 1))
+        ]  # (xs, zc + sg r) -> (xs + r, zc)
+        pts = [(xs - o, zc - sg * o), (xs - o, zc + sg * r), *arc, (xs + r, zc - sg * o)]
+        segs = "M " + T(*pts[0]) + "".join(" L " + T(*q) for q in pts[1:])
+        post.append(f"prof|{ky0} {ky1}|{segs}|boss|top")
+    # trim the upper rounds flat at the gusset top: behind the back face, z 44 -> 46 (under
+    # the horizontal rib at post z 46.7)
+    lean = math.tan(math.radians(BH_TILT))
+    zt0, zt1 = BH_KNEE_TOP, 46.0
+    xb0, xb1 = BH_PIVOT[0] - zt0 * lean, BH_PIVOT[0] - zt1 * lean
+    trim = [(xb0 - 4.0, zt0), (xb0, zt0), (xb1, zt1), (xb1 - 4.0, zt1)]  # rearward of the face
+    tsegs = "M " + " L ".join(f"{x:.4f} {-z:.4f}" for x, z in trim)
+    for y0_, y1_ in ((ky0 - r - 0.1, ky0 + 0.1), (ky1 - 0.1, ky1 + rp + 0.1)):  # + the o tabs
+        post.append(f"prof|{y0_:.4f} {y1_:.4f}|{tsegs}|cut|top")
+    dv += 2 * k * r**2 * (ky1 - ky0)
+    return pre, post, dv
 
 
 def bulkhead_lines(path: str) -> list[str]:
@@ -3028,6 +3235,28 @@ def bulkhead_lines(path: str) -> list[str]:
     sr = bulkhead_sonar_features()
     lines += [emit(op, sh) for op, sh in sr if op == "add"]
     lines += [emit(op, sh) for op, sh in sr if op == "cut"]
+    c_w = SR_WIN_CLR
+    ya_, za_ = sr_map(56.0, 25.0)
+    yb_, zb_ = sr_map(6.0, 0.0)
+    wl, wdv = sr_corner_lines(
+        min(ya_, yb_) - c_w, max(ya_, yb_) + c_w, min(za_, zb_) - c_w, max(za_, zb_) + c_w,
+        SR_WIN_R, BH_XF - BH_T, BH_XF, "boss",
+    )  # 2026-11-12: r SR_WIN_R in the sonar window's inside corners
+    lines += wl
+    # the outboard end (y -47.2) is on the cap's r CAP_R side round: flat fills stood up to 0.3
+    # proud of the curved face as near-loose slivers (bezel 119 MPa), so cut them back to that
+    # cylinder (true arc, front plane (x, y) over the window's height)
+    rcx, rcy = BH_XF - CAP_R, -(BH_W / 2 - CAP_R)
+    ye = min(ya_, yb_) - c_w - 0.4
+    xe = rcx + math.sqrt(CAP_R**2 - (ye - rcy) ** 2)
+    zw0, zw1 = min(za_, zb_) - c_w - 0.1, max(za_, zb_) + c_w + 0.1
+    lines.append(
+        f"prof|{zw0:.4f} {zw1:.4f}|M {BH_XF + 0.2} {rcy} L {BH_XF} {rcy}"
+        f" a {rcx} {rcy} {xe:.4f} {ye:.4f} L {BH_XF + 0.2} {ye:.4f}|cut|front"
+    )
+    # 2026-11-12 (S5c, Ben: a + b): rounds at the knee gusset (see knee_fillet_lines)
+    knee_pre, knee_post, kdv = knee_fillet_lines()
+    lines += knee_pre
     lines.append(f"rotbody|{BH_PIVOT[0]} {BH_PIVOT[1]} {BH_PIVOT[2]}|y|{-BH_TILT}")
     for op, sh in post:
         if op == "trim":  # applied last, after the side-face rounds (below)
@@ -3037,7 +3266,9 @@ def bulkhead_lines(path: str) -> list[str]:
             lines.append(f"box|{x0} {x1}|{y0} {y1}|{z0} {z1}")
         else:
             lines.append(emit(op, sh))
+    lines += knee_post
     vol, bb = bulkhead_volume_numeric()
+    vol += kdv + wdv
     vol -= (
         (1 - math.pi / 4)
         * PLATE_EDGE_R**2
@@ -3055,31 +3286,9 @@ def bulkhead_lines(path: str) -> list[str]:
         sum(dv for _, dv in seam_break_lines(BH_XF - CAP_D, cap_z_low()))
         + flange_end_dv()
     )
-    # P-kid (tick 87): r 1.0 on the foot's exposed front: its top front edge (x BH_XF, z top,
-    # along y; the foot stands ~2.4 proud of the tilted wall there) and the two vertical
-    # front corners (|y| foot half-width). One feature; the bottom edge sits on the plate
-    q = (1 - math.pi / 4) * PLATE_EDGE_R**2
-    (fx0, fx1), (fy0, fy1), (fz0, fz1) = BH_FOOT
-    # P6m4: the top front edge goes to r FOOT_TOP_R (the ledge read square), first and alone.
-    # 2026-11-09: that edge is now the sloped face's top (x_top), 105° inside, not 90°
-    _, szk, sxt = bh_foot_slope()
-    ia = math.radians(90 + BH_TILT)
-    dvtop = (1 / math.tan(ia / 2) - (math.pi - ia) / 2) * FOOT_TOP_R**2 * (fy1 - fy0)
-    lines.append(
-        f"fillet|{FOOT_TOP_R}|y|{sxt - 0.1} {fy0 - 0.1} {fz1 - 0.1} {sxt + 0.1} {fy1 + 0.1} {fz1 + 0.1}|1|{-dvtop:.2f} {0.15 * dvtop:.2f}"
-    )
-    # r 1 on the front corners: the vertical edges (z 0..kink) and the sloped ones above
-    sl = (fz1 - szk) / math.cos(math.radians(BH_TILT)) - FOOT_TOP_R / math.tan(ia / 2)
-    dvft = q * 2 * (szk - fz0 + sl)
-    xm, zm = (fx1 + sxt) / 2, (szk + fz1 - 1.0) / 2
-    cb = []
-    for yy in (fy0, fy1):
-        cb.append(f"{fx1 - 0.1} {yy - 0.1} {fz0} {fx1 + 0.1} {yy + 0.1} {szk}")
-        cb.append(f"{xm - 0.6} {yy - 0.1} {zm - 1.2} {xm + 0.6} {yy + 0.1} {zm + 1.2}")
-    lines.append(
-        f"fillet|{PLATE_EDGE_R}|any|{';'.join(cb)}|4|{-dvft:.2f} {0.3 * dvft + 0.5:.2f}"
-    )
-    vol -= dvft + dvtop
+    # P-kid (tick 87) / P6m4: the r 1.0 front corners and r FOOT_TOP_R top front edge of the
+    # foot went 2026-11-11: its front is coplanar with the wall's face, so those edges are gone
+    # (all that shows is a 0.8 mm strip under the wall's bottom edge, on the plate)
     lines += [emit("cut", sh) for op, sh in post if op == "trim"]
     # P6m3: the top is the cap's r 8 front-top round after the tilt (the voxel box has no rounds)
     s15, c15 = math.sin(math.radians(BH_TILT)), math.cos(math.radians(BH_TILT))
@@ -3140,14 +3349,94 @@ MM_INS_BOSS_H = MM_CHAMFER + 0.2  # 3.8
 # Ø8.2 (2.05 wall round the 4.1 hole), not INS_BOSS 9.2: the hole is at z 22.25 and the
 # upright's top at 26.5, so 9.2 would stand 0.35 above the top edge.
 MM_INS_BOSS_UP_H, MM_INS_BOSS_UP_D = 2.0, 8.2
+# 2026-11-11 (Ben): F3 drops its inserts for M3 x 35 SHCS + M3 hex nuts. The lower hole is
+# 1.75 above the foot top, so a nut (5.5 A/F) can't slide in from the inboard side; both nuts
+# DROP IN FROM ABOVE into slots in the inboard bosses, just inboard of the upright (which
+# stays uncut). The upper boss becomes a block (Ø8.2 left 0.8 walls round the slot).
+# 2026-11-11 (S2 11.75 MPa at the lower slot's inner corner, 1.3 walls): flats on the
+# SIDES, so the slot narrows 6.6 -> 5.8 (walls 1.7) and the nut can't turn; it stands on
+# a corner, the floor A/C/2 + 0.15 under the axis (the screw centres it).
+MM_NUT = (5.5, 2.4)  # M3 ISO 4032: A/F, thickness
+MM_NUT_SLOT = (
+    5.8,
+    2.7,
+    0.15,
+)  # x width (A/F 5.5 + 0.3), y thickness, floor below the corner
+MM_NUT_Y0 = 0.2  # nut slot starts this far inboard of the upright's inboard face
+MM_NUT_BOSS_H = (
+    MM_INS_BOSS_H  # both bosses 3.8 proud of the upright (nut 2.7 + 1.1 behind)
+)
+MM_UP_BLOCK_HX = 4.6
+F3_SCREW_L = 35.0
+
+
+MM_BH_GAP = 0.7  # mount foot to bulkhead foot (the gap before 2026-11-11)
+MM_EDGE_CH = 1.0  # 2026-11-11 (Ben, no sharp angles): 45° breaks on the free top / end edges
+MM_FOOT_CH = 2.0  # and on the foot's two outer corners (plan)
+
+
+MM_SONAR_CLR = 1.0
+
+
+def stop_sonar_bevel(xs: float) -> list[tuple[float, float]]:
+    """(x, z) cut on the end stop's front (part frame): at full height its top corner
+    reached the HC-SR04's back-parts zone (21 mm³). Bevel it parallel to the tilted
+    bulkhead, MM_SONAR_CLR behind that zone; it also stands in for the front top chamfer."""
+    R, t = speaker_tilt()
+    xc = SR_FRONT - 12.25 - 0.02 - 1.6 - 1.5 - MM_SONAR_CLR  # zone's back face, pre-tilt
+
+    def xp(z: float) -> float:  # chassis x on that plane at height z -> part x
+        return mount_tx() - ((xc - (z - t[2]) * R[6]) / R[0] + t[0])
+
+    z0, z1 = 15.0, MM_TOP + 1.0
+    assert xp(z0) < xs, "the sonar bevel should start below the stop's front face"
+    return [(xp(z0), z0), (xp(z1), z1), (xs - 2.5, z1), (xs - 2.5, z0)]
+
+
+def mount_edge_breaks(hx: float, bh: float, yb: float) -> list[tuple]:
+    """45° chamfer cuts on the mount's free edges (right part frame). Not on the edges
+    the gearbox bears on (the stop's inner face near y -8.9, the motor face below the
+    gearbox top): the top ones sit 2 mm over the gearbox (MM_TOP)."""
+    c, e, T = MM_EDGE_CH, 0.05, MM_TOP
+    xa, xb = MM_X
+    xs, yi, yf, ye = xa - MM_STOP_T, MM_FACE - MM_T, MM_FACE, -8.9
+
+    def t_y(y: float, o: int, cc: float = c) -> list[tuple[float, float]]:
+        # (y, z) triangle on the top edge at y, the solid on the -o side
+        return [(y - o * cc, T + e), (y + o * e, T + e), (y + o * e, T - cc - e)]
+
+    def t_x(x: float, o: int, cc: float = c) -> list[tuple[float, float]]:
+        return [(x - o * cc, T + e), (x + o * e, T + e), (x + o * e, T - cc - e)]
+
+    cuts = [
+        ("prismx", t_y(yf, +1), xa, xb + e),  # motor-face top
+        ("prismx", t_y(ye, +1), xs - e, xa + e),  # stop's end top
+        # inboard top, both sides of the nut block: 2.0, so the right mount's edge clears
+        # the HC-SR04's Dupont plug (0.7 mm³ under the old square edge)
+        ("prismx", t_y(yi, -1, 2.0), xs - e, hx - bh),
+        ("prismx", t_y(yi, -1, 2.0), hx + bh, xb + e),
+        ("prismx", t_y(yb, -1, 0.6), hx - bh - e, hx + bh + e),  # nut block (0.9 slot wall)
+        ("prismy", stop_sonar_bevel(xs), yi - e, ye + e),  # stop's front, see below
+        ("prismy", t_x(xa, +1), yf, ye + e),  # stop's motor-side top
+        ("prismy", t_x(xb, +1), yi - e, yf + e),  # upright's end top
+        ("prismy", t_x(hx - bh, -1), yb - e, yi),  # nut block's ends
+        ("prismy", t_x(hx + bh, +1), yb - e, yi),
+        # vertical: upright end on the motor side, the stop's free outer corner
+        ("prismz", [(xb - c, yf + e), (xb + e, yf + e), (xb + e, yf - c - e)], -0.1, T + 0.1),
+        ("prismz", [(xs + c, ye + e), (xs - e, ye + e), (xs - e, ye - c - e)], -0.1, T + 0.1),
+    ]
+    return [("cut", sh) for sh in cuts]
 
 
 def mount_v2_features(mirror: bool) -> list[tuple]:
     xa, xb = MM_X
     yi = MM_FACE - MM_T  # inboard face of the upright
+    fc = MM_FOOT_CH
     foot = [
-        (-30.4, -47.0),
-        (xb, -47.0),
+        (-30.4, -47.0 + fc),
+        (-30.4 + fc, -47.0),
+        (xb - fc, -47.0),
+        (xb, -47.0 + fc),
         (xb, yi),
         (xa, yi),
         (xa, -8.9),
@@ -3157,7 +3446,8 @@ def mount_v2_features(mirror: bool) -> list[tuple]:
     ops: list[tuple] = [
         ("add", ("prismz", foot, 0.0, MM_FOOT_T)),
         ("add", ("box", xa, xb, yi, MM_FACE, 0.0, MM_TOP)),
-        ("add", ("box", xa - MM_STOP_T, xa, yi, -8.9, 0.0, MM_TOP - 4.0)),
+        # 2026-11-11 (Ben): the stop was MM_TOP - 4, a second top height; now flush
+        ("add", ("box", xa - MM_STOP_T, xa, yi, -8.9, 0.0, MM_TOP)),
     ]
     tri = [(yi + 0.6, MM_FOOT_T), (yi + 0.6, MM_GUSSET_Z), (MM_GUSSET_Y, MM_FOOT_T)]
     for gx in MM_GUSSETS:
@@ -3175,17 +3465,33 @@ def mount_v2_features(mirror: bool) -> list[tuple]:
     ops.append(("add", ("prismx", ch, xa, xb)))
     hx, _, hz = MOUNT_HOLE
     bz = hz - MOT_HOLE_PITCH / 2
-    ops.append(("add", ("cyly", hx, bz, yi - MM_INS_BOSS_H, yi + 0.5, INS_BOSS / 2)))
+    yb = yi - MM_NUT_BOSS_H  # both bosses' inboard face
+    ops.append(("add", ("cyly", hx, bz, yb, yi + 0.5, INS_BOSS / 2)))
     tz = hz + MOT_HOLE_PITCH / 2
-    ops.append(
-        ("add", ("cyly", hx, tz, yi - MM_INS_BOSS_UP_H, yi + 0.5, MM_INS_BOSS_UP_D / 2))
-    )
-    for dz in (-MOT_HOLE_PITCH / 2, MOT_HOLE_PITCH / 2):
-        # blind pockets from the motor face: neither breaks through its boss
-        y0 = MM_FACE - MM_INS_DEPTH
-        ops.append(("cut", ("cyly", hx, hz + dz, y0, MM_FACE + 0.1, INS_HOLE / 2)))
+    bh = MM_UP_BLOCK_HX
+    blk = [  # (y, z) over x: 45° underside back to the upright (foot-down print)
+        (yi + 0.5, tz - bh - MM_NUT_BOSS_H - 0.5),
+        (yi + 0.5, MM_TOP),
+        (yb, MM_TOP),
+        (yb, tz - bh),
+    ]
+    ops.append(("add", ("prismx", blk, hx - bh, hx + bh)))
+    sw_, st, sf = MM_NUT_SLOT
+    for z in (bz, tz):  # 2026-11-11: through hole + drop-in nut slot (F3)
+        ops.append(("cut", ("cyly", hx, z, yb - 0.1, MM_FACE + 0.1, CLR_M3 / 2)))
+        ys = yi - MM_NUT_Y0
+        z0 = z - MM_NUT[0] / math.sqrt(3) - sf
+        ztop = (z + INS_BOSS / 2 if z == bz else MM_TOP) + 0.1
+        ops.append(("cut", ("box", hx - sw_ / 2, hx + sw_ / 2, ys - st, ys, z0, ztop)))
     for x, y in MOUNT_FOOT_HOLES:
         ops.append(("cut", ("cylz", x, y, -0.1, MM_FOOT_T + 0.1, CLR_M3 / 2)))
+    # 2026-11-11: notch for the bulkhead foot's outer F1 boss (Ø6.5 at x BULK_HOLE_X, |y| 22),
+    # which pokes 1.25 aft of the foot into the old 0.7 gap; MM_BH_GAP kept all round it
+    bx, by = mount_tx() - BULK_HOLE_X, max(BULK_HOLES_Y) - mount_ty()
+    ops.append(
+        ("cut", ("cylz", bx, by, -0.1, MM_FOOT_T + 0.1, bh_foot_boss_r() + MM_BH_GAP))
+    )
+    ops += mount_edge_breaks(hx, bh, yb)
     # 2026-11-10 (Ben): slot through the end stop for the gearbox end lug, as his original
     # mount had: 2.9 wide along the shaft axis, +-3.2 about the motor axis (his slot ran
     # -3.2..+2.2; symmetric here so either face-up of the motor fits)
@@ -3205,6 +3511,8 @@ def mount_v2_features(mirror: bool) -> list[tuple]:
             return ("prismz", [(-u, v) for u, v in sh[1]][::-1], sh[2], sh[3])
         if k == "prismx":
             return ("prismx", sh[1], -sh[3], -sh[2])
+        if k == "prismy":
+            return ("prismy", [(-u, v) for u, v in sh[1]][::-1], sh[2], sh[3])
         if k == "cyly":
             return ("cyly", -sh[1], *sh[2:])
         if k == "cylz":
@@ -3272,6 +3580,14 @@ def emit_ops(ops: list[tuple]) -> list[str]:
                     + "".join(" L " + q for q in pts[1:])
                     + f"|{kind}|right"
                 )
+            elif k == "prismy":  # Top plane: sketch (x, -z), extrude +Y
+                pts = [f"{u:.4f} {-v:.4f}" for u, v in sh[1]]
+                out.append(
+                    f"prof|{sh[2]} {sh[3]}|M "
+                    + pts[0]
+                    + "".join(" L " + q for q in pts[1:])
+                    + f"|{kind}|top"
+                )
             elif k == "cyly":
                 _, cx, cz, y0, y1, r = sh
                 out.append(f"cyl|y|{cx} {cz}|{y0} {y1}|{r}|{kind}")
@@ -3288,19 +3604,11 @@ def mount_v2_lines(path: str, mirror: bool) -> list[str]:
     vol, bb = solid_volume_numeric(
         ops, ((-36.0, 36.0), (-50.0, -5.0), (-1.0, MM_TOP + 1.0))
     )
-    # D1 (tick 36): r 2.0 (07 fil_in at load roots) in the concave step where the end
-    # stop's top (z MM_TOP - 4) meets the upright's end face (x MM_X[0]), y yi..MM_FACE:
-    # S2's half-mesh peak after D10. Not the vertical corner at y MM_FACE: the gearbox's
-    # end corner bears there. A concave 90° round adds (1 - pi/4) r² per mm.
-    xa = MM_X[0] * (-1 if mirror else 1)
-    zs = MM_TOP - 4.0
-    yi = MM_FACE - MM_T
-    dvs = (1 - math.pi / 4) * MM_ROOT_R**2 * (MM_FACE - yi)
-    vol += dvs
+    # D1 (tick 36) filleted the concave step where the end stop's top (then z MM_TOP - 4)
+    # met the upright's end face, S2's peak. 2026-11-11: the stop is full height, no step
     return [
         f"part|{path}",
         *emit_ops(ops),
-        f"fillet|{MM_ROOT_R}|y|{xa - 0.1} {yi - 0.1} {zs - 0.1} {xa + 0.1} {MM_FACE + 0.1} {zs + 0.1}|1|{dvs:.2f} {0.15 * dvs:.2f}",
         # R3 (tick 80): on the foot's underside (on the plate), 3 mm text read from below,
         # centred (5.25 / -5.15, -32.4): the middle of a valid 26 x 8 clear window (STL scan
         # per part; the first try at y -37.5 cut through the foot's screw holes)
@@ -3343,6 +3651,10 @@ def mount_ops_chassis(side: int) -> list[tuple]:
             out.append(
                 (op, ("prismx", [(Y(y), z) for y, z in sh[1]], *span(sh[2], sh[3], X)))
             )
+        elif k == "prismy":
+            out.append(
+                (op, ("prismy", [(X(x), z) for x, z in sh[1]], *span(sh[2], sh[3], Y)))
+            )
         elif k == "cyly":
             _, cx, cz, y0, y1, r = sh
             out.append((op, ("cyly", X(cx), cz, *span(y0, y1, Y), r)))
@@ -3383,7 +3695,7 @@ def fea_plate_mounts_lines(path: str) -> list[str]:
 CAR_L = RAIL_L  # 20, the rail length the plate slots were sized for
 CAR_FOOT_T = 4.0  # 05: clamp foot ~4
 CAR_FOOT_Y = (
-    28.0,
+    27.2,  # 28.0 -> 27.2 (2026-11-11): covers the inner rail's locating wedge (CAR_V)
     53.0,
 )  # inboard of the plate edge (55) with margin at the rear corner
 CAR_RAIL_W, CAR_RAIL_D = (
@@ -3395,6 +3707,15 @@ CAR_PED = (
     40.0,
 )  # pedestal half-length in x, inboard y (outboard = foot edge); the
 # first cut (6.0, 44.0) twisted at its root under the 26 mm-outboard axle load (S6 16.5 MPa)
+# 2026-11-11 (Ben): Ø4 shoulder bolts come in 45 / 50 (the 55 is Ø5), so the idler axle is a
+# Ø4 x 50 and its head drops into a counterbore in the boss's inboard end: head y 39.5..43.5,
+# underside at 43.5 + 50 = 93.5 (the frame plate's inner face, as the 53.5 stack had)
+IDLER_BOLT_L = 50.0
+# 2026-11-11 (Ben: build the spacers in): the carriage-side DIN 988 shim becomes a land on
+# the boss end, Ø6 x 0.5, on the 624's inner race only (its outer race / the idler's tube
+# start at r 6.55). The two frame-side shims stay: the axle slides in the frame's slot there.
+CAR_LAND = (3.0, 0.5)  # r, height
+CAR_CBORE = (8.6, 3.5)  # Ø, depth into the boss from y CAR_PED[1]
 CAR_BOSS_R = (
     7.5  # S6: Ø12 bent at its root (12.9 MPa); the idler's inboard opening is ~r 20
 )
@@ -3413,6 +3734,13 @@ def idler_tube_inboard() -> float:
     """|y| of the idler hub tube's inboard end (the boss stops 0.5 short of it)."""
     tube_end = dt.BELT_W / 2 + dt.BRG_W
     return track_y()[1] - tube_end
+
+
+def car_v_wedge(yw: float, o: int, gy: float) -> list[tuple[float, float]]:
+    """(y, z) section of a rail's locating wedge: rail face -> the chamfer plane
+    y = yw + o (CAR_V + z), from z -CAR_V + CAR_V_LIP up to the foot's underside."""
+    zb, yr = -CAR_V + CAR_V_LIP, gy + o * CAR_RAIL_W / 2
+    return [(yr, zb), (yw + o * (CAR_V + zb), zb), (yw + o * CAR_V, 0.0), (yr, 0.0)]
 
 
 def carriage_features(mirror: bool) -> list[tuple]:
@@ -3452,8 +3780,36 @@ def carriage_features(mirror: bool) -> list[tuple]:
             ),
         ),
         ("add", ("cyly", 0.0, za, CAR_PED[1], boss_y1, CAR_BOSS_R)),
+        ("add", ("cyly", 0.0, za, boss_y1 - 0.01, boss_y1 + CAR_LAND[1], CAR_LAND[0])),
         ("add", ("box", px, hx, pa, pb, CAR_FOOT_T, pz)),
-        ("cut", ("cyly", 0.0, za, CAR_PED[1] - 0.1, boss_y1 + 0.1, CAR_BORE / 2)),
+        # 2026-11-11: locating wedges on the rails' outer faces, line to line with the
+        # plate's CAR_V chamfers (guide_v_edges), stopping CAR_V_LIP above their foot
+        *[
+            ("add", ("prismx", car_v_wedge(yw, o, gy), -hx, hx))
+            for (yw, o), gy in zip(guide_v_edges(), GUIDE_Y)
+        ],
+        (
+            "cut",
+            (
+                "cyly",
+                0.0,
+                za,
+                CAR_PED[1] - 0.1,
+                boss_y1 + CAR_LAND[1] + 0.1,
+                CAR_BORE / 2,
+            ),
+        ),
+        (
+            "cut",
+            (
+                "cyly",
+                0.0,
+                za,
+                CAR_PED[1] - 0.1,
+                CAR_PED[1] + CAR_CBORE[1],
+                CAR_CBORE[0] / 2,
+            ),
+        ),
         # R2a: the clamp screw comes up from under the plate (through the clamp slot) into
         # an M3 insert, so a track swap needs one key and no blind nyloc under the plate
         # (05 option). Tick 68 (idler axle 13.5 -> 10.5): the insert is pressed UP from the
@@ -3479,6 +3835,9 @@ def carriage_features(mirror: bool) -> list[tuple]:
         if sh[0] == "cylz":
             _, cx, cy, e, f, r = sh
             return ("cylz", cx, -cy, e, f, r)
+        if sh[0] == "prismx":
+            _, poly, a, b = sh
+            return ("prismx", [(-u, v) for u, v in poly][::-1], a, b)
         raise ValueError(sh[0])
 
     return [(op, my(sh)) for op, sh in ops]
@@ -3544,6 +3903,83 @@ SPOKE_R_IN, SPOKE_SINK = (
 )  # start inside the r 7.5 tube; reach into the rim wall
 
 
+# 2026-11-11 (Ben: lighten the sprocket + idler, keep them interchangeable with the printed
+# ones): windows through the bed-face web between n web spokes, the spokes WEB_SPOKE_W wide
+# (the sprocket's ribs sit centred on them), WEB_RING kept to the hub tube and to the rim's
+# inner wall, corners r WEB_WIN_R. Bores, seats, teeth and faces are unchanged. With the
+# track frame on, its side plate covers the windows (1.0 off the wheel's outboard face).
+WEB_WINDOWS, WEB_SPOKE_W, WEB_RING, WEB_WIN_R = 6, 5.0, 1.5, 2.0
+
+
+def web_window_paths(layers: list) -> tuple[list[str], float, float]:
+    """Sketch paths (part frame, axis z, CCW with a CW inner arc) of the web windows, the
+    web's thickness and the windows' total area."""
+    z_web = layers[0][1]
+    _, _, ann = layers[1]  # the layer on the web: hub tube + the rim's running disc
+    hub_o, rim_i = float(ann[0][1].max()), float(ann[-1][0].min())
+    ra, rb = hub_o + WEB_RING, rim_i - WEB_RING
+    hw, rc, n = WEB_SPOKE_W / 2, WEB_WIN_R, WEB_WINDOWS
+
+    def corner(th: float, side: int, rp: float) -> tuple:
+        """Fillet centre, its tangent point on the spoke edge, and on the circle."""
+        u = (math.cos(th), math.sin(th))
+        nn = (-side * math.sin(th), side * math.cos(th))  # into the window
+        d = hw + rc
+        t = math.sqrt(rp * rp - d * d)
+        c = (d * nn[0] + t * u[0], d * nn[1] + t * u[1])
+        pl = (hw * nn[0] + t * u[0], hw * nn[1] + t * u[1])
+        k = (ra if rp < (ra + rb) / 2 else rb) / math.hypot(*c)
+        return c, pl, (c[0] * k, c[1] * k)
+
+    paths, area = [], 0.0
+    for j in range(n):
+        t0, t1 = 2 * math.pi * j / n, 2 * math.pi * (j + 1) / n
+        ci0, pi0, qi0 = corner(t0, 1, ra + rc)
+        co0, po0, qo0 = corner(t0, 1, rb - rc)
+        co1, po1, qo1 = corner(t1, -1, rb - rc)
+        ci1, pi1, qi1 = corner(t1, -1, ra + rc)
+        a_in = math.atan2(qi1[1], qi1[0]) - math.atan2(qi0[1], qi0[0])
+        assert (
+            a_in % (2 * math.pi) < math.pi and a_in % (2 * math.pi) > 0.05
+        ), "inner fillets meet"
+        # 6 decimals: SolidWorks keeps each arc's START radius, so at 4 the last fillet ended
+        # ~1e-5 off the start and the closing micro-line broke the loop (cut came back null)
+        f = lambda p: f"{p[0]:.6f} {p[1]:.6f}"  # noqa: E731
+        paths.append(
+            f"M {f(pi0)} L {f(po0)} A {f(co0)} {f(qo0)} A 0 0 {f(qo1)} A {f(co1)} {f(po1)} "
+            f"L {f(pi1)} A {f(ci1)} {f(qi1)} a 0 0 {f(qi0)} A {f(ci0)} {f(pi0)}"
+        )
+        # area: sample the same boundary
+        pts: list = []
+
+        def arc(c, p, q, ccw=True, m=24):
+            a0 = math.atan2(p[1] - c[1], p[0] - c[0])
+            a1 = math.atan2(q[1] - c[1], q[0] - c[0])
+            da = (a1 - a0) % (2 * math.pi)
+            if not ccw:
+                da -= 2 * math.pi
+            r = math.hypot(p[0] - c[0], p[1] - c[1])
+            pts.extend(
+                (
+                    c[0] + r * math.cos(a0 + da * i / m),
+                    c[1] + r * math.sin(a0 + da * i / m),
+                )
+                for i in range(m + 1)
+            )
+
+        pts.append(pi0)
+        arc(co0, po0, qo0)
+        arc((0, 0), qo0, qo1, m=96)
+        arc(co1, qo1, po1)
+        arc(ci1, pi1, qi1)
+        arc((0, 0), qi1, qi0, ccw=False, m=48)
+        arc(ci0, qi0, pi0)
+        area += 0.5 * abs(
+            sum(x0 * y1 - x1 * y0 for (x0, y0), (x1, y1) in zip(pts, pts[1:] + pts[:1]))
+        )
+    return paths, z_web, area
+
+
 def spoke_lines(layers: list, n: int, w: float) -> tuple[list[str], float]:
     """Prof bosses for n radial spokes (part frame, axis z) and the volume they add, from the
     wheel's own layers: per layer, spoke = r from max(SPOKE_R_IN, hub outer) .. rim inner."""
@@ -3596,11 +4032,19 @@ def spoke_lines(layers: list, n: int, w: float) -> tuple[list[str], float]:
 
 
 def wheel_lines(
-    path: str, layers: list, spokes: tuple[int, float] | None = None
+    path: str,
+    layers: list,
+    spokes: tuple[int, float] | None = None,
+    windows: bool = False,
 ) -> list[str]:
     vol = dt.check(dt.mesh(layers))[1]
     sp, dvs = spoke_lines(layers, *spokes) if spokes else ([], 0.0)
     vol += dvs
+    if windows:  # 2026-11-11: web windows (web_window_paths)
+        wp, zw, aw = web_window_paths(layers)
+        # from z 0, the bed face on the sketch plane (an offset start at -0.1 came back null)
+        sp += [f"prof|0 {zw + 0.1:.3f}|{p}|cut" for p in wp]
+        vol -= aw * zw
     r = max(float(ro.max()) for _, _, ann in layers for _, ro in ann)
     # S1c (kid safety): r 1.0 on the outboard rim, the running disc's outer edge on the bed
     # face (part z 0), the wheel edge a hand meets from the side: (1 - pi/4) r² x 2 pi R
@@ -3694,7 +4138,7 @@ def road_axle_lines(path: str) -> list[str]:
     # P13c (tick 91): the frame's blade sits mid-span (belt centre, RA_T thick), so the
     # spacer is two tubes, inner race -> blade face (0.1 clear)
     m0, m1 = bw / 2 - RA_T / 2 - 0.1, bw / 2 + RA_T / 2 + 0.1
-    # 2026-11-10 retention: the shaft runs from its grooved inboard end to the side plate's
+    # 2026-11-10 retention: the shaft runs from its inboard end to the side plate's
     # blind bore (skin), drawn at RA_PRESS where it presses into the land + plate
     yi = track_y()[0]
     y0f, y1f = trackframe_geom()["y"]
@@ -4985,9 +5429,9 @@ def pam8302_lines(path: str) -> list[str]:
 
 
 def bmi270_lines(path: str) -> list[str]:
-    """BMI270 Qwiic breakout envelope (interference only, chassis frame): the PCB and a parts
-    layer below it over the whole board, cleared Ø5 round each hole (spacer above, SHCS head
-    below), holes Ø3.3 through. TBC: measure the board."""
+    """BMI270 Qwiic Micro breakout envelope (interference only, chassis frame): the PCB and a
+    parts layer below it over the whole board, cleared Ø5 round the hole (SHCS head below),
+    hole Ø3.3 through. Outline and hole from SparkFun's board file (SEN-22398)."""
     g = imu_geom()
     (x0, x1), (y0, y1), (zb, zt) = g["x"], g["y"], g["z_pcb"]
     zp = zb - IMU_PARTS_H
@@ -4996,7 +5440,7 @@ def bmi270_lines(path: str) -> list[str]:
     for x, y in g["holes"]:
         ln.append(f"cyl|z|{x:.3f} {y:.3f}|{zp - 0.1:.3f} {zb:.3f}|{rk}|cut")
         ln.append(f"cyl|z|{x:.3f} {y:.3f}|all|{rh}|cut")
-    v = (x1 - x0) * (y1 - y0) * (zt - zp) - 4 * math.pi * (
+    v = (x1 - x0) * (y1 - y0) * (zt - zp) - len(g["holes"]) * math.pi * (
         rk * rk * IMU_PARTS_H + rh * rh * IMU_PCB[2]
     )
     ln += [
@@ -5404,16 +5848,16 @@ RA_ARM_T = 5.0  # the shelf joining both blades to the plate (tick 91b: S9 3 mm 
 RA_GAP = 1.0  # arm over the disc top, blade over the lug tips
 # Road-axle retention (Ben 2026-11-10, 06 §7 amendment): the axle presses in from inboard
 # into a BLIND bore in the side plate (as the sprocket dowel: TF_DOWEL, 0.8 skin), so it can't
-# walk outboard or turn; one DIN 6799 E-clip (size 3.2) in a groove at its inboard end holds
-# the inner disc's 684 (inner race) on. A land on the plate's inner face takes the outer
-# 684's inner race only (0.1 float), so the outer disc can't drag on the Ø10 boss.
+# walk outboard or turn; the inner disc's 684 is held by retaining compound on its inner
+# race (2026-11-11: was a DIN 6799 E-clip in a groove; no stock Ø4 shaft comes grooved).
+# A land on the plate's inner face takes the outer 684's inner race only (0.1 float), so
+# the outer disc can't drag on the Ø10 boss.
 RA_PRESS, RA_SKIN = TF_DOWEL, TF_DOWEL_SKIN
 RA_LAND = (
     6.0,
     0.9,
 )  # Ø, height off the plate's inner face (outer disc face is 1.0 off it)
-RA_AXLE_L = 42.0  # Ø4 ground shaft, one E-ring groove
-RA_CLIP = (7.3, 0.6, 0.04)  # E-clip OD, thickness, float to the inner race
+RA_AXLE_L = 42.0  # Ø4 h6 hardened linear rod, cut to length (ends chamfered)
 
 
 def road_axle_carrier(side: int) -> tuple[list[str], float, tuple[float, float]]:
@@ -5544,12 +5988,14 @@ def hardware_layout() -> list[tuple[str, "hw.Item", list, str]]:
 
     # F1: plate -> bulkhead foot, low head up from the belly into the foot's inserts; + knee
     belly = PLATE_BOTTOM if not BOTTOM_RIBS else -PLATE_T
-    f1 = [(BULK_X, y) for y in BULK_HOLES_Y]
+    f1 = [(BULK_HOLE_X, y) for y in BULK_HOLES_Y]
     add("F1", hw.screw("lowhead", 3.0, 10.0), [((x, y, belly), DN) for x, y in f1])
     add(
         "F1 knee", hw.screw("lowhead", 3.0, 10.0), [((*BH_KNEE_HOLE, belly + 2.0), DN)]
     )  # in its 2.0 counterbore
-    add("F1", I3, [((x, y, 0.0), UP) for x, y in [*f1, BH_KNEE_HOLE]])
+    I3s = hw.insert(3.0, BH_FOOT_INS_LEN, INS_HOLE_PC)  # 2026-11-11: short, flush foot
+    add("F1", I3s, [((x, y, 0.0), UP) for x, y in f1])
+    add("F1 knee", I3, [((*BH_KNEE_HOLE, 0.0), UP)])
     # F2: motor mount -> plate, SHCS + washer down from the foot top, inserts flush from the top
     mh = mount_holes()
     add("F2", hw.screw("shcs", 3.0, 8.0), [((x, y, 3.5), UP) for x, y in mh])
@@ -5569,24 +6015,39 @@ def hardware_layout() -> list[tuple[str, "hw.Item", list, str]]:
     ]
     add(
         "F3",
-        hw.screw("shcs", 3.0, 28.0),
+        hw.screw("shcs", 3.0, F3_SCREW_L),
         [((x, s * 55.0, z), (0.0, s, 0.0)) for x, s, z in f3],
     )
-    add("F3", I3, [((x, s * 26.7, z), (0.0, s, 0.0)) for x, s, z in f3])
+    # 2026-11-11: M3 nuts in the drop-in slots (mount part y yi - MM_NUT_Y0 -> chassis |y|)
+    ym = 55.0 - MOT_THICK  # motor face, chassis |y|
+    yn = (
+        ym - (MM_T + MM_NUT_Y0) - MM_NUT[1]
+    )  # nut's inboard face (pulled to the slot's wall)
+    nut = hw.ring_part(
+        "hw_nut_M3", "Hex nut ISO 4032 M3 (5.5 A/F x 2.4, A2)", 5.5, 3.02, MM_NUT[1]
+    )
+    add("F3", nut, [((x, s * yn, z), (0.0, s, 0.0)) for x, s, z in f3])
+    tip = 55.0 - F3_SCREW_L  # chassis |y| of the screw tip
+    # a full nut plus >= 1 thread past it; x 32 isn't a stock length, so ~2.6 stands past
+    # the boss face, over the foot (inboard, nothing else there)
+    assert yn - 5.0 < tip < yn - 0.5, (tip, yn)
     # F4: idler axle (05, 2026-11-09 stack): shoulder bolt, head inboard on the pedestal
     xf, iz = dt.belt_fit()["x_fit"], idler_z()
+    L = IDLER_BOLT_L  # 2026-11-11: Ø4 x 50, head in the carriage counterbore
     sb = hw.Item(
-        "hw_shoulder_4x53.5_M3",
-        "Shoulder bolt ISO 7379 Ø4 x 53.5, M3 thread (head Ø8 x 4)",
+        f"hw_shoulder_4x{L:g}_M3",
+        f"Shoulder bolt ISO 7379 Ø4 x {L:g}, M3 thread ≥ 8 (head Ø8 x 4)",
         (
             "cyl|z|0 0|0 4|4|boss",
-            "cyl|z|0 0|-53.5 0.01|1.99|boss",
-            "cyl|z|0 0|-61.5 -53.49|1.5|boss",
-            f"expect|vol {math.pi * (16 * 4 + 1.99**2 * 53.5 + 2.25 * 8):.1f} 2|box -4 4 -4 4 -61.5 4 0.05",
+            f"cyl|z|0 0|{-L} 0.01|1.99|boss",
+            f"cyl|z|0 0|{-L - 8} {-L + 0.01}|1.5|boss",
+            f"expect|vol {math.pi * (16 * 4 + 1.99**2 * L + 2.25 * 8):.1f} 2|box -4 4 -4 4 {-L - 8} 4 0.05",
         ),
         0.0,
     )
-    add("F4 axle", sb, [((xf, s * CAR_PED[1], iz), (0.0, -s, 0.0)) for s in (1, -1)])
+    yh = CAR_PED[1] + CAR_CBORE[1]  # head underside
+    assert abs(yh + L - 93.5) < 1e-9, yh + L
+    add("F4 axle", sb, [((xf, s * yh, iz), (0.0, -s, 0.0)) for s in (1, -1)])
     add(
         "F4 axle",
         hw.ring_part(
@@ -5603,7 +6064,7 @@ def hardware_layout() -> list[tuple[str, "hw.Item", list, str]]:
         [
             ((xf, s * y0, iz), (0.0, s, 0.0))
             for s in (1, -1)
-            for y0 in (69.0, 92.5, 93.0)
+            for y0 in (92.5, 93.0)  # the carriage-side one is CAR_LAND (2026-11-11)
         ],
     )
     b624 = hw.bearing("624", 4.0, 13.0, 5.0)
@@ -5663,24 +6124,8 @@ def hardware_layout() -> list[tuple[str, "hw.Item", list, str]]:
             for y0 in (yi, yo - 4.0)
         ],
     )
-    # F20 (2026-11-10): road-axle retention, an E-clip at each axle's inboard end on the inner
-    # 684's inner race (drawn on the shaft Ø; the groove isn't modelled)
-    cd, ct, cf = RA_CLIP
-    add(
-        "F20",
-        hw.ring_part(
-            "hw_eclip_3.2",
-            f"Retaining washer (E-clip) DIN 6799 size 3.2, for Ø4 shaft ({cd:g} x {ct:g})",
-            cd,
-            4.02,
-            ct,
-        ),
-        [
-            ((x, s * (yi - cf - ct), z), (0.0, s, 0.0))
-            for x, z in road_axles()
-            for s in (1, -1)
-        ],
-    )
+    # F20 (2026-11-11, Ben: option A): no clip. The inner 684's inner race is bonded to the
+    # axle with retaining compound (Loctite 641), so the axle is plain cut rod
     # F5: Pi deck -> plate posts
     add(
         "F5",
@@ -5712,22 +6157,15 @@ def hardware_layout() -> list[tuple[str, "hw.Item", list, str]]:
         [((x, -40.2, z), (0.0, -1.0, 0.0)) for x, z in core_standoffs()],
     )
     add("F8", I25, [((x, -38.7, z), (0.0, 1.0, 0.0)) for x, z in core_standoffs()])
-    # F19 (2026-11-10): IMU breakout under the deck: M2.5 x 8 up through board + 3 mm spacer
-    # into M2.5 x 4 inserts pressed up into the deck (engages 3.4)
+    # F19 (2026-11-11, Micro board): one M2.5 x 6 up through the board (back in the deck's
+    # locating pocket) into an M2.5 x 4 insert pressed up into the pocket ceiling (engages 4.0)
     ig = imu_geom()
     add(
         "F19",
-        hw.screw("shcs", 2.5, 8.0),
+        hw.screw("shcs", 2.5, 6.0),
         [((x, y, ig["z_pcb"][0]), DN) for x, y in ig["holes"]],
     )
-    add(
-        "F19",
-        hw.ring_part(
-            "hw_spacer_M2.5x3", "Nylon round spacer M2.5 x 3 (Ø5 x Ø2.7)", *IMU_SPACER
-        ),
-        [((x, y, ig["z_pcb"][1]), UP) for x, y in ig["holes"]],
-    )
-    add("F19", I25, [((x, y, DECK_Z), UP) for x, y in ig["holes"]])
+    add("F19", I25, [((x, y, ig["z_pcb"][1]), UP) for x, y in ig["holes"]])
     # F9 front: flanged button down through the hood into the bulkhead lugs (pre-tilt)
     lx = bh_lug_x()
     add(
@@ -5776,7 +6214,10 @@ def hardware_layout() -> list[tuple[str, "hw.Item", list, str]]:
     add(
         "F16",
         hw.screw("pan", 2.0, 5.0, CAM_PILOT_R * 2, tf=True),
-        [((77.005, cy_ + dy, cz_ + dz), (-1.0, 0.0, 0.0)) for dy, dz in CAM_HOLES],
+        [
+            ((BH_XF - BH_T - CAM_PCB_OFF - CAM_PCB[2], cy_ + dy, cz_ + dz), (-1.0, 0.0, 0.0))
+            for dy, dz in CAM_HOLES
+        ],
         "pre",
     )
     # F17: HC-SR04 -> holder, M1.6 x 6 thread-forming (pre-tilt)
@@ -5819,6 +6260,24 @@ def hardware_comps(lib: str) -> list[str]:
     return lines
 
 
+# Bought parts the assembly draws as their own envelope parts (not hardware_layout items), so
+# the bill would miss them: (description, joint, qty per robot)
+BOM_EXTRA = [
+    (
+        f"Road axle: Ø4 h6 hardened linear rod cut to {RA_AXLE_L:g} (one 300 rod makes 7), "
+        "deburr + chamfer the ends",
+        "Road",
+        4,
+    ),
+    (
+        "Retaining compound, Loctite 641 (bearing fit, removable with heat): inner 684 race "
+        "to the road axle",
+        "F20",
+        1,
+    ),
+]
+
+
 def hardware_bom() -> list[tuple[str, str, int]]:
     """(description, joints, qty per robot) from the layout."""
     agg: dict[str, list] = {}
@@ -5826,6 +6285,10 @@ def hardware_bom() -> list[tuple[str, str, int]]:
         a = agg.setdefault(it.desc, [set(), 0])
         a[0].add(joint.split()[0])
         a[1] += len(seats)
+    for d, j, q in BOM_EXTRA:
+        a = agg.setdefault(d, [set(), 0])
+        a[0].add(j)
+        a[1] += q
     return sorted(
         ((d, ", ".join(sorted(j)), q) for d, (j, q) in agg.items()), key=lambda r: r[0]
     )
