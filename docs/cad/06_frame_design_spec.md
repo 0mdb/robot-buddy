@@ -575,3 +575,13 @@ No new interferences.
 > Result: S5c screen 22.3 → **18.0 MPa** (still over 11.7), bezel 5.9 MPa / 0.09 mm. The
 > peak is now the 0.2 ledge between the window's outboard end (y −47.2) and the inner side
 > flange's outer face (y −47.0), open in TODO.
+
+> **Amendment 2026-11-12 (§5 / RB-PRT-070, sonar aim; Ben: "go ahead with the wedged holder")**:
+> the HC-SR04 looks **+10°** up (was +15°, the wall's tilt). The holder is built square, then
+> turned **5° nose-down** about the box centre on the wall mid-plane (pre-tilt x 83.5, z 26) and
+> slid 0.78 along its axis so the PCB's lower back corner stays at x 76.0 (motor-mount
+> clearance). Lips flat on the wall face, M2 lip screws square to the wall; the front face is
+> no longer parallel to the wall. Bulkhead: sonar window z 13.3–38.7 → **13.12–38.88**; the
+> knee-gusset notch follows the turned box (ceiling parallel to it, rear face square to it,
+> floor level). Why: at +15° the cone misses anything under ~49 mm; the study (TODO) put the
+> floor's entry at 557 mm for +10° (clear of the 250 / 350 stop band) vs 276 mm for +5°.

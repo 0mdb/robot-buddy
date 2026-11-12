@@ -186,12 +186,14 @@ PARTS = {
     ),
     # P7 / P8 (tick 93): speaker clamp (pad side up) and gasket, flat
     "RB-PRT-060_speaker_clamp": ("PET-CF", "+x", 1, False, "flat, pad up"),
+    # 2026-11-12: the front face is turned 5° nose-down in the part (chassis.SR_AIM): its
+    # normal is (cos 5°, 0, -sin 5°), so up = minus that (plain "-x" stood it on an edge)
     "RB-PRT-070_sonar_holder": (
         "PET-CF",
-        "-x",
+        "v:-0.996195,0,0.087156",
         1,
         False,
-        "front face down (lips flat on the bed)",
+        "front face down along its turned normal",
     ),
     "RB-PRT-061_speaker_gasket": ("TPU", "+x", 1, False, "flat ring, 1 mm"),
     "RB-PRT-062_mic_washer": (

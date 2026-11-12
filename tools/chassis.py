@@ -1522,7 +1522,7 @@ def rebuild_manifest(win: str) -> list[str]:
         f"comp|spk_gasket|{cad}\\parts\\RB-PRT-061_speaker_gasket.SLDPRT|{row(*speaker_tilt())}",
         f"comp|spk_module|{cad}\\library\\speaker_module_envelope.SLDPRT|{row(*speaker_tilt())}",
         f"comp|camera|{cad}\\library\\camera_module3_envelope.SLDPRT|{row(*speaker_tilt())}",
-        f"comp|hcsr04|{cad}\\library\\hcsr04_envelope.SLDPRT|{row(*speaker_tilt())}",
+        f"comp|hcsr04|{cad}\\library\\hcsr04_envelope.SLDPRT|{row(*sonar_place())}",
         f"comp|sonar_holder|{cad}\\parts\\RB-PRT-070_sonar_holder.SLDPRT|{row(*speaker_tilt())}",
         f"comp|mic_disc|{cad}\\library\\mic_disc_envelope.SLDPRT|{row(ROT_I, (0, 0, 0))}",
         f"comp|xvf_core|{cad}\\library\\xvf_core_envelope.SLDPRT|{row(ROT_I, (0, 0, 0))}",
@@ -1645,6 +1645,16 @@ def speaker_tilt() -> tuple[list[float], tuple[float, float, float]]:
     tx = px - (c * px - s_ * pz)
     tz = pz - (s_ * px + c * pz)
     return R, (tx, py, tz)
+
+
+def sonar_place() -> tuple[list[float], tuple[float, float, float]]:
+    """The HC-SR04 envelope (built square to the wall) -> chassis: the holder's SR_AIM turn,
+    then the wall's tilt."""
+    Rt, tt = speaker_tilt()
+    Ra, ta = sr_aim_rt()
+    R = [sum(Rt[3 * i + k] * Ra[3 * k + j] for k in range(3)) for i in range(3) for j in range(3)]
+    t = tuple(sum(Rt[3 * i + k] * ta[k] for k in range(3)) + tt[i] for i in range(3))
+    return R, t
 
 
 def _spk_geom() -> dict:
@@ -2122,6 +2132,161 @@ def sr_box(
     )
 
 
+# 2026-11-12 (Ben: "go ahead with the wedged holder"; TODO sonar-angle study): the wall leans
+# BH_TILT back, so a holder square to it looks 15° up and misses anything under ~49 mm. The
+# holder (front plate, box, PCB pocket) is built square as above, then turned SR_AIM nose-down
+# about the box centre on the wall's mid-plane and slid SR_AIM_D along its own axis so the PCB's
+# lower back corner (the motor-mount side) is no further aft than before: +10° up overall. The
+# lips stay flat on the wall face (their backs cut to it) and the M2 lip screws stay square to
+# the wall; the window and the gusset notch grow to the turned box (sr_win_z, sr_notch_poly).
+SR_AIM = 5.0
+SR_AIM_C = (BH_XF - BH_T / 2, BH_SONAR_Z)
+
+
+def _sr_aim_d() -> float:
+    t = math.radians(SR_AIM)
+    cx, cz = SR_AIM_C
+    x = SR_FRONT - 12.25 - 1.6  # PCB back
+    z = sr_map(31.0, 12.0)[1] - 9.8  # PCB bottom edge (envelope, zh 21.8)
+    xr = cx + (x - cx) * math.cos(t) + (z - cz) * math.sin(t)
+    return (x - xr) / math.cos(t)
+
+
+SR_AIM_D = _sr_aim_d()
+
+
+def sr_aim(x: float, z: float) -> tuple[float, float]:
+    """Holder local (square) pre-tilt (x, z) -> its turned pre-tilt (x, z)."""
+    t = math.radians(SR_AIM)
+    c, s = math.cos(t), math.sin(t)
+    cx, cz = SR_AIM_C
+    return (
+        cx + (x - cx) * c + (z - cz) * s + SR_AIM_D * c,
+        cz - (x - cx) * s + (z - cz) * c - SR_AIM_D * s,
+    )
+
+
+def sr_aim_inv(x: float, z: float) -> tuple[float, float]:
+    t = math.radians(SR_AIM)
+    c, s = math.cos(t), math.sin(t)
+    cx, cz = SR_AIM_C
+    u, v = x - cx - SR_AIM_D * c, z - cz + SR_AIM_D * s
+    return cx + u * c - v * s, cz + u * s + v * c
+
+
+def sr_aim_rt() -> tuple[list[float], tuple[float, float, float]]:
+    """sr_aim as (R row-major, t), pre-tilt frame."""
+    t = math.radians(SR_AIM)
+    c, s = math.cos(t), math.sin(t)
+    tx, tz = sr_aim(0.0, 0.0)
+    return [c, 0, s, 0, 1, 0, -s, 0, c], (tx, 0.0, tz)
+
+
+def sr_aim_pivot() -> tuple[float, float]:
+    """The single point a rotbody of +SR_AIM turns about to give sr_aim (rotation + slide)."""
+    t = math.radians(SR_AIM)
+    c, s = math.cos(t), math.sin(t)
+    _, (tx, _, tz) = sr_aim_rt()
+    # p = R p + t  ->  (I - R) p = t, R = [[c, s], [-s, c]]
+    a, b, cc, d = 1 - c, -s, s, 1 - c
+    det = a * d - b * cc
+    return (d * tx - b * tz) / det, (-cc * tx + a * tz) / det
+
+
+def sr_wall_x(z: float) -> float:
+    """Local (square-holder) x where the wall's front face (pre-tilt x = BH_XF) crosses local
+    height z."""
+    t = math.radians(SR_AIM)
+    c, s = math.cos(t), math.sin(t)
+    cx, cz = SR_AIM_C
+    # BH_XF = cx + (x - cx) c + (z - cz) s + D c
+    return cx + (BH_XF - cx - (z - cz) * s - SR_AIM_D * c) / c
+
+
+def sr_box_z(x: float) -> tuple[float, float]:
+    """Pre-tilt z of the turned box's bottom and top faces at pre-tilt x."""
+    t = math.radians(SR_AIM)
+    out = []
+    for zh in (25.0, 0.0):
+        zl = sr_map(31.0, zh)[1]
+        px, pz = sr_aim(SR_FRONT, zl)
+        out.append(pz - (x - px) * math.tan(t))
+    return out[0], out[1]
+
+
+def sr_win_z() -> tuple[float, float]:
+    """The bulkhead window's z (pre-tilt): SR_WIN_CLR round the turned box through the wall."""
+    x0 = BH_XF - BH_T
+    lo = min(sr_box_z(x0)[0], sr_box_z(BH_XF)[0]) - SR_WIN_CLR
+    hi = max(sr_box_z(x0)[1], sr_box_z(BH_XF)[1]) + SR_WIN_CLR
+    return math.floor(lo * 100) / 100, math.ceil(hi * 100) / 100
+
+
+def sr_notch_poly() -> tuple[list[tuple[float, float]], dict]:
+    """The knee gusset's notch round the turned box behind the wall, pre-tilt (x, z): its
+    ceiling parallel to the box top through the window's top corner (no ledge at the back
+    face), floor level with the window's bottom (the box rises away from it), rear face
+    SR_NOTCH_CLR behind the box's (square to the box), front 0.05 off the back face."""
+    t = math.radians(SR_AIM)
+    zw0, zw1 = sr_win_z()
+    x0 = BH_XF - BH_T
+    xf = x0 - 0.05
+
+    def ztop(x: float) -> float:
+        return zw1 - (x - x0) * math.tan(t)
+
+    # rear line: local x = SR_TRIM - clr
+    pa = sr_aim(SR_TRIM - SR_NOTCH_CLR, 0.0)
+    pb = sr_aim(SR_TRIM - SR_NOTCH_CLR, 50.0)
+    ux, uz = pb[0] - pa[0], pb[1] - pa[1]
+
+    def on_rear(zq: float) -> float:  # rear line's x at pre-tilt z
+        return pa[0] + ux * (zq - pa[1]) / uz
+
+    # top corner: on_rear(z) with z = ztop(x): iterate (converges at once, slopes ~tan 5°)
+    xr = on_rear(zw1)
+    for _ in range(20):
+        xr = on_rear(ztop(xr))
+    rt = (xr, ztop(xr))
+    rb = (on_rear(zw0), zw0)
+    poly = [rb, (xf, zw0), (xf, ztop(xf)), rt]
+    n = math.hypot(ux, uz)
+    up = (ux / n, uz / n)  # along the rear face, upward
+    fwd = (math.cos(t), -math.sin(t))  # along the ceiling, forward
+    return poly, {"rt": rt, "rb": rb, "up": up, "fwd": fwd}
+
+
+def corner_fill(
+    v: tuple[float, float], u1: tuple[float, float], u2: tuple[float, float], r: float,
+    n: int = 8, o: float = 0.05,
+) -> tuple[list[tuple[float, float]], float]:
+    """(polygon, area): the fill an r round leaves in the corner at v between the edges along
+    unit u1 and u2 (pointing away from v), n chords, o overlap back into the solid."""
+    cosa = max(-1.0, min(1.0, u1[0] * u2[0] + u1[1] * u2[1]))
+    a = math.acos(cosa)
+    L = r / math.tan(a / 2)
+    t1 = (v[0] + u1[0] * L, v[1] + u1[1] * L)
+    t2 = (v[0] + u2[0] * L, v[1] + u2[1] * L)
+    bx, by = u1[0] + u2[0], u1[1] + u2[1]
+    bn = math.hypot(bx, by)
+    h = r / math.sin(a / 2)
+    cxy = (v[0] + bx / bn * h, v[1] + by / bn * h)
+    a1 = math.atan2(t1[1] - cxy[1], t1[0] - cxy[0])
+    a2 = math.atan2(t2[1] - cxy[1], t2[0] - cxy[0])
+    da = (a2 - a1 + math.pi) % (2 * math.pi) - math.pi  # the short way round
+    arc = [
+        (cxy[0] + r * math.cos(a1 + da * i / n), cxy[1] + r * math.sin(a1 + da * i / n))
+        for i in range(n + 1)
+    ]  # t1 -> t2
+    pts = [
+        (v[0] - o * (u1[0] + u2[0]), v[1] - o * (u1[1] + u2[1])),
+        (t1[0] - o * u2[0], t1[1] - o * u2[1]),
+        *arc,
+        (t2[0] - o * u1[0], t2[1] - o * u1[1]),
+    ]
+    return pts, r * L - r * r * (math.pi - a) / 2
+
+
 SR_EDGE_R, SR_HOLE_EDGE_R = (
     2.0,
     0.5,
@@ -2133,11 +2298,11 @@ def sonar_holder_rounds() -> list[tuple[str, float]]:
     face's perimeter and the 4 corner edges back to the wall face), then r SR_HOLE_EDGE_R on
     the front face's inner loops (2 x Ø17, the crystal slot). Pre-tilt, picked by edge
     midpoints."""
-    xf, xw = SR_FRONT, BH_XF
+    xf = SR_FRONT
     ya, za = sr_map(56.0, 25.0 + SR_LIP_BOT)
     yb, zb = sr_map(6.0, -SR_LIP_TOP)
     y0, y1, z0, z1 = min(ya, yb), max(ya, yb), min(za, zb), max(za, zb)
-    ym, zm, xm = (y0 + y1) / 2, (z0 + z1) / 2, (xf + xw) / 2
+    ym, zm = (y0 + y1) / 2, (z0 + z1) / 2
     e = 0.3
     bx = [
         f"{xf - e} {ym - 2} {z0 - e} {xf + e} {ym + 2} {z0 + e}",
@@ -2145,17 +2310,22 @@ def sonar_holder_rounds() -> list[tuple[str, float]]:
         f"{xf - e} {y0 - e} {zm - 2} {xf + e} {y0 + e} {zm + 2}",
         f"{xf - e} {y1 - e} {zm - 2} {xf + e} {y1 + e} {zm + 2}",
     ]
+    # the corner edges run back to the turned wall face (sr_wall_x: the lips' backs, local)
+    Lc = 0.0
     for yy in (y0, y1):
         for zz in (z0, z1):
-            bx.append(f"{xm - 2.5} {yy - e} {zz - e} {xm + 3.5} {yy + e} {zz + e}")
+            xwz = sr_wall_x(zz)
+            xm = (xf + xwz) / 2
+            Lc += xf - xwz
+            bx.append(f"{xm - 1.0:.3f} {yy - e} {zz - e} {xm + 1.0:.3f} {yy + e} {zz + e}")
     q = 1 - math.pi / 4
-    L = 2 * (y1 - y0) + 2 * (z1 - z0) + 4 * (xf - xw)
+    L = 2 * (y1 - y0) + 2 * (z1 - z0) + Lc
     dv = q * SR_EDGE_R**2 * L
     out = [
         (f"fillet|{SR_EDGE_R}|any|{';'.join(bx)}|8|{-dv:.2f} {0.35 * dv + 2:.2f}", -dv)
     ]
     per = 2 * 2 * math.pi * SR_HOLE_R + 2 * 5.0 + 2 * math.pi * 2.0
-    per += len(SR_SCREW_XH) * 2 * math.pi * SR_SCREW_CB_R
+    # (the lip screws' counterbores are cut after the SR_AIM turn: left sharp)
     dvh = q * SR_HOLE_EDGE_R**2 * per
     out.append(
         (
@@ -2175,8 +2345,9 @@ def sonar_holder_features() -> list[tuple]:
     # The outboard end (xh 56 -> y -47) stands 2 mm onto the front cap's r 8 side round (the
     # face is flat to |y| 45): its lip floats <= 0.25 off the face there.
     f.append(("add", sr_box(6, 56, 0, 2.25, 0, 25)))  # front plate
-    f.append(("add", sr_box(6, 56, 0, yl, -SR_LIP_TOP, 0)))  # top lip (screws)
-    f.append(("add", sr_box(6, 56, 0, yl, 25, 25 + SR_LIP_BOT)))  # bottom lip
+    # lips run back past the turned wall face (yl + 3), then are cut to it (below)
+    f.append(("add", sr_box(6, 56, 0, yl + 3.0, -SR_LIP_TOP, 0)))  # top lip (screws)
+    f.append(("add", sr_box(6, 56, 0, yl + 3.0, 25, 25 + SR_LIP_BOT)))  # bottom lip
     for a in (
         (6, 9, 0, 25),
         (53, 56, 0, 25),
@@ -2220,23 +2391,17 @@ def sonar_holder_features() -> list[tuple]:
     for xh0, xh1 in ((9.0, 11.6), (50.4, 53.0)):
         for zh0, zh1 in ((2.5, 5.6), (19.4, 21.5)):
             f.append(("add", sr_box(xh0, xh1, 2.25, 12.25, zh0, zh1)))
-    # cuts: the front holes, the crystal slot, the pilots, the lip screws
-    for xh in SR_SCREW_XH:
-        sy_, sz_ = sr_map(xh, SR_SCREW_ZH)
-        f.append(("cut", ("cylx", sy_, sz_, BH_XF - 0.1, SR_FRONT + 0.1, SR_SCREW_CLR)))
-        f.append(
-            (
-                "cut",
-                (
-                    "cylx",
-                    sy_,
-                    sz_,
-                    SR_FRONT - SR_SCREW_CB_D,
-                    SR_FRONT + 0.1,
-                    SR_SCREW_CB_R,
-                ),
-            )
-        )
+    # cuts: the lips' backs to the turned wall face (above and below the box only), the
+    # front holes, the crystal slot, the pilots (the lip screws: sonar_holder_post)
+    ya, za = sr_map(56.0, 25.0 + SR_LIP_BOT)
+    yb, zb = sr_map(6.0, -SR_LIP_TOP)
+    ly0, ly1 = min(ya, yb) - 0.1, max(ya, yb) + 0.1
+    zbt = sr_map(31.0, 0.0)[1]  # box top, local
+    zbb = sr_map(31.0, 25.0)[1]  # box bottom
+    zlt, zlb = max(za, zb) + 0.5, min(za, zb) - 0.5
+    xb = BH_XF - 6.0
+    f.append(("cut", ("prismy", [(xb, zbt), (sr_wall_x(zbt), zbt), (sr_wall_x(zlt), zlt), (xb, zlt)], ly0, ly1)))
+    f.append(("cut", ("prismy", [(xb, zlb), (sr_wall_x(zlb), zlb), (sr_wall_x(zbb), zbb), (xb, zbb)], ly0, ly1)))
     for xh, zh in SR_HOLES:
         hy, hz = sr_map(xh, zh)
         f.append(("cut", ("cylx", hy, hz, SR_FRONT - 2.35, SR_FRONT + 0.1, SR_HOLE_R)))
@@ -2274,6 +2439,20 @@ def sonar_holder_features() -> list[tuple]:
     return f
 
 
+def sonar_holder_post() -> list[tuple]:
+    """(op, shape) cuts applied after the SR_AIM turn (wall frame): the two M2 lip screws,
+    square to the wall like their pilots; the counterbore floors stay at their old x, so the
+    engagement in the wall bosses is unchanged (the turned face makes the counterbores deeper)."""
+    f: list[tuple] = []
+    for xh in SR_SCREW_XH:
+        sy_, sz_ = sr_map(xh, SR_SCREW_ZH)
+        f.append(("cut", ("cylx", sy_, sz_, BH_XF - 0.1, SR_FRONT + 4.0, SR_SCREW_CLR)))
+        f.append(
+            ("cut", ("cylx", sy_, sz_, SR_FRONT - SR_SCREW_CB_D, SR_FRONT + 4.0, SR_SCREW_CB_R))
+        )
+    return f
+
+
 def bulkhead_sonar_features() -> list[tuple]:
     """(op, shape) the bulkhead keeps for RB-PRT-070, pre-tilt: the window for the holder's
     box (SR_WIN_CLR a side) and the two M2 bosses + pilots behind the top lip."""
@@ -2296,8 +2475,7 @@ def bulkhead_sonar_features() -> list[tuple]:
                 BH_XF + 0.1,
                 min(ya, yb) - c,
                 max(ya, yb) + c,
-                min(za, zb) - c,
-                max(za, zb) + c,
+                *sr_win_z(),  # round the SR_AIM-turned box
             ),
         )
     )
@@ -2367,32 +2545,89 @@ def sonar_holder_lines(path: str) -> list[str]:
         )
 
     f = sonar_holder_features()
+    post = sonar_holder_post()
     ya, za = sr_map(56.0, 25.0 + SR_LIP_BOT)
     yb, zb = sr_map(6.0, -SR_LIP_TOP)
-    bb = (SR_TRIM, SR_FRONT, min(ya, yb), max(ya, yb), min(za, zb), max(za, zb))
-    vol = _pre_volume(
-        f,
-        (bb[0] - 0.5, bb[2] - 0.5, bb[4] - 0.5),
-        (bb[1] + 0.5, bb[3] + 0.5, bb[5] + 0.5),
-        0.05,
-    )
-    vol += sum(dv for _, dv in sonar_holder_rounds())
+    ly0, ly1, lz0, lz1 = min(ya, yb), max(ya, yb), min(za, zb), max(za, zb)
     ya_, za_ = sr_map(56.0, 25.0)
     yb_, zb_ = sr_map(6.0, 0.0)
-    rc, rdv = sr_corner_lines(
-        min(ya_, yb_), max(ya_, yb_), min(za_, zb_), max(za_, zb_),
-        SR_WIN_R - SR_WIN_CLR, SR_TRIM - 0.1, BH_XF, "cut",
-    )  # 2026-11-12: the box's long edges, in step with the bulkhead window's corners
-    vol -= rdv * (BH_XF - SR_TRIM) / (BH_XF - SR_TRIM + 0.1)
+    by0, by1, bz0, bz1 = min(ya_, yb_), max(ya_, yb_), min(za_, zb_), max(za_, zb_)
+    # 2026-11-12: the box's long edges, in step with the bulkhead window's corners, from the
+    # trim to the turned wall face at each edge's height (local)
+    r_ = SR_WIN_R - SR_WIN_CLR
+    rc: list[str] = []
+    rdv = 0.0
+    for zc, idx in ((bz0, (0, 2)), (bz1, (1, 3))):
+        xe = sr_wall_x(zc + (r_ / 2 if zc == bz0 else -r_ / 2))
+        ln, dv_ = sr_corner_lines(by0, by1, bz0, bz1, r_, SR_TRIM - 0.1, xe, "cut")
+        rc += [ln[k] for k in idx]
+        rdv += dv_ / 2 * (xe - SR_TRIM) / (xe - SR_TRIM + 0.1)
+    # bounding box of the turned part (pre-tilt): front corners rounded SR_EDGE_R, the top
+    # lip's back edge on the wall face, the box's chamfered rear corners
+    e = SR_EDGE_R
+    ft = sr_aim(SR_FRONT - e, lz1 - e)
+    fb = sr_aim(SR_FRONT - e, lz0 + e)
+    rear = [
+        sr_aim(x_, z_)
+        for x_, z_ in (
+            (SR_TRIM, bz0 + SR_TRIM_CH),
+            (SR_TRIM + SR_TRIM_CH, bz0),
+            (SR_TRIM, bz1 - SR_TRIM_CH),
+            (SR_TRIM + SR_TRIM_CH, bz1),
+        )
+    ]
+    ztop = sr_aim(sr_wall_x(lz1), lz1)[1]
+    bb = (
+        min(p[0] for p in rear),
+        max(ft[0], fb[0]) + e,
+        ly0,
+        ly1,
+        fb[1] - e,
+        max(ztop, ft[1] + e),
+    )
+    vol = _aimed_volume(f, post, (bb[0] - 0.3, bb[2] - 0.3, bb[4] - 0.3), (bb[1] + 0.3, bb[3] + 0.3, bb[5] + 0.3), 0.05)
+    vol += sum(dv for _, dv in sonar_holder_rounds())
+    vol -= rdv
+    px, pz = sr_aim_pivot()
     return [
         f"part|{path}",
         *[emit(op, sh) for op, sh in f if op == "add"],
         *[emit(op, sh) for op, sh in f if op == "cut"],
         *rc,
         *[ln for ln, _ in sonar_holder_rounds()],
+        f"rotbody|{px:.5f} 0 {pz:.5f}|y|{SR_AIM}",
+        *[emit(op, sh) for op, sh in post],
         f"expect|vol {vol:.1f} {vol * 0.015:.1f}|box {' '.join(f'{v:.2f}' for v in bb)} 0.1",
         "save",
     ]
+
+
+def _aimed_volume(local: list[tuple], post: list[tuple], lo: tuple, hi: tuple, step: float) -> float:
+    """Voxel volume of the holder: `local` (op, shape) tested at sr_aim_inv points, then the
+    `post` cuts/adds in the wall frame."""
+    import numpy as np
+
+    t = math.radians(SR_AIM)
+    c, s_ = math.cos(t), math.sin(t)
+    cx, cz = SR_AIM_C
+    xs = np.arange(lo[0] + step / 2, hi[0], step)
+    ys = np.arange(lo[1] + step / 2, hi[1], step)
+    X, Y = np.meshgrid(xs, ys, indexing="ij")
+    vol = 0.0
+    for z in np.arange(lo[2] + step / 2, hi[2], step):
+        u = X - cx - SR_AIM_D * c
+        v = z - cz + SR_AIM_D * s_
+        Q = np.stack([cx + u * c - v * s_, Y, cz + u * s_ + v * c], axis=-1)
+        P = np.stack([X, Y, np.full_like(X, z)], axis=-1)
+        solid = np.zeros_like(X, dtype=bool)
+        for op, sh in local:
+            m = _shape_mask3(sh, Q)
+            solid = solid | m if op == "add" else solid & ~m
+        for op, sh in post:
+            m = _shape_mask3(sh, P)
+            solid = solid | m if op == "add" else solid & ~m
+        vol += int(solid.sum()) * step**3
+    return vol
 
 
 BH_SPK = (
@@ -2506,6 +2741,11 @@ BH_FOOT = (
     (0.0, 9.0),
 )  # chassis box; x >= 78.5 clears the mount feet
 BH_FLANGE_GAP = 0.3  # side-flange bottoms clear the plate (2026-11-06)
+# 2026-11-12 (S5c, Ben: option 1): the inner side flanges' outer faces go out to |y| 47.2, flush
+# with the sonar window's outboard end (holder -47.0 - SR_WIN_CLR). At 47.0 a 0.2 strip of back
+# face was left between them, and its corner with the window floor read 15.5-18 MPa (a
+# singularity: displacement unchanged). Inner faces stay at 45.2 (flange 2.0 thick).
+BH_FLANGE_OUT = SR_WIN_CLR
 # 2026-11-09 (Ben): the foot's vertical front stood 2.4 proud of the tilted wall at its top;
 # the first fix sloped it at the wall's angle but kept 1.5 proud, clear of the F1 pockets.
 # 2026-11-11 (Ben, PETG fit2: face-down, only that lip touched the bed): the front is now
@@ -2614,7 +2854,7 @@ def bulkhead_features() -> tuple[list[tuple], list[tuple]]:
         )
     fd, ft = BH_FLANGE
     for sgn in (-1, 1):  # inner side flanges (tick 1), now only below the skirt line
-        ys = sorted((sgn * hw, sgn * (hw - ft)))
+        ys = sorted((sgn * (hw + BH_FLANGE_OUT), sgn * (hw - ft)))
         pre.append(("add", ("box", x0 - fd, x0, *ys, 0.0, zl)))
     pre.append(
         (
@@ -2836,31 +3076,28 @@ def bulkhead_features() -> tuple[list[tuple], list[tuple]]:
     post.append(("add", ("prismy", knee, *BH_KNEE_Y)))
     # notch for RB-PRT-070 behind the wall (pre-tilt box, tilted into the chassis frame); it
     # also takes the inner side flange's stretch at y -47..-45.2
+    # (2026-11-12: round the SR_AIM-turned box, sr_notch_poly)
     R, t = speaker_tilt()
-    c_ = SR_NOTCH_CLR
     ya, za = sr_map(56.0, 25.0)
     yb, zb = sr_map(6.0, 0.0)
-    z0, z1 = min(za, zb) - c_, max(za, zb) + c_
     notch = [
         (R[0] * x + R[2] * z + t[0], R[6] * x + R[8] * z + t[2])
-        for x, z in (
-            (SR_TRIM - c_, z0),
-            (BH_XF - BH_T - 0.05, z0),
-            (BH_XF - BH_T - 0.05, z1),
-            (SR_TRIM - c_, z1),
-        )
+        for x, z in sr_notch_poly()[0]
     ]
-    post.append(("cut", ("prismy", notch, min(ya, yb) - c_ - 0.2, BH_KNEE_Y[1] + 0.1)))
+    # outboard end flush with the window (y -47.2; the flange it clears ends at -47.0): 0.2 past
+    # it, the 0.05 setback left a skin on the back face like the gusset's (S5c 18 MPa, 2026-11-12)
+    post.append(("cut", ("prismy", notch, min(ya, yb) - SR_WIN_CLR, BH_KNEE_Y[1] + 0.1)))
     # ... and the gusset's 0.6 overlap into the wall, inside the window only (beside the
     # window that overlap is buried in the wall)
     cw = SR_WIN_CLR
+    zw0, zw1 = sr_win_z()
     front = [
         (R[0] * x + R[2] * z + t[0], R[6] * x + R[8] * z + t[2])
         for x, z in (
-            (BH_XF - BH_T - 0.1, z0 + c_ - cw),
-            (BH_XF, z0 + c_ - cw),
-            (BH_XF, z1 - c_ + cw),
-            (BH_XF - BH_T - 0.1, z1 - c_ + cw),
+            (BH_XF - BH_T - 0.1, zw0),
+            (BH_XF, zw0),
+            (BH_XF, zw1),
+            (BH_XF - BH_T - 0.1, zw1),
         )
     ]
     post.append(("cut", ("prismy", front, min(ya, yb) - cw, max(ya, yb) + cw)))
@@ -3108,10 +3345,7 @@ def knee_fillet_lines() -> tuple[list[str], list[str], float]:
     plane (x, y) extruded along z. Post-tilt: the notch's two rear corners, top plane
     (x, -z) extruded across the gusset."""
     r, o = KNEE_FIL, 0.05  # o: overlap into the solid so each boss merges
-    c_ = SR_NOTCH_CLR
-    za = sr_map(56.0, 25.0)[1]
-    zb = sr_map(6.0, 0.0)[1]
-    z0, z1 = min(za, zb) - c_, max(za, zb) + c_
+    z0, z1 = sr_win_z()  # the notch meets the back face at the window's z
     x0 = BH_XF - BH_T
     ct = math.cos(math.radians(BH_TILT))
     ztop = BH_KNEE_TOP / ct  # back face meets the gusset top (post z 44)
@@ -3146,16 +3380,19 @@ def knee_fillet_lines() -> tuple[list[str], list[str], float]:
     def T(x: float, z: float) -> str:  # pre (x, z) -> top-plane sketch (x, -z), post frame
         return f"{R[0] * x + R[2] * z + t[0]:.4f} {-(R[6] * x + R[8] * z + t[2]):.4f}"
 
-    xs = SR_TRIM - c_  # the notch's rear face
-    # (an arc in this tilted top-plane sketch came back null: 8-chord polylines, 11.25° apart)
-    n = 8
+    # the notch's two rear corners (sr_notch_poly: the ceiling and rear face follow the
+    # SR_AIM-turned box, the floor is level, so the bottom corner is 85°)
+    # (an arc in this tilted top-plane sketch came back null: 8-chord polylines)
+    _, nq = sr_notch_poly()
+    up, fwd = nq["up"], nq["fwd"]
     post = []
-    for zc, sg in ((z1, -1), (z0, 1)):  # top-rear (centre below), bottom-rear (centre above)
-        arc = [
-            (xs + r - r * math.cos(a), zc + sg * (r - r * math.sin(a)))
-            for a in (i * math.pi / 2 / n for i in range(n + 1))
-        ]  # (xs, zc + sg r) -> (xs + r, zc)
-        pts = [(xs - o, zc - sg * o), (xs - o, zc + sg * r), *arc, (xs + r, zc - sg * o)]
+    fill_area = 0.0
+    for v, u1, u2 in (
+        (nq["rt"], fwd, (-up[0], -up[1])),  # top-rear: along the ceiling, down the rear
+        (nq["rb"], (1.0, 0.0), up),  # bottom-rear: along the floor, up the rear
+    ):
+        pts, area = corner_fill(v, u1, u2, r, 8, o)
+        fill_area += area
         segs = "M " + T(*pts[0]) + "".join(" L " + T(*q) for q in pts[1:])
         post.append(f"prof|{ky0} {ky1}|{segs}|boss|top")
     # trim the upper rounds flat at the gusset top: behind the back face, z 44 -> 46 (under
@@ -3167,7 +3404,7 @@ def knee_fillet_lines() -> tuple[list[str], list[str], float]:
     tsegs = "M " + " L ".join(f"{x:.4f} {-z:.4f}" for x, z in trim)
     for y0_, y1_ in ((ky0 - r - 0.1, ky0 + 0.1), (ky1 - 0.1, ky1 + rp + 0.1)):  # + the o tabs
         post.append(f"prof|{y0_:.4f} {y1_:.4f}|{tsegs}|cut|top")
-    dv += 2 * k * r**2 * (ky1 - ky0)
+    dv += fill_area * (ky1 - ky0)
     return pre, post, dv
 
 
@@ -3238,8 +3475,9 @@ def bulkhead_lines(path: str) -> list[str]:
     c_w = SR_WIN_CLR
     ya_, za_ = sr_map(56.0, 25.0)
     yb_, zb_ = sr_map(6.0, 0.0)
+    zwin0, zwin1 = sr_win_z()
     wl, wdv = sr_corner_lines(
-        min(ya_, yb_) - c_w, max(ya_, yb_) + c_w, min(za_, zb_) - c_w, max(za_, zb_) + c_w,
+        min(ya_, yb_) - c_w, max(ya_, yb_) + c_w, zwin0, zwin1,
         SR_WIN_R, BH_XF - BH_T, BH_XF, "boss",
     )  # 2026-11-12: r SR_WIN_R in the sonar window's inside corners
     lines += wl
@@ -3249,7 +3487,7 @@ def bulkhead_lines(path: str) -> list[str]:
     rcx, rcy = BH_XF - CAP_R, -(BH_W / 2 - CAP_R)
     ye = min(ya_, yb_) - c_w - 0.4
     xe = rcx + math.sqrt(CAP_R**2 - (ye - rcy) ** 2)
-    zw0, zw1 = min(za_, zb_) - c_w - 0.1, max(za_, zb_) + c_w + 0.1
+    zw0, zw1 = zwin0 - 0.1, zwin1 + 0.1
     lines.append(
         f"prof|{zw0:.4f} {zw1:.4f}|M {BH_XF + 0.2} {rcy} L {BH_XF} {rcy}"
         f" a {rcx} {rcy} {xe:.4f} {ye:.4f} L {BH_XF + 0.2} {ye:.4f}|cut|front"
@@ -5974,7 +6212,8 @@ def trackframe_lines(path: str, side: int) -> list[str]:
 # tools/hardware.py (drawn at the engaged thread / pocket Ø, so a clean interference check
 # means the joint is right). Seats and axes are the code's own geometry (07 vs code audit,
 # 2026-11-10: code wins). Each entry: (joint, item, [(seat, axis toward the head/out)], frame)
-# where frame is "ch" (chassis) or "pre" (bulkhead pre-tilt, placed with speaker_tilt()).
+# where frame is "ch" (chassis), "pre" (bulkhead pre-tilt, placed with speaker_tilt()) or
+# "aim" (the square HC-SR04 holder frame, placed with sonar_place()).
 def hardware_layout() -> list[tuple[str, "hw.Item", list, str]]:
     I3 = hw.insert(
         3.0, 5.7, INS_HOLE_PC
@@ -6228,7 +6467,7 @@ def hardware_layout() -> list[tuple[str, "hw.Item", list, str]]:
             ((SR_FRONT - 12.25 - 1.6 - 0.02, *sr_map(xh, zh)), (-1.0, 0.0, 0.0))
             for xh, zh in SR_PCB_HOLES
         ],
-        "pre",
+        "aim",  # in the SR_AIM-turned holder
     )
     # F18: sonar holder -> bulkhead, M2 x 8 pan thread-forming from the front (pre-tilt)
     add(
@@ -6250,11 +6489,14 @@ def hardware_items() -> dict[str, "hw.Item"]:
 def hardware_comps(lib: str) -> list[str]:
     lines, n = [], {}
     tilt = speaker_tilt()
+    aim = sonar_place()
     for joint, it, seats, frame in hardware_layout():
         for seat, axis in seats:
             pl = hw.place(seat, axis)
             if frame == "pre":
                 pl = hw.compose(tilt, pl)
+            elif frame == "aim":
+                pl = hw.compose(aim, pl)
             k = n[it.name] = n.get(it.name, 0) + 1
             lines.append(f"comp|{it.name}_{k}|{lib}\\{it.name}.SLDPRT|{row(*pl)}")
     return lines
