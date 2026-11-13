@@ -140,7 +140,21 @@ MOUNT_FOOT_Y = (-47.0, -8.9)  # foot extent across the upright
 # chamfer (toe y -37.6): an M3 head (r 2.75) or washer (r 3.5) at -38.9 landed on the slope at
 # x -11.2 and 3.5. Moved out to y -41.5: head edge -38.75, washer -38.0, clear of the toe;
 # 3.8 mm from the hole edge to the foot's outer edge (y -47). The chamfer stays (S2's root).
-MOUNT_FOOT_HOLES = ((-11.2, -41.5), (-25.2, -41.5), (3.5, -41.5), (-25.2, -23.0))
+# 2026-11-12 (Ben: F2 + mount foot): 4 -> 3 screws (the middle outboard one, x -11.2, goes;
+# the loads are small and two keys now carry the alignment), and they through-bolt into M3
+# hex nuts in pockets in the plate's belly (the 8 plate inserts are gone: rev 2's 6 mm plate
+# kept rev 1's 6.7 insert pocket, so the holes ran straight through and a 5.7 insert sat on
+# 0.3). M3 x 8 SHCS + washer from the foot top: washer 0.5 + foot 3 + plate 2 down to the nut.
+MOUNT_FOOT_HOLES = ((-25.2, -41.5), (3.5, -41.5), (-25.2, -23.0))
+MOUNT_NUT_AF, MOUNT_NUT_TOP = 5.8, -2.0  # belly hex pocket (M3 5.5 + 0.3), ceiling z
+# Locating keys (part frame, centre x, y, length x, length y): raised on the plate top, into
+# recesses in the foot's underside MOUNT_KEY_CLR a side, so the mount drops into place and the
+# screws only clamp. Keys on the plate (it prints belly down) and recesses in the foot (it
+# prints foot down: a recess on the bed needs no support). A along x where the dropped screw
+# was (fixes y + yaw), B along y on the gearbox-end tongue (fixes x). 1.5 tall, recess 1.8
+# deep leaves a 1.2 roof in the 3.0 foot.
+MOUNT_KEYS = ((-11.2, -41.5, 8.0, 4.0), (-21.5, -16.75, 4.0, 4.5))
+MOUNT_KEY_H, MOUNT_KEY_CLR, MOUNT_KEY_RECESS = 1.5, 0.3, 1.8
 
 # Placement. The motor sits on the upright's +Y side with the shaft pointing +Y
 # (outboard) and the gearbox end toward the part's -X (stopped by the gusset at
@@ -375,6 +389,41 @@ def mount_holes() -> list[tuple[float, float]]:
     return right + left
 
 
+# 2026-11-12 (Ben, PETG fit build: the sprocket hit the plate): the sprocket's inboard face
+# is 1.5 off the plate edge (|y| 56.5 vs 55) and its tips (r 27.4 about x X_DRIVE, z 13.5)
+# sweep the plate's whole 6 mm edge over x 28.9-76.5. Relief notch in each side edge, in to
+# the canopy's outer face (|y| 53; the skirt stops at z 30, so nothing else is there), 45°
+# lead-ins at the ends: 3.5 to the sprocket at the plate. The mount foot's tongue reaches
+# |y| 51.5 (1.5 left).
+PLATE_SPK_NOTCH = (27.5, 77.5, 53.0, 2.0)  # flat x0, x1; |y| of its floor; 45° lead-in
+
+
+def plate_spk_notches() -> list[list[tuple[float, float]]]:
+    """Through-cut trapezoids (plan), one per side: floor at |y| yf over x0..x1, 45° flanks
+    run out 1 past the edge (so no cut edge lies on the plate's)."""
+    x0, x1, yf, _ = PLATE_SPK_NOTCH
+    ye = PLATE_W / 2 + 1.0
+    d = ye - yf
+    return [
+        [(x0 - d, sg * ye), (x0, sg * yf), (x1, sg * yf), (x1 + d, sg * ye)]
+        for sg in (-1, 1)
+    ]
+
+
+def mount_keys_chassis() -> list[tuple[float, float, float, float]]:
+    """MOUNT_KEYS as chassis rects (x0, x1, y0, y1), both sides (as mount_holes)."""
+    tx, ty = mount_tx(), mount_ty()
+    out = []
+    for cx, cy, lx, ly in MOUNT_KEYS:
+        xs = sorted((-(cx - lx / 2) + tx, -(cx + lx / 2) + tx))
+        for ys in (
+            sorted((-(cy - ly / 2) - ty, -(cy + ly / 2) - ty)),
+            sorted(((cy - ly / 2) + ty, (cy + ly / 2) + ty)),
+        ):
+            out.append((xs[0], xs[1], ys[0], ys[1]))
+    return out
+
+
 def edge_room(x: float, y: float) -> float:
     """Distance from (x, y) to the nearest plate edge (front, sides, front corner arcs)."""
     hx, hy, c = PLATE_L / 2, PLATE_W / 2, FRONT_R
@@ -399,6 +448,13 @@ def shape_prof(s: tuple) -> str:
             f"L {x1} {y1 - r} A {x1 - r} {y1 - r} {x1 - r} {y1} L {x0 + r} {y1} "
             f"A {x0 + r} {y1 - r} {x0} {y1 - r} L {x0} {y0 + r} A {x0 + r} {y0 + r} {x0 + r} {y0}"
         )
+    if s[0] == "poly":
+        return "M " + " L ".join(f"{u:.4f} {v:.4f}" for u, v in s[1])
+    if s[0] == "hex":  # across-flats af, two flats parallel to x
+        _, cx, cy, af = s
+        R = af / math.sqrt(3)
+        pts = [(cx + R * math.cos(math.radians(a)), cy + R * math.sin(math.radians(a))) for a in range(0, 360, 60)]
+        return "M " + " L ".join(f"{u:.4f} {v:.4f}" for u, v in pts)
     if s[0] == "slot":
         _, xa, ya, xb, yb, r = s
         if ya == yb:  # along X
@@ -433,6 +489,19 @@ def shape_mask(s: tuple, X, Y):
     if s[0] == "circle":
         _, cx, cy, r = s
         return (X - cx) ** 2 + (Y - cy) ** 2 <= r * r
+    if s[0] == "poly":
+        inside = np.zeros(X.shape, dtype=bool)
+        P = s[1]
+        for (xa, ya), (xb, yb) in zip(P, P[1:] + P[:1]):
+            crosses = (ya > Y) != (yb > Y)
+            with np.errstate(divide="ignore", invalid="ignore"):
+                xi = xa + (Y - ya) * (xb - xa) / (yb - ya)
+            inside ^= crosses & (X < xi)
+        return inside
+    if s[0] == "hex":
+        _, cx, cy, af = s
+        u, v = np.abs(X - cx), np.abs(Y - cy)
+        return (v <= af / 2) & (u * math.sqrt(3) / 2 + v / 2 <= af / 2)
     if s[0] == "slot":
         _, xa, ya, xb, yb, r = s
         px = np.clip(X, min(xa, xb), max(xa, xb))
@@ -477,8 +546,13 @@ def plate_features() -> list[tuple[str, tuple, float, float]]:
             r = min(INS_BOSS / 2, round(edge_room(x, y) - 0.04, 2))
             add.append(("add", ("circle", x, y, r), UNDER_BOSS_Z, -PLATE_T))
             cut.append(("cut", ("circle", x, y, INS_HOLE / 2), -MOUNT_INS_DEPTH, 0.0))
-        else:  # rev 2: the 5.7 insert in a 6 mm plate: hole through, insert flush with the top
-            cut.append(("all", ("circle", x, y, INS_HOLE / 2), 0, 0))
+        else:  # 2026-11-12 F2: clearance through, M3 nut in a hex pocket from the belly
+            cut.append(("all", ("circle", x, y, CLR_M3 / 2), 0, 0))
+            cut.append(("cut", ("hex", x, y, MOUNT_NUT_AF), -PLATE_T - 0.1, MOUNT_NUT_TOP))
+    for x0, x1, y0, y1 in mount_keys_chassis():  # 2026-11-12: mount locating keys
+        add.append(("add", ("rect", x0, x1, y0, y1), 0.0, MOUNT_KEY_H))
+    for poly in plate_spk_notches():  # 2026-11-12: sprocket relief
+        cut.append(("all", ("poly", poly), 0, 0))
     # rev 2: pockets in the top where nothing rests (TOP_POCKETS)
     if not BOTTOM_RIBS:
         for x0, x1, y0, y1 in TOP_POCKETS:
@@ -1364,7 +1438,7 @@ HERO_VIEWS = (
 #   reversed. Checked by ray-casting exported test walls, tick 78. No hyphen: the reversed
 #   string with "-" cut nothing, twice)
 PART_LABELS = {
-    "plate": f"text|front|11.5 -6.75|{-PLATE_T - 0.5} {-PLATE_T + 0.6}|4|RB-001 r2|mirror",  # rev 2
+    "plate": f"text|front|11.5 -6.75|{-PLATE_T - 0.5} {-PLATE_T + 0.6}|4|RB-001 r3|mirror",  # rev 3 (2026-11-12: F2 nut pockets, mount keys)
     "canopy": f"text|top|-10 -40|50.9 51.8|4|{'RB 004 r1'[::-1]}|mirror|180",
     # deck underside (faces the plate), clear cell x -15.5..15.5, y -21..-13.5 (STL scan)
     "deck": "text|front|11.5 -19.35|-3.5 -2.4|4|RB-003 r1|mirror",
@@ -3723,6 +3797,11 @@ def mount_v2_features(mirror: bool) -> list[tuple]:
         ops.append(("cut", ("box", hx - sw_ / 2, hx + sw_ / 2, ys - st, ys, z0, ztop)))
     for x, y in MOUNT_FOOT_HOLES:
         ops.append(("cut", ("cylz", x, y, -0.1, MM_FOOT_T + 0.1, CLR_M3 / 2)))
+    k = MOUNT_KEY_CLR
+    for cx, cy, lx, ly in MOUNT_KEYS:  # 2026-11-12: recesses for the plate's locating keys
+        ops.append(
+            ("cut", ("box", cx - lx / 2 - k, cx + lx / 2 + k, cy - ly / 2 - k, cy + ly / 2 + k, -0.1, MOUNT_KEY_RECESS))
+        )
     # 2026-11-11: notch for the bulkhead foot's outer F1 boss (Ø6.5 at x BULK_HOLE_X, |y| 22),
     # which pokes 1.25 aft of the foot into the old 0.7 gap; MM_BH_GAP kept all round it
     bx, by = mount_tx() - BULK_HOLE_X, max(BULK_HOLES_Y) - mount_ty()
@@ -3850,7 +3929,7 @@ def mount_v2_lines(path: str, mirror: bool) -> list[str]:
         # R3 (tick 80): on the foot's underside (on the plate), 3 mm text read from below,
         # centred (5.25 / -5.15, -32.4): the middle of a valid 26 x 8 clear window (STL scan
         # per part; the first try at y -37.5 cut through the foot's screw holes)
-        f"text|front|{13.9 if mirror else 3.5} -33.9|-0.5 0.6|3|RB-{'011' if mirror else '010'} r1|mirror",
+        f"text|front|{13.9 if mirror else 3.5} -33.9|-0.5 0.6|3|RB-{'011' if mirror else '010'} r2|mirror",
         f"expect|vol {vol:.1f} {vol * 0.01:.1f}|box {' '.join(f'{v:.2f}' for v in bb)} 0.35",
         "save",
     ]
@@ -6235,7 +6314,8 @@ def hardware_layout() -> list[tuple[str, "hw.Item", list, str]]:
     I3s = hw.insert(3.0, BH_FOOT_INS_LEN, INS_HOLE_PC)  # 2026-11-11: short, flush foot
     add("F1", I3s, [((x, y, 0.0), UP) for x, y in f1])
     add("F1 knee", I3, [((*BH_KNEE_HOLE, 0.0), UP)])
-    # F2: motor mount -> plate, SHCS + washer down from the foot top, inserts flush from the top
+    # F2: motor mount -> plate, SHCS + washer down from the foot top into an M3 nut in the
+    # belly's hex pocket (2026-11-12; was an insert from the top)
     mh = mount_holes()
     add("F2", hw.screw("shcs", 3.0, 8.0), [((x, y, 3.5), UP) for x, y in mh])
     add(
@@ -6245,7 +6325,11 @@ def hardware_layout() -> list[tuple[str, "hw.Item", list, str]]:
         ),
         [((x, y, 3.0), UP) for x, y in mh],
     )
-    add("F2", I3, [((x, y, -5.7), UP) for x, y in mh])
+    nut2 = hw.ring_part(
+        "hw_nut_M3", "Hex nut ISO 4032 M3 (5.5 A/F x 2.4, A2)", 5.5, 3.02, MM_NUT[1]
+    )
+    add("F2", nut2, [((x, y, MOUNT_NUT_TOP - MM_NUT[1]), UP) for x, y in mh])
+    assert MOUNT_NUT_TOP - MM_NUT[1] - 0.5 < 3.5 - 8.0 < MOUNT_NUT_TOP - MM_NUT[1] + 0.3  # M3 x 8 tip in the nut
     # F3: TT motor -> mount, M3 x 28 through the gearbox, head on its outer face at |y| 55
     f3 = [
         (32.9, s, z)

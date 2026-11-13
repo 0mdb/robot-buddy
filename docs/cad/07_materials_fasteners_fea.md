@@ -196,6 +196,7 @@ before ordering (screw engagement ≥ 1.3 d, tip ≥ 0.5 mm short of the pocket 
 | F2 | Motor mount → plate | **M3 × 8** SHCS + ISO 7089 washer, down from the top | M3 inserts in plate under-bosses (plate 4 + boss 4) | foot **3.0** (measured) → 5.0 | **8** (4 per mount) |
 
 > Amendment (loop D5, 2026-10-31): F2's insert pockets in the plate under-bosses are **6.7 deep** (not 7.2): the plate + boss stack is 8 mm, so 7.2 left a 0.8 mm floor a hot insert could push through; 6.7 = insert 5.7 + 1.0 for melt, floor 1.3.
+> Amendment (2026-11-12, Ben: F2 + mount foot): F2 is **M3 × 8 SHCS + washer down from the foot top into an M3 hex nut** (ISO 4032) in a 5.8 A/F × 4.0 pocket in the plate belly (nut ceiling 2.0 under the top; Ø3.4 through); no plate inserts (rev 2's 6 mm plate kept the 6.7 pocket, so the holes ran through). **6** (3 per mount: the middle outboard one dropped). The mount is located by two keys on the plate top (1.5 tall, 0.3 a side in 1.8-deep foot recesses), so the screws only clamp. Plate label r3, mounts r2.
 | F3 | TT motor → mount v2 | **M3 × 28 SHCS** through the motor into **M3 inserts pressed through the 6 mm upright** from the motor face (amended tick 6: no nuts, which used to sit against the foot) | M3 inserts | motor 22.6 → 5.4 | 4 |
 | F4 | Follower axle + clamp | per `05_follower_spec.md`: Ø4 shoulder bolt (M3 thread) as the axle; clamp M3 × 16 SHCS + washer + nyloc from below | — | — | 2 + 2–4 |
 

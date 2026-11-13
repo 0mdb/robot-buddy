@@ -287,7 +287,7 @@ def s2() -> dict:
         "lines": [
             "discard_open",
             "fix plane 0 0 1 0",  # foot underside on the plate
-            f"fix cyl 0 0 1 {chassis.CLR_M3 / 2} 0.05",  # 4 foot screw holes
+            f"fix cyl 0 0 1 {chassis.CLR_M3 / 2} 0.05",  # 3 foot screw holes (2026-11-12)
             # 2026-11-11: motor screws go through (CLR_M3) into drop-in nuts, no inserts
             f"remote axle {gx:.2f} {gy:.2f} {hz:.2f} cyl 0 1 0 {chassis.CLR_M3 / 2} 0.05",
             f"remote axle {gx:.2f} {gy:.2f} {hz:.2f} plane 0 1 0 {hy}",  # motor bears on the face
@@ -364,7 +364,7 @@ def s1m() -> dict:
     face = (
         chassis.MOUNT_HOLE[1] + chassis.mount_ty()
     )  # |y| of the motor faces: -28 + 60.4 = 32.4
-    ins = chassis.INS_HOLE / 2
+    ins = chassis.CLR_M3 / 2  # 2026-11-11: the motor screws go through (F3 nuts, no inserts)
     lines = ["discard_open", f"fix cyl 1 0 0 {INS_R} 0.05"]
     for name, sgn in (("left", 1), ("right", -1)):
         y0, y1 = sorted((sgn * (face - 7.5), sgn * (face + 0.5)))
