@@ -1529,6 +1529,7 @@ def rebuild_manifest(win: str) -> list[str]:
         *speaker_clamp_lines(cad + r"\parts\RB-PRT-060_speaker_clamp.SLDPRT"),
         *speaker_gasket_lines(cad + r"\parts\RB-PRT-061_speaker_gasket.SLDPRT"),
         *speaker_module_lines(cad + r"\library\speaker_module_envelope.SLDPRT"),
+        *p2_plug_lines(cad + r"\library\p2_plug_envelope.SLDPRT"),
         # 2026-11-09: Camera Module 3 envelope (on the bulkhead's camera bosses)
         *camera_module_lines(cad + r"\library\camera_module3_envelope.SLDPRT"),
         *hcsr04_lines(cad + r"\library\hcsr04_envelope.SLDPRT"),
@@ -1595,6 +1596,7 @@ def rebuild_manifest(win: str) -> list[str]:
         f"comp|spk_clamp|{cad}\\parts\\RB-PRT-060_speaker_clamp.SLDPRT|{row(*speaker_tilt())}",
         f"comp|spk_gasket|{cad}\\parts\\RB-PRT-061_speaker_gasket.SLDPRT|{row(*speaker_tilt())}",
         f"comp|spk_module|{cad}\\library\\speaker_module_envelope.SLDPRT|{row(*speaker_tilt())}",
+        f"comp|p2_plug|{cad}\\library\\p2_plug_envelope.SLDPRT|{row(*speaker_tilt())}",
         f"comp|camera|{cad}\\library\\camera_module3_envelope.SLDPRT|{row(*speaker_tilt())}",
         f"comp|hcsr04|{cad}\\library\\hcsr04_envelope.SLDPRT|{row(*sonar_place())}",
         f"comp|sonar_holder|{cad}\\parts\\RB-PRT-070_sonar_holder.SLDPRT|{row(*speaker_tilt())}",
@@ -1752,25 +1754,38 @@ def _spk_geom() -> dict:
 
 
 def speaker_clamp_lines(path: str) -> list[str]:
-    """1.6 plate over the pocket's rim and both boss faces, two Ø3.4 holes for M3 x 8 into
-    the bosses' inserts, and a 0.15 pad on the speaker's magnet that squeezes the gasket
-    SPK_PRELOAD at nominal depth. Hidden behind the wall: square edges are fine."""
+    """1.6 plate over the pocket's rim, a top band over both boss faces (2026-11-13: the bosses
+    sit outboard of the face board's P2 plug, so the plate stops at the rim top inboard of
+    them), two Ø3.4 holes for M3 x 8 into the bosses' inserts, a slot for the speaker lead,
+    and a 0.15 pad on the speaker's magnet that squeezes the gasket SPK_PRELOAD at nominal
+    depth. Hidden behind the wall: square edges are fine."""
     g = _spk_geom()
     xb, (oy0, oy1), (oz0, oz1) = g["xb"], g["oy"], g["oz"]
-    (_, iy1), _ = g["iy"], g["iz"]
+    (_, iy1), (_, iz1) = g["iy"], g["iz"]
     oy1 = (
         iy1 + 0.6
     )  # tick 93: the outboard edge stops 0.6 over the rim (at 27.9 it touched the left mount, 3.6 mm3)
     pt, pad = SPK_CLAMP_T, SPK_PAD
+    zr = iz1 + SPK_RIM_T  # rim top
+    by0, by1 = SPK_BOSS_Y[0] - INS_BOSS / 2, SPK_BOSS_Y[1] + INS_BOSS / 2  # band
+    bz0 = zr - SPK_BAND_DROP
+    lw = SPK_LEAD[0]
     # tick 97: a square pad on the magnet boss only (the lead's glue blob sits 0.6 proud
     # of the frame at one end; the old full-face pad would have landed on it)
     py0, py1 = g["sy"] - SPK_PAD_W / 2, g["sy"] + SPK_PAD_W / 2
     pz0, pz1 = g["sz"] - SPK_PAD_W / 2, g["sz"] + SPK_PAD_W / 2
-    vol = (oy1 - oy0) * (oz1 - oz0) * pt + (py1 - py0) * (pz1 - pz0) * pad
-    vol -= len(SPK_BOSS_Y) * math.pi * (CLR_M3 / 2) ** 2 * pt
+    vol = (
+        (oy1 - oy0) * (zr - oz0)
+        + (by1 - by0) * (oz1 - bz0)
+        - (oy1 - by0) * (zr - bz0)  # band / plate overlap
+        - (oy1 - SPK_NOTCH_Y) * (SPK_NOTCH_Z[1] - SPK_NOTCH_Z[0])
+        - len(SPK_BOSS_Y) * math.pi * (CLR_M3 / 2) ** 2
+        - lw * SPK_RIM_T  # lead slot (z iz1 .. zr, inside the plate)
+    ) * pt + (py1 - py0) * (pz1 - pz0) * pad
     return [
         f"part|{path}",
-        f"box|{xb - pt:.3f} {xb:.3f}|{oy0:.3f} {oy1:.3f}|{oz0:.3f} {oz1:.3f}",
+        f"box|{xb - pt:.3f} {xb:.3f}|{oy0:.3f} {oy1:.3f}|{oz0:.3f} {zr:.3f}",
+        f"box|{xb - pt:.3f} {xb:.3f}|{by0:.3f} {by1:.3f}|{bz0:.3f} {oz1:.3f}",
         f"box|{xb:.3f} {xb + pad:.3f}|{py0:.3f} {py1:.3f}|{pz0:.3f} {pz1:.3f}",
         *[
             f"cyl|x|{by} {SPK_BOSS_Z:.3f}|{xb - pt - 0.1:.3f} {xb + 0.1:.3f}|{CLR_M3 / 2}|cut"
@@ -1780,7 +1795,30 @@ def speaker_clamp_lines(path: str) -> list[str]:
         # the edge steps back to 25.9 there, still over the module's edge (26.0)
         f"prof|{SPK_NOTCH_Z[0]} {SPK_NOTCH_Z[1]}|M {xb - pt - 0.1:.3f} {SPK_NOTCH_Y} L {xb + pad + 0.1:.3f} {SPK_NOTCH_Y} "
         f"L {xb + pad + 0.1:.3f} {oy1 + 0.1:.3f} L {xb - pt - 0.1:.3f} {oy1 + 0.1:.3f}|cut",
-        f"expect|vol {vol - (oy1 - SPK_NOTCH_Y) * (SPK_NOTCH_Z[1] - SPK_NOTCH_Z[0]) * pt:.1f} {vol * 0.01:.1f}|box {xb - pt:.2f} {xb + pad:.2f} {oy0:.2f} {oy1:.2f} {oz0:.2f} {oz1:.2f} 0.05",
+        # 2026-11-13: lead slot facing the rim's lead notch; the lead leaves straight aft
+        f"prof|{iz1:.3f} {zr:.3f}|M {xb - pt - 0.1:.3f} {g['sy'] - lw / 2:.3f} L {xb + 0.1:.3f} {g['sy'] - lw / 2:.3f} "
+        f"L {xb + 0.1:.3f} {g['sy'] + lw / 2:.3f} L {xb - pt - 0.1:.3f} {g['sy'] + lw / 2:.3f}|cut",
+        f"expect|vol {vol:.1f} {vol * 0.01:.1f}|box {xb - pt:.2f} {xb + pad:.2f} {oy0:.2f} {by1:.2f} {oz0:.2f} {oz1:.2f} 0.05",
+        "save",
+    ]
+
+
+def p2_plug_lines(path: str) -> list[str]:
+    """Face board P2 (UART) plug + its wires (interference only), pre-tilt wall frame like the
+    clamp: the housing below the board's bottom edge against the PCB back, then the wires
+    turning aft. Placed with speaker_tilt()."""
+    xp = BH_XF - BH_T - BH_STANDOFF_L - FACE_PCB  # PCB back face
+    ze = BH_FACE_Z - FACE_W / 2  # board bottom edge
+    xa = BH_XF - BH_T - SPK_DEPTH - SPK_CLAMP_T - 6.0  # wires run aft past the clamp
+    bx = [
+        (xp - P2_DEPTH, xp - 0.02, P2_Y - P2_W / 2, P2_Y + P2_W / 2, ze - P2_DROP, ze - 0.02),
+        (xa, xp - P2_DEPTH, P2_Y - 2.0, P2_Y + 2.0, ze - P2_DROP, ze - P2_DROP + 3.0),
+    ]
+    v = sum((b - a) * (d - c) * (f - e) for a, b, c, d, e, f in bx)
+    return [
+        f"part|{path}",
+        *[f"box|{a:.3f} {b:.3f}|{c:.3f} {d:.3f}|{e:.3f} {f:.3f}" for a, b, c, d, e, f in bx],
+        f"expect|vol {v:.1f} {v * 0.02:.1f}|box {xa:.2f} {xp - 0.02:.2f} {P2_Y - P2_W / 2:.2f} {P2_Y + P2_W / 2:.2f} {ze - P2_DROP:.2f} {ze - 0.02:.2f} 0.05",
         "save",
     ]
 
@@ -2754,10 +2792,25 @@ SPK_NOTCH_Y, SPK_NOTCH_Z = (
     (21.0, 28.0),
 )  # tick 93: clamp notch round the left mount's end stop (25.9 still touched: 0.0 mm3)
 SPK_GASKET_BAND = 2.0  # gasket ring width (P8)
+# 2026-11-13 (Ben's photo, face board on the fit2 bulkhead): the face board's UART socket P2 is
+# side-entry on its BOTTOM edge (pre-tilt z 52), P2_FROM_END from the USB-C end (the +y end,
+# y BH_FACE_Y + FACE_H / 2): the plug goes in from below and its 4 wires leave downward then
+# aft, and the inboard clamp boss (y 9) and the clamp's top sat right there. So both bosses
+# move outboard of the plug (Ben: "go with moving the bosses"), P2_CLR clear of its housing,
+# 12.5 apart, and the clamp's top band only spans them; the speaker lead now leaves straight
+# aft through a slot in the clamp (it used to run up between the bosses).
+P2_FROM_END = 36.8  # socket centre from the USB-C end, scaled off Ben's photo: MEASURE
+P2_W, P2_DEPTH, P2_DROP, P2_CLR = 6.4, 3.5, 6.0, 0.8  # MX1.25 4P housing, off the PCB, below the edge
+P2_Y = BH_FACE_Y + FACE_H / 2 - P2_FROM_END
+SPK_BOSS_DY = 12.5
 SPK_BOSS_Y, SPK_BOSS_Z = (
-    (9.0, 23.0),
+    (
+        P2_Y + P2_W / 2 + P2_CLR + INS_BOSS / 2,
+        P2_Y + P2_W / 2 + P2_CLR + INS_BOSS / 2 + SPK_BOSS_DY,
+    ),
     26.0 + 15.0 + 0.3 + 1.6 + 4.6 - 0.6,
 )  # above the pocket, 0.6 into the rim (tangent contact gave a null boss)
+SPK_BAND_DROP = 3.0  # clamp top band reaches this far below the rim top (joins the plate)
 # Camera (2026-11-09, Ben): Arducam IMX708 75° AF = Raspberry Pi Camera Module 3 standard
 # geometry (RPi mechanical drawing): PCB 25 x 23.862 x 1.12, 4 x Ø2.2 at 21 x 12.5 (2.0 in
 # from the sides and the bottom edge, pads Ø4.75), lens centred across, 14.4 up from the
@@ -3106,6 +3159,7 @@ def bulkhead_features() -> tuple[list[tuple], list[tuple]]:
     post: list[tuple] = [("add", ("box", fx0, fx1, fy0, fy1, fz0, fz1))]
     for y in BULK_HOLES_Y:  # 2026-11-11: F1 pocket bosses past the foot's back face
         post.append(("add", ("cylz", BULK_HOLE_X, y, fz0, fz1, bh_foot_boss_r())))
+    post += bulkhead_amp_features()  # 2026-11-13: amp bracket, left, above the mount
     # 2026-11-11: the front is cut on the wall's front-face plane (coplanar: it only trims the
     # foot, never the wall), so face-down the face and the foot's front are one flat
     za, zb = -0.3, fz1 + 0.3
@@ -5647,32 +5701,54 @@ def _prism_y(poly: list, y0: float, y1: float, kind: str) -> str:
 
 
 # 2026-11-10 (Ben): PAM8302A amp (audio-hardware §2, Adafruit #2130: 24 x 15 x 1.6, no mounting
-# holes) on the canopy's inner LEFT side wall at the front, beside the speaker (bulkhead back,
-# y 6..26). Two rails along x grip its long edges (AMP_GRIP over each, AMP_SLOT for the 1.6
-# PCB) and a stop at the rear end; it slides in from the canopy's open front (canopy off) and
-# takes a dot of hot glue. Screw terminals at the front end, toward the speaker. The canopy
-# prints rear wall down, so the rails stand vertical (no overhang but their ends).
-AMP_PCB = (24.3, 15.2, 1.6)  # length (x), height (z), thickness; 24.3 x 15.2 measured 2026-11-12 (Ben)
+# holes: its only holes are the 5-pin row, terminal holes and speaker pads). Two rails along x
+# grip its long edges (AMP_GRIP over each, AMP_SLOT for the 1.6 PCB). Was on the canopy's inner
+# left wall until 2026-11-13; now on a bulkhead bracket (below). Speaker pads at the front end.
+AMP_PCB = (
+    24.3,
+    15.2,
+    1.6,
+)  # length (x), height (z), thickness; 24.3 x 15.2 measured 2026-11-12 (Ben)
 AMP_X0, AMP_ZB = (
-    34.0,
-    36.0,
-)  # PCB rear end, bottom edge (the canopy front follows the 15° wall: x ~62 at z 53)
+    41.5,
+    30.0,
+)  # PCB rear end, bottom edge (2026-11-13: x 34 -> 41.5, the front end near the wall; z 36 ->
+# 30: the face board's lower back corner comes down to z 47.5 at |y| <= 46.1, x 58-68.5, and the
+# top rail now stops at 46.95 under it; the bottom rail at 27.75 is 1.25 over the mount top 26.5)
 AMP_SLOT, AMP_GRIP, AMP_LIP, AMP_RAIL, AMP_CLR = 1.9, 1.0, 1.2, 2.0, 0.25
 # 2026-11-12 (Ben's photo): bare board, no header or terminal block, so wires solder straight
 # into the through-holes: the 5-pin row ~2.7 from the rear end and the speaker pads (Ø3.4
 # rings, holes 2.1 in from each long edge) ~2.5 from the front end. Their solder tails come
-# out the BACK, which sat 0.15 off the wall. So the board's back now rests on two 1.0-wide
-# lands along its long edges, AMP_BACK off the wall, and the lips stop AMP_LIP_CUT short of
-# the front end so they don't sit on the speaker-pad joints. All chips are >= 1.5 from the
-# long edges (the lips cover 1.0).
+# out the BACK, so the board's back rests on two 1.0-wide lands along its long edges, AMP_BACK
+# off the backing plate, and the lips stop AMP_LIP_CUT short of the front end so they don't
+# sit on the speaker-pad joints. All chips are >= 1.5 from the long edges (the lips cover 1.0).
 AMP_BACK, AMP_LIP_CUT = 1.2, 5.0
+# 2026-11-13 (Ben: "Is the canopy the best place for the amp?" -> the bulkhead bracket, OK'd):
+# the rails move off the canopy onto a bracket that grows straight aft from the bulkhead's back
+# face on the LEFT, above the motor mount: a AMP_BRK_T backing plate whose outboard face is
+# flush with the front cap's side flange inner face (|y| CAN_HW - CAP_T = 50, merged with it;
+# 1.2 to the canopy wall aft of the seam), the rails on its inboard face, and a solid stop
+# block at the FRONT that runs into the wall (the wall closes the front, so the board now
+# slides in from the REAR, forward to the stop, + a dot of hot glue). The speaker leads run
+# ~3 cm down to the speaker; the canopy carries no wires. Chassis frame (post-tilt), so the
+# rails stay level; the block's front follows the tilted back face AMP_BRK_INTO deep.
+AMP_BRK_T, AMP_BRK_INTO, AMP_STOP_MIN = 2.0, 1.0, 1.5
+AMP_RAIL_TOP = 1.5  # top rail body (under the face board)
+AMP_WIRE = 6.0  # soldered wire + insulation standing off the parts side (envelope only)
+
+
+def bh_back_x(z: float) -> float:
+    """Chassis x of the wall's (tilted) back face at height z."""
+    return bh_face_x(z) - BH_T / math.cos(math.radians(BH_TILT))
 
 
 def amp_geom() -> dict:
-    yw = CAN_HW - CAN_T  # wall inner face
+    yo = CAN_HW - CAP_T  # bracket plate outboard face
+    yw = yo - AMP_BRK_T  # plate inboard face (the rails stand on it)
     x0, x1 = AMP_X0, AMP_X0 + AMP_PCB[0]
     zb, zt = AMP_ZB, AMP_ZB + AMP_PCB[1]
     return {
+        "yo": yo,
         "yw": yw,
         "x": (x0, x1),
         "z": (zb, zt),
@@ -5684,72 +5760,55 @@ def amp_geom() -> dict:
     }
 
 
-def canopy_amp_boxes() -> list[tuple[float, float, float, float, float, float]]:
+def bulkhead_amp_features() -> list[tuple]:
+    """Post-tilt (chassis frame) adds for the amp bracket: rails, backing plate, front stop
+    block into the wall. Boxes run 0.1 into the plate."""
     g = amp_geom()
-    yw, ys, (x0, x1), (zb, zt) = g["yw"], g["ys"], g["x"], g["z"]
-    c, xs = AMP_CLR, x0 - AMP_CLR - AMP_RAIL  # rails start behind the stop
+    yo, yw, ys, (x0, x1), (zb, zt) = g["yo"], g["yw"], g["ys"], g["x"], g["z"]
+    c = AMP_CLR
     yl = ys - AMP_SLOT - AMP_LIP  # lip inner face
     xl = x1 - AMP_LIP_CUT  # lips stop short of the speaker pads
-    return [
-        (xs, x1, yl, yw, zb - c - AMP_RAIL, zb - c),  # bottom rail body
-        (xs, xl, yl, ys - AMP_SLOT, zb - c, zb + AMP_GRIP),  # bottom lip
-        (xs, x1, ys, yw, zb - c, zb + AMP_GRIP),  # bottom back land
-        (xs, x1, yl, yw, zt + c, zt + c + AMP_RAIL),  # top rail body
-        (xs, xl, yl, ys - AMP_SLOT, zt - AMP_GRIP, zt + c),  # top lip
-        (xs, x1, ys, yw, zt - AMP_GRIP, zt + c),  # top back land
-        (xs, x0 - c, ys - AMP_SLOT, yw, zb - c, zt + c),  # rear stop (PCB edge only)
+    xf = x1 + c  # stop face
+    z0, z1 = zb - c - AMP_RAIL, zt + c + AMP_RAIL_TOP
+    assert bh_back_x(z1) - xf >= AMP_STOP_MIN, "amp stop block too thin at the top"
+    assert z1 <= 47.0 and z0 >= MM_TOP + 1.0, "amp bracket: face board above, mount below"
+    w = yw + 0.1
+    boxes = [
+        (x0, xf, yl, w, z0, zb - c),  # bottom rail body
+        (x0, xl, yl, ys - AMP_SLOT, zb - c, zb + AMP_GRIP),  # bottom lip
+        (x0, xf, ys, w, zb - c, zb + AMP_GRIP),  # bottom back land
+        (x0, xf, yl, w, zt + c, z1),  # top rail body
+        (x0, xl, yl, ys - AMP_SLOT, zt - AMP_GRIP, zt + c),  # top lip
+        (x0, xf, ys, w, zt - AMP_GRIP, zt + c),  # top back land
+        (x0, xf, yw, yo, z0, z1),  # backing plate
     ]
-
-
-def canopy_amp_lines() -> tuple[list[str], float]:
-    """Rail boxes (0.1 into the wall) and their volume (wall side clipped at yw)."""
-    yw = amp_geom()["yw"]
-    bx = canopy_amp_boxes()
-    lines = [
-        f"box|{a:.3f} {b:.3f}|{c:.3f} {d + (0.1 if d >= yw - 1e-9 else 0):.3f}|{e:.3f} {f:.3f}"
-        for a, b, c, d, e, f in bx
+    stop = [
+        (xf, z0),
+        (bh_back_x(z0) + AMP_BRK_INTO, z0),
+        (bh_back_x(z1) + AMP_BRK_INTO, z1),
+        (xf, z1),
     ]
-    # volume: union of the boxes (the stop overlaps the rails' slot strip; lips overlap bodies at z)
-    import numpy as np
-
-    st = 0.05
-    xs_ = np.arange(min(b[0] for b in bx) + st / 2, max(b[1] for b in bx), st)
-    ys_ = np.arange(min(b[2] for b in bx) + st / 2, yw, st)
-    zs_ = np.arange(min(b[4] for b in bx) + st / 2, max(b[5] for b in bx), st)
-    Y, Z = np.meshgrid(ys_, zs_, indexing="ij")
-    area = 0.0
-    m_all = np.zeros(Y.shape, bool)
-    # rails are prismatic in x except the stop: integrate per x slab
-    vol = 0.0
-    for x in xs_:
-        m = np.zeros(Y.shape, bool)
-        for a, b, c, d, e, f in bx:
-            if a <= x <= b:
-                m |= (Y >= c) & (Y <= d) & (Z >= e) & (Z <= f)
-        vol += m.sum() * st**3
-    del area, m_all
-    return lines, float(vol)
+    return [("add", ("box", *bx)) for bx in boxes] + [("add", ("prismy", stop, yl, yo))]
 
 
 def pam8302_lines(path: str) -> list[str]:
-    """PAM8302A envelope (interference only, chassis frame): PCB in the rails, a 2.0 parts
-    layer (1.2 tall: 2.8 over PCB + chips, Ben 2026-11-12; was 2.0 assumed) 1.2 off the long edges, the 2-pos 3.5 mm terminal block at the front end (7.6 x 7 x
-    10 tall) and the 5-pin header at the rear end (2.5 x 12.7 x 8.5). Board 24.3 x 15.2 (Ben)."""
+    """PAM8302A envelope (interference only, chassis frame), bare board (Ben's photo 2026-11-12:
+    no terminal block or header, wires soldered in): PCB in the rails, a parts layer (2.8 over
+    PCB + chips, Ben) 1.2 off the long edges, and AMP_WIRE of soldered-wire allowance on the
+    parts side over the speaker pads (front end) and the 5-pin row (rear end)."""
     ph = 2.8 - AMP_PCB[2]  # parts layer height
+    wd = AMP_WIRE
     g = amp_geom()
     (x0, x1), (zb, zt), (yp0, yp1) = g["x"], g["z"], g["y_pcb"]
     zc = (zb + zt) / 2
     bx = [
         (x0, x1, yp0, yp1, zb, zt),
-        (x0 + 3.2, x1 - 7.8, yp0 - ph, yp0 + 0.05, zb + 1.2, zt - 1.2),
-        (x1 - 7.6, x1, yp0 - 10.0, yp0 + 0.05, zc - 3.5, zc + 3.5),
-        (x0 + 0.5, x0 + 3.0, yp0 - 8.5, yp0 + 0.05, zc - 6.35, zc + 6.35),
+        (x0 + 4.2, x1 - 4.2, yp0 - ph, yp0 + 0.05, zb + 1.2, zt - 1.2),
+        (x1 - 4.2, x1 - 0.8, yp0 - wd, yp0 + 0.05, zb + 0.4, zt - 0.4),  # speaker pads
+        (x0 + 1.2, x0 + 4.2, yp0 - wd, yp0 + 0.05, zc - 6.4, zc + 6.4),  # 5-pin row
     ]
-    v = (
-        (x1 - x0) * (zt - zb) * AMP_PCB[2]
-        + (x1 - 7.8 - x0 - 3.2) * ph * (zt - zb - 2.4)
-        + 7.6 * 10.0 * 7.0
-        + 2.5 * 8.5 * 12.7
+    v = (x1 - x0) * (zt - zb) * AMP_PCB[2] + sum(
+        (b - a) * wd_ * (f - e) for (a, b, c, d, e, f), wd_ in zip(bx[1:], (ph, wd, wd))
     )
     return [
         f"part|{path}",
@@ -5757,7 +5816,7 @@ def pam8302_lines(path: str) -> list[str]:
             f"box|{a:.3f} {b:.3f}|{c:.3f} {d:.3f}|{e:.3f} {f:.3f}"
             for a, b, c, d, e, f in bx
         ],
-        f"expect|vol {v:.1f} {v * 0.02:.1f}|box {x0:.2f} {x1:.2f} {yp0 - 10:.2f} {yp1:.2f} {zb:.2f} {zt:.2f} 0.05",
+        f"expect|vol {v:.1f} {v * 0.02:.1f}|box {x0:.2f} {x1:.2f} {yp0 - wd:.2f} {yp1:.2f} {zb:.2f} {zt:.2f} 0.05",
         "save",
     ]
 
@@ -5883,9 +5942,8 @@ def canopy_lines(path: str) -> list[str]:
         *canopy_rear_edges()[1],
         *canopy_mic_lines()[0],
         *canopy_seam()["lines"],
-        *canopy_amp_lines()[0],
         PART_LABELS["canopy"],
-        f"expect|vol {f['vol'] + hood_screw()['vol'] + canopy_mic_lines()[1] + canopy_seam()['vol'] + canopy_amp_lines()[1]:.1f} {f['vol'] * 0.03:.1f}|box {CAN_X0} {fp[0]:.2f} {-hw} {hw} {-CAN_TAB[2]} {e[1]:.2f} 0.5",
+        f"expect|vol {f['vol'] + hood_screw()['vol'] + canopy_mic_lines()[1] + canopy_seam()['vol']:.1f} {f['vol'] * 0.03:.1f}|box {CAN_X0} {fp[0]:.2f} {-hw} {hw} {-CAN_TAB[2]} {e[1]:.2f} 0.5",
         "save",
     ]
     return lines

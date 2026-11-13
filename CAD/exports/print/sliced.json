@@ -65,6 +65,17 @@
   "time": "1h 52m 13s",
   "up": "-x"
  },
+ "RB-PRT-002_bulkhead@PETG": {
+  "cad_g": 54.68630628176712,
+  "cm3": 38.55,
+  "grams": 48.19,
+  "mat": "PETG",
+  "mismatch": [],
+  "qty": 1,
+  "support": false,
+  "time": "1h 33m 33s",
+  "up": "v:-0.965926,0,-0.258819"
+ },
  "RB-PRT-003_pi_deck": {
   "cad_g": 18.804082688573832,
   "cm3": 13.6,
@@ -76,6 +87,17 @@
   "time": "39m 33s",
   "up": "+z"
  },
+ "RB-PRT-003_pi_deck@PETG": {
+  "cad_g": 32.14796117483286,
+  "cm3": 23.04,
+  "grams": 28.79,
+  "mat": "PETG",
+  "mismatch": [],
+  "qty": 1,
+  "support": false,
+  "time": "1h 20m 36s",
+  "up": "+z"
+ },
  "RB-PRT-004_canopy": {
   "cad_g": 114.53068670110171,
   "cm3": 93.68,
@@ -85,6 +107,17 @@
   "qty": 1,
   "support": true,
   "time": "3h 59m 15s",
+  "up": "+x"
+ },
+ "RB-PRT-004_canopy@PETG": {
+  "cad_g": 119.30279864698095,
+  "cm3": 100.76,
+  "grams": 125.96,
+  "mat": "PETG",
+  "mismatch": [],
+  "qty": 1,
+  "support": true,
+  "time": "3h 52m 31s",
   "up": "+x"
  },
  "RB-PRT-010_motor_mount_R": {
@@ -228,6 +261,17 @@
   "qty": 1,
   "support": false,
   "time": "10m 5s",
+  "up": "+x"
+ },
+ "RB-PRT-060_speaker_clamp@PETG": {
+  "cad_g": 1.947065987013887,
+  "cm3": 1.41,
+  "grams": 1.77,
+  "mat": "PETG",
+  "mismatch": [],
+  "qty": 1,
+  "support": false,
+  "time": "9m 24s",
   "up": "+x"
  },
  "RB-PRT-061_speaker_gasket": {

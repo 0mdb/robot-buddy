@@ -145,6 +145,18 @@ check against the boards when they arrive.
 > Envelope `pam8302_envelope` (PCB, 2.0 parts layer 1.2 off the long edges, terminal block,
 > 5-pin header; **measure the board**: parts within 1 mm of the long edges would sit under
 > the lips). The speaker, jack and 5 V leads cross the canopy joint: leave slack.
+>
+> Amendment (Ben, 2026-11-13): **superseded: the amp moves to the bulkhead (RB-PRT-002).**
+> The board measured 24.3 × 15.2, 2.8 over the chips, bare (no terminal block or header:
+> wires solder into the pads). Its only holes are electrical, so it stays in rails. A bracket
+> grows straight aft from the wall's back face on the left, above the motor mount: a 2.0
+> backing plate at y 48–50 (flush with the front cap's side-flange inner face, 1.2 to the
+> canopy wall), lands 1.2 off it for the solder tails, lips stopping 5 short of the speaker
+> pads, and a solid stop block at the front running into the wall. The board slides in
+> from the rear to the stop (+ hot glue). PCB at x 41.5–65.8, z 30–45.2, y 45.05–46.65 (under
+> the face board's lower back corner, z 47.5; bottom rail 1.25 over the mount top),
+> parts facing inboard. Speaker leads ~3 cm down to the speaker; the jack lead comes
+> forward from the Flex's front end; the canopy carries no wires and lifts straight off.
 
 **Speaker → wiring:** the CMS-30205 lead ends in a PicoBlade 1.25 plug; the Flex output is
 JST PH 2.0 and the PAM8302A has screw terminals. Either cut the plug off for the terminals,
