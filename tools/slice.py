@@ -168,8 +168,20 @@ PARTS = {
     "RB-PRT-020_sprocket": ("PET-CF", "+z", 2, False, "outboard face down (08)"),
     "RB-PRT-021_idler": ("PET-CF", "+z", 2, False, "outboard face down (08)"),
     "RB-PRT-022_road_disc": ("PET-CF", "+z", 8, False, "bed face down"),
-    "RB-PRT-030_carriage_L": ("PET-CF", "-x", 1, False, "front face down (D3)"),
-    "RB-PRT-031_carriage_R": ("PET-CF", "-x", 1, False, "front face down (D3)"),
+    "RB-PRT-030_carriage_L": (
+        "PET-CF",
+        "-x",
+        1,
+        True,  # 2026-11-12 (Ben): the axle boss cylinder sagged on the PET-CF ones without
+        "front face down (D3); tree support from the bed under the boss",
+    ),
+    "RB-PRT-031_carriage_R": (
+        "PET-CF",
+        "-x",
+        1,
+        True,  # 2026-11-12 (Ben): the axle boss cylinder sagged on the PET-CF ones without
+        "front face down (D3); tree support from the bed under the boss",
+    ),
     "RB-PRT-040_trackframe_L": (
         "PET-CF",
         "-y",
@@ -602,6 +614,19 @@ PLATES = {
         "RB-PRT-060_speaker_clamp",
         "RB-PRT-003_pi_deck",
     ],
+    "petg1": [  # 2026-11-12 (Ben): every changed part in PETG on one bed: base plate,
+        # both mounts, the carriages (V wedges, built-in land, bolt-head counterbore), the
+        # bulkhead + sonar holder (+10° aim) and the Pi deck. The wheels, road discs and
+        # speaker clamp are reused; the canopy waits on the amp-rail rebuild
+        "RB-PRT-001_base_plate",
+        "RB-PRT-010_motor_mount_R",
+        "RB-PRT-011_motor_mount_L",
+        "RB-PRT-030_carriage_L",
+        "RB-PRT-031_carriage_R",
+        "RB-PRT-002_bulkhead",
+        "RB-PRT-070_sonar_holder",
+        "RB-PRT-003_pi_deck",
+    ],
     "petcf4": [  # waits on the M2.5 insert row (deck)
         "RB-PRT-003_pi_deck",
     ],
@@ -613,6 +638,16 @@ PLATES = {
 # plate onto two beds). Tree suits isolated small overhangs: the track frames' road-axle
 # blades take 1.4 g tree vs 2.9 g normal per frame.
 OBJECT_SUPPORT = {
+    # carriages: the Ø15 axle boss lies horizontal; bed-only keeps support out of its Ø4.1 bore;
+    # normal, not tree: tree branches spread past the footprint into the next part on petg1
+    "RB-PRT-030_carriage_L": {
+        "support_type": "normal(auto)",
+        "support_on_build_plate_only": "1",
+    },
+    "RB-PRT-031_carriage_R": {
+        "support_type": "normal(auto)",
+        "support_on_build_plate_only": "1",
+    },
     "RB-PRT-040_trackframe_L": {
         "support_type": "tree(auto)",
         "tree_support_auto_brim": "0",
@@ -667,7 +702,7 @@ def patch_support_off(mf: str, stems: set[str]) -> None:
 
 
 def slice_plate(
-    prof: Profiles, name: str, threemf: bool, mat_override: str = ""
+    prof: Profiles, name: str, threemf: bool, mat_override: str = "", multi: bool = False
 ) -> dict:
     stems = PLATES[name]
     mats = {PARTS[k][0] for k in stems}
@@ -695,7 +730,12 @@ def slice_plate(
         nosup
     ):  # mixed plate: arrange + export, turn support off per object, slice that project
         name3 = f"{mat.replace('-', '')}_{name}.3mf"
-        run_orca(presets, bed, d, stls, f'--arrange 1 --export-3mf "{name3}"')
+        # arrange with support OFF: with it on plate-wide the arranger pads every part and
+        # spilled petg1 onto a second bed (2026-11-12); the per-object patch turns it back on
+        da = os.path.join(d, "arrange")
+        os.makedirs(da, exist_ok=True)
+        arr = write_presets(prof, mat, False, da)
+        run_orca(arr, bed, d, stls, f'--arrange 1 --export-3mf "{name3}"')
         mf = os.path.join(d, name3)
         if not os.path.exists(mf):
             return {"stem": name, "error": "arrange/export failed"}
@@ -714,6 +754,21 @@ def slice_plate(
     }
     if not g:
         r["error"] = "no G-code (slice failed)"
+        return r
+    if multi:  # one project over several beds: sum the beds, keep the 3mf
+        beds = [read_gcode(x) for x in g]
+        r["beds"] = [
+            (os.path.basename(x), b["grams"], b["time"]) for x, b in zip(g, beds)
+        ]
+        r["grams"] = sum(b["grams"] for b in beds)
+        r["time"] = " + ".join(b["time"] or "?" for b in beds)
+        os.makedirs(OUT, exist_ok=True)
+        if not nosup:
+            run_orca(presets, bed, d, stls, f'--arrange 1 --export-3mf "{r["stem"]}.3mf"')
+            stls = [os.path.join(d, r["stem"] + ".3mf")]
+        if os.path.exists(stls[0]):
+            shutil.copy(stls[0], os.path.join(OUT, r["stem"] + ".3mf"))
+            r["3mf"] = True
         return r
     if len(g) > 1 or not g[0].endswith("plate_1.gcode"):
         # the arranger spills what doesn't fit onto more beds, one G-code each
@@ -756,11 +811,16 @@ def main() -> None:
         choices=list(PLATES),
         help="slice a production plate (all parts x qty, arranged)",
     )
+    ap.add_argument(
+        "--multi", action="store_true", help="allow several beds in one project"
+    )
     a = ap.parse_args()
     if a.plate:
-        r = slice_plate(Profiles(), a.plate, not a.no_3mf, a.mat)
+        r = slice_plate(Profiles(), a.plate, not a.no_3mf, a.mat, a.multi)
         if "error" in r:
             sys.exit(f"plate {a.plate}: {r['error']}")
+        for b in r.get("beds", []):
+            print(f"  {b[0]}: {b[1]:.1f} g, {b[2]}")
         print(
             f"plate {a.plate}: {r['objects']} objects, {r['mat']}, {r['grams']:.1f} g sliced"
             f" ({r['cad_g']:.1f} g solid), {r['time']}{'  +support' if r['support'] else ''}"

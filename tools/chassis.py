@@ -921,7 +921,7 @@ DECK_CABLE_REAR = (-76.0, -68.0, -4.0, 4.0)  # to level 0 (reflex board)
 # (the deck prints underside on the bed, so walls hanging below it would need support), and
 # one M2.5 x 6 SHCS goes up through the hole into an M2.5 x 4 insert pressed in from below.
 # Long axis along x, socket end forward (toward J5). Board centre stays at (-54, 0).
-IMU_PCB = (19.05, 7.62, 1.6)  # x (long), y, t
+IMU_PCB = (19.05, 7.62, 1.6)  # x (long), y, t (SparkFun sizes; Ben re-measured 19.05, 2026-11-12)
 IMU_HOLE_DX = -(16.51 - 19.05 / 2)  # hole from the board centre along x (aft): -6.985
 # Qwiic socket centre from the board centre (fwd): 4.445
 IMU_SOCKET_DX = 19.05 / 2 - 5.08
@@ -4028,6 +4028,7 @@ CAR_PED = (
 # Ø4 x 50 and its head drops into a counterbore in the boss's inboard end: head y 39.5..43.5,
 # underside at 43.5 + 50 = 93.5 (the frame plate's inner face, as the 53.5 stack had)
 IDLER_BOLT_L = 50.0
+SB_HEAD, SB_THREAD = 3.4, 6.0  # 2026-11-12 measured (ISO 7379 nominal: 4, 8)
 # 2026-11-11 (Ben: build the spacers in): the carriage-side DIN 988 shim becomes a land on
 # the boss end, Ø6 x 0.5, on the 624's inner race only (its outer race / the idler's tube
 # start at r 6.55). The two frame-side shims stay: the axle slides in the frame's slot there.
@@ -5545,7 +5546,7 @@ def canopy_mic_lines() -> tuple[list[str], float]:
 # between their inner races; the carriage boss stops 0.5 short of the inner bearing and the
 # track-frame plate stands 1.0 off the outer one. Clamped stack on the Ø4 shoulder, head
 # (inboard) -> carriage boss -> 0.5 shim -> 624 -> this spacer -> 624 -> 2 x 0.5 shim ->
-# frame plate -> M3 nyloc: only the outer races and the wheel turn (05 "Spin").
+# frame plate -> M3 thin nut + Loctite 243 (2026-11-12; was nyloc): only the outer races and the wheel turn (05 "Spin").
 IDLER_SPACER = (
     8.0,
     5.8,
@@ -5651,12 +5652,20 @@ def _prism_y(poly: list, y0: float, y1: float, kind: str) -> str:
 # PCB) and a stop at the rear end; it slides in from the canopy's open front (canopy off) and
 # takes a dot of hot glue. Screw terminals at the front end, toward the speaker. The canopy
 # prints rear wall down, so the rails stand vertical (no overhang but their ends).
-AMP_PCB = (24.0, 15.0, 1.6)  # length (x), height (z), thickness
+AMP_PCB = (24.3, 15.2, 1.6)  # length (x), height (z), thickness; 24.3 x 15.2 measured 2026-11-12 (Ben)
 AMP_X0, AMP_ZB = (
     34.0,
     36.0,
 )  # PCB rear end, bottom edge (the canopy front follows the 15° wall: x ~62 at z 53)
 AMP_SLOT, AMP_GRIP, AMP_LIP, AMP_RAIL, AMP_CLR = 1.9, 1.0, 1.2, 2.0, 0.25
+# 2026-11-12 (Ben's photo): bare board, no header or terminal block, so wires solder straight
+# into the through-holes: the 5-pin row ~2.7 from the rear end and the speaker pads (Ø3.4
+# rings, holes 2.1 in from each long edge) ~2.5 from the front end. Their solder tails come
+# out the BACK, which sat 0.15 off the wall. So the board's back now rests on two 1.0-wide
+# lands along its long edges, AMP_BACK off the wall, and the lips stop AMP_LIP_CUT short of
+# the front end so they don't sit on the speaker-pad joints. All chips are >= 1.5 from the
+# long edges (the lips cover 1.0).
+AMP_BACK, AMP_LIP_CUT = 1.2, 5.0
 
 
 def amp_geom() -> dict:
@@ -5667,21 +5676,28 @@ def amp_geom() -> dict:
         "yw": yw,
         "x": (x0, x1),
         "z": (zb, zt),
-        "y_pcb": (yw - (AMP_SLOT + AMP_PCB[2]) / 2, yw - (AMP_SLOT - AMP_PCB[2]) / 2),
+        "ys": yw - AMP_BACK,  # slot back plane (the lands' face)
+        "y_pcb": (
+            yw - AMP_BACK - (AMP_SLOT + AMP_PCB[2]) / 2,
+            yw - AMP_BACK - (AMP_SLOT - AMP_PCB[2]) / 2,
+        ),
     }
 
 
 def canopy_amp_boxes() -> list[tuple[float, float, float, float, float, float]]:
     g = amp_geom()
-    yw, (x0, x1), (zb, zt) = g["yw"], g["x"], g["z"]
+    yw, ys, (x0, x1), (zb, zt) = g["yw"], g["ys"], g["x"], g["z"]
     c, xs = AMP_CLR, x0 - AMP_CLR - AMP_RAIL  # rails start behind the stop
-    yl = yw - AMP_SLOT - AMP_LIP  # lip inner face
+    yl = ys - AMP_SLOT - AMP_LIP  # lip inner face
+    xl = x1 - AMP_LIP_CUT  # lips stop short of the speaker pads
     return [
         (xs, x1, yl, yw, zb - c - AMP_RAIL, zb - c),  # bottom rail body
-        (xs, x1, yl, yw - AMP_SLOT, zb - c, zb + AMP_GRIP),  # bottom lip
+        (xs, xl, yl, ys - AMP_SLOT, zb - c, zb + AMP_GRIP),  # bottom lip
+        (xs, x1, ys, yw, zb - c, zb + AMP_GRIP),  # bottom back land
         (xs, x1, yl, yw, zt + c, zt + c + AMP_RAIL),  # top rail body
-        (xs, x1, yl, yw - AMP_SLOT, zt - AMP_GRIP, zt + c),  # top lip
-        (xs, x0 - c, yw - AMP_SLOT, yw, zb - c, zt + c),  # rear stop (PCB edge only)
+        (xs, xl, yl, ys - AMP_SLOT, zt - AMP_GRIP, zt + c),  # top lip
+        (xs, x1, ys, yw, zt - AMP_GRIP, zt + c),  # top back land
+        (xs, x0 - c, ys - AMP_SLOT, yw, zb - c, zt + c),  # rear stop (PCB edge only)
     ]
 
 
@@ -5717,20 +5733,21 @@ def canopy_amp_lines() -> tuple[list[str], float]:
 
 def pam8302_lines(path: str) -> list[str]:
     """PAM8302A envelope (interference only, chassis frame): PCB in the rails, a 2.0 parts
-    layer 1.2 off the long edges, the 2-pos 3.5 mm terminal block at the front end (7.6 x 7 x
-    10 tall) and the 5-pin header at the rear end (2.5 x 12.7 x 8.5). TBD: measure the board."""
+    layer (1.2 tall: 2.8 over PCB + chips, Ben 2026-11-12; was 2.0 assumed) 1.2 off the long edges, the 2-pos 3.5 mm terminal block at the front end (7.6 x 7 x
+    10 tall) and the 5-pin header at the rear end (2.5 x 12.7 x 8.5). Board 24.3 x 15.2 (Ben)."""
+    ph = 2.8 - AMP_PCB[2]  # parts layer height
     g = amp_geom()
     (x0, x1), (zb, zt), (yp0, yp1) = g["x"], g["z"], g["y_pcb"]
     zc = (zb + zt) / 2
     bx = [
         (x0, x1, yp0, yp1, zb, zt),
-        (x0 + 3.2, x1 - 7.8, yp0 - 2.0, yp0 + 0.05, zb + 1.2, zt - 1.2),
+        (x0 + 3.2, x1 - 7.8, yp0 - ph, yp0 + 0.05, zb + 1.2, zt - 1.2),
         (x1 - 7.6, x1, yp0 - 10.0, yp0 + 0.05, zc - 3.5, zc + 3.5),
         (x0 + 0.5, x0 + 3.0, yp0 - 8.5, yp0 + 0.05, zc - 6.35, zc + 6.35),
     ]
     v = (
         (x1 - x0) * (zt - zb) * AMP_PCB[2]
-        + (x1 - 7.8 - x0 - 3.2) * 2.0 * (zt - zb - 2.4)
+        + (x1 - 7.8 - x0 - 3.2) * ph * (zt - zb - 2.4)
         + 7.6 * 10.0 * 7.0
         + 2.5 * 8.5 * 12.7
     )
@@ -6359,25 +6376,32 @@ def hardware_layout() -> list[tuple[str, "hw.Item", list, str]]:
     L = IDLER_BOLT_L  # 2026-11-11: Ø4 x 50, head in the carriage counterbore
     sb = hw.Item(
         f"hw_shoulder_4x{L:g}_M3",
-        f"Shoulder bolt ISO 7379 Ø4 x {L:g}, M3 thread ≥ 8 (head Ø8 x 4)",
+        f"Shoulder bolt ISO 7379 Ø4 x {L:g}, M3 thread 6 (head Ø8 x 3.4)",
+        # 2026-11-12 (Ben, in hand: MECCANIXITY 59.3 overall, head 3.4, thread 6 -> shoulder 49.9)
         (
-            "cyl|z|0 0|0 4|4|boss",
+            f"cyl|z|0 0|0 {SB_HEAD}|4|boss",
             f"cyl|z|0 0|{-L} 0.01|1.99|boss",
-            f"cyl|z|0 0|{-L - 8} {-L + 0.01}|1.5|boss",
-            f"expect|vol {math.pi * (16 * 4 + 1.99**2 * L + 2.25 * 8):.1f} 2|box -4 4 -4 4 {-L - 8} 4 0.05",
+            f"cyl|z|0 0|{-L - SB_THREAD} {-L + 0.01}|1.5|boss",
+            f"expect|vol {math.pi * (16 * SB_HEAD + 1.99**2 * L + 2.25 * SB_THREAD):.1f} 2|box -4 4 -4 4 {-L - SB_THREAD} {SB_HEAD} 0.05",
         ),
         0.0,
     )
     yh = CAR_PED[1] + CAR_CBORE[1]  # head underside
     assert abs(yh + L - 93.5) < 1e-9, yh + L
     add("F4 axle", sb, [((xf, s * yh, iz), (0.0, -s, 0.0)) for s in (1, -1)])
-    add(
-        "F4 axle",
-        hw.ring_part(
-            "hw_nyloc_M3", "Nyloc nut DIN 985 M3 (envelope Ø6 x 4)", 6.0, 3.02, 4.0
-        ),
-        [((xf, s * 97.1, iz), (0.0, s, 0.0)) for s in (1, -1)],
+    # 2026-11-12: the bolt's 6 mm thread stands only 2.4 past the 3.6 frame plate (93.5 + 6
+    # = 99.5 vs face 97.1): a 4 mm nyloc would never reach its nylon. Thin nut, fully
+    # engaged, + Loctite 243 (removable) instead; no frame reprint.
+    nf = yh + L + TF_T  # frame plate outer face
+    tn = hw.ring_part(
+        "hw_nut_M3_thin",
+        "Thin hex nut DIN 439 M3 (5.5 A/F x 1.8, A2) + Loctite 243",
+        5.5,
+        3.02,
+        1.8,
     )
+    assert yh + L + SB_THREAD - 0.5 >= nf + 1.8, "thin nut not fully on the thread"
+    add("F4 axle", tn, [((xf, s * nf, iz), (0.0, s, 0.0)) for s in (1, -1)])
     shim = hw.ring_part(
         "hw_shim_4x8x0.5", "Shim ring DIN 988 4 x 8 x 0.5", 8.0, 4.02, 0.5
     )

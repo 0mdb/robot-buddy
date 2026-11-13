@@ -146,6 +146,7 @@ Ben has a wide M2/M3/M4 range on hand, so stock doesn't constrain any choice.
 - **M2.5 only where a board dictates it** (Pi stack, possibly FNK0104); M3 everywhere else, so
   one driver and one insert size cover almost the whole robot.
 - Nuts: M3 nyloc DIN 985 where a through-bolt is unavoidable (TT motor, follower axle).
+  > **Amendment 2026-11-12 (F4 idler axle):** the shoulder bolts in hand (Ø4 × 50) have a 6 mm M3 thread and a 3.4 head, so only 2.4 of thread stands past the 3.6 track-frame plate. A DIN 985 nyloc (4 tall) would not reach its nylon: F4 uses a **thin nut DIN 439 M3 (1.8) + Loctite 243** instead.
 - Threadlocker: **Loctite 222 only steel-to-brass on motor-side joints**, a small drop, kept
   off the plastic (anaerobics craze PC and ASA). None on serviced joints.
 
