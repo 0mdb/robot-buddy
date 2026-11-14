@@ -404,8 +404,11 @@ def plate_spk_notches() -> list[list[tuple[float, float]]]:
     x0, x1, yf, _ = PLATE_SPK_NOTCH
     ye = PLATE_W / 2 + 1.0
     d = ye - yf
+    # 2026-11-13 (Ben): the sliver ahead of the notch is gone too; the floor runs out
+    # through the front edge (square corner at (PLATE_L/2, yf), was the R3 plan corner)
+    xf = PLATE_L / 2 + 1.0
     return [
-        [(x0 - d, sg * ye), (x0, sg * yf), (x1, sg * yf), (x1 + d, sg * ye)]
+        [(x0 - d, sg * ye), (x0, sg * yf), (xf, sg * yf), (xf, sg * ye)]
         for sg in (-1, 1)
     ]
 
@@ -3159,7 +3162,8 @@ def bulkhead_features() -> tuple[list[tuple], list[tuple]]:
     post: list[tuple] = [("add", ("box", fx0, fx1, fy0, fy1, fz0, fz1))]
     for y in BULK_HOLES_Y:  # 2026-11-11: F1 pocket bosses past the foot's back face
         post.append(("add", ("cylz", BULK_HOLE_X, y, fz0, fz1, bh_foot_boss_r())))
-    post += bulkhead_amp_features()  # 2026-11-13: amp bracket, left, above the mount
+    post += bulkhead_amp_features()  # 2026-11-13: amp bracket, right, above the mount
+    post += cover_guide_features()  # 2026-11-13: canopy wall guides aft of the seam
     # 2026-11-11: the front is cut on the wall's front-face plane (coplanar: it only trims the
     # foot, never the wall), so face-down the face and the foot's front are one flat
     za, zb = -0.3, fz1 + 0.3
@@ -3552,6 +3556,11 @@ def bulkhead_lines(path: str) -> list[str]:
             pts = [f"{x:.4f} {-z:.4f}" for x, z in poly]
             segs = "M " + pts[0] + "".join(" L " + p for p in pts[1:])
             return f"prof|{y0} {y1}|{segs}|{kind}|top"
+        if sh[0] == "prismx":  # Right plane: sketch (-z, y), extrude +X
+            _, poly, x0, x1 = sh
+            pts = [f"{-z:.4f} {y:.4f}" for y, z in poly]
+            segs = "M " + pts[0] + "".join(" L " + p for p in pts[1:])
+            return f"prof|{x0:.4f} {x1:.4f}|{segs}|{kind}|right"
         _, cx, cy, z0, z1, r = sh
         return f"cyl|z|{cx} {cy}|{z0} {z1}|{r}|{kind}"
 
@@ -5710,7 +5719,7 @@ AMP_PCB = (
     1.6,
 )  # length (x), height (z), thickness; 24.3 x 15.2 measured 2026-11-12 (Ben)
 AMP_X0, AMP_ZB = (
-    41.5,
+    40.0,
     30.0,
 )  # PCB rear end, bottom edge (2026-11-13: x 34 -> 41.5, the front end near the wall; z 36 ->
 # 30: the face board's lower back corner comes down to z 47.5 at |y| <= 46.1, x 58-68.5, and the
@@ -5733,8 +5742,66 @@ AMP_BACK, AMP_LIP_CUT = 1.2, 5.0
 # ~3 cm down to the speaker; the canopy carries no wires. Chassis frame (post-tilt), so the
 # rails stay level; the block's front follows the tilted back face AMP_BRK_INTO deep.
 AMP_BRK_T, AMP_BRK_INTO, AMP_STOP_MIN = 2.0, 1.0, 1.5
+# 2026-11-13 (Ben, OK'd): the bracket moves to the RIGHT (mirror in y). On the left its top rail
+# sat in the F11 lower-left face-standoff insert's press path (the iron runs back and down 15°
+# from (63.4, 42.1, 53.0)); the right standoff is at |y| 35.9, ~6 further in. On the right the
+# RB-PRT-070 holder's back (x 66.5 at z 36.4, 70.8 at z 11.8, |y| <= 47) sits behind the stop,
+# so the board slides 1.5 aft (x0 41.5 -> 40), the stop is a AMP_STOP_T plate in front of the
+# board (AMP_SR_CLR off the holder), joined to the wall by a web outboard of the holder
+# (|y| >= 47 + AMP_SR_CLR) and, above the holder's top (z 39.1 + AMP_SR_CLR), full width.
+AMP_SIDE = -1.0
+AMP_SR_CLR = 0.4
+AMP_SR_Y, AMP_SR_ZTOP = 47.0, 39.05  # holder's outboard |y| and top (chassis)
+
+
+def sr_back_x_min() -> float:
+    """Chassis x of the holder's rearmost point at or above the amp's bottom rail (its
+    back face leans back going up, so the top corner, x 66.46)."""
+    R, (tx, _, tz) = speaker_tilt()
+    xa, za = sr_aim(SR_TRIM, sr_map(31.0, 0.0)[1])
+    return R[0] * xa + R[2] * za + tx
 AMP_RAIL_TOP = 1.5  # top rail body (under the face board)
 AMP_WIRE = 6.0  # soldered wire + insulation standing off the parts side (envelope only)
+
+
+# 2026-11-13 (Ben: "squeeze the cover near the bottom of the bulkhead, it deflects a lot"): the
+# canopy's side walls end free at the seam. A guide on each side, post-tilt (chassis frame,
+# after the cap rounds): a CG_T tab from the wall's back face (inside the cap's side flange,
+# merged with it) running CG_L aft of the seam, its outer face CG_CLR inside the canopy wall's
+# inner face, over z CG_Z (skirt line up); a CG_CH x 45° lead-in on its outer top edge, aft of
+# the seam, for the canopy dropping on. Right side: merges with the amp backing plate.
+CG_T, CG_L, CG_CLR, CG_CH = 2.0, 8.0, 0.2, 1.5
+CG_Z = (CAN_Z0 + 0.5, 45.0)
+
+
+def bh_seam_x(z: float) -> float:
+    """Chassis x of the cap's seam plane (pre-tilt x BH_XF - CAP_D) at height z."""
+    return bh_back_x(z) - (CAP_D - BH_T) / math.cos(math.radians(BH_TILT))
+
+
+def cover_guide_features() -> list[tuple]:
+    yo = CAN_HW - CAN_T - CG_CLR  # 51.0
+    yi = yo - CG_T
+    z0, z1 = CG_Z
+    poly = [
+        (bh_seam_x(z0) - CG_L, z0),
+        (bh_back_x(z0) + 0.5, z0),
+        (bh_back_x(z1) + 0.5, z1),
+        (bh_seam_x(z1) - CG_L, z1),
+    ]
+    ch = [(yo + 0.1, z1 - CG_CH - 0.1), (yo + 0.1, z1 + 0.1), (yo - CG_CH - 0.1, z1 + 0.1)]
+    out: list[tuple] = []
+    for sg in (-1, 1):
+        out.append(("add", ("prismy", poly, *sorted((sg * yi, sg * yo)))))
+        if sg == AMP_SIDE:  # the amp's backing plate stands over it to z 46.95: no lead-in
+            continue
+        out.append(
+            (
+                "cut",
+                ("prismx", [(sg * y, z) for y, z in ch], bh_seam_x(z1) - CG_L - 0.5, bh_seam_x(z1) - 0.05),
+            )
+        )
+    return out
 
 
 def bh_back_x(z: float) -> float:
@@ -5770,7 +5837,11 @@ def bulkhead_amp_features() -> list[tuple]:
     xl = x1 - AMP_LIP_CUT  # lips stop short of the speaker pads
     xf = x1 + c  # stop face
     z0, z1 = zb - c - AMP_RAIL, zt + c + AMP_RAIL_TOP
-    assert bh_back_x(z1) - xf >= AMP_STOP_MIN, "amp stop block too thin at the top"
+    xsr = sr_back_x_min() - AMP_SR_CLR  # stop plate's front (holder behind it)
+    ysr = AMP_SR_Y + AMP_SR_CLR  # web's inboard face, outboard of the holder
+    zsr = AMP_SR_ZTOP + AMP_SR_CLR  # full-width stop above the holder's top
+    assert xsr - xf >= AMP_STOP_MIN - 0.1, "amp stop plate too thin"
+    assert yl < ysr < yo - 1.5, "amp stop web"
     assert z1 <= 47.0 and z0 >= MM_TOP + 1.0, "amp bracket: face board above, mount below"
     w = yw + 0.1
     boxes = [
@@ -5781,14 +5852,31 @@ def bulkhead_amp_features() -> list[tuple]:
         (x0, xl, yl, ys - AMP_SLOT, zt - AMP_GRIP, zt + c),  # top lip
         (x0, xf, ys, w, zt - AMP_GRIP, zt + c),  # top back land
         (x0, xf, yw, yo, z0, z1),  # backing plate
+        (xf - 0.1, xsr, yl, yo, z0, z1),  # stop plate
     ]
-    stop = [
-        (xf, z0),
+    web = [
+        (xsr - 0.1, z0),
         (bh_back_x(z0) + AMP_BRK_INTO, z0),
         (bh_back_x(z1) + AMP_BRK_INTO, z1),
-        (xf, z1),
+        (xsr - 0.1, z1),
     ]
-    return [("add", ("box", *bx)) for bx in boxes] + [("add", ("prismy", stop, yl, yo))]
+    top = [
+        (xsr - 0.1, zsr),
+        (bh_back_x(zsr) + AMP_BRK_INTO, zsr),
+        (bh_back_x(z1) + AMP_BRK_INTO, z1),
+        (xsr - 0.1, z1),
+    ]
+    sg = AMP_SIDE
+
+    def my(a: float, b: float) -> tuple[float, float]:
+        return tuple(sorted((sg * a, sg * b)))  # type: ignore[return-value]
+
+    out: list[tuple] = []
+    for bx0, bx1, by0, by1, bz0, bz1 in boxes:
+        out.append(("add", ("box", bx0, bx1, *my(by0, by1), bz0, bz1)))
+    out.append(("add", ("prismy", web, *my(ysr, yo))))
+    out.append(("add", ("prismy", top, *my(yl, yo))))
+    return out
 
 
 def pam8302_lines(path: str) -> list[str]:
@@ -5810,13 +5898,19 @@ def pam8302_lines(path: str) -> list[str]:
     v = (x1 - x0) * (zt - zb) * AMP_PCB[2] + sum(
         (b - a) * wd_ * (f - e) for (a, b, c, d, e, f), wd_ in zip(bx[1:], (ph, wd, wd))
     )
+    sg = AMP_SIDE  # 2026-11-13: mirrored to the right
+
+    def my(a: float, b: float) -> str:
+        lo, hi = sorted((sg * a, sg * b))
+        return f"{lo:.3f} {hi:.3f}"
+
     return [
         f"part|{path}",
         *[
-            f"box|{a:.3f} {b:.3f}|{c:.3f} {d:.3f}|{e:.3f} {f:.3f}"
+            f"box|{a:.3f} {b:.3f}|{my(c, d)}|{e:.3f} {f:.3f}"
             for a, b, c, d, e, f in bx
         ],
-        f"expect|vol {v:.1f} {v * 0.02:.1f}|box {x0:.2f} {x1:.2f} {yp0 - wd:.2f} {yp1:.2f} {zb:.2f} {zt:.2f} 0.05",
+        f"expect|vol {v:.1f} {v * 0.02:.1f}|box {x0:.2f} {x1:.2f} {my(yp0 - wd, yp1)} {zb:.2f} {zt:.2f} 0.05",
         "save",
     ]
 

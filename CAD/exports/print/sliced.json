@@ -54,6 +54,17 @@
   "time": "3h 28m 8s",
   "up": "+z"
  },
+ "RB-PRT-001_base_plate@PETG": {
+  "cad_g": 125.09439908208378,
+  "cm3": 76.92,
+  "grams": 96.15,
+  "mat": "PETG",
+  "mismatch": [],
+  "qty": 1,
+  "support": false,
+  "time": "2h 48m 30s",
+  "up": "+z"
+ },
  "RB-PRT-002_bulkhead": {
   "cad_g": 54.281930274991126,
   "cm3": 39.8,

@@ -627,6 +627,12 @@ PLATES = {
         "RB-PRT-070_sonar_holder",
         "RB-PRT-003_pi_deck",
     ],
+    "petg2": [  # 2026-11-13 (Ben): bulkhead (amp bracket, speaker bosses moved off the
+        # face P2 plug) + the new speaker clamp that matches the moved bosses
+        "RB-PRT-002_bulkhead",
+        "RB-PRT-060_speaker_clamp",
+        "RB-CPN-003_insert_ladder",  # + insert hole-size ladder, PETG fit check
+    ],
     "petcf4": [  # waits on the M2.5 insert row (deck)
         "RB-PRT-003_pi_deck",
     ],
@@ -718,8 +724,9 @@ def slice_plate(
     stls, cad_g, n = [], 0.0, 0
     for k in stems:
         mesh = oriented(k, PARTS[k][1])
-        for i in range(PARTS[k][2]):
-            fn = os.path.join(d, f"{k}_{i + 1}.stl" if PARTS[k][2] > 1 else f"{k}.stl")
+        q = max(PARTS[k][2], 1)  # a test coupon (qty 0) named on a plate prints once
+        for i in range(q):
+            fn = os.path.join(d, f"{k}_{i + 1}.stl" if q > 1 else f"{k}.stl")
             mesh.export(fn)
             stls.append(fn)
             cad_g += mesh.volume / 1000 * rho
