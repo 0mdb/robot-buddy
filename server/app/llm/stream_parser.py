@@ -70,7 +70,8 @@ class ConversationStreamParser:
     State machine:
       * ``PRE``  — scanning JSON until we locate ``"text":"``.
       * ``TEXT`` — consuming the text value character by character.
-      * ``DONE`` — seen closing ``"`` of text; further input is discarded.
+      * ``DONE`` — seen closing ``"`` of text; further input only feeds
+        ``final_response()``.
 
     The ``first_min_chars`` / ``min_chars`` thresholds protect TTS prosody
     quality on mid-stream sentences while letting the very first sentence
@@ -103,6 +104,8 @@ class ConversationStreamParser:
 
         self._emitted_count = 0
         self._metadata_response: ConversationResponse | None = None
+        # Everything fed, for the fields that follow `text` (final_response()).
+        self._raw = ""
 
     @property
     def metadata_ready(self) -> bool:
@@ -123,9 +126,26 @@ class ConversationStreamParser:
         self._metadata_response.text = self._text_accum
         return self._metadata_response
 
+    def final_response(self) -> ConversationResponse | None:
+        """The whole reply, parsed once the stream has ended.
+
+        Fields that follow ``text`` (memory_tags, inner_thought, ...) are
+        only known here. Falls back to the prefix metadata if the complete
+        JSON does not parse (e.g. the stream was cut off).
+        """
+        if self._metadata_response is None:
+            return None
+        try:
+            full = parse_conversation_response_content(self._raw)
+        except LLMError:
+            return self.metadata()
+        full.text = self._text_accum
+        return full
+
     def feed(self, chunk: str) -> Iterator[ParserEvent]:
         if not chunk:
             return
+        self._raw += chunk
         if self._state == self._PRE:
             yield from self._feed_pre(chunk)
         elif self._state == self._TEXT:

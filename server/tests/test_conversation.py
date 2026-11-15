@@ -473,3 +473,20 @@ class TestPersonalityAnchor:
         # Both should be present
         assert any("CURRENT STATE" in m["content"] for m in msgs)
         assert any(PERSONALITY_ANCHOR in m["content"] for m in msgs)
+
+
+def test_v2_schema_puts_only_speech_prerequisites_before_text() -> None:
+    """Guided decoding follows property order; every field before `text` is
+    first-audio latency (spec S2 §12.3 amendment 2026-11-15)."""
+    from app.llm.conversation import _EXAMPLE_KEYS, ConversationResponseV2
+
+    schema = ConversationResponseV2.model_json_schema()
+    keys = list(schema["properties"])
+    assert keys[: keys.index("text")] == [
+        "emotion",
+        "intensity",
+        "mood_reason",
+        "gestures",
+    ]
+    assert set(schema["required"]) == {"emotion", "intensity", "text"}
+    assert list(_EXAMPLE_KEYS) == keys  # prompt examples teach the same order

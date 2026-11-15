@@ -597,14 +597,6 @@ async def _generate_and_stream_live(
                                     "names": resp.gestures,
                                 }
                             )
-                        if resp.memory_tags:
-                            await ws.send_json(
-                                {
-                                    "type": "memory_tags",
-                                    "turn_id": turn_id,
-                                    "tags": resp.memory_tags,
-                                }
-                            )
                     elif isinstance(event, Sentence):
                         if not sent_first:
                             await _dispatch_tts(
@@ -616,6 +608,27 @@ async def _generate_and_stream_live(
                             sent_first = True
                         else:
                             coalesce_buf.append(event.text)
+                if parser.done and coalesce_buf:
+                    # The spoken text is complete; the fields after it are
+                    # still generating. Start the continuation's TTS now
+                    # rather than at end of stream, so it never waits on them.
+                    await _dispatch_tts(
+                        " ".join(coalesce_buf),
+                        tg,
+                        emotion="neutral",
+                        intensity=0.0,
+                    )
+                    coalesce_buf.clear()
+            # memory_tags follow `text` in the schema: only the full reply has them.
+            final = parser.final_response()
+            if final is not None and final.memory_tags:
+                await ws.send_json(
+                    {
+                        "type": "memory_tags",
+                        "turn_id": turn_id,
+                        "tags": final.memory_tags,
+                    }
+                )
         finally:
             # Flush the final buffered fragment (short-sentence tail).
             for event in parser.close():

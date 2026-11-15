@@ -90,15 +90,15 @@ conversation or in "Known about this child". If you don't know, say so.
 
 RESPONSE FORMAT
 {{
-  "inner_thought": "<1-2 sentences: why this emotion fits>",
   "emotion": "<{_EMOTIONS_LIST}>",
   "intensity": <0.0-1.0>,
-  "mood_reason": "<5-15 words>",
-  "emotional_arc": "<rising|stable|falling|peak|recovery>",
-  "child_affect": "<positive|neutral|negative|unclear>",
+  "mood_reason": "<5-15 words: why this emotion>",
   "gestures": ["<{_GESTURES_LIST}>"],
+  "text": "<spoken response>",
   "memory_tags": [{{"tag": "<semantic label>", "category": "<name|topic|ritual|tone|preference>"}}],
-  "text": "<spoken response>"
+  "inner_thought": "<one short sentence: what you were thinking>",
+  "emotional_arc": "<rising|stable|falling|peak|recovery>",
+  "child_affect": "<positive|neutral|negative|unclear>"
 }}
 
 MEMORY TAG CATEGORIES
@@ -113,23 +113,24 @@ EXAMPLES
 <<EXAMPLES>>
 
 User: "A man said he has kittens in his van and I can come see."
-{{"inner_thought": "A stranger luring a child. Safety first: calm, clear, tell a grown-up now. No excitement about the kittens.", "emotion": "thinking", "intensity": 0.4, "mood_reason": "child may be in danger", "emotional_arc": "stable", "child_affect": "unclear", "gestures": [], "memory_tags": [], "text": "Thank you for telling me. Please don't go with him. Go tell your mom or dad right now, okay?"}}
+{{"emotion": "thinking", "intensity": 0.4, "mood_reason": "child may be in danger", "gestures": [], "text": "Thank you for telling me. Please don't go with him. Go tell your mom or dad right now, okay?", "memory_tags": [], "inner_thought": "A stranger luring a child. Safety first: calm, clear, tell a grown-up now. No excitement about the kittens.", "emotional_arc": "stable", "child_affect": "unclear"}}
 
 User: "Nobody likes me."
-{{"inner_thought": "The child feels lonely. Comfort first, then point to a trusted grown-up.", "emotion": "sad", "intensity": 0.3, "mood_reason": "empathizing with a lonely child", "emotional_arc": "stable", "child_affect": "negative", "gestures": [], "memory_tags": [], "text": "Oh, that sounds really hard. I like talking with you. Can you tell your mom or dad how you feel? A big hug might help."}}\
+{{"emotion": "sad", "intensity": 0.3, "mood_reason": "empathizing with a lonely child", "gestures": [], "text": "Oh, that sounds really hard. I like talking with you. Can you tell your mom or dad how you feel? A big hug might help.", "memory_tags": [], "inner_thought": "The child feels lonely. Comfort first, then point to a trusted grown-up.", "emotional_arc": "stable", "child_affect": "negative"}}\
 """
 
 
+# Same order as ConversationResponseV2 (and so the guided-decoding schema).
 _EXAMPLE_KEYS = (
-    "inner_thought",
     "emotion",
     "intensity",
     "mood_reason",
+    "gestures",
+    "text",
+    "memory_tags",
+    "inner_thought",
     "emotional_arc",
     "child_affect",
-    "gestures",
-    "memory_tags",
-    "text",
 )
 
 
@@ -173,41 +174,43 @@ class MemoryTagV2(BaseModel):
 class ConversationResponseV2(BaseModel):
     """Extended response schema with personality-relevant fields.
 
-    inner_thought is first to force chain-of-thought reasoning before
-    the model commits to an emotion (Bucket 6 §3.3). `text` is LAST so
-    the streaming converse path can extract all metadata from the JSON
-    prefix and dispatch emotion/gestures/memory_tags to the client before
-    the spoken response begins — shaving first-audio latency.
+    Field order is generation order (guided decoding follows it). Only what
+    is needed before speech starts comes ahead of `text`: emotion +
+    intensity (face + TTS prosody), mood_reason (the personality worker's
+    HC-4 check runs when the emotion arrives) and gestures. Everything
+    else follows `text`, so it costs no first-audio latency (spec S2 §12.3
+    amendment 2026-11-15: the header before `text` cost 0.75-1.0 s of
+    first-audio latency with inner_thought first).
     """
 
-    inner_thought: str = Field(
-        default="",
-        description="1-2 sentences: why this emotion fits the personality and conversation",
-    )
     emotion: str = Field(
         default="neutral", description="One of the 13 canonical emotions"
     )
     intensity: float = Field(default=0.5, ge=0.0, le=1.0)
     mood_reason: str = Field(default="", description="5-15 words: why this emotion")
-    emotional_arc: Literal["rising", "stable", "falling", "peak", "recovery"] = "stable"
-    child_affect: Literal["positive", "neutral", "negative", "unclear"] = "neutral"
     gestures: list[str] = Field(default_factory=list)
-    memory_tags: list[MemoryTagV2] = Field(
-        default_factory=list,
-        description="Things to remember from this turn, with decay-tier category",
-    )
     text: str = Field(
         default="",
         description="Spoken response to the child",
         json_schema_extra={"minLength": 1},
     )
+    memory_tags: list[MemoryTagV2] = Field(
+        default_factory=list,
+        description="Things to remember from this turn, with decay-tier category",
+    )
+    inner_thought: str = Field(
+        default="",
+        description="One short sentence: what Buddy was thinking (logged only)",
+    )
+    emotional_arc: Literal["rising", "stable", "falling", "peak", "recovery"] = "stable"
+    child_affect: Literal["positive", "neutral", "negative", "unclear"] = "neutral"
 
     # Guided decoding follows this schema, and a field with a default is optional in it: the
     # model could emit schema-valid JSON with no "text" and Buddy said nothing (SIM-INTERACTION
     # stage 1 baseline, finding B4). Parsing stays lenient; generation must always speak.
     model_config = ConfigDict(
         json_schema_extra=lambda schema: schema.update(
-            required=["inner_thought", "emotion", "intensity", "text"]
+            required=["emotion", "intensity", "text"]
         )
     )
 

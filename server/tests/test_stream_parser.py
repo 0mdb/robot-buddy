@@ -260,3 +260,58 @@ def test_stable_across_chunk_sizes(chunk_size: int) -> None:
         "Did you know they had tiny arms?",
         "That's funny!",
     ]
+
+
+# ── Fields after `text` (spec S2 §12.3 amendment 2026-11-15) ──────
+
+
+def _new_order_json(text: str) -> str:
+    return json.dumps(
+        {
+            "emotion": "curious",
+            "intensity": 0.5,
+            "mood_reason": "a question",
+            "gestures": ["nod"],
+            "text": text,
+            "memory_tags": [{"tag": "likes_sky", "category": "topic"}],
+            "inner_thought": "a sky question",
+            "emotional_arc": "rising",
+            "child_affect": "positive",
+        }
+    )
+
+
+def test_trailing_fields_reach_final_response_not_prefix() -> None:
+    raw = _new_order_json("The sky is blue. Light bounces around!")
+    parser = ConversationStreamParser()
+    events = _run(parser, [raw[i : i + 7] for i in range(0, len(raw), 7)])
+
+    meta = events[0]
+    assert isinstance(meta, MetadataReady)
+    assert meta.response.emotion == "curious"
+    assert meta.response.gestures == ["nod"]
+    assert meta.response.memory_tags == []  # not generated yet when speech starts
+
+    final = parser.final_response()
+    assert final is not None
+    assert final.memory_tags == [{"tag": "likes_sky", "category": "topic"}]
+    assert final.text == "The sky is blue. Light bounces around!"
+    assert [e.text for e in events[1:]] == ["The sky is blue.", "Light bounces around!"]
+
+
+def test_done_as_soon_as_text_closes() -> None:
+    raw = _new_order_json("Hi there.")
+    cut = raw.index('"memory_tags"')
+    parser = ConversationStreamParser()
+    list(parser.feed(raw[:cut]))
+    assert parser.done  # trailing fields still to come
+
+
+def test_final_response_falls_back_when_stream_is_cut() -> None:
+    raw = _new_order_json("Hi there.")
+    parser = ConversationStreamParser()
+    _run(parser, [raw[: raw.index('"inner_thought"')]])
+    final = parser.final_response()
+    assert final is not None
+    assert final.emotion == "curious"
+    assert final.text == "Hi there."

@@ -1044,6 +1044,17 @@ class ConversationResponseV2(BaseModel):
 
 **Critical**: `inner_thought` is the first field. This forces the model to reason about its emotion before committing to a selection — structured chain-of-thought. [Inference — Bucket 6 §3.3]
 
+> **Amendment (2026-11-15, Ben): field order is now `emotion, intensity, mood_reason, gestures,
+> text, memory_tags, inner_thought, emotional_arc, child_affect`.** The streaming converse path
+> starts TTS when `text` opens, so every token before it is first-audio latency. Measured on the
+> 3090 Ti (gemma-4-E4B W4A16, ~120 tok/s decode, TTFT ~30 ms): the old header cost 750–1040 ms
+> before speech. Only what is needed before speech stays ahead of `text`: emotion + intensity
+> (face, TTS prosody), `mood_reason` (the personality worker's HC-4 check runs when the emotion
+> arrives) and `gestures`. `inner_thought` after `text` is no longer chain-of-thought; it is
+> kept for logs. Emotion choices were A/B'd against the old order on a 20-utterance kid corpus
+> before switching (results in `docs/TODO.md`, Conversation & Voice). Required fields:
+> `emotion`, `intensity`, `text`.
+
 Fields consumed by the personality worker: `emotion`, `intensity`, `mood_reason` (for validation). Fields consumed by the AI worker: `text`, `gestures`. Fields consumed by the memory system: `memory_tags`. Fields discarded after logging: `inner_thought`, `emotional_arc`, `child_affect`.
 
 ### 12.4 System Prompt V2
