@@ -111,7 +111,12 @@ async def converse(ws: WebSocket):
             history.turn_count,
         )
     else:
-        history = ConversationHistory(max_turns=20)
+        # The history's token budget follows the engine's context (VLLM_MAX_MODEL_LEN); it
+        # was a separate hard-coded 4096, so raising the engine's context changed nothing.
+        history = ConversationHistory(
+            max_turns=settings.conversation_max_turns,
+            max_context_tokens=settings.vllm_max_model_len,
+        )
         log.info(
             "Conversation WebSocket connected (robot_id=%s, new session)", robot_id
         )

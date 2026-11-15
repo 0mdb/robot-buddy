@@ -60,6 +60,8 @@ class Settings:
         os.environ.get("VLLM_GPU_MEMORY_UTILIZATION", "0.35")
     )
     vllm_max_model_len: int = int(os.environ.get("VLLM_MAX_MODEL_LEN", "4096"))
+    # Conversation turns kept per robot (older ones are summarised to fit the context).
+    conversation_max_turns: int = int(os.environ.get("CONVERSATION_MAX_TURNS", "20"))
     vllm_max_num_seqs: int = int(os.environ.get("VLLM_MAX_NUM_SEQS", "2"))
     vllm_max_num_batched_tokens: int = int(
         os.environ.get("VLLM_MAX_NUM_BATCHED_TOKENS", "256")
