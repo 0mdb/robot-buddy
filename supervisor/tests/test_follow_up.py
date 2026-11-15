@@ -237,3 +237,19 @@ async def test_follow_up_opens_without_a_chime() -> None:
     await asyncio.sleep(0.05)
     assert loop.world.session_id  # follow-up open
     assert _count(loop, "tts", TTS_CMD_PLAY_CHIME) == 1
+
+
+@pytest.mark.asyncio
+async def test_unintelligible_turn_listens_again_at_once() -> None:
+    from supervisor.messages.types import AI_CONVERSATION_ERROR
+
+    loop = _tick_loop()
+    loop._handle_face_events(_env(EAR_EVENT_WAKE_WORD))
+    first = loop.world.session_id
+    loop._handle_face_events(_env(EAR_EVENT_END_OF_UTTERANCE))
+    loop._handle_face_events(
+        _env(AI_CONVERSATION_ERROR, {"error": "Could not understand audio"})
+    )
+    assert loop.world.session_id == ""  # the dead turn ended now, not after 20 s
+    await asyncio.sleep(0.05)
+    assert loop.world.session_id and loop.world.session_id != first  # listening again

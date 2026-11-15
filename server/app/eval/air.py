@@ -761,12 +761,23 @@ async def run_talk(
         t = TurnResult(
             said=line.replace("|", " ").replace("  ", " "), follow_up=follow_up
         )
-        mark = robot.mark()
-        await play_utterance(voices, speaker, line, voice, pitch, pause_ms)
-        eou = await robot.wait(mark, "ear.event.end_of_utterance", 20)
-        # Transcription follows the end of utterance within a second; don't sit through
-        # every later timeout when nothing was heard (cost 3 min in one memory run).
-        tr = await robot.wait(mark, "ai.conversation.transcription", 10 if eou else 1)
+        for attempt in range(2):
+            mark = robot.mark()
+            await play_utterance(voices, speaker, line, voice, pitch, pause_ms)
+            eou = await robot.wait(mark, "ear.event.end_of_utterance", 20)
+            # Transcription follows the end of utterance within a second; don't sit
+            # through every later timeout when nothing was heard.
+            tr = await robot.wait(
+                mark, "ai.conversation.transcription", 10 if eou else 1
+            )
+            if tr or attempt:
+                break
+            # Buddy didn't catch it and listens again: say it again, as a child would.
+            again = await robot.wait(mark, "conv.session.started", 4.0)
+            if again is None:
+                break
+            t.failures.append("Buddy didn't catch it; repeated")
+            await asyncio.sleep(0.3)
         t.heard = (tr or {}).get("text", "")
         t.wer = wer(t.said, t.heard)
         if not tr:

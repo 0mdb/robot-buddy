@@ -838,9 +838,16 @@ class TickLoop:
             # No `done` follows a turn error, so a turn waiting on the server is
             # dead: end it now rather than waiting out the watchdog.
             if self._turn_watchdog_stage and self.world.session_id:
+                unheard = (
+                    "could not understand" in str(env.payload.get("error", "")).lower()
+                )
+                wake_turn = self.world.conversation_trigger == "wake_word"
                 self._on_turn_watchdog_expired(
                     self._turn_watchdog_stage, reason=f"ai error ({env.type})"
                 )
+                if unheard and wake_turn:
+                    # Nothing intelligible: listen again, no wake word needed.
+                    self._schedule_follow_up()
 
         # Guardrail events — session/daily time limits (PE spec S2 §9.3)
         elif env.type == PERSONALITY_EVENT_GUARDRAIL_TRIGGERED:

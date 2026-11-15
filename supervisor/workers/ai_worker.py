@@ -604,7 +604,15 @@ class AIWorker(BaseWorker):
                     self._set_state("listening", "server_listening")
 
                 elif msg_type == "error":
-                    self._set_state("error", msg.get("message", "server_error"))
+                    message = str(msg.get("message", "server_error"))
+                    self._set_state("error", message)
+                    # The tick loop must hear it: a turn the server gave up on (e.g.
+                    # "Could not understand audio") otherwise sat until the 20 s turn
+                    # watchdog, in silence (air rig, 2026-11-15).
+                    self.send(
+                        AI_CONVERSATION_ERROR,
+                        {"error": message, "session_id": self._session_id},
+                    )
 
         except Exception as e:
             log.warning("ws read error: %s", e)
