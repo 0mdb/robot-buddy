@@ -887,8 +887,12 @@ class PersonalityWorker(BaseWorker):
             log.info("memory: stored/reinforced %d tags", stored)
 
     def _handle_reset_memory(self, payload: dict) -> None:
-        """Parent 'Forget Everything' command (PE spec S2 §8.5)."""
+        """Parent 'Forget Everything' command (PE spec S2 §8.5); with ``tags``, only those."""
         if self._memory is None:
+            return
+        tags = payload.get("tags")
+        if isinstance(tags, list):
+            self._memory.forget([str(t) for t in tags])
             return
         count = self._memory.entry_count
         self._memory.reset()

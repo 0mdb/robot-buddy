@@ -277,6 +277,15 @@ class MemoryStore:
         except Exception as e:
             log.warning("failed to delete memory file: %s", e)
 
+    def forget(self, tags: list[str]) -> int:
+        """Drop specific entries (a parent removing one memory; the eval rig cleaning up
+        after itself). Returns how many were removed."""
+        removed = [t for t in tags if self._entries.pop(t, None) is not None]
+        if removed:
+            self.save()
+            log.info("memory: forgot %d entries: %s", len(removed), removed)
+        return len(removed)
+
     def increment_session(self, conversation_s: float = 0.0) -> None:
         """Track session count and total conversation time."""
         self._session_count += 1

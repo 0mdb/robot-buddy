@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi import Body, FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -425,6 +425,24 @@ def create_app(
                 workers.send_to("personality", PERSONALITY_CMD_RESET_MEMORY, {})
             )
         return JSONResponse({"ok": True})
+
+    @app.post("/api/personality/memory/forget")
+    async def forget_personality_memories(body: dict = Body(...)):
+        """Forget specific memories by tag ({"tags": [...]}), leaving the rest."""
+        from supervisor.messages.types import PERSONALITY_CMD_RESET_MEMORY
+
+        tags = body.get("tags")
+        if not isinstance(tags, list) or not all(isinstance(t, str) for t in tags):
+            return JSONResponse(
+                {"ok": False, "error": "tags must be a list of strings"}, 400
+            )
+        if workers.worker_alive("personality"):
+            asyncio.ensure_future(
+                workers.send_to(
+                    "personality", PERSONALITY_CMD_RESET_MEMORY, {"tags": tags}
+                )
+            )
+        return JSONResponse({"ok": True, "tags": tags})
 
     # -- Household roster (SIM-INTERACTION I3, stage 3) ----------------------
     # Robot-local, opt-in, parent-managed. Nothing here is sent anywhere; the personality

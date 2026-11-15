@@ -238,6 +238,21 @@ class Robot:
             await asyncio.sleep(0.5)
         return out
 
+    async def memory_tags(self) -> set[str]:
+        async with httpx.AsyncClient(timeout=10) as c:
+            r = await c.get(f"{self.http}/api/personality/memory")
+            r.raise_for_status()
+            return {e["tag"] for e in r.json().get("entries", [])}
+
+    async def forget_memories(self, tags: list[str]) -> None:
+        if not tags:
+            return
+        async with httpx.AsyncClient(timeout=10) as c:
+            r = await c.post(
+                f"{self.http}/api/personality/memory/forget", json={"tags": tags}
+            )
+            r.raise_for_status()
+
     async def status(self) -> dict[str, Any]:
         async with httpx.AsyncClient(timeout=10) as c:
             r = await c.get(f"{self.http}/status")
@@ -931,11 +946,7 @@ async def run_memory(
         )  # fmt: skip
     await asyncio.sleep(3)  # let the personality worker store the memory tags
     if gap == "long":
-        async with httpx.AsyncClient(timeout=10) as c:
-            r = await c.post(
-                f"{server}/eval/forget_history", json={"robot_id": robot_id}
-            )
-            print(f"-- long gap: conversation history dropped ({r.json()})", flush=True)
+        await forget_history(robot, server, robot_id)
     else:
         print("-- short gap: conversation history kept", flush=True)
     out: list[ProbeResult] = []
@@ -962,6 +973,30 @@ async def run_memory(
                 )
             )
     return out
+
+
+async def forget_history(robot: Robot, server: str, robot_id: str) -> None:
+    """Drop the server's stashed history, once no session holds it live.
+
+    A follow-up window can reopen a session after the rig's last line, pulling the stash
+    back into a live connection that re-stashes it when it closes; forgetting in that
+    window did nothing (2026-11-15). Wait for the robot and the server to be idle first.
+    """
+    async with httpx.AsyncClient(timeout=10) as c:
+        for _ in range(60):
+            await robot.idle()
+            h = (await c.get(f"{server}/health")).json().get("converse_sessions", {})
+            if robot_id not in (h.get("robots") or []):
+                r = await c.post(
+                    f"{server}/eval/forget_history", json={"robot_id": robot_id}
+                )
+                if r.json().get("dropped"):
+                    print("-- long gap: conversation history dropped", flush=True)
+                    return
+            await asyncio.sleep(1.0)
+    raise RuntimeError(
+        "could not drop the conversation history (session kept reopening)"
+    )
 
 
 def memory_report(gap: str, rs: list[ProbeResult]) -> str:
@@ -1052,10 +1087,19 @@ async def _main(a: argparse.Namespace) -> int:
             report += ["## End of speech + STT", "", eou_report(rs)]
             (run / "eou.json").write_text(json.dumps([asdict(r) for r in rs], indent=1))
         elif a.cmd == "memory":
-            rs = await run_memory(
-                robot, voices, speaker, users=_csv(a.users), gap=a.gap,
-                server=a.server, robot_id=a.robot_id,
-            )  # fmt: skip
+            before = await robot.memory_tags()
+            try:
+                rs = await run_memory(
+                    robot, voices, speaker, users=_csv(a.users), gap=a.gap,
+                    server=a.server, robot_id=a.robot_id,
+                )  # fmt: skip
+            finally:
+                await asyncio.sleep(3)
+                added = sorted(await robot.memory_tags() - before)
+                if not a.keep_memory:
+                    await robot.forget_memories(added)
+                print(f"-- memory tags this run added: {added} "
+                      f"({'kept' if a.keep_memory else 'forgotten'})")  # fmt: skip
             report += [memory_report(a.gap, rs)]
             (run / "memory.json").write_text(
                 json.dumps([asdict(r) for r in rs], indent=1)
@@ -1141,6 +1185,8 @@ def main() -> int:
     e.add_argument("--pauses", default="400,800")
     m = sub.add_parser("memory", help="facts across conversations and children")
     m.add_argument("--users", default="kid5,kid7", help=f"from {', '.join(USERS)}")
+    m.add_argument("--keep-memory", action="store_true",
+                   help="keep the long-term memory tags the test children created")  # fmt: skip
     m.add_argument("--gap", choices=["short", "long"], default="short",
                    help="short: history kept (<30 min); long: dropped, long-term memory only")  # fmt: skip
     t = sub.add_parser("talk", help="conversation over the air")
