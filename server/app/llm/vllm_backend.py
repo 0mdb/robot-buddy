@@ -507,20 +507,45 @@ class VLLMBackend(PlannerLLMBackend):
             )
 
             last_len = 0
+            t0 = time.monotonic()
+            t_first: float | None = None
+            t_text: float | None = None  # when the spoken "text" field opens
+            prompt_tokens = 0
+            out_tokens = 0
             try:
                 async with asyncio.timeout(settings.vllm_timeout_s):
                     async for out in agen:
                         outputs = getattr(out, "outputs", None) or []
                         if not outputs:
                             continue
+                        if t_first is None:
+                            t_first = time.monotonic()
+                            prompt_tokens = len(
+                                getattr(out, "prompt_token_ids", None) or []
+                            )
+                        out_tokens = len(getattr(outputs[0], "token_ids", None) or [])
                         text = getattr(outputs[0], "text", "") or ""
                         if not isinstance(text, str):
                             continue
+                        if t_text is None and '"text"' in text:
+                            t_text = time.monotonic()
                         if len(text) > last_len:
                             yield text[last_len:]
                             last_len = len(text)
             except asyncio.TimeoutError as exc:
                 raise LLMTimeoutError("llm_timeout") from exc
+            t_end = time.monotonic()
+            if t_first is not None:
+                decode_s = max(t_end - t_first, 1e-3)
+                log.info(
+                    "llm stream: prompt=%d tok ttft=%dms text_field=%dms out=%d tok "
+                    "(%.0f tok/s)",
+                    prompt_tokens,
+                    (t_first - t0) * 1000,
+                    ((t_text or t_end) - t0) * 1000,
+                    out_tokens,
+                    out_tokens / decode_s,
+                )
         finally:
             await self._release_generation_slot()
 

@@ -187,6 +187,66 @@ def xvf_settings_from_registry(reg: "ParamRegistry") -> dict[str, float]:
     return out
 
 
+# Wake word + end-of-utterance tuning, applied live to the ear worker.
+# (name, type, min, max, step, default, doc). Defaults are the 2026-04-18
+# calibration: a stricter VAD gate stops end-of-utterance from ever firing.
+EAR_TUNING_PARAMS: list[tuple[str, str, float, float, float, float, str]] = [
+    (
+        "ear.wakeword_threshold",
+        "float",
+        0.1,
+        0.95,
+        0.01,
+        0.5,
+        "Wake word score that starts a conversation",
+    ),
+    (
+        "ear.vad_silence_ms",
+        "int",
+        250,
+        2000,
+        50,
+        800,
+        "Silence after speech that ends the utterance (lower = snappier, "
+        "but cuts off kids who pause)",
+    ),
+    (
+        "ear.vad_min_speech_ms",
+        "int",
+        50,
+        1000,
+        10,
+        150,
+        "Speech needed before a silence can end the utterance",
+    ),
+    (
+        "ear.vad_speech_prob",
+        "float",
+        0.05,
+        0.9,
+        0.05,
+        0.3,
+        "Silero VAD probability counted as speech",
+    ),
+]
+
+# Param name -> key in the ear worker's config payload.
+EAR_TUNING_KEYS: dict[str, str] = {
+    "ear.wakeword_threshold": "wakeword_threshold",
+    "ear.vad_silence_ms": "vad_silence_ms",
+    "ear.vad_min_speech_ms": "vad_min_speech_ms",
+    "ear.vad_speech_prob": "vad_speech_prob_threshold",
+}
+
+
+def ear_tuning_from_registry(reg: "ParamRegistry") -> dict[str, float]:
+    """Ear worker config keys for every wake/VAD tuning param."""
+    return {
+        EAR_TUNING_KEYS[name]: float(reg.get_value(name, default))  # type: ignore[arg-type]
+        for name, _t, _lo, _hi, _s, default, _d in EAR_TUNING_PARAMS
+    }
+
+
 def create_default_registry() -> ParamRegistry:
     """Create registry pre-populated with known parameters."""
     reg = ParamRegistry()
@@ -1250,6 +1310,19 @@ def create_default_registry() -> ParamRegistry:
             "(Flex: 0 = processed ASR, 1 = second processed, 2-5 raw mics)",
         )
     )
+    for name, typ, lo, hi, step, default, doc in EAR_TUNING_PARAMS:
+        reg.register(
+            ParamDef(
+                name=name,
+                type=typ,
+                min=lo,
+                max=hi,
+                step=step,
+                default=default,
+                owner="supervisor",
+                doc=doc,
+            )
+        )
 
     # -- TTS parameters --
     reg.register(

@@ -425,7 +425,10 @@ async def async_main(args: argparse.Namespace) -> None:
             )
 
         if audio_enabled:
-            from supervisor.api.param_registry import xvf_settings_from_registry
+            from supervisor.api.param_registry import (
+                ear_tuning_from_registry,
+                xvf_settings_from_registry,
+            )
 
             mic_channel = int(registry.get_value("ear.mic_channel", -1))
             ear_init = {
@@ -443,13 +446,9 @@ async def async_main(args: argparse.Namespace) -> None:
                 },
                 "mic_socket_path": workers.mic_socket_path,
                 "wakeword_model_path": args.wakeword_model,
-                "wakeword_threshold": 0.5,
-                # EoU tuning: Silero v5 on this mic often peaks above 0.5
-                # only briefly during short phrases, so the stricter
-                # defaults block end-of-utterance from firing at all.
-                "vad_silence_ms": 800,
-                "vad_min_speech_ms": 150,
-                "vad_speech_prob_threshold": 0.3,
+                # wakeword_threshold + vad_* from the ear.* tuning params
+                # (dashboard-tunable, persisted; see EAR_TUNING_PARAMS).
+                **ear_tuning_from_registry(registry),
             }
             await workers.send_to("ear", "ear.config.init", ear_init)
 

@@ -37,6 +37,7 @@ from supervisor.messages.types import (
     EAR_CMD_RESUME_VAD,
     EAR_CMD_SET_MIC_CHANNEL,
     EAR_CMD_SET_THRESHOLD,
+    EAR_CMD_SET_TUNING,
     EAR_CMD_START_LISTENING,
     EAR_CMD_STOP_LISTENING,
     EAR_CMD_STREAM_SCORES,
@@ -400,6 +401,31 @@ class EarWorker(BaseWorker):
             val = float(p.get("threshold", self._wakeword_threshold))
             self._wakeword_threshold = max(0.0, min(1.0, val))
             log.info("wake word threshold: %.3f", self._wakeword_threshold)
+
+        elif t == EAR_CMD_SET_TUNING:
+            self._apply_tuning(p)
+
+    def _apply_tuning(self, p: dict) -> None:
+        """Live wake/VAD tuning from the ear.* params (any subset of keys)."""
+        if "wakeword_threshold" in p:
+            self._wakeword_threshold = max(
+                0.0, min(1.0, float(p["wakeword_threshold"]))
+            )
+        if "vad_silence_ms" in p:
+            self._vad_silence_ms = max(100, int(p["vad_silence_ms"]))
+        if "vad_min_speech_ms" in p:
+            self._vad_min_speech_ms = max(0, int(p["vad_min_speech_ms"]))
+        if "vad_speech_prob_threshold" in p:
+            self._vad_speech_prob_threshold = max(
+                0.01, min(0.99, float(p["vad_speech_prob_threshold"]))
+            )
+        log.info(
+            "tuning: wake>=%.2f vad prob>%.2f min_speech=%dms silence=%dms",
+            self._wakeword_threshold,
+            self._vad_speech_prob_threshold,
+            self._vad_min_speech_ms,
+            self._vad_silence_ms,
+        )
 
     def _start_listening(self) -> None:
         """Begin forwarding mic audio and running VAD."""
