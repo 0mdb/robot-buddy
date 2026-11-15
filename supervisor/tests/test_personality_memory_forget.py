@@ -27,3 +27,24 @@ def test_tag_summary_puts_recent_first(tmp_path: Path) -> None:
         time.sleep(0.01)
     store.add_or_reinforce("old_one", "topic")  # reinforced last
     assert store.tag_summary()[:2] == ["old_one", "cat_pepper"]
+
+
+def test_same_fact_reinforces_instead_of_adding(tmp_path: Path) -> None:
+    store = MemoryStore(str(tmp_path / "mem.json"), consent=True)
+    store.add_or_reinforce("child_has_cat_pepper", "topic")
+    for dup in ("animal_pepper_cat", "pet_pepper_cat", "pepper_cat"):
+        assert store.add_or_reinforce(dup, "topic")
+    assert store.tag_summary() == ["child_has_cat_pepper"]
+    assert store._entries["child_has_cat_pepper"].reinforcement_count == 4
+    # One shared word is not the same fact.
+    store.add_or_reinforce("likes_cats", "topic")
+    assert set(store.tag_summary()) == {"child_has_cat_pepper", "likes_cats"}
+
+
+def test_content_free_tags_are_dropped(tmp_path: Path) -> None:
+    store = MemoryStore(str(tmp_path / "mem.json"), consent=True)
+    for junk in ("greeting_response", "child_acknowledgement", "friendly_greeting",
+                 "child_initiating_contact", "interested_in_favorites"):  # fmt: skip
+        assert not store.add_or_reinforce(junk, "topic")
+    assert store.add_or_reinforce("likes_dinosaurs", "topic")
+    assert store.tag_summary() == ["likes_dinosaurs"]

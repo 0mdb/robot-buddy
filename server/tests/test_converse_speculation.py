@@ -166,3 +166,18 @@ async def test_gated_ws_keeps_order_across_commit() -> None:
 
     await asyncio.gather(gate.commit(), producer())
     assert sent == list(range(6))
+
+
+@pytest.mark.parametrize(
+    ("heard", "kept"),
+    [
+        ("Alexa, what's my dog called?", "what's my dog called?"),
+        ("alexa what's my dog called", "what's my dog called"),
+        ("Hey buddy, can we play?", "can we play?"),
+        ("Alexa.", ""),
+        ("I like Alexa's voice", "I like Alexa's voice"),
+        ("Why is the sky blue?", "Why is the sky blue?"),
+    ],
+)
+def test_strip_wake_word(heard: str, kept: str) -> None:
+    assert conv.strip_wake_word(heard) == kept

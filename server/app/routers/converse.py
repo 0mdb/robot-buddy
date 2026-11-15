@@ -28,6 +28,7 @@ import base64
 import contextlib
 import dataclasses
 import logging
+import re
 import time
 import uuid
 
@@ -336,7 +337,7 @@ async def _audio_turn(
 ) -> None:
     """One spoken turn: transcribe, reply, then listen again."""
     t_stt = time.monotonic()
-    user_text = await _transcribe_audio(pcm)
+    user_text = strip_wake_word(await _transcribe_audio(pcm))
     stt_latency_ms = round((time.monotonic() - t_stt) * 1000)
     if not user_text.strip():
         await ws.send_json({"type": "error", "message": "Could not understand audio"})
@@ -362,6 +363,17 @@ async def _audio_turn(
         turn_id=turn_id,
     )
     await ws.send_json({"type": "listening"})
+
+
+# The ear's pre-roll keeps the tail of the wake word, so the first transcript of a session
+# often starts with it ("Alexa, what's my dog called?"). Not part of what the child asked.
+_WAKE_PREFIX = re.compile(
+    r"^\s*(?:alexa|hey,?\s+buddy|hey,?\s+jarvis)\b[\s,.!?]*", re.IGNORECASE
+)
+
+
+def strip_wake_word(text: str) -> str:
+    return _WAKE_PREFIX.sub("", text, count=1)
 
 
 async def _transcribe_audio(pcm_audio: bytes) -> str:

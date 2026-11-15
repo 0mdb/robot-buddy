@@ -110,6 +110,13 @@ RESPONSE FORMAT
   "child_affect": "<positive|neutral|negative|unclear>"
 }}
 
+WHAT TO REMEMBER (memory_tags)
+- Only lasting facts about the child: their name, family, pets and their names, likes, \
+dislikes, things they are learning, routines. One tag per fact.
+- Never tag the conversation itself (greetings, saying hello, asking a question) or your own \
+replies. Most turns need no tag: use [].
+- If the fact is already in "Known about this child", reuse that exact tag.
+
 MEMORY TAG CATEGORIES
 - name: child's name (permanent, max 1). Example: {{"tag": "child_name_emma", "category": "name"}}
 - ritual: recurring interaction patterns (90-day memory). Example: {{"tag": "greeting_fist_bump", "category": "ritual"}}

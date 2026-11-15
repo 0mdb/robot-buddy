@@ -115,6 +115,35 @@ class MemoryEntry:
 # ── Memory Store (PE spec S2 §8.4) ──────────────────────────────────
 
 
+# ── Tag hygiene ─────────────────────────────────────────────────────
+# The LLM coins a new tag for every phrasing of a fact (animal_pepper_cat, pet_pepper_cat,
+# child_has_cat_pepper) and tags the conversation itself (greeting_response,
+# child_acknowledgement): the air rig's memory test, 2026-11-15. Compare tags by their
+# content words.
+_JUNK_WORDS = frozenset(
+    {
+        "greeting", "hello", "hi", "bye", "goodbye", "response", "reply", "acknowledgement",
+        "acknowledgment", "friendly", "contact", "checkin", "check", "initiating",
+        "initiated", "conversation", "chat", "talking", "interaction", "back",
+    }
+)  # fmt: skip
+_GENERIC_WORDS = frozenset(
+    {
+        "child", "kid", "has", "have", "had", "is", "the", "a", "an", "of", "my", "named",
+        "called", "like", "likes", "love", "loves", "favorite", "favourite", "interested",
+        "in", "about", "topic", "animal", "pet", "new", "recent", "mentioned", "and",
+    }
+)  # fmt: skip
+
+
+def _content_words(tag: str) -> frozenset[str]:
+    words = [w for w in tag.lower().replace("-", "_").split("_") if w]
+    stems = {w[:-1] if len(w) > 3 and w.endswith("s") else w for w in words}
+    return frozenset(
+        w for w in stems if w not in _JUNK_WORDS and w not in _GENERIC_WORDS
+    )
+
+
 class MemoryStore:
     """Local-only memory store with decay tiers, eviction, and consent gate.
 
@@ -210,6 +239,16 @@ class MemoryStore:
 
         now = time.time()
 
+        content = _content_words(tag)
+        if not content:
+            log.info("memory: dropped content-free tag %r", tag)
+            return False
+        # The same fact under another name: reinforce the tag already stored.
+        same = self._same_fact(content)
+        if same is not None and same != tag:
+            log.info("memory: %r is %r again", tag, same)
+            tag = same
+
         # Reinforce existing entry
         if tag in self._entries:
             entry = self._entries[tag]
@@ -253,6 +292,19 @@ class MemoryStore:
         )
         self._entries[tag] = entry
         return True
+
+    def _same_fact(self, content: frozenset[str]) -> str | None:
+        """An existing tag with the same content words (or a superset/subset of two or
+        more), i.e. the same fact phrased differently. Single-word overlaps don't count:
+        'likes_cats' must not swallow 'cat_pepper'."""
+        for tag in self._entries:
+            other = _content_words(tag)
+            if other == content:
+                return tag
+            small = min(other, content, key=len)
+            if len(small) >= 2 and (other <= content or content <= other):
+                return tag
+        return None
 
     def get_active(self, threshold: float = 0.05) -> list[MemoryEntry]:
         """Return all entries with current_strength above threshold."""
