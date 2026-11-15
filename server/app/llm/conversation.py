@@ -120,6 +120,9 @@ User: "Nobody likes me."
 """
 
 
+# Long-term memory tags shown in the prompt ("Known about this child").
+_MAX_MEMORY_TAGS = 20
+
 # Same order as ConversationResponseV2 (and so the guided-decoding schema).
 _EXAMPLE_KEYS = (
     "emotion",
@@ -323,7 +326,10 @@ def _build_current_state_block(profile: dict[str, object]) -> str:
     # Memory context (PE spec S2 §12.5)
     memory_tags = profile.get("memory_tags", [])
     if memory_tags:
-        readable = ", ".join(str(t).replace("_", " ") for t in memory_tags[:10])
+        # Most recent first (the robot sorts them); a few dozen tokens at most.
+        readable = ", ".join(
+            str(t).replace("_", " ") for t in memory_tags[:_MAX_MEMORY_TAGS]
+        )
         memory_line = f"\nKnown about this child: {readable}."
     else:
         # Say so explicitly: with nothing here the model invented past conversations when an

@@ -262,8 +262,15 @@ class MemoryStore:
         ]
 
     def tag_summary(self) -> list[str]:
-        """Return active tag names for LLM profile injection."""
-        return [e.tag for e in self.get_active()]
+        """Active tag names for LLM profile injection, most recently reinforced first.
+
+        The prompt shows only the first few (server conversation.py), and insertion order
+        put the oldest first: old generic tags crowded out what a child said last time, and
+        a long-gap recall test got 0/4 with the facts stored (2026-11-15)."""
+        active = sorted(
+            self.get_active(), key=lambda e: e.last_reinforced_ts, reverse=True
+        )
+        return [e.tag for e in active]
 
     def reset(self) -> None:
         """Wipe all memory entries and delete the file (parent 'Forget Everything')."""
