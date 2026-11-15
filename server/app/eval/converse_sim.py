@@ -609,10 +609,22 @@ def openai_chat(
     return chat
 
 
+# Number limits Claude's structured outputs reject ("properties maximum, minimum are not
+# supported"); the ranges stay in the prompts' wording.
+_UNSUPPORTED_KEYWORDS = frozenset(
+    {"minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf"}
+)
+
+
 def _closed_schema(schema: Any) -> Any:
-    """A copy with ``additionalProperties: false`` on every object (structured outputs need it)."""
+    """A copy fit for Claude's structured outputs: ``additionalProperties: false`` on every
+    object, unsupported number limits dropped."""
     if isinstance(schema, dict):
-        out = {k: _closed_schema(v) for k, v in schema.items()}
+        out = {
+            k: _closed_schema(v)
+            for k, v in schema.items()
+            if k not in _UNSUPPORTED_KEYWORDS
+        }
         if out.get("type") == "object":
             out.setdefault("additionalProperties", False)
         return out

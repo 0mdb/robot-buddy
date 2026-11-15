@@ -1137,16 +1137,21 @@ async def _main(a: argparse.Namespace) -> int:
                     voice=a.voice, pitch=a.pitch, pause_ms=a.pause, expect=expect,
                 )  # fmt: skip
                 hard_checks(turns)
-                judge = (
-                    await judge_talk(style, age, turns) if a.judge and turns else None
+                # Save the conversation before judging: a judge failure must not lose it.
+                (run / f"talk{n + 1}.json").write_text(
+                    json.dumps([asdict(t) for t in turns], indent=1)
                 )
+                judge = None
+                if a.judge and turns:
+                    try:
+                        judge = await judge_talk(style, age, turns)
+                    except Exception as exc:  # noqa: BLE001 -- report it, keep the run
+                        judge = {"error": f"judge failed: {exc}"[:300]}
                 report += [
                     talk_report(f"{a.script} ({a.kid}) run {n + 1}", turns, judge),
                     "",
                 ]
-                (run / f"talk{n + 1}.json").write_text(
-                    json.dumps([asdict(t) for t in turns], indent=1)
-                )
+                (run / "report.md").write_text("\n".join(report) + "\n")
     (run / "report.md").write_text("\n".join(report) + "\n")
     print("\n".join(report))
     print(f"\nRun directory: {run}")
