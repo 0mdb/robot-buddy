@@ -937,6 +937,7 @@ async def run_memory(
     server: str,
     robot_id: str,
 ) -> list[ProbeResult]:
+    await forget_history(robot, server, robot_id, require=False)  # a clean slate
     for u in users:  # conversation 1: each child tells Buddy about themselves
         cfg = USERS[u]
         print(f"-- {u}: telling", flush=True)
@@ -975,7 +976,9 @@ async def run_memory(
     return out
 
 
-async def forget_history(robot: Robot, server: str, robot_id: str) -> None:
+async def forget_history(
+    robot: Robot, server: str, robot_id: str, *, require: bool = True
+) -> None:
     """Drop the server's stashed history, once no session holds it live.
 
     A follow-up window can reopen a session after the rig's last line, pulling the stash
@@ -990,8 +993,8 @@ async def forget_history(robot: Robot, server: str, robot_id: str) -> None:
                 r = await c.post(
                     f"{server}/eval/forget_history", json={"robot_id": robot_id}
                 )
-                if r.json().get("dropped"):
-                    print("-- long gap: conversation history dropped", flush=True)
+                if r.json().get("dropped") or not require:
+                    print("-- conversation history dropped", flush=True)
                     return
             await asyncio.sleep(1.0)
     raise RuntimeError(

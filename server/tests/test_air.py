@@ -204,7 +204,13 @@ def test_closed_schema_leaves_input_alone() -> None:
 
 
 @pytest.mark.asyncio
-async def test_memory_scores_recall_and_mix_ups() -> None:
+async def test_memory_scores_recall_and_mix_ups(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def no_server(*_a: Any, **_k: Any) -> None:
+        return None
+
+    monkeypatch.setattr(air, "forget_history", no_server)
     # kid5 tells 3 lines, kid7 tells 3, then kid5 asks 2, kid7 asks 2.
     replies = ["ok"] * 6 + [
         "Your cat is Pepper!",
