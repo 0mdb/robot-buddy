@@ -69,3 +69,20 @@ async def select_tool(body: SelectToolRequest, request: Request) -> JSONResponse
 
     parsed = parse_tool_selection(raw)
     return JSONResponse({"raw": raw, "parsed": parsed})
+
+
+@router.post("/eval/stt")
+async def eval_stt(request: Request) -> JSONResponse:
+    """Transcribe raw 16 kHz mono int16 PCM (the request body) with the live Whisper model.
+
+    For the over-the-air rig (app.eval.air) to check that a synthetic clip says what it
+    should before it is played to the robot; no LLM turn, no history.
+    """
+    from app.routers.converse import _transcribe_audio
+
+    pcm = await request.body()
+    if not pcm or len(pcm) > 16000 * 2 * 30:
+        return JSONResponse(
+            {"error": "body must be 1 B - 30 s of 16 kHz int16 PCM"}, 400
+        )
+    return JSONResponse({"text": await _transcribe_audio(pcm)})

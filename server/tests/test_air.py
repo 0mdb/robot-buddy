@@ -17,6 +17,10 @@ def test_wer() -> None:
     assert air.wer("why is the sky blue", "Why is the sky blue?") == 0.0
     assert air.wer("why is the sky blue", "why is the") == pytest.approx(0.4)
     assert air.wer("", "") == 0.0
+    assert (
+        air.wer("What's your favourite colour?", "What's your favorite color?") == 0.0
+    )
+    assert air.wer("twenty questions", "20 questions") == 0.0
 
 
 def test_shape_gain_and_pitch() -> None:

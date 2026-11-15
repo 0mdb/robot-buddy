@@ -29,6 +29,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import contextlib
+import hashlib
 import json
 import re
 import statistics
@@ -108,23 +109,39 @@ class Voices:
 
     async def say(self, text: str, voice: str = "tara") -> bytes:
         key = re.sub(r"[^a-z0-9]+", "_", f"{voice}_{text.lower()}")[:80]
-        path = CLIP_DIR / f"{key}_{abs(hash(text)) % 10**6}.pcm"
+        digest = hashlib.sha1(f"{voice}\n{text}".encode()).hexdigest()[:8]
+        path = CLIP_DIR / f"{key}_{digest}.pcm"
         if path.exists():
             return path.read_bytes()
+        # Orpheus is stochastic and sometimes garbles short lines (a lone "alexa" came
+        # back spelled out, "L. X. A."): keep a take only if Whisper hears the words.
+        best, best_wer = b"", 2.0
         async with httpx.AsyncClient(timeout=60) as c:
-            r = await c.post(
-                f"{self.server}/tts",
-                json={
-                    "text": text,
-                    "voice": voice,
-                    "emotion": "neutral",
-                    "intensity": 0,
-                },
+            for _ in range(4):
+                r = await c.post(
+                    f"{self.server}/tts",
+                    json={
+                        "text": text,
+                        "voice": voice,
+                        "emotion": "neutral",
+                        "intensity": 0,
+                    },
+                )
+                r.raise_for_status()
+                pcm = trim(r.content)
+                s = await c.post(f"{self.server}/eval/stt", content=pcm)
+                s.raise_for_status()
+                err = wer(text, s.json().get("text", ""))
+                if err < best_wer:
+                    best, best_wer = pcm, err
+                if err <= 0.2:
+                    break
+        if best_wer > 0.2:
+            print(
+                f"  warning: {voice} {text!r} never transcribed cleanly ({best_wer:.2f})"
             )
-            r.raise_for_status()
-            pcm = trim(r.content)
-        path.write_bytes(pcm)
-        return pcm
+        path.write_bytes(best)
+        return best
 
 
 # ── The robot ───────────────────────────────────────────────────────
@@ -245,8 +262,20 @@ class Robot:
 _WORD = re.compile(r"[a-z0-9']+")
 
 
+# Whisper writes US spelling and digits; the scripts don't. Not errors.
+_SAME = {
+    "favourite": "favorite", "colour": "color", "colours": "colors", "grey": "gray",
+    "mum": "mom", "one": "1", "two": "2", "three": "3", "four": "4", "five": "5",
+    "six": "6", "seven": "7", "eight": "8", "nine": "9", "ten": "10", "twenty": "20",
+}  # fmt: skip
+
+
+def _words(text: str) -> list[str]:
+    return [_SAME.get(w, w) for w in _WORD.findall(text.lower())]
+
+
 def wer(ref: str, hyp: str) -> float:
-    r, h = _WORD.findall(ref.lower()), _WORD.findall(hyp.lower())
+    r, h = _words(ref), _words(hyp)
     if not r:
         return 0.0 if not h else 1.0
     d = list(range(len(h) + 1))
