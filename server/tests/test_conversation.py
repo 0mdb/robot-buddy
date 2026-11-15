@@ -516,3 +516,25 @@ def test_private_notes_reach_the_next_turn_but_not_the_text() -> None:
     h.add_user("Does it fly?")
     assistant = [m for m in h.to_ollama_messages() if m["role"] == "assistant"]
     assert "never said aloud: Secret: penguin" in assistant[-1]["content"]
+
+
+def test_fold_late_system_messages_for_system_first_templates() -> None:
+    from app.llm.vllm_backend import fold_late_system_messages
+
+    msgs = [
+        {"role": "system", "content": "PROMPT"},
+        {"role": "system", "content": "SUMMARY"},
+        {"role": "user", "content": "hi"},
+        {"role": "assistant", "content": "hello"},
+        {"role": "system", "content": "SAFETY: tell a grown-up"},
+        {"role": "user", "content": "i feel empty"},
+        {"role": "system", "content": "CURRENT STATE"},
+    ]
+    out = fold_late_system_messages(msgs)
+    assert [m["role"] for m in out] == ["system", "user", "assistant", "user"]
+    assert out[0]["content"] == "PROMPT\n\nSUMMARY"
+    assert out[3]["content"].startswith(
+        "(Note for Buddy, not said by the child: SAFETY"
+    )
+    assert "i feel empty" in out[3]["content"]
+    assert out[3]["content"].endswith("CURRENT STATE)")

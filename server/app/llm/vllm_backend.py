@@ -75,6 +75,55 @@ def _extract_json_object(text: str) -> str:
         return candidate
 
 
+_NOTE_PREFIX = "(Note for Buddy, not said by the child: "
+
+
+def fold_late_system_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """For templates that allow one leading system message: merge the leading system
+    messages, and fold each later one into the next user message as a marked note, so a
+    safety note still sits right before the child's words. A trailing note with no user
+    message after it goes onto the last user message."""
+    head: list[str] = []
+    i = 0
+    while i < len(messages) and messages[i].get("role") == "system":
+        head.append(str(messages[i].get("content", "")))
+        i += 1
+    out: list[dict[str, Any]] = (
+        [{"role": "system", "content": "\n\n".join(h for h in head if h)}]
+        if head
+        else []
+    )
+    pending: list[str] = []
+
+    def with_notes(
+        msg: dict[str, Any], notes: list[str], *, after: bool = False
+    ) -> dict[str, Any]:
+        note = "\n".join(f"{_NOTE_PREFIX}{n})" for n in notes)
+        content = msg.get("content", "")
+        if isinstance(content, list):
+            item = {"type": "text", "text": note}
+            content = [*content, item] if after else [item, *content]
+        else:
+            content = f"{content}\n\n{note}" if after else f"{note}\n\n{content}"
+        return {**msg, "content": content}
+
+    for m in messages[i:]:
+        if m.get("role") == "system":
+            pending.append(str(m.get("content", "")))
+        elif m.get("role") == "user" and pending:
+            out.append(with_notes(m, pending))
+            pending = []
+        else:
+            out.append(m)
+    if pending:
+        last_user = max(
+            (k for k, m in enumerate(out) if m.get("role") == "user"), default=None
+        )
+        if last_user is not None:
+            out[last_user] = with_notes(out[last_user], pending, after=True)
+    return out
+
+
 class VLLMBackend(PlannerLLMBackend):
     """In-process vLLM backend for Qwen plan + conversation generation."""
 
@@ -183,6 +232,7 @@ class VLLMBackend(PlannerLLMBackend):
         """Load the model tokenizer (and optionally processor) + template config."""
         model_cfg = resolve_template_config(self._model_name)
         self._template_kwargs = dict(model_cfg.chat_template_kwargs)
+        self._system_first_only = model_cfg.system_first_only
 
         # Config-level override for enable_thinking.
         if "enable_thinking" in self._template_kwargs:
@@ -661,6 +711,8 @@ class VLLMBackend(PlannerLLMBackend):
         Otherwise use the plain tokenizer path (text-only). Falls back to
         a flat ``ROLE: content`` format if no tokenizer was loaded.
         """
+        if getattr(self, "_system_first_only", False):
+            messages = fold_late_system_messages(messages)
         has_multimodal = any(isinstance(m.get("content"), list) for m in messages)
         if has_multimodal and self._processor is not None:
             template_source: Any = self._processor

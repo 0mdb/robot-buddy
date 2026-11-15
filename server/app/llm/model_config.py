@@ -30,6 +30,10 @@ class ModelTemplateConfig:
     # and skip that allocation — useful for a text-only rollout of a
     # multimodal model (Phase 0 Gemma 4 E4B, before look() lands).
     skip_mm_encoder: bool = False
+    # The chat template accepts one system message, first (Qwen3.5: "System message must
+    # be at the beginning"). Later system messages (CURRENT STATE, safety notes, the
+    # personality anchor, tool results) are folded into the next user message.
+    system_first_only: bool = False
     notes: str = ""
 
 
@@ -38,6 +42,7 @@ _MODEL_CONFIGS: list[ModelTemplateConfig] = [
     ModelTemplateConfig(
         family="qwen3",
         chat_template_kwargs={"enable_thinking": False},
+        system_first_only=True,
         notes=(
             "ChatML format (<|im_start|>/<|im_end|>). "
             "enable_thinking=False suppresses <think> blocks, "
