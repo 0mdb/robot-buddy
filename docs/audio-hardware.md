@@ -315,6 +315,21 @@ concern. Twist the speaker leads and route them away from the motor leads.
 - Address the card **by name**, never by index: `plughw:CARD=<name>,DEV=0` for both
   `--usb-mic-device` and `--usb-speaker-device`.
 
+> Amendment (2026-11-15, Ben): **the USB-C plug on the core board's bottom edge takes too much
+> room in the chassis. Use the board's PH2.0 port instead.** Seeed's wiki: the core board has a
+> "PH2.0 port: locking latch connector; provides the same UAC 2.0 audio and DFU support as the
+> USB-C port", silked **5V / D− / D+ / GND**. A short 4-wire PH2.0 → right-angle USB-A lead to
+> the Pi keeps the USB firmware (6 ch, hardware AEC), `xvf3800.py` and the udev rule unchanged.
+> Before ordering or crimping: confirm the pin order on our board with a meter (5V/GND vs the
+> USB-C VBUS/GND), the latch side, and that the PH2.0 housing clears the bulkhead/plate (it
+> sits on the same bottom edge). Keep D+/D− as a twisted pair, ≤ 20 cm.
+> Rejected for now: the **I2S firmware** over GPIO 18–21 (`respeaker_flex_i2s_c16k2ch_v1.0.4.bin`,
+> I2S slave so the Pi is clock master, I2C control at 0x2C). It needs a custom Pi 5 duplex
+> `simple-audio-card` overlay (no stock one; RP1 has no MCLK out), an I2C transport for
+> `xvf3800.py`, loses the 4 raw mic channels and the ALSA volume control, and the slot map,
+> MCLK mode and 5V_IN routing on the Flex are unverified. Reflashing replaces USB DFU with I2C
+> DFU (recovery: hold Boot at power-up). Revisit only if the PH2.0 plug does not fit.
+
 ## 7. Bench validation (before any CAD is locked)
 
 Bare boards on the bench with the Pi 5 running the supervisor:
