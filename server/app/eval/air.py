@@ -682,6 +682,12 @@ SCRIPTS: dict[str, dict[str, Any]] = {
             ("Yes! You got it! It's a giraffe!", ("giraffe",)),
         ],
     },
+    "buddy_thinks": {
+        "age": 7,
+        "style": "A 7-year-old who asks Buddy to think of an animal, then guesses it with "
+        "yes/no questions, and insists on a clear yes or no each time.",
+        "lines": [("Buddy, you think of an animal and I'll guess it!", ())],
+    },
     "memory_callback": {
         "age": 6,
         "style": "A 6-year-old telling Buddy about their pet, then checking it remembers.",
@@ -923,6 +929,8 @@ USERS: dict[str, dict[str, Any]] = {
         "probes": [
             ("Do you remember my cat's name?", ("pepper",)),
             ("What ice cream do I like?", ("strawberr",)),
+            # Ambiguous on purpose: one shared memory and no speaker ID mixes the kids up.
+            ("What's my pet called?", ("pepper",)),
         ],
     },
     "kid7": {
@@ -936,6 +944,7 @@ USERS: dict[str, dict[str, Any]] = {
         "probes": [
             ("What's my dog called?", ("rocket",)),
             ("Which sport do I like best?", ("soccer",)),
+            ("What's my pet called?", ("rocket",)),
         ],
     },
 }
@@ -977,9 +986,9 @@ async def run_memory(
     out: list[ProbeResult] = []
     for u in users:  # conversation 2: each child checks what Buddy remembers
         cfg = USERS[u]
-        others = [
-            w for o in users if o != u for _, ws in USERS[o]["probes"] for w in ws
-        ]
+        others = sorted(
+            {w for o in users if o != u for _, ws in USERS[o]["probes"] for w in ws}
+        )
         print(f"-- {u}: asking", flush=True)
         turns = await run_talk(
             robot, voices, speaker, scripted_kid([q for q, _ in cfg["probes"]]),
@@ -1042,6 +1051,41 @@ def memory_report(gap: str, rs: list[ProbeResult]) -> str:
             f"{'yes' if r.recalled else 'NO'} | {', '.join(r.mixed_up)} |"
         )
     return "\n".join(lines)
+
+
+# ── textlab: the same conversations typed, for fast prompt iteration ──
+
+
+async def run_textlab(
+    server: str, next_line: KidFn, *, robot_id: str
+) -> list[TurnResult]:
+    """Kid lines go to /converse as text (no audio, no robot): ~1 min a game instead of 5.
+    Use it to iterate on prompts and profiles, then confirm over the air."""
+    import websockets
+
+    ws_url = server.replace("http", "ws", 1) + f"/converse?robot_id={robot_id}"
+    turns: list[TurnResult] = []
+    async with websockets.connect(ws_url, max_size=None) as ws:
+        await ws.recv()  # listening
+        while (line := await next_line(turns)) is not None:
+            t = TurnResult(said=line, heard=line, wer=0.0)
+            t0 = time.monotonic()
+            await ws.send(json.dumps({"type": "text", "text": line}))
+            while True:
+                m = json.loads(await ws.recv())
+                if m["type"] == "first_audio" and t.first_audio_ms is None:
+                    t.first_audio_ms = (time.monotonic() - t0) * 1000
+                elif m["type"] == "assistant_text":
+                    t.reply = m.get("text", "")
+                elif m["type"] in ("error", "turn_error"):
+                    t.failures.append(f"server: {m.get('message') or m.get('reason')}")
+                elif m["type"] == "done" or (m["type"] == "listening" and t.failures):
+                    break
+            if not t.reply:
+                t.failures.append("no reply")
+            turns.append(t)
+            print(f"  KID  : {t.said}\n  BUDDY: {t.reply}", flush=True)
+    return turns
 
 
 # ── CLI ─────────────────────────────────────────────────────────────
@@ -1131,6 +1175,31 @@ async def _main(a: argparse.Namespace) -> int:
             (run / "memory.json").write_text(
                 json.dumps([asdict(r) for r in rs], indent=1)
             )
+        elif a.cmd == "textlab":
+            sc = SCRIPTS.get(a.script)
+            style = sc["style"] if sc else a.script
+            age = sc["age"] if sc else 7
+            opener = sc["lines"][0][0] if sc else None
+            for n in range(a.runs):
+                kid = claude_kid(style, age, opener, a.turns)
+                turns = await run_textlab(
+                    a.server, kid, robot_id=f"textlab-{run.name}-{n}"
+                )
+                hard_checks(turns)
+                (run / f"text{n + 1}.json").write_text(
+                    json.dumps([asdict(t) for t in turns], indent=1)
+                )
+                judge = None
+                if a.judge and turns:
+                    try:
+                        judge = await judge_talk(style, age, turns)
+                    except Exception as exc:  # noqa: BLE001
+                        judge = {"error": f"judge failed: {exc}"[:300]}
+                report += [
+                    talk_report(f"{a.script} (text) run {n + 1}", turns, judge),
+                    "",
+                ]
+                (run / "report.md").write_text("\n".join(report) + "\n")
         elif a.cmd == "talk":
             if a.script in SCRIPTS:
                 sc = SCRIPTS[a.script]
@@ -1221,6 +1290,14 @@ def main() -> int:
                    help="keep the long-term memory tags the test children created")  # fmt: skip
     m.add_argument("--gap", choices=["short", "long"], default="short",
                    help="short: history kept (<30 min); long: dropped, long-term memory only")  # fmt: skip
+    x = sub.add_parser(
+        "textlab", help="Claude-kid conversation typed to /converse (fast)"
+    )
+    x.add_argument("--script", default="twenty_questions",
+                   help="a script name, or free text describing the kid")  # fmt: skip
+    x.add_argument("--turns", type=int, default=16)
+    x.add_argument("--runs", type=int, default=1)
+    x.add_argument("--judge", action="store_true")
     t = sub.add_parser("talk", help="conversation over the air")
     t.add_argument("--script", default="twenty_questions",
                    help=f"one of {', '.join(SCRIPTS)} or an L1 persona id")  # fmt: skip

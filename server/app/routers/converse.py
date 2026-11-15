@@ -864,6 +864,8 @@ async def _generate_and_stream_live(
 
     if metadata_seen:
         final = parser.final_response()
+        if final is not None and final.notes:
+            log.info("turn notes: %s", final.notes[:160])
         history.add_assistant(
             full_text,
             emotion=emotion_for_tts,

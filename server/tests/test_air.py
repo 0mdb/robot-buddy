@@ -215,8 +215,10 @@ async def test_memory_scores_recall_and_mix_ups(
     replies = ["ok"] * 6 + [
         "Your cat is Pepper!",
         "Hmm, chocolate?",
+        "Pepper!",
         "Your dog is Pepper, right?",  # kid5's cat, told to kid7: a mix-up
         "You like soccer!",
+        "Is it Pepper or Rocket?",  # both: recalled, and mixed up
     ]
     robot = FakeRobot(replies=replies)
     rs = await air.run_memory(
@@ -231,6 +233,8 @@ async def test_memory_scores_recall_and_mix_ups(
     assert [(r.user, r.recalled, r.mixed_up) for r in rs] == [
         ("kid5", True, []),
         ("kid5", False, []),
+        ("kid5", True, []),
         ("kid7", False, ["pepper"]),
         ("kid7", True, []),
+        ("kid7", True, ["pepper"]),
     ]
