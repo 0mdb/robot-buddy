@@ -917,6 +917,7 @@ async def _handle_ws_cmd(
                 tick._workers.send_to("ear", "ear.cmd.stop_listening")
             )
             tick.robot.face_listening = False
+            tick._start_turn_watchdog(tick._TURN_STAGE_AWAITING)
     elif msg_type == "conversation.send_text":
         text = str(msg.get("text", "")).strip()
         if text:
@@ -933,6 +934,7 @@ async def _handle_ws_cmd(
                         {"text": text, "session_id": tick.world.session_id},
                     )
                 )
+                tick._start_turn_watchdog(tick._TURN_STAGE_AWAITING)
             else:
                 log.warning("conversation.send_text: session not started, text dropped")
     elif msg_type == "conversation.config":

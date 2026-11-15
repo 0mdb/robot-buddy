@@ -1154,6 +1154,34 @@ def create_default_registry() -> ParamRegistry:
             doc="Idle timeout between PTT turns before session ends",
         )
     )
+    reg.register(
+        ParamDef(
+            name="conversation.turn_timeout_s",
+            type="float",
+            min=5.0,
+            max=120.0,
+            step=5.0,
+            default=20.0,
+            owner="supervisor",
+            safety="safe",
+            doc="Turn watchdog: end the session if no reply starts this long "
+            "after the utterance ends",
+        )
+    )
+    reg.register(
+        ParamDef(
+            name="conversation.reply_timeout_s",
+            type="float",
+            min=10.0,
+            max=300.0,
+            step=10.0,
+            default=60.0,
+            owner="supervisor",
+            safety="safe",
+            doc="Turn watchdog: end the session if a started reply has not "
+            "finished (TTS finished / AI done) this long after it started",
+        )
+    )
 
     # -- Planner parameters --
     reg.register(

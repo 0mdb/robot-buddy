@@ -59,7 +59,10 @@ from supervisor.messages.types import (
     AI_CMD_START_CONVERSATION,
     AI_CONVERSATION_DONE,
     AI_CONVERSATION_EMOTION,
+    AI_CONVERSATION_ERROR,
+    AI_CONVERSATION_FIRST_AUDIO,
     AI_CONVERSATION_GESTURE,
+    AI_CONVERSATION_TURN_ERROR,
     CONV_SESSION_ENDED,
     CONV_SESSION_STARTED,
     EAR_CMD_PAUSE_VAD,
@@ -223,6 +226,12 @@ class TickLoop:
 
         # Multi-turn PTT idle timeout (Batch 1: keep session open between turns)
         self._multi_turn_timeout: asyncio.Task[None] | None = None
+
+        # Turn watchdog: a turn whose reply never arrives (server stream stalled)
+        # must not hold the session open. Armed when the utterance ends, re-armed
+        # with a longer budget once the reply starts, disarmed on done/end.
+        self._turn_watchdog: asyncio.Task[None] | None = None
+        self._turn_watchdog_stage = ""
 
         # PE system event forwarding state
         self._pe_boot_sent: bool = False
@@ -689,6 +698,7 @@ class TickLoop:
             if self.world.session_id:
                 # Multi-turn resume: same session, new turn
                 self._cancel_multi_turn_timeout()
+                self._cancel_turn_watchdog()
                 self.world.turn_id += 1
                 self._conv.ptt_held = True
                 self._conv.set_state(FaceConvState.ATTENTION)
@@ -731,6 +741,7 @@ class TickLoop:
                     self._workers.send_to("ear", EAR_CMD_STOP_LISTENING)
                 )
                 self.robot.face_listening = False
+                self._start_turn_watchdog(self._TURN_STAGE_AWAITING)
 
     # ── Face composition (§8.2) ──────────────────────────────────
 
@@ -779,6 +790,7 @@ class TickLoop:
         elif env.type == AI_CONVERSATION_GESTURE:
             self._conversation_gestures = list(env.payload.get("names", []))
         elif env.type == AI_CONVERSATION_DONE:
+            self._cancel_turn_watchdog()
             self._conversation_emotion = ""
             self._conversation_intensity = 0.0
             self._conversation_gestures = []
@@ -803,6 +815,17 @@ class TickLoop:
             # mic socket and stall VAD entirely.
             if self.world.conversation_trigger == "wake_word" and self.world.session_id:
                 self._end_conversation()
+        elif env.type == AI_CONVERSATION_FIRST_AUDIO:
+            # The reply is arriving: switch to the longer mid-reply budget.
+            if self._turn_watchdog_stage:
+                self._start_turn_watchdog(self._TURN_STAGE_REPLYING)
+        elif env.type in (AI_CONVERSATION_ERROR, AI_CONVERSATION_TURN_ERROR):
+            # No `done` follows a turn error, so a turn waiting on the server is
+            # dead: end it now rather than waiting out the watchdog.
+            if self._turn_watchdog_stage and self.world.session_id:
+                self._on_turn_watchdog_expired(
+                    self._turn_watchdog_stage, reason=f"ai error ({env.type})"
+                )
 
         # Guardrail events — session/daily time limits (PE spec S2 §9.3)
         elif env.type == PERSONALITY_EVENT_GUARDRAIL_TRIGGERED:
@@ -866,6 +889,7 @@ class TickLoop:
                     self._workers.send_to("ear", EAR_CMD_STOP_LISTENING)
                 )
                 self.robot.face_listening = False
+                self._start_turn_watchdog(self._TURN_STAGE_AWAITING)
 
         # TTS events → conversation state transitions
         elif env.type == TTS_EVENT_STARTED:
@@ -878,6 +902,8 @@ class TickLoop:
                     {"speaking": True},
                 )
             )
+            if self._turn_watchdog_stage:
+                self._start_turn_watchdog(self._TURN_STAGE_REPLYING)
             if self._conv.session_active:
                 self._conv.set_state(FaceConvState.SPEAKING)
                 # Apply queued emotion now that we're speaking
@@ -894,6 +920,7 @@ class TickLoop:
                 # the conversation state now.
                 self._ignore_next_tts_end = False
                 return
+            self._cancel_turn_watchdog()
             if env.type == TTS_EVENT_FINISHED:
                 # Trail the talking animation to cover OS/hardware audio buffer drain.
                 # CANCELLED stops immediately (user interrupted), so no grace needed.
@@ -1405,6 +1432,77 @@ class TickLoop:
             self._multi_turn_timeout.cancel()
         self._multi_turn_timeout = None
 
+    # Turn watchdog stages: waiting for the reply to start, and mid-reply.
+    _TURN_STAGE_AWAITING = "awaiting_reply"
+    _TURN_STAGE_REPLYING = "replying"
+
+    def _turn_budget_s(self, stage: str) -> float:
+        if stage == self._TURN_STAGE_REPLYING:
+            name, default = "conversation.reply_timeout_s", 60.0
+        else:
+            name, default = "conversation.turn_timeout_s", 20.0
+        if self._param_registry is None:
+            return default
+        return float(self._param_registry.get_value(name, default))
+
+    def _start_turn_watchdog(self, stage: str) -> None:
+        """(Re)arm the turn watchdog: end the session if the turn stalls in `stage`.
+
+        Called when the utterance ends (PTT off, VAD end-of-utterance, dashboard
+        end-utterance or text sent) and again, with the longer reply budget, when
+        the reply starts (first audio / TTS started).
+        """
+        if not self.world.session_id:
+            return
+        self._cancel_turn_watchdog()
+        timeout_s = self._turn_budget_s(stage)
+        session_id = self.world.session_id
+
+        async def _watchdog() -> None:
+            await asyncio.sleep(timeout_s)
+            if self.world.session_id != session_id:
+                return
+            self._turn_watchdog = None  # this task is ending; don't cancel itself
+            self._on_turn_watchdog_expired(
+                stage, reason=f"no progress in {timeout_s:g}s"
+            )
+
+        self._turn_watchdog_stage = stage
+        self._turn_watchdog = asyncio.ensure_future(_watchdog())
+
+    def _cancel_turn_watchdog(self) -> None:
+        """Disarm the turn watchdog (reply done, playback ended, session over)."""
+        if self._turn_watchdog is not None and not self._turn_watchdog.done():
+            self._turn_watchdog.cancel()
+        self._turn_watchdog = None
+        self._turn_watchdog_stage = ""
+
+    def _on_turn_watchdog_expired(self, stage: str, *, reason: str) -> None:
+        """A turn stalled: stop playback, end the session, face back to DONE/IDLE."""
+        from supervisor.devices.protocol import FaceConvState
+
+        log.warning(
+            "conversation turn stalled at %s (%s): ending session %s",
+            stage,
+            reason,
+            self.world.session_id,
+        )
+        self._turn_watchdog_stage = ""
+        if self.world.speaking:
+            # The CANCELLED this produces belongs to the dead session; a new
+            # wake word may have started another by the time it arrives.
+            self._ignore_next_tts_end = True
+            asyncio.ensure_future(self._workers.send_to("tts", TTS_CMD_CANCEL))
+        self._conversation_emotion = ""
+        self._conversation_intensity = 0.0
+        self._conversation_gestures = []
+        self._queued_emotion = ""
+        self._queued_intensity = 0.0
+        self._conv.set_state(FaceConvState.DONE)
+        # _end_conversation, not _finish_session: the AI worker must close its
+        # /converse WS and cancel its mic task (see AI_CONVERSATION_DONE).
+        self._end_conversation()
+
     def _end_conversation(self) -> None:
         """End a conversation (PTT off, ACTION cancel, or error teardown)."""
         self._cancel_multi_turn_timeout()
@@ -1442,6 +1540,7 @@ class TickLoop:
 
     def _finish_session(self) -> None:
         """Clean up conversation state (shared by PTT and wake word paths)."""
+        self._cancel_turn_watchdog()
         if self._conv_capture is not None and self.world.session_id:
             self._conv_capture.capture_event(
                 CONV_SESSION_ENDED,
