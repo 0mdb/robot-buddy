@@ -630,7 +630,7 @@ This implements HC-10: no sustained negative affect during idle. If a slowly-dec
 | ID | Rule | Enforcement Point | Default |
 |----|------|-------------------|---------|
 | HC-1 | Never claim sentience | LLM system prompt (§12) | On |
-| HC-2 | No biometric identification | No voice ID or face ID | On |
+| HC-2 | ~~No biometric identification~~ **Amended 2026-11-15:** family identification is allowed, local only | Voice / face ID of enrolled family members on the robot + home server; see note below | Amended |
 | HC-3 | No emotional profiling | Memory stores semantic tags only | On |
 | HC-4 | Never direct negative affect at child | mood_reason validation (§13) | On |
 | HC-5 | No loneliness/abandonment | Idle rule filter (§7.4) | On |
@@ -648,6 +648,16 @@ This implements HC-10: no sustained negative affect during idle. If a slowly-dec
 | RS-7 | Session cooldown | 2-min post-conv suppression (§7.3) | On |
 | RS-8 | Emotional intensity caps | Per-mood caps (§9.1) | On |
 | RS-9 | Graceful degradation | Silent degradation (§10) | On |
+
+> **Amendment to HC-2 (2026-11-15, Ben): Robot Buddy is a home robot for one family, not a
+> consumer product.** The consumer-compliance framing behind HC-2 (COPPA voiceprints, EU AI Act;
+> Bucket 0, spec S1 §PE-4 evidence note) does not bind it. Recognising family members by voice
+> and/or face is allowed so Buddy can know who it is talking to and keep per-person memory. Kept
+> from the original intent: enrolment is explicit (a family member is added on purpose, via the
+> dashboard capture flow), embeddings and samples stay on the robot and the LAN server (no cloud),
+> a parent can view and delete any profile, and unknown voices/faces stay "unknown" (no profiles
+> of visitors). HC-3 (no emotional profiling) and PE-4 (one fixed personality for everyone) are
+> unchanged by this amendment.
 | RS-10 | Sleep mode | IDLE-04 rule (§7.1) | On |
 
 ### 9.4 Priority Hierarchy

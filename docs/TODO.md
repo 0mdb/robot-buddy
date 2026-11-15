@@ -510,7 +510,7 @@ _138 items archived to `docs/TODO-archive.md` (latest: 2026-02-24). Sections: Fa
 ## Future Development & R&D
 
 ### Near-Term Ideas
-- `[opus]` Speaker personalization (HC-2 compliant): explicit per-child profiles via parent UI; no voice ID / biometric embeddings
+- `[opus]` Speaker personalization: family profiles (explicit enrolment via the dashboard), per-person memory, and voice + face ID now allowed (HC-2 amended 2026-11-15: family home robot, not a consumer product; local only). Staged plan: capture flow for "hey buddy" samples per person → voice embedding ID → face embedding once the camera is in use
 - Home Assistant light control via conversation (see `docs/home-assistant-integration.md`)
 - Additional modes: LINE_FOLLOW, BALL, CRANE, CHARGING
 
