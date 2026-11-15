@@ -46,7 +46,7 @@ WAKE_LEVEL, SPEECH_LEVEL = 1000, 2000
 
 
 class FakeVoices:
-    async def say(self, text: str, voice: str = "") -> bytes:
+    async def say(self, text: str, voice: str = "", **_: Any) -> bytes:
         level = WAKE_LEVEL if text == air.WAKE else SPEECH_LEVEL
         return (np.ones(320) * level).astype(np.int16).tobytes()
 

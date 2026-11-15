@@ -1062,7 +1062,10 @@ class ConversationResponseV2(BaseModel):
 > (sad / scared / angry), so the server holds such an emotion's event until `mood_reason` has
 > arrived (the face takes that emotion a moment later on those turns); other emotions go before
 > the audio as before. `inner_thought` after `text` is no longer chain-of-thought; it is kept for
-> logs. Emotion choices were A/B'd against the old order on a 20-utterance kid corpus before
+> logs. `notes` (added 2026-11-15, after `mood_reason`) is Buddy's private state for the next turn
+> (a game's secret answer, whose turn it is): stored with the assistant message in history and
+> shown back to the model as private notes, never spoken; before it Buddy could not hold a
+> secret in 20 questions and contradicted its own clues (over-the-air rig). Emotion choices were A/B'd against the old order on a 20-utterance kid corpus before
 > switching (results in `docs/TODO.md`, Conversation & Voice). Required fields: `emotion`,
 > `intensity`, `text`.
 

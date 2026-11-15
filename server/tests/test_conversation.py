@@ -70,9 +70,10 @@ class TestContextBudget:
 
     def test_token_budget_enforcement(self):
         """Very long messages should be trimmed to fit budget."""
-        # Budget 2048: system prompt ~800 tokens + 512 reserve = ~1536 usable.
-        # The long message (~2000 tokens) should be dropped to stay within budget.
-        h = ConversationHistory(max_turns=20, max_context_tokens=2048)
+        # Budget 3072: the system prompt is ~1.6k estimated tokens (2026-11-15; this test
+        # assumed ~800 and a 2048 budget, which no longer leaves room for any history)
+        # + 512 reserve. The long message (~2000 tokens) must be dropped to fit.
+        h = ConversationHistory(max_turns=20, max_context_tokens=3072)
         long_text = "x" * 8000  # ~2000 tokens
         h.add_user(long_text)
         h.add_assistant("ok", emotion="neutral")
@@ -488,3 +489,30 @@ def test_v2_schema_puts_only_speech_prerequisites_before_text() -> None:
     )  # right after: HC-4 waits on it
     assert set(schema["required"]) == {"emotion", "intensity", "text"}
     assert list(_EXAMPLE_KEYS) == keys  # prompt examples teach the same order
+
+
+def test_private_notes_reach_the_next_turn_but_not_the_text() -> None:
+    """Buddy's notes (a game's secret answer) ride along in history, marked private."""
+    from app.llm.conversation import (
+        ConversationHistory,
+        parse_conversation_response_content,
+    )
+
+    resp = parse_conversation_response_content(
+        json.dumps(
+            {
+                "emotion": "excited",
+                "intensity": 0.6,
+                "text": "Okay, I'm thinking of an animal!",
+                "notes": "Secret: penguin. Kid guesses, I answer yes/no.",
+            }
+        )
+    )
+    assert resp.notes.startswith("Secret: penguin")
+    assert "penguin" not in resp.text
+    h = ConversationHistory(max_turns=20)
+    h.add_user("You think of one!")
+    h.add_assistant(resp.text, emotion=resp.emotion, notes=resp.notes)
+    h.add_user("Does it fly?")
+    assistant = [m for m in h.to_ollama_messages() if m["role"] == "assistant"]
+    assert "never said aloud: Secret: penguin" in assistant[-1]["content"]

@@ -84,6 +84,11 @@ tell a grown-up right away.
 every time they say they feel bad, not only the first time.
 - Always say something: "text" is never empty.
 
+GAMES AND STORIES
+- Keep track in "notes": whose turn it is, the rules, your secret answer, the clues given so \
+far. When you think of something, decide it and write it in notes. Never contradict your \
+notes, and never say the secret until it is guessed.
+
 HONESTY
 - Never make up memories, events, or what someone said. Only mention what is in this \
 conversation or in "Known about this child". If you don't know, say so.
@@ -95,6 +100,7 @@ RESPONSE FORMAT
   "gestures": ["<{_GESTURES_LIST}>"],
   "text": "<spoken response>",
   "mood_reason": "<5-15 words: why this emotion>",
+  "notes": "<private, never spoken: what you must remember next turn, e.g. your secret answer in a game; empty if nothing>",
   "memory_tags": [{{"tag": "<semantic label>", "category": "<name|topic|ritual|tone|preference>"}}],
   "inner_thought": "<one short sentence: what you were thinking>",
   "emotional_arc": "<rising|stable|falling|peak|recovery>",
@@ -130,6 +136,7 @@ _EXAMPLE_KEYS = (
     "gestures",
     "text",
     "mood_reason",
+    "notes",
     "memory_tags",
     "inner_thought",
     "emotional_arc",
@@ -197,6 +204,11 @@ class ConversationResponseV2(BaseModel):
         json_schema_extra={"minLength": 1},
     )
     mood_reason: str = Field(default="", description="5-15 words: why this emotion")
+    notes: str = Field(
+        default="",
+        description="Private, never spoken: what to remember next turn (a game's secret answer, "
+        "whose turn it is). Empty if nothing.",
+    )
     memory_tags: list[MemoryTagV2] = Field(
         default_factory=list,
         description="Things to remember from this turn, with decay-tier category",
@@ -256,6 +268,7 @@ class ConversationResponse:
     text: str = ""
     gestures: list[str] = field(default_factory=list)
     mood_reason: str = ""
+    notes: str = ""  # private state carried to the next turn (games, stories)
     memory_tags: list[dict] = field(
         default_factory=list
     )  # [{"tag": ..., "category": ...}]
@@ -268,6 +281,12 @@ class ConversationMessage:
     role: str  # "user" or "assistant"
     content: str
     emotion: str = ""  # populated for assistant messages (v2)
+    notes: str = ""  # Buddy's private notes (assistant), shown back to the model only
+
+    def rendered(self) -> str:
+        if self.role == "assistant" and self.notes:
+            return f"{self.content}\n[Buddy's private notes, never said aloud: {self.notes}]"
+        return self.content
 
 
 # ── Personality profile injection (PE spec S2 §12.5, §12.7) ──────────────
@@ -412,9 +431,11 @@ class ConversationHistory:
     def add_user(self, text: str) -> None:
         self._messages.append(ConversationMessage(role="user", content=text))
 
-    def add_assistant(self, text: str, *, emotion: str = "") -> None:
+    def add_assistant(self, text: str, *, emotion: str = "", notes: str = "") -> None:
         self._messages.append(
-            ConversationMessage(role="assistant", content=text, emotion=emotion)
+            ConversationMessage(
+                role="assistant", content=text, emotion=emotion, notes=notes.strip()
+            )
         )
 
     def to_ollama_messages(
@@ -449,7 +470,7 @@ class ConversationHistory:
             # Everything fits in the recent window — no compression.
             msgs = [{"role": "system", "content": system_prompt}]
             for m in all_msgs:
-                msgs.append({"role": m.role, "content": m.content})
+                msgs.append({"role": m.role, "content": m.rendered()})
         else:
             # Split into old (to compress) and recent (keep full).
             old_msgs = all_msgs[: len(all_msgs) - recent_boundary]
@@ -462,7 +483,7 @@ class ConversationHistory:
             if summary:
                 msgs.append({"role": "system", "content": summary})
             for m in recent_msgs:
-                msgs.append({"role": m.role, "content": m.content})
+                msgs.append({"role": m.role, "content": m.rendered()})
 
         # Task #7 hybrid preamble: inject tool result (if any) immediately
         # before the last user message so the model can ground its reply in
@@ -748,6 +769,7 @@ def parse_conversation_response_content(content: str) -> ConversationResponse:
         text=parsed.get("text", ""),
         gestures=raw_gestures,
         mood_reason=raw_mood_reason,
+        notes=str(parsed.get("notes", "") or "")[:300],
         memory_tags=memory_tags,
     )
 

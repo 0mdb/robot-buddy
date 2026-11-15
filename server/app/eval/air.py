@@ -117,7 +117,9 @@ class Voices:
         self.server = server.rstrip("/")
         CLIP_DIR.mkdir(parents=True, exist_ok=True)
 
-    async def say(self, text: str, voice: str = "tara") -> bytes:
+    async def say(
+        self, text: str, voice: str = "tara", *, tries: int = 4, max_wer: float = 0.2
+    ) -> bytes:
         key = re.sub(r"[^a-z0-9]+", "_", f"{voice}_{text.lower()}")[:80]
         digest = hashlib.sha1(f"{voice}\n{text}".encode()).hexdigest()[:8]
         path = CLIP_DIR / f"{key}_{digest}.pcm"
@@ -127,7 +129,7 @@ class Voices:
         # back spelled out, "L. X. A."): keep a take only if Whisper hears the words.
         best, best_wer = b"", 2.0
         async with httpx.AsyncClient(timeout=60) as c:
-            for _ in range(4):
+            for _ in range(tries):
                 r = await c.post(
                     f"{self.server}/tts",
                     json={
@@ -144,9 +146,9 @@ class Voices:
                 err = wer(text, s.json().get("text", ""))
                 if err < best_wer:
                     best, best_wer = pcm, err
-                if err <= 0.2:
+                if err <= max_wer:
                     break
-        if best_wer > 0.2:
+        if best_wer > max_wer:
             print(
                 f"  warning: {voice} {text!r} never transcribed cleanly ({best_wer:.2f})"
             )
@@ -313,8 +315,11 @@ _SAME = {
 }  # fmt: skip
 
 
+_FILLERS = frozenset({"hmm", "hm", "um", "umm", "uh", "oh", "ooh", "ah", "er"})
+
+
 def _words(text: str) -> list[str]:
-    return [_SAME.get(w, w) for w in _WORD.findall(text.lower())]
+    return [_SAME.get(w, w) for w in _WORD.findall(text.lower()) if w not in _FILLERS]
 
 
 def wer(ref: str, hyp: str) -> float:
@@ -766,8 +771,8 @@ async def run_talk(
                 # After Buddy's own audio is generated, so the two don't share the GPU.
                 await robot.wait(mark, "ai.conversation.done", 30)
                 for part in nxt.split("|"):
-                    if part.strip():
-                        await voices.say(part.strip(), voice)
+                    if part.strip():  # a live line can't wait for many retakes
+                        await voices.say(part.strip(), voice, tries=2, max_wer=0.35)
             return nxt
 
         line_task = asyncio.create_task(prepare())
@@ -805,6 +810,12 @@ async def run_talk(
             3.0,
             where=lambda e: e["ts_mono_ms"] >= end["ts_mono_ms"],
         )
+        if fu is not None and any(
+            e["ts_mono_ms"] > fu["ts_mono_ms"]
+            for e in robot.since(mark, "conv.session.ended")
+        ):  # the window closed before the line was ready: the rig was slow, not Buddy
+            t.failures.append("rig: next line missed the follow-up window")
+            fu = None
         if fu is not None:
             follow_up = True
             await asyncio.sleep(0.3)

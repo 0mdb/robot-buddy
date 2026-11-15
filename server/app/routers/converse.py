@@ -863,7 +863,12 @@ async def _generate_and_stream_live(
     full_text = parser.full_text()
 
     if metadata_seen:
-        history.add_assistant(full_text, emotion=emotion_for_tts)
+        final = parser.final_response()
+        history.add_assistant(
+            full_text,
+            emotion=emotion_for_tts,
+            notes=final.notes if final is not None else "",
+        )
 
     if full_text:
         await ws.send_json(
