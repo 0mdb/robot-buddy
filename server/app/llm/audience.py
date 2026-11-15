@@ -156,7 +156,9 @@ def _effective_kind(m: Member) -> str:
 
 
 def _kid_profile_for_age(age: int) -> AudienceProfile:
-    """The age-banded kid profile for an age; outside every band, the nearest band."""
+    """The age-banded kid profile for an age. Between bands, the younger band (fallback
+    rules lean young: an 11-year-old stays on kid_7, not teen); below every band, the
+    youngest; above every band, the oldest."""
     bands = [
         p
         for p in (
@@ -169,7 +171,10 @@ def _kid_profile_for_age(age: int) -> AudienceProfile:
     for p in bands:
         if p.age_min <= age <= p.age_max:  # type: ignore[operator]
             return p
-    return min(bands, key=lambda p: min(abs(age - p.age_min), abs(age - p.age_max)))  # type: ignore[operator]
+    below = [p for p in bands if p.age_max < age]  # type: ignore[operator]
+    if below:
+        return max(below, key=lambda p: p.age_max)  # type: ignore[arg-type,return-value]
+    return min(bands, key=lambda p: p.age_min)  # type: ignore[arg-type,return-value]
 
 
 def resolve_profile(audience: Audience | None) -> AudienceProfile:

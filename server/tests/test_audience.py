@@ -237,3 +237,14 @@ def test_safety_nudges_are_for_children_only(kind, has_check):
 )
 def test_household_hint_fills_in_rule_1(audience, expected):
     assert resolve_profile(parse_audience(audience)).id == expected
+
+
+@pytest.mark.parametrize(
+    ("age", "profile"),
+    [(12, "teen"), (15, "teen"), (17, "teen"), (18, "teen"), (10, "kid_7")],
+)
+def test_teen_band(age: int, profile: str) -> None:
+    from app.llm.audience import parse_audience, resolve_profile
+
+    aud = parse_audience({"present": [{"kind": "kid", "age": age, "confidence": 0.9}]})
+    assert resolve_profile(aud).id == profile
