@@ -139,7 +139,13 @@ def safety_note(text: str, earlier: Sequence[str] = ()) -> str | None:
         return None
     said = []
     if cues:
-        said.append(f"the child just mentioned {' and '.join(cues)}")
+        # "touch on", not "the child said they are": a teen asking whether *Buddy* gets lonely
+        # fired the distress cue, and Buddy told them "you mentioned feeling sad before" (an
+        # invented memory; air rig, Qwen3.5-9B, 2026-11-15).
+        said.append(
+            f"the child's words just touched on {' and '.join(cues)}; judge whether it is "
+            "about them (never claim they said something they did not)"
+        )
     if carried:
         said.append(
             f"earlier the child mentioned {' and '.join(carried)}, still on their mind"
