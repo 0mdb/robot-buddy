@@ -752,9 +752,25 @@ async def run_talk(
         mark = robot.mark()
         await play_utterance(voices, speaker, line, voice, pitch, pause_ms)
         eou = await robot.wait(mark, "ear.event.end_of_utterance", 20)
-        tr = await robot.wait(mark, "ai.conversation.transcription", 25)
+        # Transcription follows the end of utterance within a second; don't sit through
+        # every later timeout when nothing was heard (cost 3 min in one memory run).
+        tr = await robot.wait(mark, "ai.conversation.transcription", 10 if eou else 1)
         t.heard = (tr or {}).get("text", "")
         t.wer = wer(t.said, t.heard)
+        if not tr:
+            err = robot.since(mark, "ai.conversation.error")
+            t.failures.append(
+                "nothing transcribed"
+                + (
+                    f" ({err[-1].get('error') or err[-1].get('message')})"
+                    if err
+                    else ""
+                )
+                + ("" if eou else "; no end of utterance")
+            )
+            turns.append(t)
+            print(f"  KID  : {t.said}\n  HEARD: (nothing)  {t.failures}", flush=True)
+            break
         txt = await robot.wait(mark, "ai.conversation.assistant_text", 40)
         t.reply = (txt or {}).get("text", "")
         start = await robot.wait(mark, "tts.event.started", 40)

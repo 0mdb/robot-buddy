@@ -73,6 +73,8 @@ _ARECORD_RETRY_MAX_S = 5.0
 
 # Input level window for the health payload
 _LEVEL_WINDOW_S = 1.0
+# Skip VAD this long after listening starts: the 0.2 s listening chime + speaker latency.
+_VAD_START_HOLDOFF_S = 0.35
 
 # Wake word cooldown — suppress re-triggers during active conversation
 _WW_COOLDOWN_S = 3.0
@@ -151,6 +153,11 @@ class EarWorker(BaseWorker):
         # State
         self._listening = False  # True when forwarding audio to AI
         self._vad_paused = False  # Suppress VAD during TTS playback
+        # The listening chime plays as listening starts; without an echo-cancelling path
+        # (the USB speaker is not the XVF's reference) VAD heard it as speech and ended
+        # the utterance before the child spoke (air rig, 2026-11-15). Audio is still
+        # forwarded during the hold-off, so a child who talks at once is transcribed.
+        self._vad_holdoff_until = 0.0
 
         # Models (loaded lazily in run())
         self._oww_model: Any = None
@@ -447,6 +454,7 @@ class EarWorker(BaseWorker):
             return
         self._listening = True
         self._vad_paused = False
+        self._vad_holdoff_until = time.monotonic() + _VAD_START_HOLDOFF_S
         self._reset_vad_state()
         self._vad_diag_max_prob = 0.0
         self._vad_diag_max_amp = 0.0
@@ -702,7 +710,7 @@ class EarWorker(BaseWorker):
             if self._listening:
                 await self._forward_to_mic_socket(data)
 
-                if not self._vad_paused:
+                if not self._vad_paused and time.monotonic() >= self._vad_holdoff_until:
                     self._vad_buffer.extend(data)
                     while len(self._vad_buffer) >= _VAD_FRAME_BYTES:
                         vad_frame = bytes(self._vad_buffer[:_VAD_FRAME_BYTES])

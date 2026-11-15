@@ -1334,7 +1334,7 @@ class TickLoop:
 
     # ── Conversation control ─────────────────────────────────────
 
-    def _start_conversation(self, trigger: str = "ptt") -> None:
+    def _start_conversation(self, trigger: str = "ptt", *, chime: bool = True) -> None:
         """Start a conversation (PTT button, wake word, or text chat)."""
         is_text = trigger == "text"
 
@@ -1402,7 +1402,7 @@ class TickLoop:
         )
 
         # Play acknowledgment chime for wake word
-        if trigger == "wake_word":
+        if trigger == "wake_word" and chime:
             asyncio.ensure_future(
                 self._workers.send_to("tts", TTS_CMD_PLAY_CHIME, {"chime": "listening"})
             )
@@ -1508,7 +1508,9 @@ class TickLoop:
                 await asyncio.sleep(0.1)
             if self.world.session_id or self.world.speaking:
                 return
-            self._start_conversation("wake_word")
+            # No chime: the follow-up continues the conversation (the face shows
+            # it is listening), and a chime the mic hears can read as speech.
+            self._start_conversation("wake_word", chime=False)
             if not self.world.session_id:
                 return  # refused (links down, daily limit)
             session = self.world.session_id

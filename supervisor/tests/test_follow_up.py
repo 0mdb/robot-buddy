@@ -224,3 +224,16 @@ class TestSpeculation:
         loop._handle_face_events(_env(EAR_EVENT_UTTERANCE_PAUSE))  # PTT session
         await asyncio.sleep(0)
         assert _count(loop, "ai", AI_CMD_SPECULATE) == 0
+
+
+@pytest.mark.asyncio
+async def test_follow_up_opens_without_a_chime() -> None:
+    from supervisor.messages.types import TTS_CMD_PLAY_CHIME
+
+    loop = _tick_loop()
+    _wake_turn(loop)
+    chimes = _count(loop, "tts", TTS_CMD_PLAY_CHIME)
+    assert chimes == 1  # the wake word's
+    await asyncio.sleep(0.05)
+    assert loop.world.session_id  # follow-up open
+    assert _count(loop, "tts", TTS_CMD_PLAY_CHIME) == 1
