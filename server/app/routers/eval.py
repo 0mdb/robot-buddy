@@ -86,3 +86,21 @@ async def eval_stt(request: Request) -> JSONResponse:
             {"error": "body must be 1 B - 30 s of 16 kHz int16 PCM"}, 400
         )
     return JSONResponse({"text": await _transcribe_audio(pcm)})
+
+
+class ForgetHistoryRequest(BaseModel):
+    robot_id: str = Field(..., min_length=1, max_length=64)
+
+
+@router.post("/eval/forget_history")
+async def eval_forget_history(
+    body: ForgetHistoryRequest, request: Request
+) -> JSONResponse:
+    """Drop a robot's stashed conversation history (normally kept 30 min between sessions).
+
+    For the over-the-air rig's long-gap memory test: after this, only the robot's long-term
+    memory (personality memory tags on the Pi) can carry facts into the next conversation.
+    """
+    registry = request.app.state.converse_registry
+    dropped = registry.take_stashed_history(body.robot_id) is not None
+    return JSONResponse({"dropped": dropped})

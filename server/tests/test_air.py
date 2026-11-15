@@ -56,7 +56,10 @@ class FakeRobot:
     utterance -> transcript -> reply -> speech; after the reply a follow-up session opens
     unless `no_follow_up` says otherwise."""
 
-    def __init__(self, *, no_follow_up: set[int] | None = None) -> None:
+    def __init__(
+        self, *, no_follow_up: set[int] | None = None, replies: list[str] | None = None
+    ) -> None:
+        self.replies = replies
         self.events: list[dict[str, Any]] = []
         self.t = 1000.0
         self.turn = 0
@@ -74,7 +77,8 @@ class FakeRobot:
             return
         self.emit("ear.event.end_of_utterance", 800, silence_ms=800)
         self.emit("ai.conversation.transcription", 300, text=f"line {self.turn}")
-        self.emit("ai.conversation.assistant_text", 500, text=f"reply {self.turn}")
+        reply = self.replies[self.turn] if self.replies else f"reply {self.turn}"
+        self.emit("ai.conversation.assistant_text", 500, text=reply)
         self.emit("ai.conversation.first_audio", 1, roundtrip_ms=900)
         self.emit("tts.event.started", 400)
         self.emit("tts.event.finished", 3000)
@@ -197,3 +201,30 @@ def test_closed_schema_leaves_input_alone() -> None:
     s = {"type": "object", "properties": {}}
     _closed_schema(s)
     assert "additionalProperties" not in s
+
+
+@pytest.mark.asyncio
+async def test_memory_scores_recall_and_mix_ups() -> None:
+    # kid5 tells 3 lines, kid7 tells 3, then kid5 asks 2, kid7 asks 2.
+    replies = ["ok"] * 6 + [
+        "Your cat is Pepper!",
+        "Hmm, chocolate?",
+        "Your dog is Pepper, right?",  # kid5's cat, told to kid7: a mix-up
+        "You like soccer!",
+    ]
+    robot = FakeRobot(replies=replies)
+    rs = await air.run_memory(
+        robot,  # type: ignore[arg-type]
+        FakeVoices(),  # type: ignore[arg-type]
+        FakeSpeaker(robot),  # type: ignore[arg-type]
+        users=["kid5", "kid7"],
+        gap="short",
+        server="http://unused",
+        robot_id="robot-1",
+    )
+    assert [(r.user, r.recalled, r.mixed_up) for r in rs] == [
+        ("kid5", True, []),
+        ("kid5", False, []),
+        ("kid7", False, ["pepper"]),
+        ("kid7", True, []),
+    ]

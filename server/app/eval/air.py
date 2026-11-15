@@ -869,6 +869,119 @@ def hard_checks(turns: list[TurnResult]) -> None:
         t.failures += check_exchange(None, Exchange(user=t.heard, reply=t.reply))
 
 
+# ── memory: facts across conversations, and across people ──────────
+
+# Invented children with invented facts (SIM-INTERACTION privacy rule: no real names).
+USERS: dict[str, dict[str, Any]] = {
+    "kid5": {
+        "voice": "zoe",
+        "pitch": 1.15,
+        "tell": [
+            "Hi Buddy!",
+            "I have a cat called Pepper.",
+            "I love strawberry ice cream.",
+        ],
+        "probes": [
+            ("Do you remember my cat's name?", ("pepper",)),
+            ("What ice cream do I like?", ("strawberr",)),
+        ],
+    },
+    "kid7": {
+        "voice": "jess",
+        "pitch": 1.08,
+        "tell": [
+            "Hi Buddy, it's me.",
+            "I got a new dog and his name is Rocket.",
+            "My favourite sport is soccer.",
+        ],
+        "probes": [
+            ("What's my dog called?", ("rocket",)),
+            ("Which sport do I like best?", ("soccer",)),
+        ],
+    },
+}
+
+
+@dataclass
+class ProbeResult:
+    user: str
+    question: str
+    heard: str
+    reply: str
+    recalled: bool
+    mixed_up: list[str]
+
+
+async def run_memory(
+    robot: Robot,
+    voices: Voices,
+    speaker: Speaker,
+    *,
+    users: list[str],
+    gap: str,
+    server: str,
+    robot_id: str,
+) -> list[ProbeResult]:
+    for u in users:  # conversation 1: each child tells Buddy about themselves
+        cfg = USERS[u]
+        print(f"-- {u}: telling", flush=True)
+        await run_talk(
+            robot, voices, speaker, scripted_kid(cfg["tell"]),
+            voice=cfg["voice"], pitch=cfg["pitch"],
+        )  # fmt: skip
+    await asyncio.sleep(3)  # let the personality worker store the memory tags
+    if gap == "long":
+        async with httpx.AsyncClient(timeout=10) as c:
+            r = await c.post(
+                f"{server}/eval/forget_history", json={"robot_id": robot_id}
+            )
+            print(f"-- long gap: conversation history dropped ({r.json()})", flush=True)
+    else:
+        print("-- short gap: conversation history kept", flush=True)
+    out: list[ProbeResult] = []
+    for u in users:  # conversation 2: each child checks what Buddy remembers
+        cfg = USERS[u]
+        others = [
+            w for o in users if o != u for _, ws in USERS[o]["probes"] for w in ws
+        ]
+        print(f"-- {u}: asking", flush=True)
+        turns = await run_talk(
+            robot, voices, speaker, scripted_kid([q for q, _ in cfg["probes"]]),
+            voice=cfg["voice"], pitch=cfg["pitch"],
+        )  # fmt: skip
+        for t, (q, expect) in zip(turns, cfg["probes"], strict=False):
+            low = t.reply.lower()
+            out.append(
+                ProbeResult(
+                    user=u,
+                    question=q,
+                    heard=t.heard,
+                    reply=t.reply,
+                    recalled=any(w in low for w in expect),
+                    mixed_up=[w for w in others if w in low],
+                )
+            )
+    return out
+
+
+def memory_report(gap: str, rs: list[ProbeResult]) -> str:
+    lines = [
+        f"## Memory across conversations ({gap} gap)",
+        "",
+        f"Recalled {sum(r.recalled for r in rs)}/{len(rs)}; "
+        f"mixed up with another child {sum(bool(r.mixed_up) for r in rs)}/{len(rs)}.",
+        "",
+        "| child | asked | Buddy heard | Buddy said | recalled | mixed up |",
+        "|---|---|---|---|---|---|",
+    ]
+    for r in rs:
+        lines.append(
+            f"| {r.user} | {r.question} | {r.heard} | {r.reply} | "
+            f"{'yes' if r.recalled else 'NO'} | {', '.join(r.mixed_up)} |"
+        )
+    return "\n".join(lines)
+
+
 # ── CLI ─────────────────────────────────────────────────────────────
 
 
@@ -938,6 +1051,15 @@ async def _main(a: argparse.Namespace) -> int:
             )  # fmt: skip
             report += ["## End of speech + STT", "", eou_report(rs)]
             (run / "eou.json").write_text(json.dumps([asdict(r) for r in rs], indent=1))
+        elif a.cmd == "memory":
+            rs = await run_memory(
+                robot, voices, speaker, users=_csv(a.users), gap=a.gap,
+                server=a.server, robot_id=a.robot_id,
+            )  # fmt: skip
+            report += [memory_report(a.gap, rs)]
+            (run / "memory.json").write_text(
+                json.dumps([asdict(r) for r in rs], indent=1)
+            )
         elif a.cmd == "talk":
             if a.script in SCRIPTS:
                 sc = SCRIPTS[a.script]
@@ -999,6 +1121,7 @@ def main() -> int:
         default="plughw:CARD=Audio,DEV=0",
         help="ALSA device of the test speaker on this machine (default: the line out)",
     )
+    ap.add_argument("--robot-id", default="robot-1", help="the supervisor's --robot-id")
     ap.add_argument("--voice", default="zoe", help="Orpheus voice for the kid")
     ap.add_argument(
         "--pitch", type=float, default=1.15, help="resample factor toward a child"
@@ -1016,6 +1139,10 @@ def main() -> int:
     e = sub.add_parser("eou", help="end-of-speech + STT sweep")
     e.add_argument("--silences", default="500,650,800")
     e.add_argument("--pauses", default="400,800")
+    m = sub.add_parser("memory", help="facts across conversations and children")
+    m.add_argument("--users", default="kid5,kid7", help=f"from {', '.join(USERS)}")
+    m.add_argument("--gap", choices=["short", "long"], default="short",
+                   help="short: history kept (<30 min); long: dropped, long-term memory only")  # fmt: skip
     t = sub.add_parser("talk", help="conversation over the air")
     t.add_argument("--script", default="twenty_questions",
                    help=f"one of {', '.join(SCRIPTS)} or an L1 persona id")  # fmt: skip
