@@ -105,3 +105,35 @@ def test_grief_carries_over_for_three_turns_only() -> None:
     assert safety_note("can we play a game", [first, "ok", "yes", "hmm"]) is None
     # Other cues do not carry over.
     assert safety_note("ok", ["a stranger said hi"]) is None
+
+
+# 2026-11-15, air rig existential set (a 15-year-old talking to the kid-tuned Buddy).
+_HOPE = "feeling hopeless, empty, or like nobody would notice if they were gone"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "sometimes i wonder if anyone would even notice if i wasn't there",
+        "i keep feeling empty",
+        "do you ever think nothing really matters",
+        "it feels like the world is falling apart",
+        "i want to disappear",
+        "what's the point of anything",
+        "i don't want to be here anymore",
+    ],
+)
+def test_hopelessness_cue(text: str) -> None:
+    assert _HOPE in safety_cues(text)
+    note = safety_note(text) or ""
+    assert "school counselor" in note and "offer a game" in note
+
+
+def test_hopelessness_carries_over() -> None:
+    note = safety_note("idk", earlier=["nobody would notice if i was gone"]) or ""
+    assert "still on their mind" in note and "offer a game" in note
+
+
+def test_people_die_is_grief_and_exams_are_distress() -> None:
+    assert "someone or a pet dying" in safety_cues("what happens when people die")
+    assert safety_cues("im so stressed about exams")
