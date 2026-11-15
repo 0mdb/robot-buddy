@@ -24,6 +24,9 @@ class TTSRequest(BaseModel):
     # EMOTION_HIGH_INTENSITY_CUES in app.tts.orpheus).
     intensity: float = 0.5
     stream: bool = True
+    # Test speakers only (the over-the-air eval rig): one of Orpheus's built-in
+    # voices. Buddy's own speech never sets it; its voice stays pinned.
+    voice: str | None = None
     robot_id: str | None = None
     seq: int | None = None
     monotonic_ts_ms: int | None = None
@@ -53,7 +56,8 @@ async def generate_speech(req: TTSRequest) -> StreamingResponse:
     # so TTSBusyError is raised here — before the StreamingResponse is created
     # — allowing us to return a proper 503.
     try:
-        audio_iter = tts.stream(req.text, req.emotion, intensity=req.intensity)
+        extra = {"voice": req.voice} if req.voice else {}
+        audio_iter = tts.stream(req.text, req.emotion, intensity=req.intensity, **extra)
     except TTSBusyError:
         raise HTTPException(status_code=503, detail="tts_busy_no_fallback") from None
 

@@ -78,6 +78,8 @@ OUTPUT_SAMPLE_RATE = 16000
 OUTPUT_SAMPLE_WIDTH = 2  # 16-bit signed
 OUTPUT_CHANNELS = 1
 CHUNK_SAMPLES = 160  # 10ms chunks at 16 kHz
+# The finetuned Orpheus model's built-in speakers.
+ORPHEUS_VOICES = frozenset({"tara", "leah", "jess", "leo", "dan", "mia", "zac", "zoe"})
 ORPHEUS_IDLE_TIMEOUT_S = settings.orpheus_idle_timeout_s
 ORPHEUS_TOTAL_TIMEOUT_S = settings.orpheus_total_timeout_s
 
@@ -824,7 +826,12 @@ class OrpheusTTS:
             yield b""
 
     def stream(
-        self, text: str, emotion: str = "neutral", *, intensity: float = 0.5
+        self,
+        text: str,
+        emotion: str = "neutral",
+        *,
+        intensity: float = 0.5,
+        voice: str | None = None,
     ) -> AsyncIterator[bytes]:
         """Return an async iterator of PCM audio chunks.
 
@@ -864,7 +871,9 @@ class OrpheusTTS:
             if not should_shed_to_espeak:
                 self._active_requests += 1
 
-        return self._stream_gen(text, emotion, should_shed_to_espeak, intensity)
+        return self._stream_gen(
+            text, emotion, should_shed_to_espeak, intensity, voice=voice
+        )
 
     async def _stream_gen(
         self,
@@ -872,6 +881,8 @@ class OrpheusTTS:
         emotion: str,
         should_shed_to_espeak: bool,
         intensity: float = 0.5,
+        *,
+        voice: str | None = None,
     ) -> AsyncIterator[bytes]:
         """Async generator body for stream(). Do not call directly."""
         chunk_bytes = CHUNK_SAMPLES * OUTPUT_SAMPLE_WIDTH
@@ -892,6 +903,9 @@ class OrpheusTTS:
             if self._backend == "orpheus_tts" and self._model is not None:
                 # True streaming: pipe PCM chunks from the Orpheus generator
                 # to the async caller via an asyncio.Queue as they are decoded.
+                # Buddy's voice is pinned; `voice` is only for test speakers
+                # (the over-the-air eval rig), restricted to Orpheus's own voices.
+                stream_voice = voice if voice in ORPHEUS_VOICES else self._orpheus_voice
                 loop = asyncio.get_running_loop()
                 q: asyncio.Queue[bytes | Exception | None] = asyncio.Queue(maxsize=16)
                 model = self._model
@@ -902,7 +916,7 @@ class OrpheusTTS:
                         req_id = f"req-{int(time.time() * 1000)}-{uuid.uuid4().hex[:8]}"
                         for raw_chunk in model.generate_speech(
                             prompt=tagged,
-                            voice=self._orpheus_voice,
+                            voice=stream_voice,
                             request_id=req_id,
                         ):
                             pcm = pcm_int16_resample_to_int16(

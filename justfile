@@ -89,6 +89,12 @@ run *args:
 run-server:
     bash -lc 'set -a; [ -f "{{project}}/.env" ] && source "{{project}}/.env"; set +a; cd "{{project}}/server" && uv run python -m app.main'
 
+# Over-the-air rig: speak to the real robot from a speaker by this box, score what it did.
+# `just air --device plughw:CARD=Audio,DEV=0 wake` | `eou` | `talk --script twenty_questions [--kid claude --judge]`
+# (--kid claude / --judge need ANTHROPIC_API_KEY). Reports land in server/eval_out/air/<run>/.
+air *args:
+    cd {{project}}/server && .venv/bin/python -m app.eval.air {{args}}
+
 # Run BFCL-style tool-selection eval against the running planner server.
 # Extra args pass through (e.g. `just eval-tools --threshold 0.9 --host http://...`).
 eval-tools *args:

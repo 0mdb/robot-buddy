@@ -609,6 +609,81 @@ def openai_chat(
     return chat
 
 
+def _closed_schema(schema: Any) -> Any:
+    """A copy with ``additionalProperties: false`` on every object (structured outputs need it)."""
+    if isinstance(schema, dict):
+        out = {k: _closed_schema(v) for k, v in schema.items()}
+        if out.get("type") == "object":
+            out.setdefault("additionalProperties", False)
+        return out
+    if isinstance(schema, list):
+        return [_closed_schema(v) for v in schema]
+    return schema
+
+
+def anthropic_chat(
+    model: str = "claude-opus-5-5",
+    *,
+    effort: str = "low",
+    max_tokens: int = 4000,
+    client: Any = None,
+) -> ChatFn:
+    """A ChatFn on the Claude API: a simulated user (or judge) outside the model under test.
+
+    SIM-INTERACTION open question 2: the model under test should not play the child. The
+    client reads ANTHROPIC_API_KEY (or an ``ant auth login`` profile). ``temperature`` is
+    ignored: current Claude models reject sampling parameters. A refused request falls back
+    server-side (``fallbacks: "default"``), sent through ``extra_body`` because the pinned SDK
+    predates the parameter.
+    """
+    import anthropic
+
+    api = client or anthropic.AsyncAnthropic()
+
+    async def chat(
+        messages: list[dict[str, Any]],
+        schema: dict[str, Any] | None,
+        temperature: float,
+    ) -> str:
+        del temperature
+        system = "\n\n".join(
+            str(m["content"]) for m in messages if m.get("role") == "system"
+        )
+        turns: list[dict[str, Any]] = []
+        for m in messages:
+            if m.get("role") not in ("user", "assistant"):
+                continue
+            if turns and turns[-1]["role"] == m["role"]:
+                turns[-1]["content"] += "\n" + str(m["content"])
+            else:
+                turns.append({"role": m["role"], "content": str(m["content"])})
+        # The API needs user first and last (no prefill): the simulated user speaks first.
+        if not turns or turns[0]["role"] != "user":
+            turns.insert(0, {"role": "user", "content": "(Buddy is listening.)"})
+        if turns[-1]["role"] != "user":
+            turns.append({"role": "user", "content": "(Buddy is listening.)"})
+        output_config: dict[str, Any] = {"effort": effort}
+        if schema is not None:
+            output_config["format"] = {
+                "type": "json_schema",
+                "schema": _closed_schema(schema),
+            }
+        resp = await api.beta.messages.create(
+            model=model,
+            max_tokens=max_tokens,
+            system=system,
+            messages=turns,
+            output_config=output_config,
+            betas=["server-side-fallback-2026-07-01"],
+            extra_body={"fallbacks": "default"},
+        )
+        if resp.stop_reason == "refusal":
+            return ""
+        return "".join(b.text for b in resp.content if b.type == "text").strip()
+
+    return chat
+
+
 def load_dialogues(path: Any) -> list[Dialogue]:
     """Dialogues from a run's dialogues.json, for re-judging without re-generating."""
     import json as _json
