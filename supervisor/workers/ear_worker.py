@@ -383,7 +383,7 @@ class EarWorker(BaseWorker):
             self._configured.set()
 
         elif t == EAR_CMD_START_LISTENING:
-            self._start_listening()
+            self._start_listening(chime_holdoff=bool(p.get("chime_holdoff", False)))
 
         elif t == EAR_CMD_STOP_LISTENING:
             self._stop_listening()
@@ -448,13 +448,17 @@ class EarWorker(BaseWorker):
             self._vad_silence_ms,
         )
 
-    def _start_listening(self) -> None:
+    def _start_listening(self, *, chime_holdoff: bool = False) -> None:
         """Begin forwarding mic audio and running VAD."""
         if self._listening:
             return
         self._listening = True
         self._vad_paused = False
-        self._vad_holdoff_until = time.monotonic() + _VAD_START_HOLDOFF_S
+        # Only when a chime plays: a follow-up window opens silently, and a child often
+        # answers the moment Buddy stops (the hold-off cost them their first words).
+        self._vad_holdoff_until = (
+            time.monotonic() + _VAD_START_HOLDOFF_S if chime_holdoff else 0.0
+        )
         self._reset_vad_state()
         self._vad_diag_max_prob = 0.0
         self._vad_diag_max_amp = 0.0

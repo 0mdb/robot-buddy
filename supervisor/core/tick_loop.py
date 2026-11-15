@@ -1397,7 +1397,13 @@ class TickLoop:
 
         # Tell ear worker to start forwarding mic audio + VAD (not needed for text)
         if not is_text:
-            asyncio.ensure_future(self._workers.send_to("ear", EAR_CMD_START_LISTENING))
+            # Hold VAD off only while the listening chime plays (the mic hears it).
+            holdoff = trigger == "wake_word" and chime
+            asyncio.ensure_future(
+                self._workers.send_to(
+                    "ear", EAR_CMD_START_LISTENING, {"chime_holdoff": holdoff}
+                )
+            )
 
         # Notify personality worker
         asyncio.ensure_future(
