@@ -303,6 +303,16 @@ _3 items complete (LLM session memory, TTS resampler hardening, conversation stu
 
 ---
 
+### Owner mode (Ben's assistant on the same speech stack) — plan, 2026-11-15
+
+Ben: "a mode for myself: check local Home Assistant, bank accounts, or other things local models look after. Buddy is how we tune the speech interface; the house and the robot use the same stack." Same pipeline (wake word, speculative end of turn, Whisper, LLM, Orpheus, follow-up windows) and the same air rig for tuning; a different profile, tools, and memory.
+
+- [ ] **Gate on identity first.** Owner tools only when the speaker is recognised as Ben (voice ID, SIM-INTERACTION stage 5) with a high-confidence threshold; anyone else (kids, guests, a TV) gets Buddy. A spoken PIN or the dashboard as a fallback. Nothing owner-mode ever answers a child.
+- [ ] **Profile `owner`** (adult, kind owner): direct, terse, no kid-safety tone rules, own system prompt; a separate memory store (never mixed with the children's).
+- [ ] **Tools over MCP, local only, read-only first:** Home Assistant (local REST/WebSocket API: states, history, "is the garage open", then confirmed actions); finances from local data only (e.g. exported statements/OFX imported into a local DB the model queries; no bank credentials in the robot, no cloud aggregators); calendar/reminders. Each tool: allow-list, audit log on the server, spoken confirmation before any action.
+- [ ] **Model:** tool use with gemma-4-E4B is limited (the preamble picks one of three tools); owner mode likely wants a larger local model or a separate one loaded on demand (VRAM vs Orpheus on the 3090 Ti). Evaluate with the existing BFCL-style tool eval + the air rig.
+- [ ] Where it runs: the server box can host it without the robot (a room mic/speaker or a phone); the robot is one client.
+
 ### Camera & Vision
 
 - [x] `[sonnet]` Arducam IMX708 integration — validated on-hardware 2026-04-19. Sensor detected by libcamera (imx708 @ 4608×2592, ISP via pisp); supervisor vision worker streams at 640×480 BGR888. Fix was runtime config, not code: supervisor venv had `include-system-site-packages = false` so the apt-installed `python3-picamera2` was invisible — flipped the flag to `true` in `supervisor/.venv/pyvenv.cfg`. Default `vision.hfov_deg=66` is correct for the standard Camera Module 3 lens (75° diagonal ≈ 66° horizontal).
