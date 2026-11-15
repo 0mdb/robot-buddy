@@ -82,13 +82,23 @@ def trim(pcm: bytes, floor: float = 300.0) -> bytes:
     return _pcm(x[max(0, idx[0] - pad) : idx[-1] + pad])
 
 
-class Speaker:
-    """The test speaker: a local ALSA device near the robot (not the robot's own)."""
+CALIBRATION = RUN_DIR / "calibration.json"
 
-    def __init__(self, device: str) -> None:
+
+class Speaker:
+    """The test speaker: an ALSA device on this machine (the dev box's line out), placed
+    near the robot. Buddy itself still answers through the Pi's own speaker.
+
+    ``gain_db`` is the calibrated level (``calibrate``): at 0 dB relative, a clip reaches the
+    robot as loud as the reference voice did."""
+
+    def __init__(self, device: str, gain_db: float = 0.0) -> None:
         self.device = device
+        self.gain_db = gain_db
 
     async def play(self, pcm: bytes) -> None:
+        if self.gain_db:
+            pcm = shape(pcm, gain_db=self.gain_db)
         proc = await asyncio.create_subprocess_exec(
             "aplay", "-q", "-D", self.device, "-f", "S16_LE", "-r", str(SR), "-c", "1",
             stdin=subprocess.PIPE,
@@ -209,6 +219,24 @@ class Robot:
             bad = {k: v for k, v in r.json().items() if not v.get("ok")}
             if bad:
                 raise RuntimeError(f"params rejected: {bad}")
+
+    async def mic_level(self) -> float | None:
+        """The ear's last 1 s input RMS (dBFS) on its selected channel."""
+        async with httpx.AsyncClient(timeout=5) as c:
+            r = await c.get(f"{self.http}/debug/workers")
+            r.raise_for_status()
+            return (r.json().get("ear", {}).get("health") or {}).get("input_rms_dbfs")
+
+    async def levels(self, seconds: float) -> list[float]:
+        """Sample the mic level for `seconds` (one new reading per second)."""
+        out: list[float] = []
+        end = time.monotonic() + seconds
+        while time.monotonic() < end:
+            v = await self.mic_level()
+            if v is not None and (not out or v != out[-1]):
+                out.append(float(v))
+            await asyncio.sleep(0.5)
+        return out
 
     async def status(self) -> dict[str, Any]:
         async with httpx.AsyncClient(timeout=10) as c:
@@ -519,6 +547,105 @@ def eou_report(rs: list[EouResult]) -> str:
     return "\n".join(lines)
 
 
+# ── calibrate: level the test speaker to a real voice ──────────────
+
+PASSAGE = (
+    "One, two, three, four, five, six, seven, eight, nine, ten. "
+    "My robot is called Buddy, and he likes to play games with me. "
+    "The quick brown fox jumps over the lazy dog."
+)
+RAW_CHANNEL = 2  # a raw Flex mic: no AGC to flatten the difference being measured
+
+
+def speech_level(levels: list[float]) -> float | None:
+    """Loudness while talking: the mean of the loudest 40 % of 1 s windows."""
+    if not levels:
+        return None
+    top = sorted(levels, reverse=True)[: max(1, int(len(levels) * 0.4))]
+    return statistics.mean(top)
+
+
+@contextlib.asynccontextmanager
+async def raw_mic(robot: Robot):  # type: ignore[no-untyped-def]
+    params = await robot.get_params()
+    await robot.set_params({"ear.mic_channel": RAW_CHANNEL})
+    await asyncio.sleep(1.5)
+    try:
+        yield
+    finally:
+        # -1 ("use --usb-mic-channel") is not pushed to the ear, so switch to 0 first.
+        await robot.set_params({"ear.mic_channel": 0})
+        await robot.set_params({"ear.mic_channel": params.get("ear.mic_channel", -1)})
+
+
+async def calibrate_reference(robot: Robot, seconds: float) -> dict[str, Any]:
+    async with raw_mic(robot):
+        quiet = await robot.levels(3)
+        floor = min(quiet) if quiet else -90.0
+        print(
+            "\n>>> When ready, read this in a normal voice from where the speaker is:\n"
+        )
+        print(
+            f"    {PASSAGE}\n    (keep going, or count, for {seconds:.0f} s)\n",
+            flush=True,
+        )
+        # Wait (up to 3 min) for the talking to start, then measure.
+        deadline = time.monotonic() + 180
+        while time.monotonic() < deadline:
+            v = await robot.mic_level()
+            if v is not None and v > floor + 10:
+                break
+            await asyncio.sleep(0.3)
+        else:
+            raise RuntimeError(f"heard nobody talking (room {floor:.1f} dBFS)")
+        print("    heard you, measuring...", flush=True)
+        talk = await robot.levels(seconds)
+    cal = {
+        "reference_dbfs": speech_level(talk),
+        "noise_dbfs": min(quiet) if quiet else None,
+        "channel": RAW_CHANNEL,
+        "samples": talk,
+        "ts": time.strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    if cal["reference_dbfs"] is None or (
+        cal["noise_dbfs"] is not None and cal["reference_dbfs"] < cal["noise_dbfs"] + 6
+    ):
+        raise RuntimeError(f"no speech heard over the noise floor: {cal}")
+    return cal
+
+
+async def calibrate_speaker(
+    robot: Robot, voices: Voices, device: str, ref: dict[str, Any]
+) -> dict[str, Any]:
+    pcm = await voices.say(PASSAGE, "tara")
+    target = float(ref["reference_dbfs"])
+    gain, tries, delta = -10.0, [], 99.0
+    async with raw_mic(robot):
+        for _ in range(6):
+            sp = Speaker(device, gain)
+            dur = len(pcm) / (2 * SR)
+            play = asyncio.create_task(sp.play(pcm + pcm))
+            await asyncio.sleep(0.8)
+            got = speech_level(await robot.levels(2 * dur - 1.5))
+            await play
+            if got is None:
+                raise RuntimeError("robot reported no level")
+            tries.append({"gain_db": gain, "heard_dbfs": round(got, 1)})
+            print(
+                f"  gain {gain:+.1f} dB -> robot hears {got:.1f} dBFS (target {target:.1f})"
+            )
+            delta = target - got
+            if abs(delta) <= 1.5:
+                break
+            gain = min(6.0, gain + delta)
+            await asyncio.sleep(1.0)
+    if gain >= 6.0 and abs(delta) > 1.5:
+        print(
+            "  !! still too quiet at +6 dB: turn the line-out amp or `amixer -c 1 sset PCM` up"
+        )
+    return {**ref, "device": device, "gain_db": round(gain, 1), "tries": tries}
+
+
 # ── talk: conversations ─────────────────────────────────────────────
 
 # Air-only scripts for a fluid conversation (not L1 personas, which lean to safety cases).
@@ -753,7 +880,11 @@ async def _main(a: argparse.Namespace) -> int:
     run = RUN_DIR / time.strftime("%Y%m%d-%H%M%S")
     run.mkdir(parents=True, exist_ok=True)
     voices = Voices(a.server)
-    speaker = Speaker(a.device)
+    cal = json.loads(CALIBRATION.read_text()) if CALIBRATION.exists() else {}
+    if a.cmd != "calibrate" and cal.get("device") != a.device:
+        print(f"note: no calibration for {a.device}; playing at 0 dB (run `calibrate`)")
+        cal = {}
+    speaker = Speaker(a.device, float(cal.get("gain_db", 0.0)))
     report: list[str] = [
         f"# Over-the-air run {run.name}",
         "",
@@ -772,7 +903,20 @@ async def _main(a: argparse.Namespace) -> int:
             )
         )
         report.append("")
-        if a.cmd == "wake":
+        if a.cmd == "calibrate":
+            if a.reference:
+                ref = await calibrate_reference(robot, a.seconds)
+                CALIBRATION.write_text(json.dumps(ref, indent=1))
+                report += [f"Reference voice: {ref['reference_dbfs']:.1f} dBFS speaking, "
+                           f"{ref['noise_dbfs']:.1f} dBFS room ({ref['samples']})"]  # fmt: skip
+            else:
+                if "reference_dbfs" not in cal:
+                    raise SystemExit("run `calibrate --reference` first")
+                out = await calibrate_speaker(robot, voices, a.device, cal)
+                CALIBRATION.write_text(json.dumps(out, indent=1))
+                report += [f"Speaker {a.device}: gain {out['gain_db']:+.1f} dB matches the "
+                           f"reference {cal['reference_dbfs']:.1f} dBFS ({out['tries']})"]  # fmt: skip
+        elif a.cmd == "wake":
             clips = await run_wake(
                 robot, voices, speaker,
                 voice_list=_csv(a.voices), pitches=_csv(a.pitches, float),
@@ -851,13 +995,18 @@ def main() -> int:
         "--server", default="http://localhost:8100", help="planner server (/tts)"
     )
     ap.add_argument(
-        "--device", default="default", help="ALSA device of the test speaker"
+        "--device",
+        default="plughw:CARD=Audio,DEV=0",
+        help="ALSA device of the test speaker on this machine (default: the line out)",
     )
     ap.add_argument("--voice", default="zoe", help="Orpheus voice for the kid")
     ap.add_argument(
         "--pitch", type=float, default=1.15, help="resample factor toward a child"
     )
     sub = ap.add_subparsers(dest="cmd", required=True)
+    c = sub.add_parser("calibrate", help="level the test speaker to a real voice")
+    c.add_argument("--reference", action="store_true", help="measure a person talking")
+    c.add_argument("--seconds", type=float, default=15)
     w = sub.add_parser("wake", help="wake-word threshold sweep")
     w.add_argument("--voices", default="zoe,mia,tara,leo,dan,jess")
     w.add_argument("--pitches", default="1.0,1.2")
