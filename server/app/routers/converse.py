@@ -662,6 +662,7 @@ async def _generate_and_stream_live(
         nonlocal metadata_seen, emotion_for_tts, intensity_for_tts
         nonlocal llm_latency_ms, sent_first
 
+        cancelled = False
         stream = llm.stream_conversation(
             history,
             user_text,
@@ -728,37 +729,49 @@ async def _generate_and_stream_live(
                         "tags": final.memory_tags,
                     }
                 )
+        except asyncio.CancelledError:
+            # The turn was dropped (speculation, session end): no tail TTS,
+            # and let the cancellation through (dispatching into a TaskGroup
+            # that is shutting down raised and turned it into internal_error).
+            cancelled = True
+            raise
         finally:
-            # Flush the final buffered fragment (short-sentence tail).
-            for event in parser.close():
-                if isinstance(event, Sentence):
-                    if not sent_first:
-                        await _dispatch_tts(
-                            event.text,
-                            tg,
-                            emotion=emotion_for_tts,
-                            intensity=intensity_for_tts,
-                        )
-                        sent_first = True
-                    else:
-                        coalesce_buf.append(event.text)
-            # Coalesce everything after the first sentence into a single
-            # TTS call with `neutral` so no paralinguistic cue is prepended
-            # a second time.
-            if coalesce_buf:
-                await _dispatch_tts(
-                    " ".join(coalesce_buf),
-                    tg,
-                    emotion="neutral",
-                    intensity=0.0,
-                )
-                coalesce_buf.clear()
-            # EOF signal to consumer. Guarded so we don't deadlock if the
-            # group is already tearing down.
-            try:
-                await sentence_chunk_queues.put(None)
-            except (asyncio.CancelledError, RuntimeError):
-                raise
+            # Close the LLM stream now, not at garbage collection: its finally frees the
+            # generation slot (LLM_MAX_INFLIGHT) and aborts the vLLM request. A dropped
+            # speculative turn otherwise held its slot, and the next turns hit llm_busy.
+            with contextlib.suppress(Exception):
+                await stream.aclose()
+            if not cancelled:
+                # Flush the final buffered fragment (short-sentence tail).
+                for event in parser.close():
+                    if isinstance(event, Sentence):
+                        if not sent_first:
+                            await _dispatch_tts(
+                                event.text,
+                                tg,
+                                emotion=emotion_for_tts,
+                                intensity=intensity_for_tts,
+                            )
+                            sent_first = True
+                        else:
+                            coalesce_buf.append(event.text)
+                # Coalesce everything after the first sentence into a single
+                # TTS call with `neutral` so no paralinguistic cue is prepended
+                # a second time.
+                if coalesce_buf:
+                    await _dispatch_tts(
+                        " ".join(coalesce_buf),
+                        tg,
+                        emotion="neutral",
+                        intensity=0.0,
+                    )
+                    coalesce_buf.clear()
+                # EOF signal to consumer. Guarded so we don't deadlock if the
+                # group is already tearing down.
+                try:
+                    await sentence_chunk_queues.put(None)
+                except (asyncio.CancelledError, RuntimeError):
+                    raise
 
     async def _consume() -> None:
         nonlocal first_audio_latency_ms

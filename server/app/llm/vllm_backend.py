@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import inspect
 import logging
@@ -534,6 +535,11 @@ class VLLMBackend(PlannerLLMBackend):
                             last_len = len(text)
             except asyncio.TimeoutError as exc:
                 raise LLMTimeoutError("llm_timeout") from exc
+            finally:
+                # Closing vLLM's generator aborts the request if it is still running
+                # (the caller stopped early or was cancelled).
+                with contextlib.suppress(Exception):
+                    await agen.aclose()
             t_end = time.monotonic()
             if t_first is not None:
                 decode_s = max(t_end - t_first, 1e-3)

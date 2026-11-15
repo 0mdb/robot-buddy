@@ -254,3 +254,35 @@ async def test_history_finalized_with_assistant_message(patched_runtime) -> None
     assert msgs[-1].role == "assistant"
     assert msgs[-1].content == "A long enough sentence to emit here."
     assert msgs[-1].emotion == "happy"
+
+
+@pytest.mark.asyncio
+async def test_cancelled_turn_closes_the_llm_stream_at_once(patched_runtime) -> None:
+    """A dropped speculative turn must free its LLM slot immediately (2026-11-15: left
+    to garbage collection, the slots ran out and later turns hit llm_busy)."""
+    import asyncio
+
+    from app.routers.converse import _generate_and_stream_live
+
+    closed = asyncio.Event()
+
+    class _SlowLLM:
+        async def stream_conversation(self, history, user_text, **_):  # type: ignore[no-untyped-def]
+            history.add_user(user_text)
+            try:
+                yield '{"emotion": "happy", "intensity": 0.5, "text": "Hi'
+                await asyncio.sleep(10)  # still generating when the turn is dropped
+                yield ' there."}'
+            finally:
+                closed.set()  # the real backend frees its slot + aborts vLLM here
+
+    task = asyncio.create_task(
+        _generate_and_stream_live(
+            _FakeWebSocket(), _SlowLLM(), ConversationHistory(max_turns=20), "hello"
+        )
+    )
+    await asyncio.sleep(0.05)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert closed.is_set()
