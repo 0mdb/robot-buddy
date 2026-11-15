@@ -917,9 +917,9 @@ def agenda_kid(
         " Speak the way a child that age talks out loud: short and simple. Plain words: no"
         " emoji, asterisks, or brackets.\n\nYour goals for this conversation, in order:\n"
         f"{plan}\n\nOne goal per turn. If Buddy just asked you something, answer it in a few"
-        " words first, then do your next goal. When every goal is done and Buddy's last"
-        " reply needs no answer, reply with exactly DONE."
-        + (f"\n\n{rules}" if rules else "")
+        " words first, then do your next goal. When every goal is done, answer Buddy once"
+        " more if it asked something, then say goodbye. After Buddy answers your goodbye,"
+        " reply with exactly DONE." + (f"\n\n{rules}" if rules else "")
     )
 
     async def nxt(turns: list[TurnResult]) -> str | None:
