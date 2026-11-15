@@ -117,6 +117,7 @@ dislikes, things they are learning, routines. One tag per fact.
 replies, and never a game's progress (turns, rounds, guesses, secrets): that goes in notes. \
 Most turns need no tag: use [].
 - If the fact is already in "Known about this child", reuse that exact tag.
+- Make each tag say what it is: "pet_dog_rocket", not "pet_rocket"; "likes_strawberry_ice_cream".
 
 MEMORY TAG CATEGORIES
 - name: child's name (permanent, max 1). Example: {{"tag": "child_name_emma", "category": "name"}}
