@@ -395,6 +395,14 @@ class ConversationHistory:
         raw = self._profile.get("audience") if self._profile else None
         return resolve_profile(parse_audience(raw))
 
+    def snapshot(self) -> list[ConversationMessage]:
+        """The messages as they are now, for rolling back a speculative turn."""
+        return list(self._messages)
+
+    def restore(self, snapshot: list[ConversationMessage]) -> None:
+        self._messages.clear()
+        self._messages.extend(snapshot)
+
     def add_user(self, text: str) -> None:
         self._messages.append(ConversationMessage(role="user", content=text))
 

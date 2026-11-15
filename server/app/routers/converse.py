@@ -4,6 +4,8 @@ Protocol:
     Client → Server:
         {"type": "audio", "data": "<base64 PCM 16kHz 16-bit mono>"}
         {"type": "end_utterance"}
+        {"type": "end_utterance", "tentative": true}  # speculate: start, hold the output
+        {"type": "resume"}  # the speaker went on: drop the speculation
         {"type": "cancel"}
         {"type": "text", "text": "..."}  # bypass STT, send text directly
         {"type": "profile", "profile": {...}}  # personality profile (PE spec §12.5)
@@ -23,6 +25,8 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
+import dataclasses
 import logging
 import time
 import uuid
@@ -117,6 +121,15 @@ async def converse(ws: WebSocket):
 
     await ws.send_json({"type": "listening"})
 
+    spec: _Speculation | None = None
+    turn_kw: dict[str, object] = {
+        "llm": llm,
+        "history": history,
+        "mcp_client": mcp_client,
+        "override_temperature": override_temperature,
+        "override_max_output_tokens": override_max_output_tokens,
+    }
+
     try:
         while True:
             msg = await ws.receive_json()
@@ -143,45 +156,43 @@ async def converse(ws: WebSocket):
                     audio_buffer.extend(decoded)
 
             elif msg_type == "end_utterance":
-                # Transcribe accumulated audio → generate response
+                if msg.get("tentative"):
+                    # The speaker paused: start the turn now, hold its output until
+                    # the real end of utterance confirms it (or "resume" drops it).
+                    if spec is None and audio_buffer:
+                        gate = _GatedWS(ws)
+                        spec = _Speculation(
+                            gate=gate,
+                            snapshot=history.snapshot(),
+                            started=time.monotonic(),
+                            task=asyncio.create_task(
+                                _audio_turn(gate, bytes(audio_buffer), **turn_kw)
+                            ),
+                        )
+                    continue
+                if spec is not None:
+                    s, spec = spec, None
+                    audio_buffer.clear()
+                    log.info(
+                        "speculation committed (%.0f ms after it started)",
+                        (time.monotonic() - s.started) * 1000,
+                    )
+                    await s.gate.commit()
+                    await s.task
+                    continue
                 if not audio_buffer:
                     await ws.send_json(
                         {"type": "error", "message": "No audio received"}
                     )
                     continue
-
-                t_stt = time.monotonic()
-                user_text = await _transcribe_audio(bytes(audio_buffer))
-                stt_latency_ms = round((time.monotonic() - t_stt) * 1000)
+                pcm = bytes(audio_buffer)
                 audio_buffer.clear()
+                await _audio_turn(ws, pcm, **turn_kw)
 
-                if not user_text.strip():
-                    await ws.send_json(
-                        {"type": "error", "message": "Could not understand audio"}
-                    )
-                    await ws.send_json({"type": "listening"})
-                    continue
-
-                turn_id = uuid.uuid4().hex[:12]
-                await ws.send_json(
-                    {
-                        "type": "transcription",
-                        "turn_id": turn_id,
-                        "text": user_text,
-                        "stt_latency_ms": stt_latency_ms,
-                    }
-                )
-                await _generate_and_stream(
-                    ws,
-                    llm,
-                    history,
-                    user_text,
-                    mcp_client=mcp_client,
-                    override_temperature=override_temperature,
-                    override_max_output_tokens=override_max_output_tokens,
-                    turn_id=turn_id,
-                )
-                await ws.send_json({"type": "listening"})
+            elif msg_type == "resume":
+                if spec is not None:
+                    await _drop_speculation(spec, history)
+                    spec = None
 
             elif msg_type == "text":
                 # Direct text input (bypass STT)
@@ -217,6 +228,9 @@ async def converse(ws: WebSocket):
                     history.update_profile(profile)
 
             elif msg_type == "cancel":
+                if spec is not None:
+                    await _drop_speculation(spec, history)
+                    spec = None
                 audio_buffer.clear()
                 log.info("Client cancelled current utterance")
 
@@ -236,6 +250,8 @@ async def converse(ws: WebSocket):
         except Exception:
             pass
     finally:
+        if spec is not None:
+            await _drop_speculation(spec, history)
         await registry.unregister(robot_id=robot_id, websocket=ws, history=history)
 
 
@@ -263,6 +279,89 @@ def _to_float(raw: object) -> float | None:
         return float(raw)
     except (TypeError, ValueError):
         return None
+
+
+class _GatedWS:
+    """Stands in for the WebSocket during a speculative turn: holds every message until
+    commit() (the end of utterance is confirmed), then sends them in order and passes
+    later ones straight through. A dropped speculation's messages are never sent."""
+
+    def __init__(self, ws: WebSocket) -> None:
+        self._ws = ws
+        self._held: list[dict[str, object]] = []
+        self._open = False
+
+    async def send_json(self, msg: dict[str, object]) -> None:
+        if self._open:
+            await self._ws.send_json(msg)
+        else:
+            self._held.append(msg)
+
+    async def commit(self) -> None:
+        # No await between the last emptiness check and opening, so nothing the
+        # producer adds meanwhile can be stranded in the queue.
+        while self._held:
+            await self._ws.send_json(self._held.pop(0))
+        self._open = True
+
+
+@dataclasses.dataclass
+class _Speculation:
+    gate: _GatedWS
+    snapshot: list
+    started: float
+    task: asyncio.Task[None]
+
+
+async def _drop_speculation(spec: _Speculation, history: ConversationHistory) -> None:
+    spec.task.cancel()
+    with contextlib.suppress(asyncio.CancelledError, Exception):
+        await spec.task
+    history.restore(spec.snapshot)
+    log.info(
+        "speculation dropped (speech resumed %.0f ms after it started)",
+        (time.monotonic() - spec.started) * 1000,
+    )
+
+
+async def _audio_turn(
+    ws: WebSocket | _GatedWS,
+    pcm: bytes,
+    *,
+    llm: PlannerLLMBackend,
+    history: ConversationHistory,
+    mcp_client: McpClient | None,
+    override_temperature: float | None,
+    override_max_output_tokens: int | None,
+) -> None:
+    """One spoken turn: transcribe, reply, then listen again."""
+    t_stt = time.monotonic()
+    user_text = await _transcribe_audio(pcm)
+    stt_latency_ms = round((time.monotonic() - t_stt) * 1000)
+    if not user_text.strip():
+        await ws.send_json({"type": "error", "message": "Could not understand audio"})
+        await ws.send_json({"type": "listening"})
+        return
+    turn_id = uuid.uuid4().hex[:12]
+    await ws.send_json(
+        {
+            "type": "transcription",
+            "turn_id": turn_id,
+            "text": user_text,
+            "stt_latency_ms": stt_latency_ms,
+        }
+    )
+    await _generate_and_stream(
+        ws,  # type: ignore[arg-type]
+        llm,
+        history,
+        user_text,
+        mcp_client=mcp_client,
+        override_temperature=override_temperature,
+        override_max_output_tokens=override_max_output_tokens,
+        turn_id=turn_id,
+    )
+    await ws.send_json({"type": "listening"})
 
 
 async def _transcribe_audio(pcm_audio: bytes) -> str:

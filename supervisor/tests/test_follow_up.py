@@ -187,3 +187,40 @@ class TestReplyNotPreempted:
         assert loop.world.speech_priority == 3
         await asyncio.sleep(0.05)
         assert loop.world.session_id  # follow-up opened
+
+
+class TestSpeculation:
+    """The ear's tentative end of utterance starts the reply early (held server-side);
+    resumed speech drops it. Only wake-word turns end on VAD."""
+
+    @pytest.mark.asyncio
+    async def test_pause_and_resume_forwarded_for_wake_word_turns(self) -> None:
+        from supervisor.messages.types import (
+            AI_CMD_SPECULATE,
+            AI_CMD_SPECULATE_CANCEL,
+            EAR_EVENT_SPEECH_RESUMED,
+            EAR_EVENT_UTTERANCE_PAUSE,
+        )
+
+        loop = _tick_loop()
+        loop._handle_face_events(_env(EAR_EVENT_WAKE_WORD))
+        loop._handle_face_events(_env(EAR_EVENT_UTTERANCE_PAUSE, {"silence_ms": 450}))
+        loop._handle_face_events(_env(EAR_EVENT_SPEECH_RESUMED))
+        loop._handle_face_events(_env(EAR_EVENT_UTTERANCE_PAUSE, {"silence_ms": 450}))
+        await asyncio.sleep(0)
+        assert _count(loop, "ai", AI_CMD_SPECULATE) == 2
+        assert _count(loop, "ai", AI_CMD_SPECULATE_CANCEL) == 1
+
+    @pytest.mark.asyncio
+    async def test_not_forwarded_without_a_wake_word_session(self) -> None:
+        from supervisor.messages.types import (
+            AI_CMD_SPECULATE,
+            EAR_EVENT_UTTERANCE_PAUSE,
+        )
+
+        loop = _tick_loop()
+        loop._handle_face_events(_env(EAR_EVENT_UTTERANCE_PAUSE))  # no session
+        loop._start_conversation("ptt")
+        loop._handle_face_events(_env(EAR_EVENT_UTTERANCE_PAUSE))  # PTT session
+        await asyncio.sleep(0)
+        assert _count(loop, "ai", AI_CMD_SPECULATE) == 0

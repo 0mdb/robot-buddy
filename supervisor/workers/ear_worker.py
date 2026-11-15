@@ -45,7 +45,9 @@ from supervisor.messages.types import (
     EAR_CONFIG_INIT,
     EAR_EVENT_DOA,
     EAR_EVENT_END_OF_UTTERANCE,
+    EAR_EVENT_SPEECH_RESUMED,
     EAR_EVENT_SPEECH_STARTED,
+    EAR_EVENT_UTTERANCE_PAUSE,
     EAR_EVENT_OWW_SCORE,
     EAR_EVENT_WAKE_WORD,
     SYSTEM_AUDIO_LINK_DOWN,
@@ -140,6 +142,10 @@ class EarWorker(BaseWorker):
         self._vad_min_speech_ms: int = 150
         self._vad_speech_prob_threshold: float = 0.3
         self._vad_max_utterance_ms: int = 15000
+        # Tentative end of utterance: after this much silence the server starts the reply
+        # early (held until the real end confirms it). 0 = off.
+        self._vad_tentative_ms: int = 450
+        self._pause_sent = False
         self._configured = asyncio.Event()
 
         # State
@@ -357,6 +363,7 @@ class EarWorker(BaseWorker):
                 p.get("vad_speech_prob_threshold", 0.3)
             )
             self._vad_max_utterance_ms = int(p.get("vad_max_utterance_ms", 15000))
+            self._vad_tentative_ms = int(p.get("vad_tentative_ms", 450))
             log.info(
                 "configured: mic=%s (ch %d of %d), xvf=%s, ww_model=%s, threshold=%.2f",
                 self._mic_device,
@@ -418,6 +425,8 @@ class EarWorker(BaseWorker):
             self._vad_silence_ms = max(100, int(p["vad_silence_ms"]))
         if "vad_min_speech_ms" in p:
             self._vad_min_speech_ms = max(0, int(p["vad_min_speech_ms"]))
+        if "vad_tentative_ms" in p:
+            self._vad_tentative_ms = max(0, int(p["vad_tentative_ms"]))
         if "vad_max_utterance_ms" in p:
             self._vad_max_utterance_ms = max(0, int(p["vad_max_utterance_ms"]))
         if "vad_speech_prob_threshold" in p:
@@ -462,6 +471,7 @@ class EarWorker(BaseWorker):
             log.info("listening stopped")
 
     def _reset_vad_state(self) -> None:
+        self._pause_sent = False
         self._speech_detected = False
         self._speech_start_mono = 0.0
         self._silence_start_mono = 0.0
@@ -974,6 +984,10 @@ class EarWorker(BaseWorker):
                     self._speech_start_mono = now
                     log.info("VAD: speech started (prob=%.3f)", speech_prob)
                     self.send(EAR_EVENT_SPEECH_STARTED, {"prob": round(speech_prob, 3)})
+                if self._pause_sent:
+                    # The pause was mid-sentence: the speculative reply must go.
+                    self._pause_sent = False
+                    self.send(EAR_EVENT_SPEECH_RESUMED, {})
                 # Reset silence timer
                 self._silence_start_mono = 0.0
             else:
@@ -988,6 +1002,17 @@ class EarWorker(BaseWorker):
                 ) * 1000
                 silence_dur_ms = (now - self._silence_start_mono) * 1000
 
+                if (
+                    not self._pause_sent
+                    and 0 < self._vad_tentative_ms < self._vad_silence_ms
+                    and speech_dur_ms >= self._vad_min_speech_ms
+                    and silence_dur_ms >= self._vad_tentative_ms
+                ):
+                    self._pause_sent = True
+                    self.send(
+                        EAR_EVENT_UTTERANCE_PAUSE,
+                        {"silence_ms": round(silence_dur_ms)},
+                    )
                 if (
                     speech_dur_ms >= self._vad_min_speech_ms
                     and silence_dur_ms >= self._vad_silence_ms

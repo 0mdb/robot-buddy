@@ -230,6 +230,16 @@ EAR_TUNING_PARAMS: list[tuple[str, str, float, float, float, float, str]] = [
         "noise holding a turn open",
     ),
     (
+        "ear.vad_tentative_ms",
+        "int",
+        0,
+        1500,
+        50,
+        450,
+        "Silence after which the server starts the reply early, held until "
+        "ear.vad_silence_ms confirms the end (0 = off)",
+    ),
+    (
         "ear.vad_speech_prob",
         "float",
         0.05,
@@ -247,6 +257,7 @@ EAR_TUNING_KEYS: dict[str, str] = {
     "ear.vad_min_speech_ms": "vad_min_speech_ms",
     "ear.vad_speech_prob": "vad_speech_prob_threshold",
     "ear.vad_max_utterance_ms": "vad_max_utterance_ms",
+    "ear.vad_tentative_ms": "vad_tentative_ms",
 }
 
 

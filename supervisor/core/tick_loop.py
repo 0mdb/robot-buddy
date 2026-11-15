@@ -56,6 +56,8 @@ from supervisor.messages.types import (
     AI_CMD_END_CONVERSATION,
     AI_CMD_END_UTTERANCE,
     AI_CMD_SEND_PROFILE,
+    AI_CMD_SPECULATE,
+    AI_CMD_SPECULATE_CANCEL,
     AI_CMD_START_CONVERSATION,
     AI_CONVERSATION_DONE,
     AI_CONVERSATION_EMOTION,
@@ -70,7 +72,9 @@ from supervisor.messages.types import (
     EAR_CMD_START_LISTENING,
     EAR_CMD_STOP_LISTENING,
     EAR_EVENT_END_OF_UTTERANCE,
+    EAR_EVENT_SPEECH_RESUMED,
     EAR_EVENT_SPEECH_STARTED,
+    EAR_EVENT_UTTERANCE_PAUSE,
     EAR_EVENT_WAKE_WORD,
     PERSONALITY_EVENT_AI_EMOTION,
     PERSONALITY_EVENT_BUTTON_PRESS,
@@ -883,6 +887,16 @@ class TickLoop:
                 self._cancel_follow_up()
                 self._start_conversation("wake_word")
                 self._conv.set_state(FaceConvState.ATTENTION)
+
+        elif env.type in (EAR_EVENT_UTTERANCE_PAUSE, EAR_EVENT_SPEECH_RESUMED):
+            # Speculative end of turn (wake-word turns end on VAD; PTT ends on release).
+            if self.world.session_id and self.world.conversation_trigger == "wake_word":
+                cmd = (
+                    AI_CMD_SPECULATE
+                    if env.type == EAR_EVENT_UTTERANCE_PAUSE
+                    else AI_CMD_SPECULATE_CANCEL
+                )
+                asyncio.ensure_future(self._workers.send_to("ai", cmd))
 
         elif env.type == EAR_EVENT_SPEECH_STARTED:
             if (

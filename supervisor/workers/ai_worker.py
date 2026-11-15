@@ -27,6 +27,8 @@ from supervisor.messages.types import (
     AI_CMD_CLEAR_GENERATION_OVERRIDES,
     AI_CMD_END_CONVERSATION,
     AI_CMD_END_UTTERANCE,
+    AI_CMD_SPECULATE,
+    AI_CMD_SPECULATE_CANCEL,
     AI_CMD_REQUEST_PLAN,
     AI_CMD_SEND_AUDIO,
     AI_CMD_SEND_PROFILE,
@@ -139,6 +141,16 @@ class AIWorker(BaseWorker):
         elif t == AI_CMD_END_UTTERANCE:
             self._turn_id = int(p.get("turn_id", self._turn_id))
             asyncio.create_task(self._end_utterance())
+
+        elif t == AI_CMD_SPECULATE:
+            # The speaker paused: the server starts the reply, holding it until the
+            # real end of utterance (or drops it on "resume").
+            asyncio.create_task(
+                self._ws_send({"type": "end_utterance", "tentative": True})
+            )
+
+        elif t == AI_CMD_SPECULATE_CANCEL:
+            asyncio.create_task(self._ws_send({"type": "resume"}))
 
         elif t == AI_CMD_END_CONVERSATION:
             asyncio.create_task(self._end_conversation())
