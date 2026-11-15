@@ -493,8 +493,19 @@ async def play_utterance(
     await speaker.play(pcm)
 
 
-async def wake_up(robot: Robot, voices: Voices, speaker: Speaker, voice: str) -> bool:
-    """Say the wake word and wait for the session to open."""
+async def wake_up(
+    robot: Robot,
+    voices: Voices,
+    speaker: Speaker,
+    voice: str,
+    *,
+    reuse_open: bool = True,
+) -> bool:
+    """Start a conversation: just talk if Buddy is already listening (a follow-up window
+    is open), as a child would; otherwise say the wake word and wait for the session."""
+    st = await robot.status()
+    if reuse_open and st.get("session_id") and not st.get("speaking"):
+        return True
     await robot.idle()
     mark = robot.mark()
     await speaker.play(silence(150) + await voices.say(WAKE, voice))
@@ -737,6 +748,7 @@ async def run_talk(
     pitch: float,
     pause_ms: int = 600,
     expect: Callable[[int], tuple[str, ...]] = lambda i: (),
+    end_session: bool = True,
 ) -> list[TurnResult]:
     """One conversation: wake once, then each kid line goes into the follow-up window
     (falling back to the wake word, and recording the miss, when the window never opens)."""
@@ -846,7 +858,8 @@ async def run_talk(
             if not await wake_up(robot, voices, speaker, voice):
                 t.failures.append("could not re-wake")
                 break
-    await robot.cancel()
+    if end_session:
+        await robot.cancel()
     return turns
 
 
@@ -881,6 +894,44 @@ def claude_kid(
             msgs.append({"role": "assistant", "content": t.said})
             msgs.append({"role": "user", "content": t.reply or "..."})
         out = (await chat(msgs, None, 0.9)).strip().strip('"')
+        return re.sub(r"[*\[\]()]", "", out)[:200] or None
+
+    return nxt
+
+
+def agenda_kid(
+    style: str,
+    age: int | None,
+    goals: list[str],
+    *,
+    rules: str = "",
+    max_turns: int = 10,
+) -> KidFn:
+    """A Claude-played child with goals for this conversation, who answers whatever Buddy
+    just asked before moving on: a scripted kid ignored Buddy's questions."""
+    from app.eval.converse_sim import _SIM_USER_PROMPT, anthropic_chat
+
+    chat = anthropic_chat()
+    plan = "\n".join(f"{i}. {g}" for i, g in enumerate(goals, 1))
+    system = _SIM_USER_PROMPT.format(style=style, age=f" Age {age}." if age else "") + (
+        " Speak the way a child that age talks out loud: short and simple. Plain words: no"
+        " emoji, asterisks, or brackets.\n\nYour goals for this conversation, in order:\n"
+        f"{plan}\n\nOne goal per turn. If Buddy just asked you something, answer it in a few"
+        " words first, then do your next goal. When every goal is done and Buddy's last"
+        " reply needs no answer, reply with exactly DONE."
+        + (f"\n\n{rules}" if rules else "")
+    )
+
+    async def nxt(turns: list[TurnResult]) -> str | None:
+        if len(turns) >= max_turns:
+            return None
+        msgs: list[dict[str, Any]] = [{"role": "system", "content": system}]
+        for t in turns:
+            msgs.append({"role": "assistant", "content": t.said})
+            msgs.append({"role": "user", "content": t.reply or "..."})
+        out = (await chat(msgs, None, 0.9)).strip().strip('"')
+        if not out or out.upper().startswith("DONE"):
+            return None
         return re.sub(r"[*\[\]()]", "", out)[:200] or None
 
     return nxt
@@ -937,6 +988,22 @@ USERS: dict[str, dict[str, Any]] = {
     "kid5": {
         "voice": "zoe",
         "pitch": 1.15,
+        "age": 5,
+        "style": "A cheerful 5-year-old.",
+        "tell_goals": [
+            "Say hi to Buddy.",
+            "Tell Buddy you have a cat called Pepper.",
+            "Tell Buddy you love strawberry ice cream.",
+        ],
+        "ask_goals": [
+            "Ask Buddy if it remembers your cat's name.",
+            "Ask Buddy what ice cream you like.",
+            "Ask Buddy what your pet is called.",
+        ],
+        "facts": [
+            ("cat Pepper", ("pepper",)),
+            ("strawberry ice cream", ("strawberr",)),
+        ],
         "tell": [
             "Hi Buddy!",
             "I have a cat called Pepper.",
@@ -952,6 +1019,19 @@ USERS: dict[str, dict[str, Any]] = {
     "kid7": {
         "voice": "jess",
         "pitch": 1.08,
+        "age": 7,
+        "style": "A chatty 7-year-old.",
+        "tell_goals": [
+            "Say hi to Buddy.",
+            "Tell Buddy you got a new dog and his name is Rocket.",
+            "Tell Buddy your favourite sport is soccer.",
+        ],
+        "ask_goals": [
+            "Ask Buddy what your dog is called.",
+            "Ask Buddy which sport you like best.",
+            "Ask Buddy what your pet is called.",
+        ],
+        "facts": [("dog Rocket", ("rocket",)), ("soccer", ("soccer",))],
         "tell": [
             "Hi Buddy, it's me.",
             "I got a new dog and his name is Rocket.",
@@ -985,7 +1065,18 @@ async def run_memory(
     gap: str,
     server: str,
     robot_id: str,
+    kid: str = "scripted",
 ) -> list[ProbeResult]:
+    if kid == "claude":
+        return await _run_memory_claude(
+            robot,
+            voices,
+            speaker,
+            users=users,
+            gap=gap,
+            server=server,
+            robot_id=robot_id,
+        )
     await forget_history(robot, server, robot_id, require=False)  # a clean slate
     for u in users:  # conversation 1: each child tells Buddy about themselves
         cfg = USERS[u]
@@ -1049,6 +1140,79 @@ async def forget_history(
     raise RuntimeError(
         "could not drop the conversation history (session kept reopening)"
     )
+
+
+async def _run_memory_claude(
+    robot: Robot,
+    voices: Voices,
+    speaker: Speaker,
+    *,
+    users: list[str],
+    gap: str,
+    server: str,
+    robot_id: str,
+) -> list[ProbeResult]:
+    """Memory test with Claude-played children who answer Buddy's questions as they go.
+
+    Conversation 1: each child tells their facts. Conversation 2 (after the gap): each asks
+    what Buddy remembers, without saying the answers. A fact counts as recalled when its
+    word shows up in Buddy's replies; if the child said it anyway, it isn't scored.
+    """
+    await forget_history(robot, server, robot_id, require=False)  # a clean slate
+    for i, u in enumerate(
+        users
+    ):  # one conversation; the next child talks into the window
+        cfg = USERS[u]
+        print(f"-- {u}: telling", flush=True)
+        kid = agenda_kid(cfg["style"], cfg["age"], cfg["tell_goals"], max_turns=6)
+        await run_talk(
+            robot, voices, speaker, kid, voice=cfg["voice"], pitch=cfg["pitch"],
+            end_session=i == len(users) - 1,
+        )  # fmt: skip
+    await asyncio.sleep(3)  # let the personality worker store the memory tags
+    if gap == "long":
+        await forget_history(robot, server, robot_id)
+    else:
+        await robot.idle()  # a new conversation later on: the wake word again
+        print("-- short gap: conversation history kept", flush=True)
+    out: list[ProbeResult] = []
+    for i, u in enumerate(users):
+        cfg = USERS[u]
+        mine = [w for _, ws in cfg["facts"] for w in ws]
+        others = sorted(
+            {w for o in users if o != u for _, ws in USERS[o]["facts"] for w in ws}
+        )
+        rules = (
+            "You are checking what Buddy remembers from last time. Never say the answers "
+            f"yourself (not even if Buddy asks): don't say {', '.join(mine)}. If Buddy gets "
+            "it wrong, say no and let it try once more."
+        )
+        print(f"-- {u}: asking", flush=True)
+        kid = agenda_kid(
+            cfg["style"], cfg["age"], cfg["ask_goals"], rules=rules, max_turns=8
+        )
+        turns = await run_talk(
+            robot, voices, speaker, kid, voice=cfg["voice"], pitch=cfg["pitch"],
+            end_session=i == len(users) - 1,
+        )  # fmt: skip
+        said = " ".join(t.said for t in turns).lower()
+        replies = [t.reply for t in turns]
+        mixed = [w for w in others if any(w in r.lower() for r in replies)]
+        for j, (label, words) in enumerate(cfg["facts"]):
+            hit = next((r for r in replies if any(w in r.lower() for w in words)), "")
+            leaked = any(w in said for w in words)
+            out.append(
+                ProbeResult(
+                    user=u,
+                    question=label
+                    + (" (the child said it: not scored)" if leaked else ""),
+                    heard=" / ".join(t.heard for t in turns),
+                    reply=hit or (replies[-1] if replies else ""),
+                    recalled=bool(hit) and not leaked,
+                    mixed_up=mixed if j == 0 else [],
+                )
+            )
+    return out
 
 
 def memory_report(gap: str, rs: list[ProbeResult]) -> str:
@@ -1178,7 +1342,7 @@ async def _main(a: argparse.Namespace) -> int:
             try:
                 rs = await run_memory(
                     robot, voices, speaker, users=_csv(a.users), gap=a.gap,
-                    server=a.server, robot_id=a.robot_id,
+                    server=a.server, robot_id=a.robot_id, kid=a.kid,
                 )  # fmt: skip
             finally:
                 await asyncio.sleep(3)
@@ -1302,6 +1466,8 @@ def main() -> int:
     e.add_argument("--pauses", default="400,800")
     m = sub.add_parser("memory", help="facts across conversations and children")
     m.add_argument("--users", default="kid5,kid7", help=f"from {', '.join(USERS)}")
+    m.add_argument("--kid", choices=["claude", "scripted"], default="claude",
+                   help="claude: children who answer Buddy's questions; scripted: fixed lines")  # fmt: skip
     m.add_argument("--keep-memory", action="store_true",
                    help="keep the long-term memory tags the test children created")  # fmt: skip
     m.add_argument("--gap", choices=["short", "long"], default="short",
@@ -1317,7 +1483,7 @@ def main() -> int:
     t = sub.add_parser("talk", help="conversation over the air")
     t.add_argument("--script", default="twenty_questions",
                    help=f"one of {', '.join(SCRIPTS)} or an L1 persona id")  # fmt: skip
-    t.add_argument("--kid", choices=["scripted", "claude"], default="scripted")
+    t.add_argument("--kid", choices=["claude", "scripted"], default="claude")
     t.add_argument("--turns", type=int, default=8, help="max turns with --kid claude")
     t.add_argument("--runs", type=int, default=1)
     t.add_argument(

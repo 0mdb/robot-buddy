@@ -100,6 +100,9 @@ class FakeRobot:
     async def idle(self, timeout: float = 0) -> bool:
         return True
 
+    async def status(self) -> dict[str, Any]:
+        return {"session_id": "", "speaking": False}
+
     async def cancel(self) -> None:
         self.cancelled += 1
 
@@ -238,3 +241,20 @@ async def test_memory_scores_recall_and_mix_ups(
         ("kid7", True, []),
         ("kid7", True, ["pepper"]),
     ]
+
+
+@pytest.mark.asyncio
+async def test_no_wake_word_when_buddy_is_already_listening() -> None:
+    class Listening(FakeRobot):
+        async def status(self) -> dict[str, Any]:
+            return {"session_id": "sess-1", "speaking": False}
+
+    robot = Listening()
+    played: list[bytes] = []
+
+    class Spy:
+        async def play(self, pcm: bytes) -> None:
+            played.append(pcm)
+
+    ok = await air.wake_up(robot, FakeVoices(), Spy(), "zoe")  # type: ignore[arg-type]
+    assert ok and played == []
