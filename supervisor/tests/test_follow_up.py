@@ -145,3 +145,45 @@ class TestFollowUp:
         _wake_turn(loop)
         await asyncio.sleep(0.05)
         assert loop.world.session_id == ""
+
+
+class TestReplyNotPreempted:
+    """2026-11-15: "I have a ball" (planner say) cut off a wake-word reply that
+    was still playing after its session ended on AI done; the cancelled reply
+    then opened no follow-up and the game was lost."""
+
+    def _reply_playing_after_done(self, loop) -> None:
+        loop._handle_face_events(_env(EAR_EVENT_WAKE_WORD))
+        loop._handle_face_events(_env(EAR_EVENT_END_OF_UTTERANCE))
+        loop._handle_face_events(_env(AI_CONVERSATION_FIRST_AUDIO))
+        loop._handle_face_events(_env(TTS_EVENT_STARTED))
+        loop.world.speaking = True  # event_router sets this on TTS started
+        loop._handle_face_events(_env(AI_CONVERSATION_DONE))
+        assert loop.world.session_id == ""
+
+    @pytest.mark.asyncio
+    async def test_conversation_busy_while_reply_plays(self) -> None:
+        loop = _tick_loop()
+        self._reply_playing_after_done(loop)
+        assert loop._conversation_busy()
+        assert loop.world.speech_priority == 1
+
+    @pytest.mark.asyncio
+    async def test_planner_say_does_not_cancel_reply(self) -> None:
+        from supervisor.messages.types import TTS_CMD_CANCEL, TTS_CMD_SPEAK
+
+        loop = _tick_loop()
+        self._reply_playing_after_done(loop)
+        await loop._enqueue_say("I have a ball!", source="planner", priority=2)
+        assert _count(loop, "tts", TTS_CMD_CANCEL) == 0
+        assert _count(loop, "tts", TTS_CMD_SPEAK) == 0
+
+    @pytest.mark.asyncio
+    async def test_priority_resets_when_speech_ends(self) -> None:
+        loop = _tick_loop()
+        self._reply_playing_after_done(loop)
+        loop.world.speaking = False
+        loop._handle_face_events(_env(TTS_EVENT_FINISHED))
+        assert loop.world.speech_priority == 3
+        await asyncio.sleep(0.05)
+        assert loop.world.session_id  # follow-up opened

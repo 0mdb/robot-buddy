@@ -928,6 +928,13 @@ class TickLoop:
                 self._start_turn_watchdog(self._TURN_STAGE_REPLYING)
             if self.world.conversation_trigger == "wake_word" and self.world.session_id:
                 self._follow_up_armed = True
+            if self.world.session_id or self._follow_up_armed:
+                # Conversation audio arrives on the speaker socket, not through
+                # _enqueue_say, so mark it here: planner (p2) and idle (p3)
+                # speech must never preempt it, even after the wake-word
+                # session has ended on AI done while the reply still plays.
+                self.world.speech_priority = 1
+                self.world.speech_source = "conversation"
             if self._conv.session_active:
                 self._conv.set_state(FaceConvState.SPEAKING)
                 # Apply queued emotion now that we're speaking
@@ -945,6 +952,7 @@ class TickLoop:
                 self._ignore_next_tts_end = False
                 return
             self._cancel_turn_watchdog()
+            self.world.speech_priority = 3  # idle: nothing is speaking now
             follow_up = self._follow_up_armed and env.type == TTS_EVENT_FINISHED
             self._follow_up_armed = False
             if follow_up:
@@ -1185,7 +1193,7 @@ class TickLoop:
         self, now_ms: float, recent: list[PlannerEvent]
     ) -> None:
         """Send actions to workers: speech, plan execution."""
-        conversation_active = bool(self.world.session_id)
+        conversation_active = self._conversation_busy()
 
         # Execute due planner actions
         face_locked = (
@@ -1502,6 +1510,16 @@ class TickLoop:
                 self._end_conversation()
 
         self._follow_up_task = asyncio.ensure_future(_follow_up())
+
+    def _conversation_busy(self) -> bool:
+        """A conversation owns the robot: a session is open, a wake-word reply
+        is still playing after its session ended on AI done, or a follow-up
+        window is about to open. Planner and idle speech hold off meanwhile."""
+        return bool(
+            self.world.session_id
+            or self._follow_up_armed
+            or (self._follow_up_task is not None and not self._follow_up_task.done())
+        )
 
     def _cancel_follow_up(self) -> None:
         if self._follow_up_task is not None and not self._follow_up_task.done():
