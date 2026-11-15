@@ -220,6 +220,16 @@ EAR_TUNING_PARAMS: list[tuple[str, str, float, float, float, float, str]] = [
         "Speech needed before a silence can end the utterance",
     ),
     (
+        "ear.vad_max_utterance_ms",
+        "int",
+        0,
+        60000,
+        500,
+        15000,
+        "Longest utterance before it is cut off (0 = no cap); stops background "
+        "noise holding a turn open",
+    ),
+    (
         "ear.vad_speech_prob",
         "float",
         0.05,
@@ -236,6 +246,7 @@ EAR_TUNING_KEYS: dict[str, str] = {
     "ear.vad_silence_ms": "vad_silence_ms",
     "ear.vad_min_speech_ms": "vad_min_speech_ms",
     "ear.vad_speech_prob": "vad_speech_prob_threshold",
+    "ear.vad_max_utterance_ms": "vad_max_utterance_ms",
 }
 
 
@@ -1152,6 +1163,20 @@ def create_default_registry() -> ParamRegistry:
             owner="supervisor",
             safety="safe",
             doc="Idle timeout between PTT turns before session ends",
+        )
+    )
+    reg.register(
+        ParamDef(
+            name="conversation.follow_up_window_s",
+            type="float",
+            min=0.0,
+            max=20.0,
+            step=0.5,
+            default=6.0,
+            owner="supervisor",
+            safety="safe",
+            doc="After a wake-word reply, listen this long for a follow-up without "
+            "the wake word (0 = off)",
         )
     )
     reg.register(

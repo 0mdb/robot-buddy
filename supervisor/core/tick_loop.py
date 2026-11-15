@@ -70,6 +70,7 @@ from supervisor.messages.types import (
     EAR_CMD_START_LISTENING,
     EAR_CMD_STOP_LISTENING,
     EAR_EVENT_END_OF_UTTERANCE,
+    EAR_EVENT_SPEECH_STARTED,
     EAR_EVENT_WAKE_WORD,
     PERSONALITY_EVENT_AI_EMOTION,
     PERSONALITY_EVENT_BUTTON_PRESS,
@@ -232,6 +233,14 @@ class TickLoop:
         # with a longer budget once the reply starts, disarmed on done/end.
         self._turn_watchdog: asyncio.Task[None] | None = None
         self._turn_watchdog_stage = ""
+
+        # Wake-word follow-up: after a wake-word reply finishes playing, open a
+        # fresh session without the wake word and listen for a short window.
+        # A fresh session (not a resumed one) reuses the proven wake-word
+        # lifecycle; the server's per-robot history stash carries the context.
+        self._follow_up_armed = False  # a wake-word reply is playing
+        self._follow_up_session = ""  # session opened as a follow-up
+        self._follow_up_task: asyncio.Task[None] | None = None
 
         # PE system event forwarding state
         self._pe_boot_sent: bool = False
@@ -816,6 +825,8 @@ class TickLoop:
             if self.world.conversation_trigger == "wake_word" and self.world.session_id:
                 self._end_conversation()
         elif env.type == AI_CONVERSATION_FIRST_AUDIO:
+            if self.world.conversation_trigger == "wake_word" and self.world.session_id:
+                self._follow_up_armed = True
             # The reply is arriving: switch to the longer mid-reply budget.
             if self._turn_watchdog_stage:
                 self._start_turn_watchdog(self._TURN_STAGE_REPLYING)
@@ -869,8 +880,19 @@ class TickLoop:
             if self.world.speaking and self._barge_in:
                 self._barge_in_wake_word()
             elif not self.world.session_id and not self.world.speaking:
+                self._cancel_follow_up()
                 self._start_conversation("wake_word")
                 self._conv.set_state(FaceConvState.ATTENTION)
+
+        elif env.type == EAR_EVENT_SPEECH_STARTED:
+            if (
+                self._follow_up_session
+                and self._follow_up_session == self.world.session_id
+            ):
+                # Someone answered: the window has done its job; the turn now
+                # runs like any wake-word turn (end-of-utterance, watchdog).
+                log.info("follow-up: speech heard, keeping session")
+                self._cancel_follow_up()
 
         elif env.type == EAR_EVENT_END_OF_UTTERANCE:
             if self.world.session_id and self.world.conversation_trigger == "wake_word":
@@ -904,6 +926,8 @@ class TickLoop:
             )
             if self._turn_watchdog_stage:
                 self._start_turn_watchdog(self._TURN_STAGE_REPLYING)
+            if self.world.conversation_trigger == "wake_word" and self.world.session_id:
+                self._follow_up_armed = True
             if self._conv.session_active:
                 self._conv.set_state(FaceConvState.SPEAKING)
                 # Apply queued emotion now that we're speaking
@@ -921,6 +945,10 @@ class TickLoop:
                 self._ignore_next_tts_end = False
                 return
             self._cancel_turn_watchdog()
+            follow_up = self._follow_up_armed and env.type == TTS_EVENT_FINISHED
+            self._follow_up_armed = False
+            if follow_up:
+                self._schedule_follow_up()
             if env.type == TTS_EVENT_FINISHED:
                 # Trail the talking animation to cover OS/hardware audio buffer drain.
                 # CANCELLED stops immediately (user interrupted), so no grace needed.
@@ -1431,6 +1459,55 @@ class TickLoop:
         if self._multi_turn_timeout is not None and not self._multi_turn_timeout.done():
             self._multi_turn_timeout.cancel()
         self._multi_turn_timeout = None
+
+    # ── Wake-word follow-up ──────────────────────────────────────
+
+    _FOLLOW_UP_DELAY_S = 0.4  # let the speaker tail die away before listening
+
+    def _schedule_follow_up(self) -> None:
+        """After a wake-word reply: listen briefly for a follow-up, no wake word."""
+        window_s = 6.0
+        if self._param_registry is not None:
+            window_s = float(
+                self._param_registry.get_value("conversation.follow_up_window_s", 6.0)
+            )
+        if window_s <= 0:
+            return
+        self._cancel_follow_up()
+
+        async def _follow_up() -> None:
+            from supervisor.devices.protocol import FaceConvState
+
+            await asyncio.sleep(self._FOLLOW_UP_DELAY_S)
+            if self.world.session_id:
+                # The wake-word session ends on AI done; if it is still open
+                # (done not in yet), end it so the follow-up starts clean.
+                self._end_conversation()
+                await asyncio.sleep(0.1)
+            if self.world.session_id or self.world.speaking:
+                return
+            self._start_conversation("wake_word")
+            if not self.world.session_id:
+                return  # refused (links down, daily limit)
+            session = self.world.session_id
+            self._follow_up_session = session
+            self._conv.set_state(FaceConvState.ATTENTION)
+            log.info("follow-up: listening %.1fs without wake word", window_s)
+            await asyncio.sleep(window_s)
+            if self.world.session_id == session and self._follow_up_session == session:
+                log.info("follow-up: nothing heard, ending session")
+                self._follow_up_session = ""
+                self._follow_up_task = None  # ending; don't cancel itself
+                self._conv.set_state(FaceConvState.DONE)
+                self._end_conversation()
+
+        self._follow_up_task = asyncio.ensure_future(_follow_up())
+
+    def _cancel_follow_up(self) -> None:
+        if self._follow_up_task is not None and not self._follow_up_task.done():
+            self._follow_up_task.cancel()
+        self._follow_up_task = None
+        self._follow_up_session = ""
 
     # Turn watchdog stages: waiting for the reply to start, and mid-reply.
     _TURN_STAGE_AWAITING = "awaiting_reply"

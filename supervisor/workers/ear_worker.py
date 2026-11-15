@@ -45,6 +45,7 @@ from supervisor.messages.types import (
     EAR_CONFIG_INIT,
     EAR_EVENT_DOA,
     EAR_EVENT_END_OF_UTTERANCE,
+    EAR_EVENT_SPEECH_STARTED,
     EAR_EVENT_OWW_SCORE,
     EAR_EVENT_WAKE_WORD,
     SYSTEM_AUDIO_LINK_DOWN,
@@ -138,6 +139,7 @@ class EarWorker(BaseWorker):
         self._vad_silence_ms: int = 800
         self._vad_min_speech_ms: int = 150
         self._vad_speech_prob_threshold: float = 0.3
+        self._vad_max_utterance_ms: int = 15000
         self._configured = asyncio.Event()
 
         # State
@@ -354,6 +356,7 @@ class EarWorker(BaseWorker):
             self._vad_speech_prob_threshold = float(
                 p.get("vad_speech_prob_threshold", 0.3)
             )
+            self._vad_max_utterance_ms = int(p.get("vad_max_utterance_ms", 15000))
             log.info(
                 "configured: mic=%s (ch %d of %d), xvf=%s, ww_model=%s, threshold=%.2f",
                 self._mic_device,
@@ -415,6 +418,8 @@ class EarWorker(BaseWorker):
             self._vad_silence_ms = max(100, int(p["vad_silence_ms"]))
         if "vad_min_speech_ms" in p:
             self._vad_min_speech_ms = max(0, int(p["vad_min_speech_ms"]))
+        if "vad_max_utterance_ms" in p:
+            self._vad_max_utterance_ms = max(0, int(p["vad_max_utterance_ms"]))
         if "vad_speech_prob_threshold" in p:
             self._vad_speech_prob_threshold = max(
                 0.01, min(0.99, float(p["vad_speech_prob_threshold"]))
@@ -968,6 +973,7 @@ class EarWorker(BaseWorker):
                     self._speech_detected = True
                     self._speech_start_mono = now
                     log.info("VAD: speech started (prob=%.3f)", speech_prob)
+                    self.send(EAR_EVENT_SPEECH_STARTED, {"prob": round(speech_prob, 3)})
                 # Reset silence timer
                 self._silence_start_mono = 0.0
             else:
@@ -999,6 +1005,27 @@ class EarWorker(BaseWorker):
                         },
                     )
                     self._reset_vad_state()
+
+            # Cap: steady background noise can read as endless speech, which
+            # held a turn open for 45-78 s on 2026-11-15. Cut the utterance.
+            if (
+                self._speech_detected
+                and self._vad_max_utterance_ms > 0
+                and (now - self._speech_start_mono) * 1000 >= self._vad_max_utterance_ms
+            ):
+                log.warning(
+                    "end-of-utterance: capped at %d ms (noise read as speech?)",
+                    self._vad_max_utterance_ms,
+                )
+                self.send(
+                    EAR_EVENT_END_OF_UTTERANCE,
+                    {
+                        "speech_ms": self._vad_max_utterance_ms,
+                        "silence_ms": 0,
+                        "capped": True,
+                    },
+                )
+                self._reset_vad_state()
 
         except Exception:
             log.exception("VAD inference error")
