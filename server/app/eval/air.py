@@ -757,7 +757,20 @@ async def run_talk(
         # Ask for the kid's next line while Buddy is still talking: Claude has the
         # reply text already, and the follow-up window is short.
         turns.append(t)
-        line_task = asyncio.create_task(next_line(turns))
+
+        async def prepare(mark: int = mark) -> str | None:
+            # Write and render the next line while Buddy talks: a live line synthesised
+            # after the window opened missed the 6 s follow-up window (2026-11-15).
+            nxt = await next_line(turns)
+            if nxt:
+                # After Buddy's own audio is generated, so the two don't share the GPU.
+                await robot.wait(mark, "ai.conversation.done", 30)
+                for part in nxt.split("|"):
+                    if part.strip():
+                        await voices.say(part.strip(), voice)
+            return nxt
+
+        line_task = asyncio.create_task(prepare())
 
         end = await robot.wait(
             mark,
