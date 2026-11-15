@@ -41,7 +41,7 @@ from app.llm.conversation import (
     ConversationHistory,
 )
 from app.llm.mcp_client import McpClient
-from app.llm.preamble import ToolResult, run_preamble
+from app.llm.preamble import ToolResult, needs_tool_pass, run_preamble
 from app.llm.stream_parser import (
     ConversationStreamParser,
     MetadataReady,
@@ -409,7 +409,11 @@ async def _generate_and_stream(
     tool_call_ok: bool = True
     tool_call_latency_ms: float = 0.0
     tool_result: ToolResult | None = None
-    if settings.mcp_preamble_enabled and mcp_client is not None:
+    if (
+        settings.mcp_preamble_enabled
+        and mcp_client is not None
+        and (not settings.mcp_preamble_gate or needs_tool_pass(user_text))
+    ):
         try:
             result = await run_preamble(
                 llm,
@@ -663,6 +667,7 @@ async def _generate_and_stream_live(
         nonlocal llm_latency_ms, sent_first
 
         cancelled = False
+        held_emotion: dict[str, object] | None = None
         stream = llm.stream_conversation(
             history,
             user_text,
@@ -688,7 +693,13 @@ async def _generate_and_stream_live(
                         }
                         if resp.mood_reason:
                             emotion_msg["mood_reason"] = resp.mood_reason
-                        await ws.send_json(emotion_msg)
+                        if resp.emotion in _HC4_EMOTIONS and not resp.mood_reason:
+                            # mood_reason follows the text now; the personality
+                            # worker's HC-4 check needs it for a negative emotion,
+                            # so that event waits for the full reply.
+                            held_emotion = emotion_msg
+                        else:
+                            await ws.send_json(emotion_msg)
                         if resp.gestures:
                             await ws.send_json(
                                 {
@@ -719,8 +730,12 @@ async def _generate_and_stream_live(
                         intensity=0.0,
                     )
                     coalesce_buf.clear()
-            # memory_tags follow `text` in the schema: only the full reply has them.
+            # memory_tags (and mood_reason) follow `text`: only the full reply has them.
             final = parser.final_response()
+            if held_emotion is not None:
+                if final is not None and final.mood_reason:
+                    held_emotion["mood_reason"] = final.mood_reason
+                await ws.send_json(held_emotion)
             if final is not None and final.memory_tags:
                 await ws.send_json(
                     {
@@ -876,6 +891,10 @@ async def _generate_and_stream_live(
         }
     )
 
+
+# Negative emotions: the personality worker's HC-4 check reads their mood_reason
+# (supervisor/workers/personality_worker.py _NEGATIVE_EMOTIONS).
+_HC4_EMOTIONS = frozenset({"sad", "scared", "angry"})
 
 # Depth-2 cap on concurrent TTS syntheses per turn. Must not exceed
 # settings.tts_busy_queue_threshold or Orpheus will shed to espeak mid-turn.

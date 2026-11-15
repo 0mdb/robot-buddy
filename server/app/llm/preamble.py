@@ -24,6 +24,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
@@ -92,6 +93,32 @@ class PreambleResult:
     latency_ms: float = 0.0
     ok: bool = True
     reason: str = ""
+
+
+# Words that can need a tool. The selection pass costs 0.1-0.25 s of first-audio latency on
+# every turn, and most turns ("yes it is!", "is it big?") never need one. The gate only has
+# to be permissive: a turn that passes still goes to the model, which may pick "none".
+# Recall against every tool scenario in app.eval.harness is a test (test_preamble_gate.py).
+_TOOL_CUE = re.compile(
+    r"\b("
+    # look: something to see
+    r"look\w*|see|seen|show\w*|watch\w*|check|this|these|that one|made|making|drawing|"
+    r"drew|built|picture|photo|camera|colou?rs?|how many|in front|holding|wearing|"
+    # get_memory: the past, the person, what Buddy knows
+    r"remember\w*|forgot|again|last time|before|earlier|yesterday|told you|you said|"
+    r"we (were )?talk\w*|talking about|favou?rite|my name|who am i|it'?s me|kids?|"
+    r"children|daughter|son|asking you|getting on|know about|used to|memor\w*|"
+    # recent_events: what just happened to Buddy
+    r"feel|felt|button|beep\w*|noise|sound|stop\w*|moving|move|disappear\w*|"
+    r"where did|what happened|just now|bump\w*|fell|fall|touch\w*|battery"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+def needs_tool_pass(user_text: str) -> bool:
+    """Whether a turn should run the tool-selection pass at all."""
+    return bool(_TOOL_CUE.search(user_text))
 
 
 async def run_preamble(

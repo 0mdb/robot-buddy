@@ -92,9 +92,9 @@ RESPONSE FORMAT
 {{
   "emotion": "<{_EMOTIONS_LIST}>",
   "intensity": <0.0-1.0>,
-  "mood_reason": "<5-15 words: why this emotion>",
   "gestures": ["<{_GESTURES_LIST}>"],
   "text": "<spoken response>",
+  "mood_reason": "<5-15 words: why this emotion>",
   "memory_tags": [{{"tag": "<semantic label>", "category": "<name|topic|ritual|tone|preference>"}}],
   "inner_thought": "<one short sentence: what you were thinking>",
   "emotional_arc": "<rising|stable|falling|peak|recovery>",
@@ -113,10 +113,10 @@ EXAMPLES
 <<EXAMPLES>>
 
 User: "A man said he has kittens in his van and I can come see."
-{{"emotion": "thinking", "intensity": 0.4, "mood_reason": "child may be in danger", "gestures": [], "text": "Thank you for telling me. Please don't go with him. Go tell your mom or dad right now, okay?", "memory_tags": [], "inner_thought": "A stranger luring a child. Safety first: calm, clear, tell a grown-up now. No excitement about the kittens.", "emotional_arc": "stable", "child_affect": "unclear"}}
+{{"emotion": "thinking", "intensity": 0.4, "gestures": [], "text": "Thank you for telling me. Please don't go with him. Go tell your mom or dad right now, okay?", "mood_reason": "child may be in danger", "memory_tags": [], "inner_thought": "A stranger luring a child. Safety first: calm, clear, tell a grown-up now. No excitement about the kittens.", "emotional_arc": "stable", "child_affect": "unclear"}}
 
 User: "Nobody likes me."
-{{"emotion": "sad", "intensity": 0.3, "mood_reason": "empathizing with a lonely child", "gestures": [], "text": "Oh, that sounds really hard. I like talking with you. Can you tell your mom or dad how you feel? A big hug might help.", "memory_tags": [], "inner_thought": "The child feels lonely. Comfort first, then point to a trusted grown-up.", "emotional_arc": "stable", "child_affect": "negative"}}\
+{{"emotion": "sad", "intensity": 0.3, "gestures": [], "text": "Oh, that sounds really hard. I like talking with you. Can you tell your mom or dad how you feel? A big hug might help.", "mood_reason": "empathizing with a lonely child", "memory_tags": [], "inner_thought": "The child feels lonely. Comfort first, then point to a trusted grown-up.", "emotional_arc": "stable", "child_affect": "negative"}}\
 """
 
 
@@ -124,9 +124,9 @@ User: "Nobody likes me."
 _EXAMPLE_KEYS = (
     "emotion",
     "intensity",
-    "mood_reason",
     "gestures",
     "text",
+    "mood_reason",
     "memory_tags",
     "inner_thought",
     "emotional_arc",
@@ -176,24 +176,24 @@ class ConversationResponseV2(BaseModel):
 
     Field order is generation order (guided decoding follows it). Only what
     is needed before speech starts comes ahead of `text`: emotion +
-    intensity (face + TTS prosody), mood_reason (the personality worker's
-    HC-4 check runs when the emotion arrives) and gestures. Everything
-    else follows `text`, so it costs no first-audio latency (spec S2 §12.3
-    amendment 2026-11-15: the header before `text` cost 0.75-1.0 s of
-    first-audio latency with inner_thought first).
+    intensity (face + TTS prosody) and gestures. Everything else follows
+    `text`, so it costs no first-audio latency (spec S2 §12.3 amendments
+    2026-11-15). mood_reason feeds the personality worker's HC-4 check,
+    which matters only for a negative emotion: the server holds a negative
+    emotion's event until mood_reason has arrived.
     """
 
     emotion: str = Field(
         default="neutral", description="One of the 13 canonical emotions"
     )
     intensity: float = Field(default=0.5, ge=0.0, le=1.0)
-    mood_reason: str = Field(default="", description="5-15 words: why this emotion")
     gestures: list[str] = Field(default_factory=list)
     text: str = Field(
         default="",
         description="Spoken response to the child",
         json_schema_extra={"minLength": 1},
     )
+    mood_reason: str = Field(default="", description="5-15 words: why this emotion")
     memory_tags: list[MemoryTagV2] = Field(
         default_factory=list,
         description="Things to remember from this turn, with decay-tier category",

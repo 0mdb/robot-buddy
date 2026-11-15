@@ -137,6 +137,8 @@ class Settings:
     # Gemma may call one MCP tool (look / get_memory / recent_events) whose
     # result is injected as a transient system message.
     mcp_preamble_enabled: bool = _env_bool("MCP_PREAMBLE_ENABLED", True)
+    # Skip the tool-selection pass on turns with no tool cue (preamble.needs_tool_pass).
+    mcp_preamble_gate: bool = _env_bool("MCP_PREAMBLE_GATE", True)
     mcp_server_url: str = os.environ.get(
         "MCP_SERVER_URL", "http://192.168.55.201:8080/mcp/"
     )

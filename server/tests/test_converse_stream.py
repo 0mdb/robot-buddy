@@ -286,3 +286,45 @@ async def test_cancelled_turn_closes_the_llm_stream_at_once(patched_runtime) -> 
     with pytest.raises(asyncio.CancelledError):
         await task
     assert closed.is_set()
+
+
+def _new_order(emotion: str, text: str, reason: str) -> list[str]:
+    raw = json.dumps(
+        {
+            "emotion": emotion,
+            "intensity": 0.4,
+            "gestures": [],
+            "text": text,
+            "mood_reason": reason,
+            "memory_tags": [],
+        }
+    )
+    return [raw[i : i + 9] for i in range(0, len(raw), 9)]
+
+
+@pytest.mark.asyncio
+async def test_negative_emotion_waits_for_mood_reason(patched_runtime) -> None:
+    """mood_reason follows the text; a negative emotion's event is held until it has
+    arrived so the personality worker's HC-4 check sees it (spec S2 §12.3)."""
+    from app.routers.converse import _generate_and_stream_live
+
+    ws = _FakeWebSocket()
+    llm = _FakeLLM(
+        _new_order("sad", "Oh no. That sounds hard.", "empathizing with a child")
+    )
+    await _generate_and_stream_live(ws, llm, ConversationHistory(max_turns=20), "hi")
+    types = [m["type"] for m in ws.sent]
+    emo = next(m for m in ws.sent if m["type"] == "emotion")
+    assert emo["mood_reason"] == "empathizing with a child"
+    assert types.index("emotion") < types.index("done")
+
+
+@pytest.mark.asyncio
+async def test_other_emotions_go_before_the_audio(patched_runtime) -> None:
+    from app.routers.converse import _generate_and_stream_live
+
+    ws = _FakeWebSocket()
+    llm = _FakeLLM(_new_order("happy", "Yay! Let's play.", "child wants to play"))
+    await _generate_and_stream_live(ws, llm, ConversationHistory(max_turns=20), "hi")
+    types = [m["type"] for m in ws.sent]
+    assert types.index("emotion") < types.index("audio")

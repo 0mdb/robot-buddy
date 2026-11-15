@@ -482,11 +482,9 @@ def test_v2_schema_puts_only_speech_prerequisites_before_text() -> None:
 
     schema = ConversationResponseV2.model_json_schema()
     keys = list(schema["properties"])
-    assert keys[: keys.index("text")] == [
-        "emotion",
-        "intensity",
-        "mood_reason",
-        "gestures",
-    ]
+    assert keys[: keys.index("text")] == ["emotion", "intensity", "gestures"]
+    assert (
+        keys[keys.index("text") + 1] == "mood_reason"
+    )  # right after: HC-4 waits on it
     assert set(schema["required"]) == {"emotion", "intensity", "text"}
     assert list(_EXAMPLE_KEYS) == keys  # prompt examples teach the same order
