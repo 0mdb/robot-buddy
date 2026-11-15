@@ -146,6 +146,7 @@ class OllamaBackend(PlannerLLMBackend):
                 "stream": False,
                 "format": ModelPlan.model_json_schema(),
                 "keep_alive": settings.plan_keep_alive,
+                "think": settings.ollama_think,
                 "options": {
                     "temperature": settings.temperature,
                     "num_ctx": settings.num_ctx,

@@ -644,6 +644,7 @@ async def generate_conversation_response(
         "format": CONVERSATION_RESPONSE_SCHEMA,
         # Unload LLM quickly so Orpheus can claim GPU memory on single-GPU hosts.
         "keep_alive": settings.converse_keep_alive,
+        "think": settings.ollama_think,
         "options": {
             "temperature": settings.temperature,
             "num_ctx": settings.num_ctx,
@@ -719,6 +720,7 @@ async def stream_conversation_response(
         "stream": True,
         "format": ConversationResponseV2.model_json_schema(),
         "keep_alive": settings.converse_keep_alive,
+        "think": settings.ollama_think,
         "options": options,
     }
 

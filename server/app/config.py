@@ -24,7 +24,9 @@ def _env_bool(name: str, default: bool) -> bool:
     return raw.strip().lower() not in {"0", "false", "no", "off"}
 
 
-_NUM_CTX_CAP = 4096
+# Sanity bound only; the model and its VRAM set the real limit (was 4096, which blocked
+# any larger Ollama context).
+_NUM_CTX_CAP = 32768
 _GPU_UTILIZATION_CAP_DEFAULT = 0.88
 _VALID_STT_DEVICES = {"cpu", "cuda"}
 _VALID_STT_COMPUTE_TYPES = {
@@ -91,6 +93,9 @@ class Settings:
     temperature: float = float(os.environ.get("TEMPERATURE", "0.7"))
     num_ctx: int = int(os.environ.get("NUM_CTX", "4096"))
     converse_keep_alive: str = os.environ.get("CONVERSE_KEEP_ALIVE", "0s")
+    # Ollama: hidden reasoning before the reply (models that support it). Off: it is
+    # first-audio latency, and the conversation schema has no room for it.
+    ollama_think: bool = _env_bool("OLLAMA_THINK", False)
     performance_mode: bool = _env_bool("PERFORMANCE_MODE", False)
     stt_model_size: str = os.environ.get("STT_MODEL_SIZE", "base.en")
     stt_device: str = os.environ.get("STT_DEVICE", "cpu")
