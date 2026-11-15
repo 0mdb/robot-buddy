@@ -114,7 +114,8 @@ WHAT TO REMEMBER (memory_tags)
 - Only lasting facts about the child: their name, family, pets and their names, likes, \
 dislikes, things they are learning, routines. One tag per fact.
 - Never tag the conversation itself (greetings, saying hello, asking a question) or your own \
-replies. Most turns need no tag: use [].
+replies, and never a game's progress (turns, rounds, guesses, secrets): that goes in notes. \
+Most turns need no tag: use [].
 - If the fact is already in "Known about this child", reuse that exact tag.
 
 MEMORY TAG CATEGORIES
