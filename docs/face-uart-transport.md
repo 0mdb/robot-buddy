@@ -1,6 +1,18 @@
 # Face MCU: USB-CDC → UART0 transport (evaluation)
 
-**Status:** evaluated, not implemented. Decision pending.
+**Status:** implemented 2026-11-15, bench bring-up pending. Pi GPIO UART (option A).
+
+- Firmware: `main/face_link.h` is the transport API; `uart_link.cpp` (P2) or
+  `usb_composite.cpp` (USB) is compiled in per `CONFIG_FACE_TRANSPORT_*`
+  (`main/Kconfig.projbuild`). USB stays the default; `just build-face-uart` /
+  `flash-face-uart` build the UART variant into `build-uart/` from
+  `sdkconfig.defaults` + `sdkconfig.uart`. In the UART build TinyUSB is not
+  started, so the USB-C port is the chip's USB-Serial/JTAG (flashing works).
+- Supervisor (`io/serial_transport.py`): the stall watchdog keys on the last
+  *valid* frame, and the ESP32 ROM banner (`ESP-ROM:`) counts as an MCU reset
+  (disconnect + reopen), since a UART port never disappears the way USB does.
+- Heartbeat `usb_*` fields carry the UART counters (flush_* and dtr/rts are 0;
+  `rx_errors` = frame/parity errors + overflows).
 
 ## Why
 

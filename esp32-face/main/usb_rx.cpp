@@ -1,6 +1,6 @@
 #include "usb_rx.h"
 #include "protocol.h"
-#include "usb_composite.h"
+#include "face_link.h"
 #include "shared_state.h"
 
 #include "freertos/FreeRTOS.h"
@@ -29,7 +29,7 @@ void usb_rx_task(void* arg)
 
     while (true) {
         uint8_t rx_buf[64];
-        int     n = usb_cdc_read(rx_buf, sizeof(rx_buf), 50);
+        int     n = face_link_read(rx_buf, sizeof(rx_buf), 50);
         if (n <= 0) {
             // Prevent starvation on low tick-rate configs (e.g. 100 Hz where 1 ms -> 0 ticks).
             vTaskDelay(idle_delay_ticks);
@@ -80,7 +80,7 @@ static void handle_common_cmd(const ParsedPacket& pkt)
                 packet_build_v2(static_cast<uint8_t>(CommonTelId::PROTOCOL_VERSION_ACK), next_seq(), now_us,
                                 reinterpret_cast<const uint8_t*>(&ack), sizeof(ack), tx_buf, sizeof(tx_buf));
             if (len > 0) {
-                usb_cdc_write(tx_buf, len);
+                face_link_write(tx_buf, len);
             }
             ESP_LOGI(TAG, "protocol version set to 2");
         } else if (pkt.data_len >= 1 && pkt.data[0] == 1) {
@@ -90,7 +90,7 @@ static void handle_common_cmd(const ParsedPacket& pkt)
                 packet_build(static_cast<uint8_t>(CommonTelId::PROTOCOL_VERSION_ACK), static_cast<uint8_t>(next_seq()),
                              reinterpret_cast<const uint8_t*>(&ack), sizeof(ack), tx_buf, sizeof(tx_buf));
             if (len > 0) {
-                usb_cdc_write(tx_buf, len);
+                face_link_write(tx_buf, len);
             }
             ESP_LOGI(TAG, "protocol version set to 1");
         }
@@ -110,7 +110,7 @@ static void handle_common_cmd(const ParsedPacket& pkt)
                 packet_build_v2(static_cast<uint8_t>(CommonTelId::TIME_SYNC_RESP), next_seq(), now_us,
                                 reinterpret_cast<const uint8_t*>(&resp), sizeof(resp), tx_buf, sizeof(tx_buf));
             if (len > 0) {
-                usb_cdc_write(tx_buf, len);
+                face_link_write(tx_buf, len);
             }
         }
         break;

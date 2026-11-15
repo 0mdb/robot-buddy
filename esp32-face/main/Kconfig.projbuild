@@ -1,0 +1,27 @@
+menu "Robot Buddy face"
+
+    choice FACE_TRANSPORT
+        prompt "Pi link transport"
+        default FACE_TRANSPORT_USB
+        help
+            How the face talks to the Pi. Both carry the same COBS protocol.
+            See docs/face-uart-transport.md.
+
+        config FACE_TRANSPORT_USB
+            bool "USB CDC on the side USB-C (bench)"
+        config FACE_TRANSPORT_UART
+            bool "UART0 on the P2 connector (in the robot)"
+            help
+                GPIO43 TX / GPIO44 RX to the Pi's GPIO15 / GPIO14. TinyUSB is not
+                started, so the USB-C port stays the chip's USB-Serial/JTAG and
+                `idf.py flash` works over it with auto-reset.
+    endchoice
+
+    config FACE_UART_BAUD
+        int "UART link baud rate"
+        depends on FACE_TRANSPORT_UART
+        default 115200
+        help
+            Must match the supervisor's face baud rate.
+
+endmenu

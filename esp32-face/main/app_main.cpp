@@ -1,7 +1,7 @@
 #include "display.h"
 #include "touch.h"
 #include "led.h"
-#include "usb_composite.h"
+#include "face_link.h"
 #include "usb_rx.h"
 #include "telemetry.h"
 #include "face_ui.h"
@@ -75,8 +75,8 @@ extern "C" void app_main(void)
     led_init();
     led_set_rgb(0, 0, 40); // blue = booting
 
-    // 4. USB composite device (CDC for serial)
-    usb_composite_init();
+    // 4. Pi link: USB CDC or P2 UART, per CONFIG_FACE_TRANSPORT_*
+    face_link_init();
 
     // 5. Create face UI (LVGL objects)
     if (lvgl_port_lock(1000)) {

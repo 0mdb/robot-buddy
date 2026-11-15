@@ -215,6 +215,26 @@ flash-face: build-face
         bash -lc 'source "{{ESP_IDF_EXPORT}}" >"{{ESP_IDF_EXPORT_LOG}}" 2>&1 && cd "{{project}}/esp32-face" && idf.py flash'; \
     fi
 
+# Face firmware, P2 UART link (docs/face-uart-transport.md). Own build dir + sdkconfig,
+# so the USB build in build/ is untouched. Flash over the face's USB-C as usual.
+_FACE_UART_IDF := "idf.py -B build-uart -D SDKCONFIG=build-uart/sdkconfig -D SDKCONFIG_DEFAULTS=\"sdkconfig.defaults;sdkconfig.uart\""
+
+# Build face firmware for the P2 UART link (build-uart/)
+build-face-uart:
+    @if command -v idf.py >/dev/null 2>&1; then \
+        cd {{project}}/esp32-face && {{_FACE_UART_IDF}} build; \
+    else \
+        bash -lc 'source "{{ESP_IDF_EXPORT}}" >"{{ESP_IDF_EXPORT_LOG}}" 2>&1 && cd "{{project}}/esp32-face" && {{_FACE_UART_IDF}} build'; \
+    fi
+
+# Flash the P2 UART face firmware over the face USB-C (manual only)
+flash-face-uart: build-face-uart
+    @if command -v idf.py >/dev/null 2>&1; then \
+        cd {{project}}/esp32-face && {{_FACE_UART_IDF}} flash; \
+    else \
+        bash -lc 'source "{{ESP_IDF_EXPORT}}" >"{{ESP_IDF_EXPORT_LOG}}" 2>&1 && cd "{{project}}/esp32-face" && {{_FACE_UART_IDF}} flash'; \
+    fi
+
 # Monitor reflex serial output
 monitor-reflex:
     @if command -v idf.py >/dev/null 2>&1; then \

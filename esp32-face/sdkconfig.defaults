@@ -4,8 +4,10 @@ CONFIG_IDF_TARGET="esp32s3"
 # TinyUSB for composite device (CDC + UAC) — replaces USB Serial/JTAG console
 CONFIG_TINYUSB_CDC_ENABLED=y
 
-# Logging (routed through TinyUSB CDC)
+# Logging: no console. UART0 is the Pi link in the P2 UART build, and the binary
+# protocol owns the USB CDC port in the USB build, so logs must not go to either.
 CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+CONFIG_ESP_CONSOLE_NONE=y
 
 # FreeRTOS: both cores enabled
 CONFIG_FREERTOS_UNICORE=n
@@ -25,3 +27,10 @@ CONFIG_COMPILER_OPTIMIZATION_PERF=y
 CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
 # 1 ms ticks so the 30 FPS frame period (33 ms) is paced accurately.
 CONFIG_FREERTOS_HZ=1000
+
+# Pi link: USB CDC (bench) until P2 UART bring-up passes, then switch to
+# CONFIG_FACE_TRANSPORT_UART=y (docs/face-uart-transport.md).
+CONFIG_FACE_TRANSPORT_USB=y
+
+# The 2nd-stage bootloader prints on UART0, which is the P2 link in the UART build.
+CONFIG_BOOTLOADER_LOG_LEVEL_NONE=y

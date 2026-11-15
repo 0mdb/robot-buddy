@@ -22,11 +22,22 @@ log = logging.getLogger(__name__)
 _RECONNECT_MIN_S = 0.5
 _RECONNECT_MAX_S = 5.0
 
-# If no frames arrive for this long on a "connected" link, treat it as a silent
-# hang (pyserial can keep timing out on .read() without raising when a USB
-# device wedges). Reflex heartbeat is 10 Hz and the face is similarly chatty,
-# so 3 s is well past any healthy gap.
+# If no *valid* frame arrives for this long on a "connected" link, treat it as a
+# disconnect: reopen and re-run the protocol handshake. Two cases:
+#  - silent hang: pyserial keeps timing out on .read() without raising when a
+#    USB device wedges;
+#  - MCU rebooted under us on a link that never drops (the face on the Pi's GPIO
+#    UART): it comes back at protocol v1 while we parse v2, so bytes keep
+#    arriving but every frame is bad. Only a reopen + handshake recovers that.
+# Reflex heartbeat is 10 Hz and the face is similarly chatty, so 3 s is well past
+# any healthy gap.
 _RX_STALL_TIMEOUT_MS = 3000.0
+
+# The ESP32-S3 ROM prints this on UART0 at every reset (can't be turned off without
+# an eFuse). On a link that never drops (the face on the Pi's GPIO UART) it is the
+# only sign the MCU rebooted, so treat it as a disconnect, as USB re-enumeration
+# would be. Seen only at 115200: the ROM's fixed rate.
+_MCU_RESET_MARKER = b"ESP-ROM:"
 
 
 class SerialTransport:
@@ -70,6 +81,13 @@ class SerialTransport:
         self._write_timeouts = 0
         self._last_rx_mono_ms = 0.0
         self._last_frame_mono_ms = 0.0
+        self._last_good_mono_ms = (
+            0.0  # last valid frame, or connect; drives the stall watchdog
+        )
+        self._rx_tail = (
+            b""  # last bytes of the previous read, to catch a marker split across reads
+        )
+        self._mcu_resets_seen = 0
         self._last_bad_frame = ""
         self._last_error = ""
         self._connect_mono: float = 0.0  # monotonic time of last connect
@@ -191,6 +209,7 @@ class SerialTransport:
             "frames_ok": self._frames_ok,
             "frames_bad": self._frames_bad,
             "frames_too_long": self._frames_too_long,
+            "mcu_resets_seen": self._mcu_resets_seen,
             "write_errors": self._write_errors,
             "write_timeouts": self._write_timeouts,
             "last_rx_mono_ms": round(self._last_rx_mono_ms, 1),
@@ -220,20 +239,7 @@ class SerialTransport:
                 data = await loop.run_in_executor(None, self._blocking_read)
                 if data:
                     self._feed(data)
-                elif (
-                    self._connected
-                    and self._last_rx_mono_ms > 0
-                    and time.monotonic() * 1000.0 - self._last_rx_mono_ms
-                    > _RX_STALL_TIMEOUT_MS
-                ):
-                    stall_ms = time.monotonic() * 1000.0 - self._last_rx_mono_ms
-                    self._last_error = f"rx stalled {stall_ms:.0f} ms"
-                    log.warning(
-                        "%s: rx stalled %.0f ms, treating as disconnect",
-                        self.label,
-                        stall_ms,
-                    )
-                    self._handle_disconnect()
+                self._check_rx_stall()
             except (serial.SerialException, OSError) as e:
                 self._last_error = str(e)
                 log.warning("%s: read error: %s", self.label, e)
@@ -263,8 +269,10 @@ class SerialTransport:
             self._connect_count += 1
             self._connected = True
             self._buf.clear()
+            self._rx_tail = b""
             # Seed so the RX-stall watchdog doesn't trip before the first frame.
             self._last_rx_mono_ms = self._connect_mono * 1000.0
+            self._last_good_mono_ms = self._connect_mono * 1000.0
             log.info("%s: connected to %s", self.label, self.port)
             if self._on_connect:
                 self._on_connect()
@@ -274,6 +282,22 @@ class SerialTransport:
             log.debug("%s: can't open %s: %s", self.label, self.port, e)
             return False
 
+    def _check_rx_stall(self) -> None:
+        """Disconnect if no valid frame has arrived within _RX_STALL_TIMEOUT_MS."""
+        if not self._connected or self._last_good_mono_ms <= 0:
+            return
+        now_ms = time.monotonic() * 1000.0
+        stall_ms = now_ms - self._last_good_mono_ms
+        if stall_ms <= _RX_STALL_TIMEOUT_MS:
+            return
+        bytes_flowing = now_ms - self._last_rx_mono_ms < _RX_STALL_TIMEOUT_MS
+        what = "no valid frame" if bytes_flowing else "rx stalled"
+        self._last_error = f"{what} {stall_ms:.0f} ms"
+        log.warning(
+            "%s: %s for %.0f ms, treating as disconnect", self.label, what, stall_ms
+        )
+        self._handle_disconnect()
+
     def _blocking_read(self) -> bytes:
         """Called in executor thread. Reads available bytes."""
         self._read_ops += 1
@@ -281,12 +305,27 @@ class SerialTransport:
             return b""
         return self._ser.read(256)
 
+    def _saw_mcu_reset(self, data: bytes) -> bool:
+        """Disconnect (so we reopen and resync) if the ROM reset banner went past."""
+        window = self._rx_tail + data
+        self._rx_tail = window[-(len(_MCU_RESET_MARKER) - 1) :]
+        if _MCU_RESET_MARKER not in window:
+            return False
+        self._mcu_resets_seen += 1
+        self._rx_tail = b""
+        self._last_error = "MCU reset (ROM banner)"
+        log.warning("%s: MCU reset detected (ROM banner), reconnecting", self.label)
+        self._handle_disconnect()
+        return True
+
     def _feed(self, data: bytes) -> None:
         """Feed raw bytes into COBS frame extractor."""
         self._rx_bytes += len(data)
         if not data:
             return
         self._last_rx_mono_ms = time.monotonic() * 1000.0
+        if self._saw_mcu_reset(data):
+            return
         # Discard data for 200ms after connect to flush ROM bootloader text.
         if time.monotonic() - self._connect_mono < 0.2:
             self._buf.clear()
@@ -328,6 +367,7 @@ class SerialTransport:
         pkt.t_pi_rx_ns = t_pi_rx_ns
         self._frames_ok += 1
         self._last_frame_mono_ms = t_pi_rx_ns / 1_000_000.0
+        self._last_good_mono_ms = self._last_frame_mono_ms
         for handler in self._on_packet_handlers:
             handler(pkt)
 

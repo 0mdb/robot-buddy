@@ -27,6 +27,10 @@
 # Replace FACE_PORT_PATH with your actual KERNELS value.
 #SUBSYSTEM=="tty", ATTRS{idVendor}=="303a", KERNELS=="FACE_PORT_PATH", SYMLINK+="robot_face", MODE="0666"
 
+# Face on the P2 UART (CONFIG_FACE_TRANSPORT_UART): Pi GPIO14/15 = /dev/ttyAMA0
+# once config.txt has dtparam=uart0=on. Use this INSTEAD of the USB face rules.
+#KERNEL=="ttyAMA0", SYMLINK+="robot_face", GROUP="dialout", MODE="0660"
+
 # ── Fallback: match by serial number ────────────────────────────────
 # These rules match specific device serial numbers as a fallback.
 # The JTAG serial is the ESP32's MAC address (unique per chip).

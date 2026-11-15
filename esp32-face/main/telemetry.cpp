@@ -3,7 +3,7 @@
 #include "protocol.h"
 #include "config.h"
 #include "shared_state.h"
-#include "usb_composite.h"
+#include "face_link.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -69,7 +69,7 @@ void telemetry_task(void* arg)
                     packet_build_v2(static_cast<uint8_t>(FaceTelId::FACE_STATUS), next_seq(), t_src,
                                     reinterpret_cast<const uint8_t*>(&status), sizeof(status), tx_buf, sizeof(tx_buf));
             }
-            if (len > 0 && usb_cdc_write(tx_buf, len)) {
+            if (len > 0 && face_link_write(tx_buf, len)) {
                 status_tx_count++;
             }
 
@@ -91,7 +91,7 @@ void telemetry_task(void* arg)
                     g_touch.drop(); // cannot encode; skip it
                     continue;
                 }
-                if (!usb_cdc_write(tx_buf, tlen)) {
+                if (!face_link_write(tx_buf, tlen)) {
                     break; // retry next cycle
                 }
                 touch_tx_count++;
@@ -115,7 +115,7 @@ void telemetry_task(void* arg)
                     g_button.drop();
                     continue;
                 }
-                if (!usb_cdc_write(tx_buf, blen)) {
+                if (!face_link_write(tx_buf, blen)) {
                     break; // retry next cycle
                 }
                 button_tx_count++;
@@ -132,7 +132,7 @@ void telemetry_task(void* arg)
             hb.touch_tx_count = touch_tx_count;
             hb.button_tx_count = button_tx_count;
 
-            const UsbCdcDiagSnapshot usb_diag = usb_cdc_diag_snapshot();
+            const FaceLinkDiag usb_diag = face_link_diag_snapshot();
             hb.usb_tx_calls = usb_diag.tx_calls;
             hb.usb_tx_bytes_requested = usb_diag.tx_bytes_requested;
             hb.usb_tx_bytes_queued = usb_diag.tx_bytes_queued;
@@ -194,7 +194,7 @@ void telemetry_task(void* arg)
             const size_t hlen = packet_build_v2(static_cast<uint8_t>(FaceTelId::HEARTBEAT), next_seq(), t_src, payload,
                                                 payload_len, tx_buf, sizeof(tx_buf));
             if (hlen > 0) {
-                usb_cdc_write(tx_buf, hlen);
+                face_link_write(tx_buf, hlen);
                 last_heartbeat_us = now_us;
             }
         }

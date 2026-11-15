@@ -1,0 +1,4 @@
+# Overlay for the P2 UART build (just build-face-uart / flash-face-uart).
+# Applied on top of sdkconfig.defaults into its own build dir + sdkconfig.
+CONFIG_FACE_TRANSPORT_UART=y
+CONFIG_FACE_UART_BAUD=115200

@@ -1,4 +1,4 @@
-#include "usb_composite.h"
+#include "face_link.h"
 #include "esp_log.h"
 #include "tinyusb.h"
 #include "tusb_cdc_acm.h"
@@ -26,7 +26,7 @@ static std::atomic<uint8_t>  g_line_dtr{0};
 static std::atomic<uint8_t>  g_line_rts{0};
 
 // Serialises frame writes from usb_rx_task and telemetry_task so frames never
-// interleave, and so usb_cdc_write's free-space check stays valid until we write.
+// interleave, and so face_link_write's free-space check stays valid until we write.
 static SemaphoreHandle_t s_tx_mutex = nullptr;
 static StaticSemaphore_t s_tx_mutex_buf;
 
@@ -61,7 +61,7 @@ static void cdc_line_state_changed_cb(int itf, cdcacm_event_t* event)
     ESP_LOGI(TAG, "cdc line-state itf=%d dtr=%u rts=%u", itf, dtr, rts);
 }
 
-void usb_composite_init(void)
+void face_link_init(void)
 {
     ESP_LOGI(TAG, "initializing TinyUSB composite device");
 
@@ -92,7 +92,7 @@ void usb_composite_init(void)
     ESP_LOGI(TAG, "TinyUSB CDC initialized");
 }
 
-bool usb_cdc_write(const uint8_t* data, size_t len)
+bool face_link_write(const uint8_t* data, size_t len)
 {
     if (len == 0) return true;
 
@@ -153,7 +153,7 @@ bool usb_cdc_write(const uint8_t* data, size_t len)
     return ok;
 }
 
-int usb_cdc_read(uint8_t* buf, size_t max_len, uint32_t timeout_ms)
+int face_link_read(uint8_t* buf, size_t max_len, uint32_t timeout_ms)
 {
     (void)timeout_ms;
     g_rx_calls.fetch_add(1, std::memory_order_relaxed);
@@ -170,9 +170,9 @@ int usb_cdc_read(uint8_t* buf, size_t max_len, uint32_t timeout_ms)
     return static_cast<int>(rx_size);
 }
 
-UsbCdcDiagSnapshot usb_cdc_diag_snapshot(void)
+FaceLinkDiag face_link_diag_snapshot(void)
 {
-    UsbCdcDiagSnapshot out = {};
+    FaceLinkDiag out = {};
     out.tx_calls = g_tx_calls.load(std::memory_order_relaxed);
     out.tx_bytes_requested = g_tx_bytes_requested.load(std::memory_order_relaxed);
     out.tx_bytes_queued = g_tx_bytes_queued.load(std::memory_order_relaxed);

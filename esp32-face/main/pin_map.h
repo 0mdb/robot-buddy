@@ -18,6 +18,10 @@ constexpr gpio_num_t PIN_TOUCH_SCL = GPIO_NUM_15;
 constexpr gpio_num_t PIN_TOUCH_RST = GPIO_NUM_18;
 constexpr gpio_num_t PIN_TOUCH_INT = GPIO_NUM_17;
 
+// ---- Pi link on P2 (UART0; 100R series on board) ----
+constexpr gpio_num_t PIN_LINK_TX = GPIO_NUM_43; // P2 pin 3 TXD0 -> Pi GPIO15 (pin 10)
+constexpr gpio_num_t PIN_LINK_RX = GPIO_NUM_44; // P2 pin 4 RXD0 <- Pi GPIO14 (pin 8)
+
 // ---- WS2812B RGB LED ----
 constexpr gpio_num_t PIN_LED_DATA = GPIO_NUM_42;
 
