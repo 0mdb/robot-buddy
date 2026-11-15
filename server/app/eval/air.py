@@ -503,9 +503,23 @@ async def wake_up(
 ) -> bool:
     """Start a conversation: just talk if Buddy is already listening (a follow-up window
     is open), as a child would; otherwise say the wake word and wait for the session."""
-    st = await robot.status()
-    if reuse_open and st.get("session_id") and not st.get("speaking"):
-        return True
+    if reuse_open:
+        # Buddy may still be finishing its last reply; its follow-up window opens ~0.4 s
+        # after. Wait for that instead of sitting out the window and then saying the wake
+        # word (four wake words in a two-conversation run, 2026-11-15).
+        deadline = time.monotonic() + 30
+        quiet_since: float | None = None
+        while time.monotonic() < deadline:
+            st = await robot.status()
+            if st.get("session_id") and not st.get("speaking"):
+                return True
+            if not st.get("session_id") and not st.get("speaking"):
+                quiet_since = quiet_since or time.monotonic()
+                if time.monotonic() - quiet_since > 1.5:
+                    break  # no window coming: say the wake word
+            else:
+                quiet_since = None
+            await asyncio.sleep(0.2)
     await robot.idle()
     mark = robot.mark()
     await speaker.play(silence(150) + await voices.say(WAKE, voice))
