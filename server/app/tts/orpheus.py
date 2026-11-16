@@ -81,34 +81,68 @@ CHUNK_SAMPLES = 160  # 10ms chunks at 16 kHz
 
 
 class LeadTrim:
-    """Drop the near-silence Orpheus puts before the first word (0.2-1.1 s, measured
-    2026-11-15): it was dead air before Buddy spoke, counted as already speaking. Holds
-    10 ms chunks until one is loud, then releases the last `keep` chunks before it (so a
-    soft consonant isn't clipped) and passes everything after. Gives up after `max_hold`
-    chunks and releases what it holds, so a quiet clip is never lost."""
+    """Trim the near-silence Orpheus wraps each clip in (10 ms int16 chunks).
+
+    Leading (0.2-1.1 s measured 2026-11-15): dead air counted as already speaking.
+    Holds chunks until one is loud, then releases the last `keep` before it (so a soft
+    consonant isn't clipped). Gives up after `max_hold` chunks so a quiet clip is never
+    lost.
+
+    Trailing (sound ended 0.2-0.6 s before playback did): delays the turn's end and the
+    follow-up window. Quiet chunks after speech are held, up to `tail_hold` (older ones
+    pass through). If speech resumes, playback has already idled through the held part
+    (silence either way), so only the last `bridge` chunks are released and a
+    mid-sentence pause keeps about its length; at the end of the clip all but
+    `tail_keep` are dropped.
+    """
 
     def __init__(
-        self, *, threshold: float = 300.0, keep: int = 6, max_hold: int = 200
+        self,
+        *,
+        threshold: float = 300.0,
+        keep: int = 6,
+        max_hold: int = 200,
+        tail_threshold: float = 150.0,
+        tail_hold: int = 60,
+        tail_keep: int = 15,
+        bridge: int = 5,
     ) -> None:
         self._threshold = threshold
         self._keep = keep
         self._max_hold = max_hold
+        self._tail_threshold = tail_threshold
+        self._tail_hold = tail_hold
+        self._tail_keep = tail_keep
+        self._bridge = bridge
         self._held: list[bytes] = []
+        self._tail: list[bytes] = []
         self._seen = 0
         self._open = False
 
-    def feed(self, chunk: bytes) -> list[bytes]:
-        if self._open:
-            return [chunk]
+    @staticmethod
+    def _level(chunk: bytes) -> float:
         import numpy as np  # lazy, like the resamplers below
 
-        self._seen += 1
         x = np.frombuffer(chunk, dtype=np.int16)
-        loud = (
-            len(x) > 0 and float(np.abs(x.astype(np.float32)).mean()) > self._threshold
-        )
+        return float(np.abs(x.astype(np.float32)).mean()) if len(x) else 0.0
+
+    def feed(self, chunk: bytes) -> list[bytes]:
+        level = self._level(chunk)
+        if self._open:
+            if level > self._tail_threshold:
+                out = [
+                    *self._tail[len(self._tail) - min(len(self._tail), self._bridge) :],
+                    chunk,
+                ]
+                self._tail = []
+                return out
+            self._tail.append(chunk)
+            if len(self._tail) > self._tail_hold:
+                return [self._tail.pop(0)]
+            return []
+        self._seen += 1
         self._held.append(chunk)
-        if loud:
+        if level > self._threshold:
             self._open = True
             out, self._held = self._held[-(self._keep + 1) :], []
             return out
@@ -121,6 +155,8 @@ class LeadTrim:
 
     def flush(self) -> list[bytes]:
         out, self._held = self._held, []
+        out += self._tail[: self._tail_keep]
+        self._tail = []
         return out
 
 

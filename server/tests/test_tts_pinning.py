@@ -72,3 +72,29 @@ def test_lead_trim_never_loses_a_quiet_clip() -> None:
         out += t.feed(quiet)
     out += t.flush()
     assert len(out) == 7 + 10  # the held 6 + the 20th at the cap, then passed through
+
+
+def test_lead_trim_drops_trailing_silence_keeps_mid_pauses() -> None:
+    import numpy as np
+
+    from app.tts.orpheus import LeadTrim
+
+    quiet = np.zeros(160, np.int16).tobytes()
+    loud = (np.ones(160) * 2000).astype(np.int16).tobytes()
+    t = LeadTrim(keep=6, tail_hold=60, tail_keep=15, bridge=5)
+    out: list[bytes] = []
+    clip = [loud] * 10 + [quiet] * 40 + [loud] * 10 + [quiet] * 60
+    for c in clip:
+        out += t.feed(c)
+    out += t.flush()
+    # Mid pause: 50 ms bridge sent (playback idled through the rest while it was
+    # held); the 600 ms tail is cut to 150 ms.
+    assert out == [loud] * 10 + [quiet] * 5 + [loud] * 10 + [quiet] * 15
+
+    # A tail longer than the hold: the oldest pass through, the end is still cut.
+    t = LeadTrim(keep=6, tail_hold=60, tail_keep=15)
+    out = []
+    for c in [loud] * 3 + [quiet] * 100:
+        out += t.feed(c)
+    out += t.flush()
+    assert out == [loud] * 3 + [quiet] * (40 + 15)
