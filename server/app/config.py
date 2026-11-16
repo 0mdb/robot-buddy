@@ -88,10 +88,16 @@ class Settings:
         os.environ.get("OLLAMA_PULL_TIMEOUT_S", "1800.0")
     )
     plan_max_inflight: int = int(os.environ.get("PLAN_MAX_INFLIGHT", "1"))
-    plan_keep_alive: str = os.environ.get("PLAN_KEEP_ALIVE", "0s")
+    # Same Ollama model as the conversation: "0s" here would evict it after every
+    # planner request. Defaults to the conversation's keep-alive.
+    plan_keep_alive: str = os.environ.get(
+        "PLAN_KEEP_ALIVE", os.environ.get("CONVERSE_KEEP_ALIVE", "0s")
+    )
     max_actions: int = int(os.environ.get("MAX_ACTIONS", "5"))
     temperature: float = float(os.environ.get("TEMPERATURE", "0.7"))
-    num_ctx: int = int(os.environ.get("NUM_CTX", "4096"))
+    # Ollama silently drops the start of a prompt that does not fit (the system prompt
+    # and safety rules first); conversations reached 3.8k tokens on 2026-11-16.
+    num_ctx: int = int(os.environ.get("NUM_CTX", "8192"))
     converse_keep_alive: str = os.environ.get("CONVERSE_KEEP_ALIVE", "0s")
     # Ollama: hidden reasoning before the reply (models that support it). Off: it is
     # first-audio latency, and the conversation schema has no room for it.
