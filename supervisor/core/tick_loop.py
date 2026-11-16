@@ -1329,6 +1329,9 @@ class TickLoop:
             self.world.say_enqueued += 1
             self.world.speech_source = source
             self.world.speech_priority = priority
+            # Unprompted speech (planner, speech policy, idle): logged so "talking non-stop"
+            # can be measured before its defaults change.
+            log.info("say [%s p%d]: %s", source, priority, text[:120])
 
     def _apply_emote(self, action: dict) -> None:
         """Route planner emote action through PE as impulse (face comm S2 Layer 3).
