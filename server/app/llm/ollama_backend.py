@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import AsyncIterator
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
@@ -234,11 +234,9 @@ class OllamaBackend(PlannerLLMBackend):
         callers MUST iterate to completion or call ``.aclose()`` to
         avoid leaking the slot.
 
-        `tool_result` (task #7 preamble) is not plumbed into the Ollama
-        path for now — vLLM is the production backend and Ollama is
-        legacy. Hybrid tool-use requires the vllm backend.
+        `tool_result` (the tool pass) goes before the latest user message; a
+        look() frame rides along as a base64 image (Gemma 4 sees it).
         """
-        del tool_result  # Not supported on the legacy Ollama path.
         assert self._client is not None
         await self._acquire_generation_slot()
         try:
@@ -249,12 +247,58 @@ class OllamaBackend(PlannerLLMBackend):
                     user_text,
                     override_temperature=override_temperature,
                     override_max_output_tokens=override_max_output_tokens,
+                    tool_result=tool_result,
                 ):
                     yield delta
             except httpx.TimeoutException as exc:
                 raise LLMTimeoutError("llm_timeout") from exc
             except httpx.ConnectError as exc:
                 raise LLMUnavailableError("ollama_unreachable") from exc
+        finally:
+            await self._release_generation_slot()
+
+    async def generate_json_once(
+        self,
+        system_prompt: str,
+        user_text: str,
+        *,
+        schema: dict[str, Any] | None = None,
+        max_tokens: int = 128,
+        temperature: float = 0.0,
+        request_tag: str = "json-once",
+    ) -> str:
+        """One non-streaming {system, user} generation (the tool-selection pass).
+
+        Without it the tool pass was skipped on Ollama ("backend_has_no_generate_json_
+        once"): "what is this?" never looked through the camera (2026-11-16)."""
+        assert self._client is not None
+        await self._acquire_generation_slot()
+        try:
+            body: dict[str, Any] = {
+                "model": self._model,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_text},
+                ],
+                "stream": False,
+                "think": False,
+                "keep_alive": settings.converse_keep_alive,
+                "options": {"temperature": temperature, "num_predict": max_tokens},
+            }
+            if schema is not None:
+                body["format"] = schema
+            try:
+                resp = await self._client.post("/api/chat", json=body)
+            except httpx.TimeoutException as exc:
+                raise LLMTimeoutError("llm_timeout") from exc
+            except httpx.ConnectError as exc:
+                raise LLMUnavailableError("ollama_unreachable") from exc
+            if resp.status_code != 200:
+                raise LLMError(
+                    f"Ollama {request_tag} returned {resp.status_code}: "
+                    f"{self._extract_error_text(resp)}"
+                )
+            return str(resp.json().get("message", {}).get("content", ""))
         finally:
             await self._release_generation_slot()
 

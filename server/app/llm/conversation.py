@@ -698,16 +698,24 @@ async def stream_conversation_response(
     *,
     override_temperature: float | None = None,
     override_max_output_tokens: int | None = None,
+    tool_result: "ToolResult | None" = None,
 ) -> AsyncIterator[str]:
     """Stream a V2-schema conversation response from Ollama as content deltas.
 
     Adds the user message to history; the CALLER must call
     ``history.add_assistant(parsed_text, emotion=...)`` once the stream is
     consumed. On non-200 responses raises LLMError.
+
+    ``tool_result`` (the tool pass: look, memory, events) is placed before the
+    latest user message; a look() image rides on that message as Ollama's
+    base64 ``images`` list.
     """
     history.add_user(user_text)
 
-    messages = history.to_ollama_messages()
+    messages = _ollama_image_messages(
+        history.to_ollama_messages(tool_result=tool_result),
+        tool_result.images if tool_result is not None else [],
+    )
     options: dict[str, object] = {
         "temperature": (
             override_temperature
@@ -748,6 +756,37 @@ async def stream_conversation_response(
                 yield content
             if data.get("done"):
                 break
+
+
+def _ollama_image_messages(
+    messages: list[dict[str, Any]], images: list[Any]
+) -> list[dict[str, Any]]:
+    """Mixed-content messages (vLLM chat-template parts) -> Ollama's shape: text
+    content plus a base64 ``images`` list, one per ``{"type": "image"}`` part."""
+    import base64
+    import io
+
+    pending = list(images)
+    out: list[dict[str, Any]] = []
+    for m in messages:
+        content = m.get("content")
+        if not isinstance(content, list):
+            out.append(m)
+            continue
+        text = "\n".join(
+            str(part.get("text", "")) for part in content if part.get("type") == "text"
+        )
+        b64: list[str] = []
+        for part in content:
+            if part.get("type") == "image" and pending:
+                buf = io.BytesIO()
+                pending.pop(0).convert("RGB").save(buf, format="JPEG", quality=85)
+                b64.append(base64.b64encode(buf.getvalue()).decode())
+        msg = {**m, "content": text}
+        if b64:
+            msg["images"] = b64
+        out.append(msg)
+    return out
 
 
 def parse_conversation_response_content(content: str) -> ConversationResponse:
