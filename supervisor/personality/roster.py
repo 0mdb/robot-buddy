@@ -4,8 +4,9 @@ Design: ~/vantage/docs/SIM-INTERACTION.md, decision I3 and stage 3.
 
 - **Local only.** One TOML file beside the personality memory (``data/household.toml``), which
   is git-ignored. Nothing in it leaves the robot: the only thing derived from it that reaches the
-  server is the youngest enrolled child's *age*, so an unidentified speaker gets the most
-  conservative profile (fallback rule 1). Names never leave the robot until recognition exists
+  server is the *primary* child's age (the oldest enrolled child: Buddy is nominally theirs,
+  operator decision 2026-11-16), so an unidentified speaker gets that child's profile. Safety
+  does not depend on it: every safety rule is in the prompt for all profiles (rule 4). Names never leave the robot until recognition exists
   (stage 5), and then only the recognised speaker's.
 - **Off by default.** No file, or ``enabled = false``, means the roster is not used at all.
 - **Parent-deletable in one action.** :func:`forget_everyone` removes the file and anything
@@ -70,20 +71,28 @@ class Roster:
         ages = [m.age for m in self.members if m.kind == "kid" and m.age is not None]
         return min(ages) if ages else None
 
+    def primary_kid_age(self) -> int | None:
+        """The oldest enrolled child's age: Buddy is nominally theirs (operator, 2026-11-16),
+        so an unidentified speaker is talked to at that child's level."""
+        if not self.enabled:
+            return None
+        ages = [m.age for m in self.members if m.kind == "kid" and m.age is not None]
+        return max(ages) if ages else None
+
     def audience_hint(self) -> dict[str, object] | None:
         """The audience block for the /converse profile message, or None.
 
         Nobody is recognised yet (no detection until stage 5), so the speaker is "unknown",
-        and the server's fallback rule 1 gives them the youngest enrolled child's profile. Only
-        that age leaves the robot; no names, no ids.
+        and the server's fallback rule 1 gives them the primary (oldest enrolled) child's
+        profile. Only that age leaves the robot; no names, no ids.
         """
-        age = self.youngest_kid_age()
+        age = self.primary_kid_age()
         if age is None:
             return None
         return {
             "present": [{"kind": "unknown", "confidence": 0.0, "sources": []}],
             "speaking": 0,
-            "household": {"youngest_kid_age": age},
+            "household": {"primary_kid_age": age},
         }
 
 

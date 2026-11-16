@@ -32,14 +32,15 @@ def _family() -> hh.Roster:
     return hh.add_member(r, name="Test Dog", kind="animal")
 
 
-def test_youngest_kid_age_and_hint_carry_no_names():
+def test_the_hint_is_the_oldest_kid_and_carries_no_names():
+    # Buddy is nominally the older child's robot (operator, 2026-11-16).
     r = _family()
-    assert r.youngest_kid_age() == 5
+    assert r.youngest_kid_age() == 5 and r.primary_kid_age() == 7
     hint = r.audience_hint()
     assert hint == {
         "present": [{"kind": "unknown", "confidence": 0.0, "sources": []}],
         "speaking": 0,
-        "household": {"youngest_kid_age": 5},
+        "household": {"primary_kid_age": 7},
     }
     assert "Test" not in str(hint)
     assert not any(m.id in str(hint) for m in r.members)
@@ -217,5 +218,5 @@ def test_worker_sends_only_the_youngest_age(tmp_path):
     w._emit_llm_profile()
     t, payload = sends[-1]
     assert t == PERSONALITY_LLM_PROFILE
-    assert payload["audience"]["household"] == {"youngest_kid_age": 5}
+    assert payload["audience"]["household"] == {"primary_kid_age": 7}
     assert "Test" not in str(payload)

@@ -12,8 +12,9 @@ The supervisor (or a test harness, as an oracle) may attach an ``audience`` dict
 
 The fallback rules are fixed policy, not tunables:
 
-1. Unknown or low-confidence is a kid; a kid of unknown age gets the generic child profile
-   (the youngest *enrolled* child once the roster exists, stage 3).
+1. Unknown or low-confidence is a kid; a kid of unknown age gets the generic child profile,
+   or the household's primary child's profile when the roster gives one (the oldest enrolled
+   child: Buddy is nominally theirs, operator decision 2026-11-16; it was the youngest).
 2. Several present means the youngest present: an adult beside a child does not switch modes.
 3. Animals never get conversation: the animal profile answers in robot sounds only.
 4. Recognition never loosens safety: the content rules are in the prompt, not in a profile.
@@ -105,8 +106,8 @@ class Member:
 class Audience:
     present: tuple[Member, ...]
     speaking: int | None
-    # From the robot's opt-in household roster: only the youngest enrolled child's age.
-    youngest_kid_age: int | None = None
+    # From the robot's opt-in household roster: only the primary (oldest enrolled) child's age.
+    household_kid_age: int | None = None
 
 
 def parse_audience(raw: object) -> Audience | None:
@@ -136,16 +137,15 @@ def parse_audience(raw: object) -> Audience | None:
     if not (isinstance(speaking, int) and 0 <= speaking < len(present)):
         speaking = None
     household = raw.get("household")
-    youngest = (
-        household.get("youngest_kid_age") if isinstance(household, dict) else None
-    )
+    kid_age = None
+    if isinstance(household, dict):
+        # "youngest_kid_age": robots from before 2026-11-16.
+        kid_age = household.get("primary_kid_age", household.get("youngest_kid_age"))
     if not (
-        isinstance(youngest, int)
-        and not isinstance(youngest, bool)
-        and 0 < youngest < 18
+        isinstance(kid_age, int) and not isinstance(kid_age, bool) and 0 < kid_age < 18
     ):
-        youngest = None
-    return Audience(tuple(present), speaking, youngest)
+        kid_age = None
+    return Audience(tuple(present), speaking, kid_age)
 
 
 def _effective_kind(m: Member) -> str:
@@ -180,15 +180,15 @@ def _kid_profile_for_age(age: int) -> AudienceProfile:
 def resolve_profile(audience: Audience | None) -> AudienceProfile:
     """Pick the profile the fallback rules allow.
 
-    - Nothing known, or a child whose age is not known: the youngest enrolled child's profile
-      when the household roster says who that is, else the generic child profile (rule 1).
+    - Nothing known, or a child whose age is not known: the primary child's profile when the
+      household roster gives one, else the generic child profile (rule 1).
     - Any child present: the profile for the youngest child present (rule 2).
     - Only confident adults (animals may be there too): adult.
     - Only animals: animal (rule 3).
     """
     default = load_profile(DEFAULT_PROFILE_ID)
-    if audience is not None and audience.youngest_kid_age is not None:
-        default = _kid_profile_for_age(audience.youngest_kid_age)
+    if audience is not None and audience.household_kid_age is not None:
+        default = _kid_profile_for_age(audience.household_kid_age)
     if audience is None or not audience.present:
         return default
     kids = [m for m in audience.present if _effective_kind(m) == "kid"]

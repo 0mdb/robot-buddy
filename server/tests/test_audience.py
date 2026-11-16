@@ -248,3 +248,22 @@ def test_teen_band(age: int, profile: str) -> None:
 
     aud = parse_audience({"present": [{"kind": "kid", "age": age, "confidence": 0.9}]})
     assert resolve_profile(aud).id == profile
+
+
+def test_the_household_primary_kid_picks_the_default_profile() -> None:
+    # The roster now sends the oldest enrolled child (operator, 2026-11-16); robots from
+    # before send youngest_kid_age, still read.
+    from app.llm.audience import parse_audience, resolve_profile
+
+    assert (
+        resolve_profile(
+            parse_audience({"present": [], "household": {"primary_kid_age": 7}})
+        ).id
+        == "kid_7"
+    )
+    assert (
+        resolve_profile(
+            parse_audience({"present": [], "household": {"youngest_kid_age": 5}})
+        ).id
+        == "kid_5"
+    )

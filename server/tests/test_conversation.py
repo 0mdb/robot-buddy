@@ -70,10 +70,10 @@ class TestContextBudget:
 
     def test_token_budget_enforcement(self):
         """Very long messages should be trimmed to fit budget."""
-        # Budget 3072: the system prompt is ~1.6k estimated tokens (2026-11-15; this test
-        # assumed ~800 and a 2048 budget, which no longer leaves room for any history)
-        # + 512 reserve. The long message (~2000 tokens) must be dropped to fit.
-        h = ConversationHistory(max_turns=20, max_context_tokens=3072)
+        # Budget 4096: the child system prompt is ~2.4k estimated tokens (2026-11-16; it
+        # was ~1.6k on 2026-11-15 with a 3072 budget) + 512 reserve. The long message
+        # (~2000 tokens) must be dropped to fit.
+        h = ConversationHistory(max_turns=20, max_context_tokens=4096)
         long_text = "x" * 8000  # ~2000 tokens
         h.add_user(long_text)
         h.add_assistant("ok", emotion="neutral")
