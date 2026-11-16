@@ -145,3 +145,30 @@ async def test_open_failure_reports_link_down(monkeypatch: pytest.MonkeyPatch) -
     await asyncio.sleep(0.05)
     await s.stop()
     assert sink.opens >= 2 and not s.link_up
+
+
+class BackedUpSink(FakeSink):
+    """A device whose clock runs behind ours: audio waits in front of it."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.queued = 10**6
+
+    def queued_bytes(self) -> int:
+        return self.queued
+
+
+@pytest.mark.asyncio
+async def test_waits_for_a_backed_up_device_without_dropping_audio() -> None:
+    sink = BackedUpSink()
+    s = PlaybackStream(sink)
+    s.start()
+    s.queue_voice(pcm(1000) * 3)
+    await asyncio.sleep(0.15)
+    assert sink.frames == []  # nothing written while the device is behind
+    assert s.skipped_ticks > 0 and s.voice_pending_ms == 60
+    sink.queued = 0  # the device caught up
+    await asyncio.wait_for(s.drain_voice(), 1.0)
+    await s.stop()
+    voiced = [f for f in sink.frames if f != bytes(FRAME_BYTES)]
+    assert len(voiced) == 3

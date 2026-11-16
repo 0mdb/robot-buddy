@@ -22,8 +22,11 @@ actually played.
 
 from __future__ import annotations
 
+import array
 import asyncio
+import fcntl
 import logging
+import termios
 import time
 from typing import Callable, Protocol
 
@@ -40,6 +43,13 @@ FRAME_BYTES = FRAME_MS * BYTES_PER_MS  # 640
 LEAD_S = 0.06
 # Behind schedule by more than this (device stalled, writer starved): resync.
 _RESYNC_S = 0.2
+# Most audio allowed to wait between us and the device (the aplay pipe plus our
+# write buffer): the lead plus one frame. The writer runs on the Pi's clock and the
+# speaker on its own; a slower speaker clock used to pile audio up in the pipe
+# (2.45 s after 12 h on 2026-11-16: the follow-up mic opened while Buddy was still
+# audibly talking, and Buddy answered itself). Over this, a tick is skipped (nothing
+# is dropped), so the device sets the pace.
+_MAX_QUEUED_BYTES = int(LEAD_S * 1000) * BYTES_PER_MS + FRAME_BYTES
 _REOPEN_S = 1.0
 _SILENCE = bytes(FRAME_BYTES)
 
@@ -52,6 +62,12 @@ class PcmSink(Protocol):
     async def write(self, pcm: bytes) -> bool: ...
 
     async def close(self) -> None: ...
+
+
+def _queued_bytes(sink: PcmSink) -> int:
+    """Audio written but not yet taken by the device, if the sink can tell."""
+    fn = getattr(sink, "queued_bytes", None)
+    return fn() if fn is not None else 0
 
 
 class AplaySink:
@@ -106,6 +122,23 @@ class AplaySink:
         except (BrokenPipeError, ConnectionResetError, OSError):
             return False
         return True
+
+    def queued_bytes(self) -> int:
+        """Bytes waiting in our write buffer plus the pipe to aplay."""
+        proc = self._proc
+        if proc is None or proc.stdin is None:
+            return 0
+        transport = proc.stdin.transport
+        n = transport.get_write_buffer_size()
+        pipe = transport.get_extra_info("pipe")
+        if pipe is not None:
+            buf = array.array("i", [0])
+            try:
+                fcntl.ioctl(pipe.fileno(), termios.FIONREAD, buf)
+                n += buf[0]
+            except OSError:
+                pass
+        return n
 
     async def close(self) -> None:
         proc, self._proc = self._proc, None
@@ -169,6 +202,7 @@ class PlaybackStream:
         self.link_up = False
         self.frames_written = 0
         self.underruns = 0
+        self.skipped_ticks = 0
 
     # ── producers ─────────────────────────────────────────────────
 
@@ -275,6 +309,11 @@ class PlaybackStream:
                 wait = t_next - LEAD_S - now
                 if wait > 0:
                     await asyncio.sleep(wait)
+                if _queued_bytes(self.sink) > _MAX_QUEUED_BYTES:
+                    # The device is behind our clock: let it catch up.
+                    self.skipped_ticks += 1
+                    t_next += period
+                    continue
                 if not await self.sink.write(self.next_frame()):
                     break
                 self.frames_written += 1
