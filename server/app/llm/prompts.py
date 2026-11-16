@@ -28,7 +28,8 @@ Available actions:
 
   say(text)
     Speak a short phrase (max 200 chars, kid-friendly language).
-    Use natural speech — contractions, "hmm", "ooh", exclamations.
+    Use natural speech: contractions and exclamations. Start with the content,
+    not "hmm" or "ooh" (the voice pauses on them).
     Your text will be spoken aloud via TTS.
 
   emote(name, intensity)
