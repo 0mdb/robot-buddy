@@ -602,6 +602,12 @@ class EarWorker(BaseWorker):
             str(self._mic_channels),
             "-t",
             "raw",
+            # 20 ms periods: the default (125 ms here) delivered audio to the wake word
+            # and VAD up to 125 ms late, which added to every end-of-speech and wake.
+            "-F",
+            "20000",
+            "-B",
+            "400000",
             "-q",
             stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
@@ -758,13 +764,18 @@ class EarWorker(BaseWorker):
         }
         # Pi monotonic ms when the first sample arrives at the ear (meta file).
         self._tap["t0"] = None
+        self._tap["frames"] = 0
         log.info("tap: recording channel %d to %s", ch, path)
 
     def _tap_write(self, whole: bytes) -> None:
         tap = self._tap
         assert tap is not None
-        if tap["t0"] is None:
-            tap["t0"] = time.monotonic() * 1000.0
+        # Sample 0's time: each read arrives just after its last sample was captured,
+        # so arrival - samples so far is an upper bound; the minimum over reads is the
+        # best estimate (the first read alone was late by up to a capture period).
+        tap["frames"] += len(whole) // (SAMPLE_WIDTH * self._mic_channels)
+        est = time.monotonic() * 1000.0 - tap["frames"] * 1000.0 / SAMPLE_RATE
+        tap["t0"] = est if tap["t0"] is None else min(tap["t0"], est)
         tap["f"].write(select_channel(whole, self._mic_channels, tap["channel"]))
         if time.monotonic() >= tap["until"]:
             self._tap_stop()

@@ -1580,6 +1580,27 @@ def segments(
     return [(a, b) for a, b in segs if (b - a) * 1000 >= min_ms]
 
 
+def soft_onset(
+    pcm: bytes, after_s: float, *, ratio: float = 2.2, hold_ms: int = 100
+) -> float | None:
+    """First time after `after_s` that the level stays `ratio` x over the noise floor for
+    `hold_ms`: catches a quiet "Hmm..." opener that `segments` (4x) misses."""
+    x = _arr(pcm)
+    win = SR // 100
+    n = len(x) // win
+    if n == 0:
+        return None
+    rms = np.sqrt((x[: n * win].reshape(n, win) ** 2).mean(axis=1) + 1e-9)
+    on = rms > np.percentile(rms, 10) * ratio
+    need = hold_ms // 10
+    run = 0
+    for i in range(int(after_s * 100), n):
+        run = run + 1 if on[i] else 0
+        if run >= need:
+            return (i - need + 1) / 100
+    return None
+
+
 async def run_latency(
     robot: Robot, voices: Voices, speaker: Speaker, *, host: str, voice: str, pitch: float,
     out: Path, trials: int,
@@ -1619,9 +1640,15 @@ async def run_latency(
             continue
         segs = segments(local.read_bytes())
         meta = json.loads((Path(str(local) + ".json")).read_text())
+        # Buddy can't be heard before the Pi starts playing: search from there.
+        started_s = (start["ts_mono_ms"] - meta["t0_mono_ms"]) / 1000
         r["segments"] = [(round(a, 2), round(b, 2)) for a, b in segs]
         if len(segs) >= 2:
-            kid_end, buddy_start = segs[0][1], segs[1][0]
+            kid_end = segs[0][1]
+            buddy_start = (
+                soft_onset(local.read_bytes(), max(kid_end + 0.3, started_s), ratio=2.0)
+                or segs[1][0]
+            )
             r["acoustic_heard_ms"] = round((buddy_start - kid_end) * 1000)
             speech_end = eou["ts_mono_ms"] - float(eou.get("silence_ms", 0))
             r["pi_clock_heard_ms"] = round(start["ts_mono_ms"] - speech_end)
