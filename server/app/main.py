@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import subprocess
 from contextlib import asynccontextmanager
@@ -10,6 +11,7 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
+from app import gpu_monitor
 from app.admission import ConverseSessionRegistry, PlanAdmissionGate
 from app.ai_runtime import debug_snapshot as ai_debug_snapshot
 from app.ai_runtime import get_stt, get_tts
@@ -58,6 +60,7 @@ def _detect_free_vram_gb() -> float | None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Start/stop selected LLM backend + TTS runtime."""
+    gpu_monitor.install()
     app.state.plan_gate = PlanAdmissionGate(settings.plan_max_inflight)
     app.state.converse_registry = ConverseSessionRegistry()
     app.state.performance_mode = bool(settings.performance_mode)
@@ -202,6 +205,8 @@ async def health():
     plan_gate = getattr(app.state, "plan_gate", None)
     converse_registry = getattr(app.state, "converse_registry", None)
     llm_snapshot = llm.debug_snapshot()
+    # nvidia-smi takes ~50 ms; keep it off the event loop (converse streams share it).
+    gpu_snapshot = await asyncio.to_thread(gpu_monitor.snapshot)
     return JSONResponse(
         {
             "status": status,
@@ -215,7 +220,10 @@ async def health():
             "resource_profile": getattr(app.state, "resource_profile", "conservative"),
             "performance_mode": bool(getattr(app.state, "performance_mode", False)),
             "orpheus_enabled": bool(getattr(app.state, "orpheus_enabled", False)),
+            # Free VRAM measured once at startup, before the models load (kept for
+            # old clients). "gpu" below is measured now.
             "orpheus_vram_free_gb": getattr(app.state, "orpheus_vram_free_gb", None),
+            "gpu": gpu_snapshot,
             "gpu_budget": {
                 "qwen_backend": llm.backend_name,
                 "qwen_utilization": (
