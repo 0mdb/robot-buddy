@@ -113,7 +113,15 @@ async def lifespan(app: FastAPI):
 
     # Orpheus warm-up is intentionally sequenced after planner LLM warm-up.
     tts = get_tts()
-    if settings.performance_mode:
+    if settings.performance_mode and settings.orpheus_runtime == "ollama":
+        # Orpheus lives inside Ollama next to the LLM: Ollama already holds (or loads)
+        # it, so free VRAM says nothing about whether it fits. The vLLM budget below
+        # disabled it on every restart once Ollama had both models resident, and Buddy
+        # spoke with espeak all of 2026-11-16 from 08:11.
+        app.state.orpheus_vram_free_gb = _detect_free_vram_gb()
+        tts.set_orpheus_allowed(True, "ollama_runtime")
+        await tts.warmup()
+    elif settings.performance_mode:
         free_vram_gb = _detect_free_vram_gb()
         app.state.orpheus_vram_free_gb = free_vram_gb
         if free_vram_gb is None:
