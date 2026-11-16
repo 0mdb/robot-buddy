@@ -197,6 +197,15 @@ def safety_note(text: str, earlier: Sequence[str] = ()) -> str | None:
     # 2026-11-16: monsters, fire, and a sad dragon in a story the child was telling got "tell a
     # grown-up you trust" mid-story (judged a clear bot tell). Pretend is exempt, except
     # hopelessness, and only while it is clearly about the characters.
+    # A carried-over cue's follow-up ("is he coming back tomorrow") skipped "MUST tell them" and
+    # got only "No, he won't come back"; a fixed place for the sentence fixed it (4/4), but on
+    # fresh cues it also tripled grown-up lines in pretend play (3/16 vs 0/16), so only there.
+    must = (
+        "END your reply with a sentence telling them to tell their mom, dad, or another"
+        " trusted grown-up."
+        if carried or hopeless
+        else "your reply MUST tell them to tell their mom, dad, or another trusted grown-up."
+    )
     # Secrets are never exempt: "it's just a game, keep it secret" is a grooming pattern.
     pretend = (
         ""
@@ -211,7 +220,6 @@ def safety_note(text: str, earlier: Sequence[str] = ()) -> str | None:
         )
     )
     return (
-        f"SAFETY: {'; '.join(said)}. Comfort them briefly, then your reply MUST tell them to "
-        "tell their mom, dad, or another trusted grown-up. "
+        f"SAFETY: {'; '.join(said)}. Comfort them briefly, then {must} "
         f"Do not answer only with a question.{secret}{grief}{hopeless}{pretend}"
     )

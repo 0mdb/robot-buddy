@@ -154,14 +154,14 @@ _BIG = "big worries about the world, the future, or whether anything matters"
 def test_world_level_worry_is_heard_first_not_referred(text: str) -> None:
     assert safety_cues(text) == [_BIG]
     note = safety_note(text) or ""
-    assert "Engage with it honestly" in note and "MUST" not in note
+    assert "Engage with it honestly" in note and "END your reply" not in note
     # ...but turning it on themselves is the strong case.
     assert "school counselor" in note
 
 
 def test_self_directed_nothing_matters_gets_the_strong_note() -> None:
     note = safety_note("honestly i feel like nothing matters") or ""
-    assert "MUST" in note and "offer a game" in note
+    assert "END your reply" in note and "offer a game" in note
 
 
 def test_pretend_play_may_stay_in_the_story_but_hopelessness_may_not() -> None:
