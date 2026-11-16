@@ -148,6 +148,7 @@ Stage 4.2 Dirty-Rect A/B Snapshot (2026-02-25, post-dirty firmware + updated sup
 _2 items complete (B6 test extensions: guardrail/schema/privacy/RS limits) — see archive_
 - [ ] PE evaluation checklist: emotional coherence, guardrail compliance, child-safety validation (PE spec S2 §13 + §9 HC/RS) _(automated guardrail tests pass; child-safety T4 is a human protocol — tracked under Face Evaluation)_
 - [ ] `[opus]` Reduce baseline talkativeness (currently “talking non-stop”): review specs + annoyance research; set sane defaults (idle/backchannel frequency, cooldowns, auto-followup) + add tests
+  - 2026-11-16 measurement: unprompted speech is now logged (`say [source pN]: text` in the supervisor log). Idle with nobody engaging: 1 line in 50 min (the start-up greeting); 4 lines in the first 7 min after a boot. The false "I found a ball!" (a wall read as a ball, re-announced every 60 s) is fixed. Collect a day of real use from the log before changing defaults.
 - [ ] `[sonnet]` Reduce server ping/poll frequency: make requests event-driven + add backoff/debounce so Buddy isn’t “talking non-stop” _(period now configurable + disableable via `planner.plan_period_s` / `planner.enabled` params in dashboard. 2026-11-10 `0d86f7e`: the request carries `new_events` and the server answers a tick with none without calling the model, so the poll is now cheap; the poll itself remains)_
 
 ---
