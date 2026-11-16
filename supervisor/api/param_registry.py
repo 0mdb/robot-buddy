@@ -1192,6 +1192,21 @@ def create_default_registry() -> ParamRegistry:
     )
     reg.register(
         ParamDef(
+            name="conversation.follow_up_delay_ms",
+            type="int",
+            min=0,
+            max=3000,
+            step=50,
+            default=400,
+            owner="supervisor",
+            safety="safe",
+            doc="Wait after Buddy's speech is reported finished before the follow-up window "
+            "opens: covers speaker output lag, so the mic doesn't hear Buddy's own last words "
+            "(no echo cancellation with the USB speaker)",
+        )
+    )
+    reg.register(
+        ParamDef(
             name="conversation.turn_timeout_s",
             type="float",
             min=5.0,

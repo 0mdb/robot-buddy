@@ -1513,7 +1513,17 @@ class TickLoop:
         async def _follow_up() -> None:
             from supervisor.devices.protocol import FaceConvState
 
-            await asyncio.sleep(self._FOLLOW_UP_DELAY_S)
+            delay_s = self._FOLLOW_UP_DELAY_S
+            if self._param_registry is not None:
+                delay_s = (
+                    float(
+                        self._param_registry.get_value(
+                            "conversation.follow_up_delay_ms", delay_s * 1000
+                        )
+                    )
+                    / 1000
+                )
+            await asyncio.sleep(delay_s)
             if self.world.session_id:
                 # The wake-word session ends on AI done; if it is still open
                 # (done not in yet), end it so the follow-up starts clean.
