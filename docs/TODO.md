@@ -2,6 +2,8 @@
 
 Single source of implementation truth. All task tracking lives here.
 
+> **Pushes (other machine: pull first):** 2026-11-15, `main` up to `94a94b2`, pushed from the native-Ubuntu dev box (voice latency, Orpheus on Ollama, dev-box services). Local-only there: `.env` gains `ORPHEUS_RUNTIME=ollama` and the 26B/Ollama block.
+
 ## How to Use This File
 
 - **Priority**: Tasks within each section are listed in recommended execution order (top = highest)
