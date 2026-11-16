@@ -1416,6 +1416,21 @@ def create_default_registry() -> ParamRegistry:
             doc="Speaker output volume (0–100, applied via PCM scaling)",
         )
     )
+    reg.register(
+        ParamDef(
+            name="tts.output_lag_ms",
+            type="int",
+            min=0,
+            max=1000,
+            step=10,
+            default=300,
+            owner="supervisor",
+            safety="safe",
+            doc="Audio written -> heard from the speaker (aplay buffer + USB speaker; "
+            "330 ms measured with the temporary USB speaker). Delays the mouth and the "
+            "'finished speaking' event so they match the voice; tune by eye",
+        )
+    )
 
     reg.register(
         ParamDef(

@@ -134,3 +134,25 @@ async def test_cancel_discards_rest_of_stream() -> None:
     assert sum(1 for t, _ in sent if t == TTS_EVENT_STARTED) == 2
     assert not any(t == TTS_EVENT_FINISHED for t, _ in sent)
     await _cleanup(worker, client, task)
+
+
+@pytest.mark.asyncio
+async def test_finished_and_mouth_wait_for_the_output_lag() -> None:
+    """Speech is heard output_lag after it is written: FINISHED and lip-sync energy
+    are delayed by that much so the face matches the voice (2026-11-15)."""
+    from supervisor.messages.types import TTS_EVENT_ENERGY
+
+    worker, client, sent = await _setup()
+    worker._set_output_lag(200)
+    task = asyncio.create_task(worker._spk_read_loop())
+    loop = asyncio.get_running_loop()
+    loud = struct.pack("<H", 640) + struct.pack("<320h", *([8000, -8000] * 160))
+    t0 = loop.time()
+    await loop.sock_sendall(client, loud * 5 + struct.pack("<H", 0))  # 100 ms + EOS
+    assert await _wait_for(sent, TTS_EVENT_STARTED)
+    await asyncio.sleep(0.12)
+    assert not any(t == TTS_EVENT_ENERGY for t, _ in sent)  # written, not heard yet
+    assert await _wait_for(sent, TTS_EVENT_FINISHED, timeout=1.0)
+    assert loop.time() - t0 >= 0.28  # 100 ms of speech + ~200 ms lag
+    assert any(t == TTS_EVENT_ENERGY and p["energy"] > 0 for t, p in sent)
+    await _cleanup(worker, client, task)

@@ -37,7 +37,7 @@ from supervisor.audio.format import (
     SOCKET_RETRY_INTERVAL_S,
     SOCKET_RETRY_TIMEOUT_S,
 )
-from supervisor.audio.playback import AplaySink, PcmSink, PlaybackStream
+from supervisor.audio.playback import LEAD_S, AplaySink, PcmSink, PlaybackStream
 from supervisor.devices.alsa_device import resolve_alsa_device
 from supervisor.messages.envelope import Envelope
 from supervisor.messages.types import (
@@ -47,6 +47,7 @@ from supervisor.messages.types import (
     TTS_CMD_PLAY_AUDIO,
     TTS_CMD_PLAY_CHIME,
     TTS_CMD_SET_MUTE,
+    TTS_CMD_SET_OUTPUT_LAG,
     TTS_CMD_SET_RING_MOD,
     TTS_CMD_SET_VOLUME,
     TTS_CMD_SPEAK,
@@ -121,6 +122,10 @@ class TTSWorker(BaseWorker):
 
         # Volume / mute. _max_volume is the hard cap (tts.config.init only).
         self._volume: float = 0.8  # 80% default; overridden by TTS_CMD_SET_VOLUME
+        # Frame written -> sound out of the speaker (aplay buffer + the USB speaker):
+        # 330 ms measured acoustically 2026-11-15. Lip-sync energy and
+        # TTS_EVENT_FINISHED are delayed by this so the mouth matches the voice.
+        self._output_lag_s: float = 0.3
         self._max_volume: float = 1.0
         self._muted: bool = False
         self._mute_chimes: bool = False
@@ -182,6 +187,8 @@ class TTSWorker(BaseWorker):
                 self._max_volume = max(0.0, min(1.0, int(p["max_volume"]) / 100.0))
             if "volume" in p:
                 self._volume = max(0.0, min(1.0, int(p["volume"]) / 100.0))
+            if "output_lag_ms" in p:
+                self._set_output_lag(p["output_lag_ms"])
             if "ring_mod_hz" in p:
                 self._ring_mod_hz = max(0.0, float(p.get("ring_mod_hz", 0.0)))
             if "ring_mod_mix" in p:
@@ -216,6 +223,10 @@ class TTSWorker(BaseWorker):
             self._muted = bool(p.get("muted", False))
             self._mute_chimes = bool(p.get("mute_chimes", False))
             log.info("mute=%s mute_chimes=%s", self._muted, self._mute_chimes)
+
+        elif t == TTS_CMD_SET_OUTPUT_LAG:
+            self._set_output_lag(p.get("ms", 300))
+            log.info("output lag set to %.0f ms", self._output_lag_s * 1000)
 
         elif t == TTS_CMD_SET_RING_MOD:
             self._ring_mod_hz = max(0.0, float(p.get("hz", 0.0)))
@@ -272,7 +283,14 @@ class TTSWorker(BaseWorker):
         now = time.monotonic()
         if now - self._last_energy_t >= _ENERGY_MIN_INTERVAL_S:
             self._last_energy_t = now
-            self.send(TTS_EVENT_ENERGY, {"energy": energy})
+            # Written now, heard after the output lag: move the mouth then.
+            lag = self._output_lag_s - LEAD_S
+            if lag > 0:
+                asyncio.get_running_loop().call_later(
+                    lag, self.send, TTS_EVENT_ENERGY, {"energy": energy}
+                )
+            else:
+                self.send(TTS_EVENT_ENERGY, {"energy": energy})
         if self._muted:
             return bytes(len(frame))
         if self._ring_mod_hz > 0.0 and self._ring_mod_mix > 0.0:
@@ -280,6 +298,18 @@ class TTSWorker(BaseWorker):
         if self._volume < 0.999:
             frame = self._scale_pcm(frame)
         return frame
+
+    def _set_output_lag(self, ms: object) -> None:
+        self._output_lag_s = max(0.0, min(1.0, float(ms) / 1000.0))  # type: ignore[arg-type]
+
+    async def _drain_heard(self) -> None:
+        """Wait until queued speech has been heard, not just written."""
+        if self._playback is None:
+            return
+        await self._playback.drain_voice()  # includes LEAD_S
+        extra = self._output_lag_s - LEAD_S
+        if extra > 0 and self._speaking:  # cancelled speech: nothing left to hear
+            await asyncio.sleep(extra)
 
     def _on_playback_link(self, up: bool, reason: str) -> None:
         if not up:
@@ -403,7 +433,7 @@ class TTSWorker(BaseWorker):
 
                 # Return once the speech has actually been played.
                 if self._playback is not None and not self._cancel_event.is_set():
-                    await self._playback.drain_voice()
+                    await self._drain_heard()
 
         except asyncio.CancelledError:
             pass
@@ -552,8 +582,7 @@ class TTSWorker(BaseWorker):
             self._spk_stream_open = False
             chunks_played = stream_chunks
             stream_chunks = 0
-            if self._playback is not None:
-                await self._playback.drain_voice()
+            await self._drain_heard()
             if not self._speaking:
                 return  # cancelled while draining; CANCELLED already sent
             self._speaking = False

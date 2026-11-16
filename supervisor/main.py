@@ -458,6 +458,7 @@ async def async_main(args: argparse.Namespace) -> None:
                 "speaker_device": args.usb_speaker_device,
                 "max_volume": max(0, min(100, args.max_volume)),
                 "volume": int(registry.get_value("tts.speaker_volume", 80)),
+                "output_lag_ms": int(registry.get_value("tts.output_lag_ms", 300)),
                 "tts_endpoint": args.planner_api + "/tts" if args.planner_api else "",
                 # Ring modulator defaults (Dalek-ish robot voice). 0 Hz = off.
                 # 30 Hz growlier, 50 Hz classic Dalek, 80 Hz cartoony/cheery.

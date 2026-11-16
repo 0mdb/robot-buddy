@@ -32,6 +32,7 @@ from supervisor.messages.types import (
     EAR_CMD_SET_TUNING,
     EAR_CMD_XVF_SET,
     TTS_CMD_SET_MUTE,
+    TTS_CMD_SET_OUTPUT_LAG,
     TTS_CMD_SET_VOLUME,
     VISION_CONFIG_UPDATE,
 )
@@ -190,6 +191,10 @@ def create_app(
         if name == "tts.speaker_volume":
             asyncio.ensure_future(
                 workers.send_to("tts", TTS_CMD_SET_VOLUME, {"volume": value})
+            )
+        elif name == "tts.output_lag_ms":
+            asyncio.ensure_future(
+                workers.send_to("tts", TTS_CMD_SET_OUTPUT_LAG, {"ms": value})
             )
         elif name in XVF_PARAMS:
             asyncio.ensure_future(
