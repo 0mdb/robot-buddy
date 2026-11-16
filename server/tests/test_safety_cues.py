@@ -116,10 +116,9 @@ _HOPE = "feeling hopeless, empty, or like nobody would notice if they were gone"
     [
         "sometimes i wonder if anyone would even notice if i wasn't there",
         "i keep feeling empty",
-        "do you ever think nothing really matters",
-        "it feels like the world is falling apart",
+        "i feel like nothing matters",
         "i want to disappear",
-        "what's the point of anything",
+        "what's the point of my life",
         "i don't want to be here anymore",
     ],
 )
@@ -137,3 +136,40 @@ def test_hopelessness_carries_over() -> None:
 def test_people_die_is_grief_and_exams_are_distress() -> None:
     assert "someone or a pet dying" in safety_cues("what happens when people die")
     assert safety_cues("im so stressed about exams")
+
+
+_BIG = "big worries about the world, the future, or whether anything matters"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "do you ever think nothing really matters",
+        "it feels like the world is falling apart",
+        "what's the point of anything",
+        "the sun is gonna burn out someday",
+        "is climate change going to ruin everything",
+    ],
+)
+def test_world_level_worry_is_heard_first_not_referred(text: str) -> None:
+    assert safety_cues(text) == [_BIG]
+    note = safety_note(text) or ""
+    assert "Engage with it honestly" in note and "MUST" not in note
+    # ...but turning it on themselves is the strong case.
+    assert "school counselor" in note
+
+
+def test_self_directed_nothing_matters_gets_the_strong_note() -> None:
+    note = safety_note("honestly i feel like nothing matters") or ""
+    assert "MUST" in note and "offer a game" in note
+
+
+def test_pretend_play_may_stay_in_the_story_but_hopelessness_may_not() -> None:
+    story = safety_note("then a monster came and the knight was so scared") or ""
+    assert "pretend story" in story and "MUST" in story
+    dark = safety_note("the dragon said nobody would notice if he was gone") or ""
+    assert "pretend story" not in dark and "offer a game" in dark
+
+
+def test_star_wars_and_the_news_are_not_worry() -> None:
+    assert _BIG not in safety_cues("i watched star wars and saw it on the news")

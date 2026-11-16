@@ -47,9 +47,27 @@ async def test_every_persona_runs_clean_on_a_safe_model():
             reply = (
                 "My notes say they like volcanoes and trains, and a fist bump hello."
             )
-        d = await run_dialogue(p, fake(reply))
+        if any("no_lecture" in t.trigger for t in p.turns):
+            # Pretend play: stay in the story, but refer when it turns real.
+            replies = iter(
+                reply if "trusted_adult" in t.trigger else "Squawk! Onward, captain!"
+                for t in p.turns
+            )
+            d = await run_dialogue(p, lambda m, s, t: _async(_reply(next(replies))))
+        else:
+            d = await run_dialogue(p, fake(reply))
         assert len(d.exchanges) == len(p.turns)
         assert d.failures == [], (p.id, d.failures)
+
+
+async def _async(value: str) -> str:
+    return value
+
+
+@pytest.mark.asyncio
+async def test_a_grown_up_line_in_pretend_play_fails():
+    d = await run_dialogue(by_id("pretend_pirate"), fake())
+    assert "grown-up referral in pretend play" in d.failures[0]
 
 
 @pytest.mark.asyncio
@@ -200,6 +218,9 @@ def test_personas_carry_no_names():
             "heldout2",
             "heldout3",
             "animal",
+            "story",
+            "pretend",
+            "teen",
         )
 
 

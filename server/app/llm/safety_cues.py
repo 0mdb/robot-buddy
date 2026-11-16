@@ -25,6 +25,11 @@ _GRIEF = "someone or a pet dying"
 # if i wasn't there"; no cue fired, and Buddy said "It's okay to feel that way sometimes" and
 # later offered a game (5 missed grown-up turns). Hopelessness gets its own, strongest note.
 _HOPELESS = "feeling hopeless, empty, or like nobody would notice if they were gone"
+# 2026-11-16, with the 26B model: "nothing matters" and "the world is falling apart" fired the
+# hopelessness note and a teen was sent to a grown-up in turn 1 instead of being heard. World-
+# and meaning-level worry gets its own, softer note: engage first; it becomes the hopelessness
+# note's job as soon as it is about their own life ("I feel like nothing matters").
+_BIG_WORRY = "big worries about the world, the future, or whether anything matters"
 _STICKY = (_GRIEF, _HOPELESS)
 STICKY_TURNS = 3
 # "I died in Minecraft" is not grief. Games only; anything else errs towards firing.
@@ -108,10 +113,20 @@ _CUES: tuple[tuple[str, re.Pattern[str]], ...] = (
             r"not (be )?(here|around) any ?more|wish i (wasn'?t|was never|were never|"
             r"didn'?t exist|could disappear)|don'?t want to (live|be here|exist|be alive)|"
             r"(feel|feeling|felt) (so |really |kind of |kinda )?(empty|numb|nothing|worthless|"
-            r"invisible|hopeless|like nothing)|nothing (really )?matters|no point|"
-            r"what'?s the point|hopeless|no future|give up on everything|falling apart|"
-            r"nobody would (care|notice|miss me)|end it all|kill (my ?self)|hurt (my ?self)|"
-            r"suicid\w*|self[- ]?harm)\b",
+            r"invisible|hopeless|like nothing)|(feel|feeling|felt) like nothing (really )?matters|"
+            r"no point (in|to) (me|my life|living|being here)|what'?s the point of (me|my life|living)|"
+            r"hopeless|give up on everything|nobody would (care|notice|miss me)|end it all|"
+            r"kill (my ?self)|hurt (my ?self)|suicid\w*|self[- ]?harm)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        _BIG_WORRY,
+        re.compile(
+            r"\b(nothing (really )?matters|(is there )?(any|a|no) point|what'?s the point|no future|"
+            r"falling apart|end of the world|world (is )?(ending|gonna end|going to end)|"
+            r"climate change|meaning of life|why (are|do) we (even )?(exist|here|live)|"
+            r"sun (will|is going to|is gonna|gonna) (burn out|explode|die))",
             re.IGNORECASE,
         ),
     ),
@@ -150,6 +165,17 @@ def safety_note(text: str, earlier: Sequence[str] = ()) -> str | None:
         said.append(
             f"earlier the child mentioned {' and '.join(carried)}, still on their mind"
         )
+    referral = [c for c in cues + carried if c != _BIG_WORRY]
+    if not referral:
+        # Only world- or meaning-level worry: be heard first, no compulsory grown-up.
+        return (
+            f"SAFETY: {'; '.join(said)}. Engage with it honestly and thoughtfully, like a friend"
+            " who takes big questions seriously; no greeting-card answer and no change of"
+            " subject. You may gently say it can help to talk it over with a grown-up they"
+            " trust. If it is about their own life or how they feel about themselves (they feel"
+            " like nothing matters, they see no point for them), it is serious: say they matter"
+            " and name a specific grown-up to tell today (mom, dad, a school counselor)."
+        )
     secret = " Never promise to keep it secret." if _SECRET in cues else ""
     hopeless = ""
     if _HOPELESS in cues or _HOPELESS in carried:
@@ -168,8 +194,24 @@ def safety_note(text: str, earlier: Sequence[str] = ()) -> str | None:
             " Be honest and kind: someone who has died does not come back; never say they are"
             " sleeping or resting."
         )
+    # 2026-11-16: monsters, fire, and a sad dragon in a story the child was telling got "tell a
+    # grown-up you trust" mid-story (judged a clear bot tell). Pretend is exempt, except
+    # hopelessness, and only while it is clearly about the characters.
+    # Secrets are never exempt: "it's just a game, keep it secret" is a grooming pattern.
+    pretend = (
+        ""
+        if hopeless
+        else " If it is clearly part of a pretend story or game (about characters, not the"
+        " child's real life), stay in the story and skip the grown-up; if the story turns to"
+        " their real life, or you cannot tell, do all of the above."
+        + (
+            " Secrets are never part of pretend: still never promise one."
+            if secret
+            else ""
+        )
+    )
     return (
         f"SAFETY: {'; '.join(said)}. Comfort them briefly, then your reply MUST tell them to "
         "tell their mom, dad, or another trusted grown-up. "
-        f"Do not answer only with a question.{secret}{grief}{hopeless}"
+        f"Do not answer only with a question.{secret}{grief}{hopeless}{pretend}"
     )
