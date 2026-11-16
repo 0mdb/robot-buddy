@@ -1547,6 +1547,98 @@ async def run_textlab(
     return turns
 
 
+# ── latency: acoustic heard latency on the robot's own mic ─────────
+
+LATENCY_LINES = [
+    "What's two plus two?",
+    "Can you tell me a joke?",
+    "What color is the sky?",
+]
+
+
+def segments(
+    pcm: bytes, *, merge_ms: int = 600, min_ms: int = 150
+) -> list[tuple[float, float]]:
+    """Sound segments (start s, end s) in a mono 16 kHz recording: 10 ms RMS over the
+    noise floor + 12 dB, gaps under `merge_ms` merged, blips under `min_ms` dropped."""
+    x = _arr(pcm)
+    win = SR // 100
+    n = len(x) // win
+    if n == 0:
+        return []
+    rms = np.sqrt((x[: n * win].reshape(n, win) ** 2).mean(axis=1) + 1e-9)
+    floor = np.percentile(rms, 10)
+    on = rms > floor * 4  # +12 dB
+    segs: list[list[float]] = []
+    for i, v in enumerate(on):
+        t = i / 100
+        if v:
+            if segs and t - segs[-1][1] <= merge_ms / 1000:
+                segs[-1][1] = t + 0.01
+            else:
+                segs.append([t, t + 0.01])
+    return [(a, b) for a, b in segs if (b - a) * 1000 >= min_ms]
+
+
+async def run_latency(
+    robot: Robot, voices: Voices, speaker: Speaker, *, host: str, voice: str, pitch: float,
+    out: Path, trials: int,
+) -> list[dict[str, Any]]:  # fmt: skip
+    results: list[dict[str, Any]] = []
+    for n in range(trials):
+        line = LATENCY_LINES[n % len(LATENCY_LINES)]
+        clip = shape(await voices.say(line, voice), pitch=pitch)
+        await robot.idle()
+        mark = robot.mark()
+        await robot.command({"type": "conversation.start", "trigger": "wake_word"})
+        await robot.wait(mark, "conv.session.started", 3)
+        await asyncio.sleep(0.8)  # the listening chime plays out before the tap starts
+        await robot.command({"type": "ear.tap", "seconds": 25, "channel": 2})
+        await asyncio.sleep(0.4)
+        await speaker.play(clip)
+        eou = await robot.wait(mark, "ear.event.end_of_utterance", 15)
+        start = await robot.wait(mark, "tts.event.started", 30)
+        fin = await robot.wait(mark, "tts.event.finished", 60)
+        await asyncio.sleep(1.5)
+        await robot.command({"type": "ear.tap", "stop": True})
+        await asyncio.sleep(0.5)
+        local = out / f"tap{n + 1}.pcm"
+        proc = await asyncio.create_subprocess_exec(
+            "scp", "-q", f"ben@{host}:/tmp/rb-ear-tap.pcm", str(local),
+        )  # fmt: skip
+        await proc.wait()
+        proc = await asyncio.create_subprocess_exec(
+            "scp", "-q", f"ben@{host}:/tmp/rb-ear-tap.pcm.json", str(local) + ".json",
+        )  # fmt: skip
+        await proc.wait()
+        await robot.cancel()
+        r: dict[str, Any] = {"line": line, "clip_s": round(len(clip) / (2 * SR), 2)}
+        if not local.exists() or not eou or not start:
+            r["error"] = "missing tap or events"
+            results.append(r)
+            continue
+        segs = segments(local.read_bytes())
+        meta = json.loads((Path(str(local) + ".json")).read_text())
+        r["segments"] = [(round(a, 2), round(b, 2)) for a, b in segs]
+        if len(segs) >= 2:
+            kid_end, buddy_start = segs[0][1], segs[1][0]
+            r["acoustic_heard_ms"] = round((buddy_start - kid_end) * 1000)
+            speech_end = eou["ts_mono_ms"] - float(eou.get("silence_ms", 0))
+            r["pi_clock_heard_ms"] = round(start["ts_mono_ms"] - speech_end)
+            # Buddy's onset on the tap's clock vs the playback writer starting: output +
+            # capture lag (the tap's t0 is when the ear received the first sample).
+            onset_mono = meta["t0_mono_ms"] + buddy_start * 1000
+            r["onset_minus_tts_started_ms"] = round(onset_mono - start["ts_mono_ms"])
+            if fin:
+                end_mono = meta["t0_mono_ms"] + segs[-1][1] * 1000
+                r["sound_end_minus_tts_finished_ms"] = round(
+                    end_mono - fin["ts_mono_ms"]
+                )
+        results.append(r)
+        print(f"  {line}: {r}", flush=True)
+    return results
+
+
 # ── CLI ─────────────────────────────────────────────────────────────
 
 
@@ -1634,6 +1726,22 @@ async def _main(a: argparse.Namespace) -> int:
             (run / "memory.json").write_text(
                 json.dumps([asdict(r) for r in rs], indent=1)
             )
+        elif a.cmd == "latency":
+            rs = await run_latency(
+                robot, voices, speaker, host=a.robot, voice=a.voice, pitch=a.pitch,
+                out=run, trials=a.trials,
+            )  # fmt: skip
+            ac = [r["acoustic_heard_ms"] for r in rs if "acoustic_heard_ms" in r]
+            pc = [r["pi_clock_heard_ms"] for r in rs if "pi_clock_heard_ms" in r]
+            report += [
+                "## Acoustic heard latency (robot's own mic, one clock)",
+                "",
+                f"Acoustic p50 {fmt(pct(ac, 0.5), ' ms')} vs Pi-clock p50 "
+                f"{fmt(pct(pc, 0.5), ' ms')} over {len(ac)} trials.",
+                "",
+                *[f"- {r}" for r in rs],
+            ]
+            (run / "latency.json").write_text(json.dumps(rs, indent=1))
         elif a.cmd == "textlab":
             sc = SCRIPTS.get(a.script)
             style = sc["style"] if sc else a.script
@@ -1776,8 +1884,12 @@ def main() -> int:
                    help="keep the long-term memory tags the test children created")  # fmt: skip
     m.add_argument("--gap", choices=["short", "long"], default="short",
                    help="short: history kept (<30 min); long: dropped, long-term memory only")  # fmt: skip
+    lt = sub.add_parser(
+        "latency", help="acoustic heard latency via the ear's recording tap"
+    )
+    lt.add_argument("--trials", type=int, default=3)
     x = sub.add_parser(
-        "textlab", help="Claude-kid conversation typed to /converse (fast)"
+        "textlab", "textlab", help="Claude-kid conversation typed to /converse (fast)"
     )
     x.add_argument("--script", default="twenty_questions",
                    help="a script name, or free text describing the kid")  # fmt: skip

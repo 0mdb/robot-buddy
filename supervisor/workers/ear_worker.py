@@ -18,6 +18,7 @@ import logging
 import math
 import socket
 import struct
+import json
 import time
 from array import array
 from pathlib import Path
@@ -158,6 +159,7 @@ class EarWorker(BaseWorker):
         # the utterance before the child spoke (air rig, 2026-11-15). Audio is still
         # forwarded during the hold-off, so a child who talks at once is transcribed.
         self._vad_holdoff_until = 0.0
+        self._tap: dict[str, Any] | None = None
 
         # Models (loaded lazily in run())
         self._oww_model: Any = None
@@ -418,6 +420,12 @@ class EarWorker(BaseWorker):
             val = float(p.get("threshold", self._wakeword_threshold))
             self._wakeword_threshold = max(0.0, min(1.0, val))
             log.info("wake word threshold: %.3f", self._wakeword_threshold)
+
+        elif t == "ear.cmd.tap":
+            if p.get("stop"):
+                self._tap_stop()
+            else:
+                self._tap_start(p)
 
         elif t == EAR_CMD_SET_TUNING:
             self._apply_tuning(p)
@@ -731,7 +739,51 @@ class EarWorker(BaseWorker):
             return b""
         whole = bytes(self._capture_rem[:n])
         del self._capture_rem[:n]
+        if self._tap is not None:
+            self._tap_write(whole)
         return select_channel(whole, self._mic_channels, self._mic_channel)
+
+    # ── Recording tap (the air rig's acoustic clock) ──────────────
+
+    def _tap_start(self, p: dict) -> None:
+        """Record one raw channel to a file for `seconds`: both the rig's speaker and
+        Buddy's on one clock, so the rig can measure true heard latency acoustically."""
+        path = str(p.get("path") or "/tmp/rb-ear-tap.pcm")
+        ch = min(max(0, int(p.get("channel", 2))), self._mic_channels - 1)
+        self._tap = {
+            "path": path,
+            "channel": ch,
+            "until": time.monotonic() + min(120.0, float(p.get("seconds", 20.0))),
+            "f": open(path, "wb"),  # noqa: SIM115 -- closed in _tap_stop
+        }
+        # Pi monotonic ms when the first sample arrives at the ear (meta file).
+        self._tap["t0"] = None
+        log.info("tap: recording channel %d to %s", ch, path)
+
+    def _tap_write(self, whole: bytes) -> None:
+        tap = self._tap
+        assert tap is not None
+        if tap["t0"] is None:
+            tap["t0"] = time.monotonic() * 1000.0
+        tap["f"].write(select_channel(whole, self._mic_channels, tap["channel"]))
+        if time.monotonic() >= tap["until"]:
+            self._tap_stop()
+
+    def _tap_stop(self) -> None:
+        tap, self._tap = self._tap, None
+        if tap is None:
+            return
+        tap["f"].close()
+        with open(tap["path"] + ".json", "w") as m:
+            json.dump(
+                {
+                    "t0_mono_ms": tap["t0"],
+                    "rate": SAMPLE_RATE,
+                    "channel": tap["channel"],
+                },
+                m,
+            )
+        log.info("tap: stopped (%s)", tap["path"])
 
     # ── XVF3800 voice direction ───────────────────────────────────
 

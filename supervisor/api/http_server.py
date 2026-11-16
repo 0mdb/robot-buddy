@@ -1062,6 +1062,15 @@ async def _handle_ws_cmd(
                 {"enabled": bool(msg.get("enabled", False))},
             )
         )
+    elif msg_type == "ear.tap":
+        # Air rig: record a raw mic channel to a file on the Pi (acoustic clock).
+        asyncio.ensure_future(
+            tick._workers.send_to(
+                "ear",
+                "ear.cmd.tap",
+                {k: msg.get(k) for k in ("seconds", "channel", "path", "stop")},
+            )
+        )
     elif msg_type == "ear.set_threshold":
         asyncio.ensure_future(
             tick._workers.send_to(
