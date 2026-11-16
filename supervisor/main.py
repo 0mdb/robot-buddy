@@ -46,12 +46,12 @@ def _build_vision_worker_config(registry: object) -> dict[str, object]:
         _get_int(registry, "vision.floor_hsv_v_high", 220),
     ]
     ball_hsv_low = [
-        _get_int(registry, "vision.ball_hsv_h_low", 170),
-        _get_int(registry, "vision.ball_hsv_s_low", 80),
+        _get_int(registry, "vision.ball_hsv_h_low", 160),
+        _get_int(registry, "vision.ball_hsv_s_low", 170),
         _get_int(registry, "vision.ball_hsv_v_low", 40),
     ]
     ball_hsv_high = [
-        _get_int(registry, "vision.ball_hsv_h_high", 15),
+        _get_int(registry, "vision.ball_hsv_h_high", 8),
         _get_int(registry, "vision.ball_hsv_s_high", 255),
         _get_int(registry, "vision.ball_hsv_v_high", 255),
     ]

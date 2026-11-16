@@ -59,8 +59,8 @@ class VisionWorker(BaseWorker):
         self._mjpeg_enabled = False
         self._floor_hsv_low = (0, 0, 50)
         self._floor_hsv_high = (180, 80, 220)
-        self._ball_hsv_low = (170, 80, 40)
-        self._ball_hsv_high = (15, 255, 255)
+        self._ball_hsv_low = (160, 170, 40)
+        self._ball_hsv_high = (8, 255, 255)
         self._min_ball_radius = 8
         self._capture_size = (640, 480)
         self._process_size = (320, 240)

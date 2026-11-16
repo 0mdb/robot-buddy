@@ -988,7 +988,10 @@ def create_default_registry() -> ParamRegistry:
         )
     )
 
-    # Ball HSV thresholds — defaults target a red ball (hue wraps 0/180).
+    # Ball HSV thresholds: defaults target a red ball (hue wraps 0/180). 2026-11-16, measured
+    # on the robot: a red ball read hue 165-175, saturation 194-214; a beige wall the camera
+    # saw as hue 12 / sat 172, and fingers holding the ball hue ~175 / sat ~143. Hue <= 8
+    # drops the wall (and orange things), saturation >= 170 separates the ball from skin.
     reg.register(
         ParamDef(
             name="vision.ball_hsv_h_low",
@@ -996,7 +999,7 @@ def create_default_registry() -> ParamRegistry:
             min=0,
             max=180,
             step=1,
-            default=170,
+            default=160,
             owner="vision",
             doc="Ball HSV hue lower bound (wrap-around allowed: low > high)",
         )
@@ -1008,7 +1011,7 @@ def create_default_registry() -> ParamRegistry:
             min=0,
             max=180,
             step=1,
-            default=15,
+            default=8,
             owner="vision",
             doc="Ball HSV hue upper bound (wrap-around allowed: low > high)",
         )
@@ -1020,7 +1023,7 @@ def create_default_registry() -> ParamRegistry:
             min=0,
             max=255,
             step=1,
-            default=80,
+            default=170,
             owner="vision",
             doc="Ball HSV saturation lower bound",
         )

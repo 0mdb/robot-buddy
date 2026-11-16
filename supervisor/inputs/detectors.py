@@ -147,8 +147,8 @@ _BALL_MAX_RADIUS_FRAC = 0.45
 #     return (confidence, bearing_deg)
 def detect_ball(
     frame: np.ndarray,
-    hsv_low: Tuple[int, int, int] = (170, 80, 40),  # more forgiving S/V
-    hsv_high: Tuple[int, int, int] = (15, 255, 255),
+    hsv_low: Tuple[int, int, int] = (160, 170, 40),  # see vision.ball_hsv_* params
+    hsv_high: Tuple[int, int, int] = (8, 255, 255),
     min_radius_px: int = 8,
     good_radius_px: int = 35,
     blur_ksize: int = 5,

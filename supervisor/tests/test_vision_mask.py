@@ -72,3 +72,27 @@ def test_a_ball_in_front_of_that_wall_is_still_found() -> None:
     cv2.circle(frame, (90, 150), 28, (0, 0, 220), -1)
     found = detect_ball(frame)
     assert found is not None and found[0] > 0.2 and found[1] < 0  # left of centre
+
+
+def test_a_flat_patch_of_wall_colour_is_not_a_ball_either() -> None:
+    # Shape gates alone passed a 60x60 square of the wall's colour (0.74); the default
+    # hue range now stops at 8, below the wall's 12.
+    frame = np.full((240, 320, 3), 30, dtype=np.uint8)
+    frame[90:150, 130:190] = _hsv_fill(60, 60, (12, 172, 122))
+    assert detect_ball(frame) is None
+
+
+def test_fingers_holding_the_ball_do_not_hide_it() -> None:
+    # Fingertips read hue ~175, saturation ~143 next to the ball (sat ~207); with the old
+    # saturation floor (80) they merged with it into one ragged blob that was rejected.
+    h, w = 240, 320
+    frame = np.full((h, w, 3), 30, dtype=np.uint8)
+    for x in (110, 140, 170, 200):  # four fingers coming down onto the ball
+        frame[0:60, x - 8 : x + 8] = _hsv_fill(60, 16, (175, 143, 170))
+    ball = np.zeros((h, w), dtype=np.uint8)
+    cv2.circle(ball, (155, 85), 34, 255, -1)
+    frame[ball > 0] = cv2.cvtColor(
+        np.full((1, 1, 3), (171, 207, 145), dtype=np.uint8), cv2.COLOR_HSV2BGR
+    )[0, 0]
+    found = detect_ball(frame)
+    assert found is not None and found[0] > 0.5
