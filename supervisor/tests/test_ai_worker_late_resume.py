@@ -60,3 +60,18 @@ async def test_the_next_end_of_utterance_listens_again() -> None:
     w._ws = _WS(_TURN)
     await w._ws_read_loop()
     assert "ai.conversation.transcription" in sent and "ai.conversation.done" in sent
+
+
+@pytest.mark.asyncio
+async def test_late_resume_restarts_a_mic_forwarder_the_reply_ended() -> None:
+    w, _ = _worker()
+    w._ws_connected = True
+    started: list[bool] = []
+
+    async def mic_loop() -> None:
+        started.append(True)
+
+    w._mic_to_ws_loop = mic_loop  # type: ignore[method-assign]
+    await w.on_message(make_envelope(AI_CMD_LATE_RESUME, "core", 1, {}))
+    await w._mic_loop_task  # type: ignore[misc]
+    assert started == [True]

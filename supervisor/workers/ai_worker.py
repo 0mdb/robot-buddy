@@ -163,6 +163,13 @@ class AIWorker(BaseWorker):
             self._first_audio_emitted = False
             self._set_state("listening", "late_resume")
             asyncio.create_task(self._ws_send({"type": "resume"}))
+            # The dropped reply's first audio may already have arrived ("speaking"),
+            # which ends the mic forwarder; restart it. Frames the ear wrote meanwhile
+            # are waiting in the socket, so the child's first words are not lost.
+            if self._ws_connected and (
+                self._mic_loop_task is None or self._mic_loop_task.done()
+            ):
+                self._mic_loop_task = asyncio.create_task(self._mic_to_ws_loop())
 
         elif t == AI_CMD_END_CONVERSATION:
             asyncio.create_task(self._end_conversation())
