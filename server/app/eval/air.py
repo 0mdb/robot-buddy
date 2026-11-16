@@ -226,6 +226,28 @@ class Robot:
     async def command(self, msg: dict[str, Any]) -> None:
         await self._cmd_ws.send(json.dumps(msg))
 
+    async def household_names(self) -> dict[str, str] | None:
+        """The robot's roster names, each mapped to a role stand-in, for redaction before
+        anything goes to an external API (names stay on the home network). None when the
+        roster cannot be read."""
+        role = {"kid": "[child]", "adult": "[grown-up]", "animal": "[pet]"}
+        try:
+            async with httpx.AsyncClient(timeout=5) as c:
+                r = await c.get(f"{self.http}/api/household")
+                r.raise_for_status()
+                members = r.json().get("members", [])
+        except (httpx.HTTPError, ValueError):
+            return None
+        out: dict[str, str] = {}
+        for m in members:
+            name = str(m.get("name", "")).strip()
+            if name:
+                out[name] = role.get(str(m.get("kind")), "[someone]")
+                first = name.split()[0]
+                if len(first) > 2:
+                    out.setdefault(first, out[name])
+        return out
+
     async def get_params(self) -> dict[str, Any]:
         async with httpx.AsyncClient(timeout=10) as c:
             r = await c.get(f"{self.http}/params")
@@ -1724,6 +1746,18 @@ async def _main(a: argparse.Namespace) -> int:
     ]
     async with Robot(a.robot) as robot:
         robot.log_path = run / "events.jsonl"
+        # Buddy may use household names; the Claude kid simulator and judges must not see
+        # them (external API). Fail closed: a run on the real robot stops if the roster
+        # cannot be read. textlab never touches the robot's sessions, so it has no names.
+        from app.eval.converse_sim import set_external_redactions
+
+        names = await robot.household_names()
+        if names is None and a.cmd != "textlab":
+            raise SystemExit(
+                "cannot read the robot's household roster: refusing to send transcripts to "
+                "external APIs unredacted"
+            )
+        set_external_redactions(names or {})
         params = await robot.get_params()
         report.append(
             "Params: "

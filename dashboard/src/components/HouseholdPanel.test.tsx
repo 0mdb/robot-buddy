@@ -94,3 +94,15 @@ test('server refusals are shown', async () => {
   fireEvent.submit(screen.getByRole('button', { name: 'Add' }).closest('form') as HTMLFormElement)
   expect((await screen.findByRole('alert')).textContent).toContain('age is required')
 })
+
+test('a pet has a type instead of an age', async () => {
+  renderPanel()
+  await screen.findByRole('checkbox', { name: 'Use roster' })
+  fireEvent.change(screen.getByLabelText('Kind'), { target: { value: 'animal' } })
+  expect(screen.queryByLabelText('Age')).toBeNull()
+  fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Test Cat' } })
+  fireEvent.change(screen.getByLabelText('Pet type'), { target: { value: 'cat' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Add' }))
+  expect(await screen.findByText('Test Cat')).toBeTruthy()
+  expect(screen.getByText('cat')).toBeTruthy()
+})

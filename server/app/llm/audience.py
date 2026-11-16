@@ -20,11 +20,13 @@ The fallback rules are fixed policy, not tunables:
 4. Recognition never loosens safety: the content rules are in the prompt, not in a profile.
 
 Roster ``member`` ids are accepted and deliberately never rendered into a prompt. Names reach the
-model only through the roster (stage 3), never through this block.
+model only through ``household.members`` (the roster), sanitised; they may go to Buddy's own LAN
+models but never to external APIs (operator decision 2026-11-16).
 """
 
 from __future__ import annotations
 
+import re
 import tomllib
 from dataclasses import dataclass
 from functools import cache
@@ -103,11 +105,31 @@ class Member:
 
 
 @dataclass(frozen=True, slots=True)
+class HouseholdMember:
+    name: str
+    kind: str
+    age: int | None = None
+    species: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class Audience:
     present: tuple[Member, ...]
     speaking: int | None
-    # From the robot's opt-in household roster: only the primary (oldest enrolled) child's age.
+    # From the robot's opt-in household roster: the primary (oldest enrolled) child's age.
     household_kid_age: int | None = None
+    # ...and who lives there (names stay on the home network: never sent to external APIs).
+    household: tuple[HouseholdMember, ...] = ()
+
+
+_NAME_BAD = re.compile(r"[^\w '\-.]", re.UNICODE)
+
+
+def _clean_name(raw: object) -> str:
+    """A roster name made safe to place in a prompt: letters and simple punctuation only."""
+    if not isinstance(raw, str):
+        return ""
+    return " ".join(_NAME_BAD.sub(" ", raw).split())[:30]
 
 
 def parse_audience(raw: object) -> Audience | None:
@@ -145,7 +167,24 @@ def parse_audience(raw: object) -> Audience | None:
         isinstance(kid_age, int) and not isinstance(kid_age, bool) and 0 < kid_age < 18
     ):
         kid_age = None
-    return Audience(tuple(present), speaking, kid_age)
+    members: list[HouseholdMember] = []
+    raw_members = household.get("members") if isinstance(household, dict) else None
+    for hm in raw_members if isinstance(raw_members, list) else []:
+        if not isinstance(hm, dict):
+            continue
+        name = _clean_name(hm.get("name"))
+        kind = hm.get("kind") if hm.get("kind") in ("kid", "adult", "animal") else None
+        if not name or kind is None:
+            continue
+        hage = hm.get("age")
+        hage = (
+            hage
+            if isinstance(hage, int) and not isinstance(hage, bool) and 0 < hage < 120
+            else None
+        )
+        species = _clean_name(hm.get("species"))[:20] if kind == "animal" else ""
+        members.append(HouseholdMember(name, kind, hage, species or None))
+    return Audience(tuple(present), speaking, kid_age, tuple(members[:12]))
 
 
 def _effective_kind(m: Member) -> str:
@@ -224,4 +263,16 @@ def render_audience_block(audience: Audience | None) -> str:
                 label += ", speaking"
             parts.append(label)
         who = "; ".join(parts)
-    return f"AUDIENCE: {who}. Speak for {profile.who}."
+    line = f"AUDIENCE: {who}. Speak for {profile.who}."
+    if audience.household:
+        label = {"kid": "child", "adult": "grown-up", "animal": "pet"}
+        people = ", ".join(
+            f"{m.name} ({m.species or label[m.kind]}{', ' + str(m.age) if m.age else ''})"
+            for m in audience.household
+        )
+        line += (
+            f"\nHOUSEHOLD (who lives with Buddy): {people}. You do not know which of them is"
+            " talking unless they tell you or it is plain from the conversation: never guess a"
+            " name. Once someone says who they are, use their name now and then."
+        )
+    return line

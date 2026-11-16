@@ -2,12 +2,14 @@
 
 Design: ~/vantage/docs/SIM-INTERACTION.md, decision I3 and stage 3.
 
-- **Local only.** One TOML file beside the personality memory (``data/household.toml``), which
-  is git-ignored. Nothing in it leaves the robot: the only thing derived from it that reaches the
-  server is the *primary* child's age (the oldest enrolled child: Buddy is nominally theirs,
-  operator decision 2026-11-16), so an unidentified speaker gets that child's profile. Safety
-  does not depend on it: every safety rule is in the prompt for all profiles (rule 4). Names never leave the robot until recognition exists
-  (stage 5), and then only the recognised speaker's.
+- **Kept on the home network.** One TOML file beside the personality memory
+  (``data/household.toml``), git-ignored. Its members (names, kinds, ages) go to Buddy's own LAN
+  server and its local models so Buddy knows who lives here, and the *primary* child's age (the
+  oldest enrolled child: Buddy is nominally theirs) picks the profile for an unidentified
+  speaker. Operator decision 2026-11-16: names are secret from **external** APIs, not from
+  Buddy or LAN models; anything that sends text to an outside service (the eval rigs' cloud
+  judge and kid simulator) must redact them. Safety does not depend on the roster: every safety
+  rule is in the prompt for all profiles (rule 4).
 - **Off by default.** No file, or ``enabled = false``, means the roster is not used at all.
 - **Parent-deletable in one action.** :func:`forget_everyone` removes the file and anything
   stored beside it for the roster.
@@ -49,11 +51,14 @@ class Member:
     name: str
     kind: str
     age: int | None = None
+    species: str | None = None  # pets only: "cat", "dog", ...
 
     def to_dict(self) -> dict[str, object]:
         d: dict[str, object] = {"id": self.id, "name": self.name, "kind": self.kind}
         if self.age is not None:
             d["age"] = self.age
+        if self.species:
+            d["species"] = self.species
         return d
 
 
@@ -84,15 +89,28 @@ class Roster:
 
         Nobody is recognised yet (no detection until stage 5), so the speaker is "unknown",
         and the server's fallback rule 1 gives them the primary (oldest enrolled) child's
-        profile. Only that age leaves the robot; no names, no ids.
+        profile. The members' names, kinds and ages go to Buddy's LAN server (never ids).
         """
-        age = self.primary_kid_age()
-        if age is None:
+        if not self.enabled or not self.members:
             return None
+        household: dict[str, object] = {
+            "members": [
+                {
+                    "name": m.name,
+                    "kind": m.kind,
+                    **({"age": m.age} if m.age else {}),
+                    **({"species": m.species} if m.species else {}),
+                }
+                for m in self.members
+            ]
+        }
+        age = self.primary_kid_age()
+        if age is not None:
+            household["primary_kid_age"] = age
         return {
             "present": [{"kind": "unknown", "confidence": 0.0, "sources": []}],
             "speaking": 0,
-            "household": {"primary_kid_age": age},
+            "household": household,
         }
 
 
@@ -129,6 +147,19 @@ def _clean_age(kind: str, raw: object) -> int | None:
     return raw
 
 
+def _clean_species(kind: str, raw: object) -> str | None:
+    if raw in (None, ""):
+        return None
+    if kind != "animal":
+        raise RosterError("only pets have a type")
+    if not isinstance(raw, str):
+        raise RosterError("pet type must be text")
+    species = " ".join(raw.strip().lower().split())
+    if len(species) > 20 or not all(c.isalpha() or c == " " for c in species):
+        raise RosterError("pet type: a short word like cat or dog")
+    return species or None
+
+
 def _clean_kind(raw: object) -> str:
     if raw not in KINDS:
         raise RosterError(f"kind must be one of {', '.join(KINDS)}")
@@ -139,18 +170,23 @@ def _clean_kind(raw: object) -> str:
 
 
 def add_member(
-    roster: Roster, *, name: object, kind: object, age: object = None
+    roster: Roster,
+    *,
+    name: object,
+    kind: object,
+    age: object = None,
+    species: object = None,
 ) -> Roster:
     if len(roster.members) >= MAX_MEMBERS:
         raise RosterError(f"the roster holds at most {MAX_MEMBERS} members")
     k = _clean_kind(kind)
     m = Member(id=f"{k}_{secrets.token_hex(3)}", name=_clean_name(name), kind=k)
-    m = replace(m, age=_clean_age(k, age))
+    m = replace(m, age=_clean_age(k, age), species=_clean_species(k, species))
     return replace(roster, members=(*roster.members, m))
 
 
 def update_member(roster: Roster, member_id: str, changes: dict[str, object]) -> Roster:
-    unknown = set(changes) - {"name", "kind", "age"}
+    unknown = set(changes) - {"name", "kind", "age", "species"}
     if unknown:
         raise RosterError(f"cannot change {', '.join(sorted(unknown))}")
     out: list[Member] = []
@@ -165,7 +201,18 @@ def update_member(roster: Roster, member_id: str, changes: dict[str, object]) ->
                 if "age" in changes
                 else (m.age if kind == m.kind else None)
             )
-            m = Member(id=m.id, name=name, kind=kind, age=_clean_age(kind, age_raw))
+            species_raw = (
+                changes["species"]
+                if "species" in changes
+                else (m.species if kind == m.kind else None)
+            )
+            m = Member(
+                id=m.id,
+                name=name,
+                kind=kind,
+                age=_clean_age(kind, age_raw),
+                species=_clean_species(kind, species_raw),
+            )
         out.append(m)
     if not found:
         raise KeyError(member_id)
@@ -198,6 +245,7 @@ def load_strict(path: Path) -> Roster:
                     name=_clean_name(raw.get("name")),
                     kind=kind,
                     age=_clean_age(kind, raw.get("age")),
+                    species=_clean_species(kind, raw.get("species")),
                 )
             )
         return Roster(enabled=bool(data.get("enabled", False)), members=tuple(members))
@@ -238,6 +286,8 @@ def save(path: Path, roster: Roster) -> None:
         lines.append(f"kind = {_toml_str(m.kind)}")
         if m.age is not None:
             lines.append(f"age = {m.age}")
+        if m.species:
+            lines.append(f"species = {_toml_str(m.species)}")
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".tmp")
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)

@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-// Household roster (SIM-INTERACTION I3, stage 3). Robot-local and opt-in; see
-// supervisor/personality/roster.py. Nothing here leaves the robot.
+// Household roster (SIM-INTERACTION I3, stage 3). Stored on the robot, opt-in; see
+// supervisor/personality/roster.py. Names go to Buddy's own LAN server, never outside.
 
 export type MemberKind = 'kid' | 'adult' | 'animal'
 
@@ -10,6 +10,7 @@ export interface HouseholdMember {
   name: string
   kind: MemberKind
   age?: number
+  species?: string // pets only: "cat", "dog", ...
 }
 
 export interface Household {

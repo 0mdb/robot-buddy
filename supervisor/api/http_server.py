@@ -449,8 +449,8 @@ def create_app(
         return JSONResponse({"ok": True, "tags": tags})
 
     # -- Household roster (SIM-INTERACTION I3, stage 3) ----------------------
-    # Robot-local, opt-in, parent-managed. Nothing here is sent anywhere; the personality
-    # worker derives only the youngest child's age for the server's fallback rule.
+    # Robot-local, opt-in, parent-managed. The personality worker sends the members (names,
+    # kinds, ages, pet types) to Buddy's LAN server, never to external services.
 
     def _roster_reply(r: household.Roster) -> JSONResponse:
         return JSONResponse(r.to_dict())
@@ -528,6 +528,7 @@ def create_app(
                 name=body.get("name"),
                 kind=body.get("kind"),
                 age=body.get("age"),
+                species=body.get("species"),
             )
         except household.RosterError as e:
             return _roster_error(e)

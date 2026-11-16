@@ -23,6 +23,7 @@ export function HouseholdPanel() {
   const [name, setName] = useState('')
   const [kind, setKind] = useState<MemberKind>('kid')
   const [age, setAge] = useState('')
+  const [species, setSpecies] = useState('')
 
   const failure = (error ?? setEnabled.error ?? add.error ?? remove.error ?? forget.error) as
     | Error
@@ -32,11 +33,17 @@ export function HouseholdPanel() {
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
     add.mutate(
-      { name, kind, ...(kind !== 'animal' && age !== '' ? { age: Number(age) } : {}) },
+      {
+        name,
+        kind,
+        ...(kind !== 'animal' && age !== '' ? { age: Number(age) } : {}),
+        ...(kind === 'animal' && species.trim() !== '' ? { species: species.trim() } : {}),
+      },
       {
         onSuccess: () => {
           setName('')
           setAge('')
+          setSpecies('')
         },
       },
     )
@@ -101,9 +108,9 @@ export function HouseholdPanel() {
       </div>
 
       <p style={{ color: 'var(--text-dim)', fontSize: 12, margin: '0 0 8px' }}>
-        Stored only on this robot. With the roster on, Buddy speaks to anyone it does not recognise
-        as it would to the youngest child listed. Only that age is sent to the conversation server;
-        names stay here.
+        Stored on this robot. With the roster on, Buddy knows who lives here and speaks to anyone it
+        does not recognise as it would to the oldest child listed. Names go to Buddy&apos;s own
+        conversation server on your network, never to outside services.
       </p>
 
       {failure && (
@@ -119,7 +126,7 @@ export function HouseholdPanel() {
               <tr key={mem.id}>
                 <td>{mem.name}</td>
                 <td style={{ color: 'var(--text-dim)' }}>
-                  {KIND_LABEL[mem.kind]}
+                  {mem.species ?? KIND_LABEL[mem.kind]}
                   {mem.age !== undefined ? `, ${mem.age}` : ''}
                 </td>
                 <td style={{ textAlign: 'right' }}>
@@ -168,6 +175,16 @@ export function HouseholdPanel() {
             value={age}
             onChange={(e) => setAge(e.target.value)}
             required={kind === 'kid'}
+          />
+        )}
+        {kind === 'animal' && (
+          <input
+            aria-label="Pet type"
+            placeholder="Type (cat, dog...)"
+            maxLength={20}
+            style={{ width: 130 }}
+            value={species}
+            onChange={(e) => setSpecies(e.target.value)}
           />
         )}
         <button type="submit" disabled={add.isPending}>

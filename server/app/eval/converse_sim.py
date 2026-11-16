@@ -639,6 +639,27 @@ def _closed_schema(schema: Any) -> Any:
     return schema
 
 
+# Household names never go to an external API (operator, 2026-11-16: secret from outside
+# services, not from Buddy's LAN models). The over-the-air rig registers the robot's roster
+# names here; every message to the Claude API passes through redact_external() first.
+_EXTERNAL_REDACTIONS: list[tuple[re.Pattern[str], str]] = []
+
+
+def set_external_redactions(names: dict[str, str]) -> None:
+    """Names (each mapped to a stand-in such as "[child]") to strip from external calls."""
+    _EXTERNAL_REDACTIONS.clear()
+    for name, stand_in in sorted(names.items(), key=lambda kv: -len(kv[0])):
+        if name.strip():
+            pat = re.compile(rf"(?<!\w){re.escape(name.strip())}(?!\w)", re.IGNORECASE)
+            _EXTERNAL_REDACTIONS.append((pat, stand_in))
+
+
+def redact_external(text: str) -> str:
+    for pat, stand_in in _EXTERNAL_REDACTIONS:
+        text = pat.sub(stand_in, text)
+    return text
+
+
 def anthropic_chat(
     model: str = "claude-opus-5-5",
     *,
@@ -664,17 +685,20 @@ def anthropic_chat(
         temperature: float,
     ) -> str:
         del temperature
-        system = "\n\n".join(
-            str(m["content"]) for m in messages if m.get("role") == "system"
+        system = redact_external(
+            "\n\n".join(
+                str(m["content"]) for m in messages if m.get("role") == "system"
+            )
         )
         turns: list[dict[str, Any]] = []
         for m in messages:
             if m.get("role") not in ("user", "assistant"):
                 continue
+            content = redact_external(str(m["content"]))
             if turns and turns[-1]["role"] == m["role"]:
-                turns[-1]["content"] += "\n" + str(m["content"])
+                turns[-1]["content"] += "\n" + content
             else:
-                turns.append({"role": m["role"], "content": str(m["content"])})
+                turns.append({"role": m["role"], "content": content})
         # The API needs user first and last (no prefill): the simulated user speaks first.
         if not turns or turns[0]["role"] != "user":
             turns.insert(0, {"role": "user", "content": "(Buddy is listening.)"})
