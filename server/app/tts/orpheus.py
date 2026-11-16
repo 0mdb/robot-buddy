@@ -965,9 +965,11 @@ class OrpheusTTS:
                     should_shed_to_espeak = True
                 else:
                     raise TTSBusyError("tts_busy_no_fallback")
-            if not should_shed_to_espeak:
-                self._active_requests += 1
 
+        # The slot is taken when the generator starts, not here: a stream that is
+        # created but never iterated (a reply cancelled before reaching that sentence,
+        # e.g. a late resume) never runs its finally, and leaked slots left every later
+        # request 503 "busy" (2026-11-16).
         return self._stream_gen(
             text, emotion, should_shed_to_espeak, intensity, voice=voice
         )
@@ -983,6 +985,9 @@ class OrpheusTTS:
     ) -> AsyncIterator[bytes]:
         """Async generator body for stream(). Do not call directly."""
         chunk_bytes = CHUNK_SAMPLES * OUTPUT_SAMPLE_WIDTH
+        if not should_shed_to_espeak:
+            with self._active_lock:
+                self._active_requests += 1
         try:
             if should_shed_to_espeak:
                 audio = await asyncio.to_thread(self._synthesize_with_espeak, text)

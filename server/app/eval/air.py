@@ -103,15 +103,29 @@ class Speaker:
     async def play(self, pcm: bytes) -> None:
         if self.gain_db:
             pcm = shape(pcm, gain_db=self.gain_db)
-        proc = await asyncio.create_subprocess_exec(
-            "aplay", "-q", "-D", self.device, "-f", "S16_LE", "-r", str(SR), "-c", "1",
-            stdin=subprocess.PIPE,
-        )  # fmt: skip
-        assert proc.stdin is not None
-        proc.stdin.write(pcm)
-        await proc.stdin.drain()
-        proc.stdin.close()
-        await proc.wait()
+        # The device is sometimes briefly busy (PipeWire also manages the card): a kid
+        # line was silently lost and the run ended with "nothing heard" (2026-11-16).
+        for attempt in range(6):
+            started = time.monotonic()
+            proc = await asyncio.create_subprocess_exec(
+                "aplay", "-q", "-D", self.device, "-f", "S16_LE", "-r", str(SR), "-c", "1",
+                stdin=subprocess.PIPE, stderr=subprocess.PIPE,
+            )  # fmt: skip
+            assert proc.stdin is not None and proc.stderr is not None
+            with contextlib.suppress(BrokenPipeError, ConnectionResetError):
+                proc.stdin.write(pcm)
+                await proc.stdin.drain()
+                proc.stdin.close()
+            err = (await proc.stderr.read()).decode(errors="replace")
+            await proc.wait()
+            if proc.returncode == 0 or "busy" not in err.lower():
+                if err.strip():
+                    print(f"  aplay: {err.strip()}", flush=True)
+                return
+            if time.monotonic() - started > 1.0:
+                return  # it played for a while: not an open failure
+            await asyncio.sleep(0.3 * (attempt + 1))
+        print("  aplay: device still busy, line not played", flush=True)
 
 
 class Voices:

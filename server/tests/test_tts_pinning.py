@@ -5,6 +5,7 @@ from __future__ import annotations
 import struct
 
 import numpy as np
+import pytest
 
 from app.tts.orpheus import OrpheusTTS
 
@@ -98,3 +99,23 @@ def test_lead_trim_drops_trailing_silence_keeps_mid_pauses() -> None:
         out += t.feed(c)
     out += t.flush()
     assert out == [loud] * 3 + [quiet] * (40 + 15)
+
+
+@pytest.mark.asyncio
+async def test_a_stream_never_iterated_holds_no_busy_slot() -> None:
+    # A reply cancelled before reaching a prepared sentence (late resume) never iterates
+    # its stream; the slot used to be taken at creation and never released.
+
+    class DummyModel:
+        def generate_speech(self, **_kwargs):
+            yield struct.pack("<2h", 0, 0)
+
+    tts = OrpheusTTS(orpheus_voice="tara")
+    tts._loaded = True
+    tts._backend = "orpheus_tts"
+    tts._model = DummyModel()
+    tts.stream("Hello there")  # created, dropped
+    assert tts._active_requests == 0
+    async for _ in tts.stream("Hello there"):
+        assert tts._active_requests == 1
+    assert tts._active_requests == 0
