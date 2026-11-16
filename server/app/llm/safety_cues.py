@@ -108,7 +108,11 @@ _CUES: tuple[tuple[str, re.Pattern[str]], ...] = (
             r"monster|hates? me|nobody (likes|wants|loves|plays)|no friends|left out|"
             r"bull(y|ies|ied)|push(es|ed)? me|hit(s)? me|kick(s|ed)? me|mean to me|"
             r"teas(e|es|ed|ing)|don'?t want to go to school|want to run away|"
-            r"big (bang|noise)|anxious|anxiety|stress(ed|ful)?|panic\w*|overwhelm\w*)\b",
+            r"big (bang|noise)|anxious|anxiety|stress(ed|ful)?|panic\w*|overwhelm\w*|"
+            # 2026-11-16 existential set: unmatched, and "who would i even tell" got no name.
+            r"nobody (actually |really |even )?(sees|notices|cares|listens|hears)|"
+            r"no ?one (actually |really |even )?(sees|notices|cares|listens|hears)|"
+            r"who (would|could|can|do|should) i (even )?tell|invisible)\b",
             re.IGNORECASE,
         ),
     ),
@@ -244,4 +248,11 @@ def safety_note(text: str, earlier: Sequence[str] = ()) -> str | None:
     return (
         f"SAFETY: {'; '.join(said)}. Comfort them briefly, then {must} "
         f"Do not answer only with a question.{secret}{grief}{hopeless}{pretend}"
+        # 2026-11-16 existential set: "my mom's always working and my dad's not really
+        # around" got "Please go tell your mom or your dad".
+        " If they have said a parent is away, busy, or part of the problem, name someone"
+        " else they can reach (another relative, a teacher, the school counselor, a doctor)"
+        " instead of sending them back to that person. If they ask who they could tell,"
+        " answer with specific people. Put it in fresh words each time, never the same"
+        " line again: a repeated script tells them you are not listening."
     )

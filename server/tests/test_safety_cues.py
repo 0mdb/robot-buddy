@@ -201,3 +201,24 @@ def test_game_secrets_are_not_secrets_from_grown_ups(text: str) -> None:
 )
 def test_real_secrets_still_fire_inside_game_talk(text: str) -> None:
     assert _SEC in safety_cues(text)
+
+
+def test_the_note_offers_someone_else_when_a_parent_is_not_there() -> None:
+    note = (
+        safety_note("my mom's always working and nobody would notice if i was gone")
+        or ""
+    )
+    assert "name someone else" in note and "school counselor" in note
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "i mean who would i even tell",
+        "do you ever feel like nobody actually sees you",
+        "no one really listens to me",
+    ],
+)
+def test_unseen_and_who_to_tell_are_distress(text: str) -> None:
+    note = safety_note(text) or ""
+    assert "feeling sad, scared, or alone" in note and "specific people" in note
