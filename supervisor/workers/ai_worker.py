@@ -29,6 +29,7 @@ from supervisor.messages.types import (
     AI_CMD_END_UTTERANCE,
     AI_CMD_SPECULATE,
     AI_CMD_SPECULATE_CANCEL,
+    AI_CMD_LATE_RESUME,
     AI_CMD_REQUEST_PLAN,
     AI_CMD_SEND_AUDIO,
     AI_CMD_SEND_PROFILE,
@@ -85,6 +86,7 @@ class AIWorker(BaseWorker):
         self._turn_id = 0
         self._session_seq = 0
         self._first_audio_emitted = False
+        self._discard_turn = False  # a late resume dropped the turn in flight
 
         # Plan dedup
         self._seen_plans: OrderedDict[str, float] = OrderedDict()
@@ -136,6 +138,7 @@ class AIWorker(BaseWorker):
             self._session_id = envelope.session_id or str(p.get("session_id", ""))
             self._turn_id = int(p.get("turn_id", 1))
             self._first_audio_emitted = False
+            self._discard_turn = False
             asyncio.create_task(self._start_conversation())
 
         elif t == AI_CMD_END_UTTERANCE:
@@ -150,6 +153,15 @@ class AIWorker(BaseWorker):
             )
 
         elif t == AI_CMD_SPECULATE_CANCEL:
+            asyncio.create_task(self._ws_send({"type": "resume"}))
+
+        elif t == AI_CMD_LATE_RESUME:
+            # The server drops the committed turn; anything of it already on the way
+            # (transcription, emotion, audio, done) is dropped here until the next
+            # end of utterance starts the merged turn.
+            self._discard_turn = True
+            self._first_audio_emitted = False
+            self._set_state("listening", "late_resume")
             asyncio.create_task(self._ws_send({"type": "resume"}))
 
         elif t == AI_CMD_END_CONVERSATION:
@@ -361,6 +373,7 @@ class AIWorker(BaseWorker):
 
     async def _end_utterance(self) -> None:
         """Signal end of user speech to server."""
+        self._discard_turn = False
         self._first_audio_emitted = False
         self._utterance_end_t = time.monotonic()
         self._set_state("thinking", "end_utterance_received")
@@ -422,6 +435,8 @@ class AIWorker(BaseWorker):
                     continue
 
                 msg_type = msg.get("type", "")
+                if self._discard_turn:
+                    continue  # the turn a late resume dropped
 
                 # Phase C: planner-side UUID for cross-linking with the
                 # supervisor's MCP Activity stream (McpAuditEntry.turn_id).

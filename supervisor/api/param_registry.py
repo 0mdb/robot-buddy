@@ -1192,6 +1192,21 @@ def create_default_registry() -> ParamRegistry:
     )
     reg.register(
         ParamDef(
+            name="conversation.late_resume_ms",
+            type="int",
+            min=0,
+            max=5000,
+            step=100,
+            default=3000,
+            owner="supervisor",
+            safety="safe",
+            doc="After the end of utterance, keep listening this long (or until Buddy's reply "
+            "starts playing): if the child goes on, the reply is dropped and their words are "
+            "merged into one turn. 0 = off. Makes a shorter ear.vad_silence_ms safe",
+        )
+    )
+    reg.register(
+        ParamDef(
             name="conversation.follow_up_delay_ms",
             type="int",
             min=0,

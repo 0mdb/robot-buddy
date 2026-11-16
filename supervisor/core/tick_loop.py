@@ -58,6 +58,7 @@ from supervisor.messages.types import (
     AI_CMD_SEND_PROFILE,
     AI_CMD_SPECULATE,
     AI_CMD_SPECULATE_CANCEL,
+    AI_CMD_LATE_RESUME,
     AI_CMD_START_CONVERSATION,
     AI_CONVERSATION_DONE,
     AI_CONVERSATION_EMOTION,
@@ -155,6 +156,12 @@ class TickLoop:
         # The interrupted reply's TTS_EVENT_CANCELLED/FINISHED arrives after the
         # new session has started; it must not end that session.
         self._ignore_next_tts_end = False
+        # Late resume: after the end of utterance the ear keeps listening until Buddy's
+        # reply starts (or conversation.late_resume_ms passes); if the child goes on,
+        # the reply is dropped and the next end of utterance sends the merged turn.
+        self._late_resume_open = False
+        self._late_resume_timer: asyncio.TimerHandle | None = None
+        self._late_resumed = False  # dropped a reply; until the next end of utterance
 
         # State
         self.robot = RobotState()
@@ -907,6 +914,13 @@ class TickLoop:
 
         elif env.type == EAR_EVENT_SPEECH_STARTED:
             if (
+                self._late_resume_open
+                and self.world.session_id
+                and self.world.conversation_trigger == "wake_word"
+                and not self.world.speaking
+            ):
+                self._late_resume()
+            elif (
                 self._follow_up_session
                 and self._follow_up_session == self.world.session_id
             ):
@@ -928,14 +942,20 @@ class TickLoop:
                         },
                     )
                 )
-                asyncio.ensure_future(
-                    self._workers.send_to("ear", EAR_CMD_STOP_LISTENING)
-                )
+                self._late_resumed = False
+                self._open_late_resume_window()
                 self.robot.face_listening = False
                 self._start_turn_watchdog(self._TURN_STAGE_AWAITING)
 
         # TTS events → conversation state transitions
         elif env.type == TTS_EVENT_STARTED:
+            self._close_late_resume_window()
+            if self._late_resumed:
+                # Audio of the dropped reply that reached the speaker before the AI
+                # worker began discarding it: stop it, keep listening.
+                self._ignore_next_tts_end = True
+                asyncio.ensure_future(self._workers.send_to("tts", TTS_CMD_CANCEL))
+                return
             if not self._barge_in:  # half duplex: VAD would hear the robot
                 asyncio.ensure_future(self._workers.send_to("ear", EAR_CMD_PAUSE_VAD))
             asyncio.ensure_future(
@@ -1637,8 +1657,54 @@ class TickLoop:
         # /converse WS and cancel its mic task (see AI_CONVERSATION_DONE).
         self._end_conversation()
 
+    # ── Late resume ──────────────────────────────────────────────
+
+    def _late_resume_ms(self) -> int:
+        if self._param_registry is None:
+            return 3000
+        return int(self._param_registry.get_value("conversation.late_resume_ms", 3000))
+
+    def _open_late_resume_window(self) -> None:
+        """At the end of utterance: keep the ear listening until the reply starts."""
+        ms = self._late_resume_ms()
+        if ms <= 0:
+            asyncio.ensure_future(self._workers.send_to("ear", EAR_CMD_STOP_LISTENING))
+            return
+        self._close_late_resume_window(stop=False)
+        self._late_resume_open = True
+        self._late_resume_timer = asyncio.get_running_loop().call_later(
+            ms / 1000, self._close_late_resume_window
+        )
+
+    def _close_late_resume_window(self, stop: bool = True) -> None:
+        if self._late_resume_timer is not None:
+            self._late_resume_timer.cancel()
+            self._late_resume_timer = None
+        if self._late_resume_open:
+            self._late_resume_open = False
+            if stop:
+                asyncio.ensure_future(
+                    self._workers.send_to("ear", EAR_CMD_STOP_LISTENING)
+                )
+
+    def _late_resume(self) -> None:
+        """The child went on before Buddy spoke: drop the reply, keep listening."""
+        from supervisor.devices.protocol import FaceConvState
+
+        log.info("late resume: speech after the end of utterance, dropping the reply")
+        self._close_late_resume_window(stop=False)  # the ear keeps listening
+        self._late_resumed = True
+        self._cancel_turn_watchdog()
+        asyncio.ensure_future(self._workers.send_to("ai", AI_CMD_LATE_RESUME))
+        self._queued_emotion = ""
+        self._queued_intensity = 0.0
+        self.robot.face_listening = True
+        self._conv.set_state(FaceConvState.LISTENING)
+
     def _end_conversation(self) -> None:
         """End a conversation (PTT off, ACTION cancel, or error teardown)."""
+        self._close_late_resume_window(stop=False)  # stopped just below
+        self._late_resumed = False
         self._cancel_multi_turn_timeout()
         # Notify PE immediately so affect recovery starts without waiting
         # for AI_CONVERSATION_DONE (which may be delayed or never arrive).

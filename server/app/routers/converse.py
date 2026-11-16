@@ -5,7 +5,8 @@ Protocol:
         {"type": "audio", "data": "<base64 PCM 16kHz 16-bit mono>"}
         {"type": "end_utterance"}
         {"type": "end_utterance", "tentative": true}  # speculate: start, hold the output
-        {"type": "resume"}  # the speaker went on: drop the speculation
+        {"type": "resume"}  # the speaker went on: drop the speculation, or a committed
+                            # turn (late resume) and merge its audio into the next one
         {"type": "cancel"}
         {"type": "text", "text": "..."}  # bypass STT, send text directly
         {"type": "profile", "profile": {...}}  # personality profile (PE spec §12.5)
@@ -128,6 +129,9 @@ async def converse(ws: WebSocket):
     await ws.send_json({"type": "listening"})
 
     spec: _Speculation | None = None
+    # The committed turn, running while the loop keeps reading, so a late "resume" (the
+    # child went on after the end of utterance, before Buddy spoke) can still drop it.
+    active: _Speculation | None = None
     turn_kw: dict[str, object] = {
         "llm": llm,
         "history": history,
@@ -142,6 +146,11 @@ async def converse(ws: WebSocket):
             msg_type = msg.get("type", "")
 
             if msg_type == "audio":
+                if active is not None and active.task.done():
+                    # Audio heard while that turn ran (after its end of utterance,
+                    # before Buddy spoke) belongs to no one once it has finished.
+                    active = None
+                    audio_buffer.clear()
                 # Accumulate audio chunks with overflow protection.
                 data = msg.get("data", "")
                 if data:
@@ -162,6 +171,12 @@ async def converse(ws: WebSocket):
                     audio_buffer.extend(decoded)
 
             elif msg_type == "end_utterance":
+                if active is not None and not active.task.done():
+                    # One turn at a time: history order matters.
+                    with contextlib.suppress(Exception):
+                        await active.task
+                if active is not None:
+                    active = None
                 if msg.get("tentative"):
                     # The speaker paused: start the turn now, hold its output until
                     # the real end of utterance confirms it (or "resume" drops it).
@@ -177,14 +192,14 @@ async def converse(ws: WebSocket):
                         )
                     continue
                 if spec is not None:
-                    s, spec = spec, None
+                    active, spec = spec, None
+                    active.pcm = bytes(audio_buffer)
                     audio_buffer.clear()
                     log.info(
                         "speculation committed (%.0f ms after it started)",
-                        (time.monotonic() - s.started) * 1000,
+                        (time.monotonic() - active.started) * 1000,
                     )
-                    await s.gate.commit()
-                    await s.task
+                    await active.gate.commit()
                     continue
                 if not audio_buffer:
                     await ws.send_json(
@@ -193,12 +208,24 @@ async def converse(ws: WebSocket):
                     continue
                 pcm = bytes(audio_buffer)
                 audio_buffer.clear()
-                await _audio_turn(ws, pcm, **turn_kw)
+                active = _Speculation(
+                    gate=None,
+                    snapshot=history.snapshot(),
+                    started=time.monotonic(),
+                    task=asyncio.create_task(_audio_turn(ws, pcm, **turn_kw)),
+                    pcm=pcm,
+                )
 
             elif msg_type == "resume":
                 if spec is not None:
                     await _drop_speculation(spec, history)
                     spec = None
+                elif active is not None and not active.task.done():
+                    # Late resume: the child went on before Buddy spoke. The client
+                    # discards whatever of this turn is still in flight to it.
+                    a, active = active, None
+                    await _drop_speculation(a, history, late=True)
+                    audio_buffer[:0] = a.pcm
 
             elif msg_type == "text":
                 # Direct text input (bypass STT)
@@ -258,6 +285,11 @@ async def converse(ws: WebSocket):
     finally:
         if spec is not None:
             await _drop_speculation(spec, history)
+        if active is not None and not active.task.done():
+            # The client hung up on "done" (normal) or mid-turn: let the turn end (its
+            # history is written before "done"; sends to a closed socket just fail).
+            with contextlib.suppress(Exception):
+                await active.task
         await registry.unregister(robot_id=robot_id, websocket=ws, history=history)
 
 
@@ -313,19 +345,23 @@ class _GatedWS:
 
 @dataclasses.dataclass
 class _Speculation:
-    gate: _GatedWS
+    gate: _GatedWS | None  # None: a committed turn writing to the socket directly
     snapshot: list
     started: float
     task: asyncio.Task[None]
+    pcm: bytes = b""  # the utterance, kept so a late resume can merge it
 
 
-async def _drop_speculation(spec: _Speculation, history: ConversationHistory) -> None:
+async def _drop_speculation(
+    spec: _Speculation, history: ConversationHistory, *, late: bool = False
+) -> None:
     spec.task.cancel()
     with contextlib.suppress(asyncio.CancelledError, Exception):
         await spec.task
     history.restore(spec.snapshot)
     log.info(
-        "speculation dropped (speech resumed %.0f ms after it started)",
+        "%s dropped (speech resumed %.0f ms after it started)",
+        "committed turn" if late else "speculation",
         (time.monotonic() - spec.started) * 1000,
     )
 

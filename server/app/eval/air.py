@@ -476,6 +476,7 @@ class EouResult:
     heard: str = ""
     wer: float = 1.0
     eou_count: int = 0
+    late_resumes: int = 0  # replies dropped because the child went on (merged turns)
     cut_off: bool = False
     end_wait_ms: float | None = None  # end of speech -> end-of-utterance event
 
@@ -561,10 +562,14 @@ async def run_eou(
                         continue
                     mark = robot.mark()
                     await play_utterance(voices, speaker, sent, voice, pitch, pause)
-                    tr = await robot.wait(mark, "ai.conversation.transcription", 15)
+                    # Score what the reply answered: with late resume, earlier
+                    # transcriptions can belong to dropped half-turns.
+                    await robot.wait(mark, "ai.conversation.assistant_text", 25)
+                    trs = robot.since(mark, "ai.conversation.transcription")
                     eous = robot.since(mark, "ear.event.end_of_utterance")
                     r.eou_count = len(eous)
-                    r.heard = (tr or {}).get("text", "")
+                    r.late_resumes = max(0, len(eous) - 1)
+                    r.heard = trs[-1].get("text", "") if trs else ""
                     r.wer = wer(r.sentence, r.heard)
                     r.cut_off = r.wer > 0.3 and len(_WORD.findall(r.heard)) < len(
                         _WORD.findall(r.sentence)
@@ -573,7 +578,7 @@ async def run_eou(
                         r.end_wait_ms = float(eous[0].get("silence_ms", 0))
                     await robot.cancel()
                     out.append(r)
-                    print(f"  silence={s_ms} pause={pause} wer={r.wer:.2f} "
+                    print(f"  silence={s_ms} pause={pause} wer={r.wer:.2f} late={r.late_resumes} "
                           f"{'CUT ' if r.cut_off else ''}heard={r.heard!r}", flush=True)  # fmt: skip
     finally:
         await robot.set_params(keep)
@@ -582,8 +587,8 @@ async def run_eou(
 
 def eou_report(rs: list[EouResult]) -> str:
     lines = [
-        "| vad_silence_ms | pause | cut off | mean WER | end-of-speech wait |",
-        "|---|---|---|---|---|",
+        "| vad_silence_ms | pause | cut off | mean WER | late resumes | end-of-speech wait |",
+        "|---|---|---|---|---|---|",
     ]
     keys = sorted({(r.silence_ms, r.pause_ms) for r in rs})
     for s_ms, pause in keys:
@@ -591,6 +596,7 @@ def eou_report(rs: list[EouResult]) -> str:
         lines.append(
             f"| {s_ms} | {pause} ms | {sum(r.cut_off for r in g)}/{len(g)} | "
             f"{statistics.mean(r.wer for r in g):.2f} | "
+            f"{sum(r.late_resumes for r in g)} | "
             f"{fmt(pct([r.end_wait_ms for r in g if r.end_wait_ms], 0.5), ' ms')} |"
         )
     return "\n".join(lines)

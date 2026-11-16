@@ -181,3 +181,89 @@ async def test_gated_ws_keeps_order_across_commit() -> None:
 )
 def test_strip_wake_word(heard: str, kept: str) -> None:
     assert conv.strip_wake_word(heard) == kept
+
+
+@pytest.fixture
+def slow_gen(fakes: dict[str, Any], monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
+    """A reply that takes a while to start, so a late resume can land before its audio."""
+
+    async def gen(ws: Any, llm: Any, history: Any, user_text: str, **_: Any) -> None:
+        history.add_user(user_text)
+        await asyncio.sleep(0.15)
+        await ws.send_json({"type": "audio", "data": ""})
+        history.add_assistant("reply", emotion="happy")
+        await ws.send_json({"type": "done"})
+        fakes["histories"].append(history)
+
+    monkeypatch.setattr(conv, "_generate_and_stream", gen)
+    return fakes
+
+
+@pytest.mark.asyncio
+async def test_late_resume_drops_the_committed_turn_and_merges_its_audio(
+    slow_gen: dict[str, Any],
+) -> None:
+    ws = _ScriptedWS()
+    await _run(
+        ws,
+        [
+            _audio(),
+            {"type": "end_utterance"},
+            0.05,  # transcribed, reply not started
+            {"type": "resume"},
+            _audio(),  # the child goes on
+            {"type": "end_utterance"},
+            0.3,
+        ],
+    )
+    assert slow_gen["stt"] == [3200, 6400]  # the second turn hears the whole utterance
+    assert [m["text"] for m in ws.sent if m["type"] == "transcription"][-1] == (
+        "words 6400"
+    )
+    assert [m["type"] for m in ws.sent].count("done") == 1
+    assert slow_gen["histories"][-1].turn_count == 1  # the dropped turn rolled back
+
+
+@pytest.mark.asyncio
+async def test_late_resume_after_a_committed_speculation(
+    slow_gen: dict[str, Any],
+) -> None:
+    ws = _ScriptedWS()
+    await _run(
+        ws,
+        [
+            _audio(),
+            {"type": "end_utterance", "tentative": True},
+            0.02,
+            {"type": "end_utterance"},  # committed
+            0.05,
+            {"type": "resume"},
+            _audio(),
+            {"type": "end_utterance"},
+            0.3,
+        ],
+    )
+    assert slow_gen["stt"][-1] == 6400
+    assert [m["type"] for m in ws.sent].count("done") == 1
+    assert slow_gen["histories"][-1].turn_count == 1
+
+
+@pytest.mark.asyncio
+async def test_audio_heard_while_a_turn_finishes_is_discarded(
+    slow_gen: dict[str, Any],
+) -> None:
+    ws = _ScriptedWS()
+    await _run(
+        ws,
+        [
+            _audio(),
+            {"type": "end_utterance"},
+            _audio(1600),  # noise after the end of utterance, no resume
+            0.3,  # the turn finishes
+            _audio(),  # the next utterance
+            {"type": "end_utterance"},
+            0.3,
+        ],
+    )
+    assert slow_gen["stt"] == [3200, 3200]
+    assert slow_gen["histories"][-1].turn_count == 2

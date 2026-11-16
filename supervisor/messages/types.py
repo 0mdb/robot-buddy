@@ -45,6 +45,8 @@ AI_CMD_CANCEL = "ai.cmd.cancel"
 # Speculative end of turn: the speaker paused (start the reply, hold it) / went on (drop it).
 AI_CMD_SPECULATE = "ai.cmd.speculate"
 AI_CMD_SPECULATE_CANCEL = "ai.cmd.speculate_cancel"
+# The child went on after the end of utterance, before Buddy spoke: drop the reply.
+AI_CMD_LATE_RESUME = "ai.cmd.late_resume"
 AI_CMD_SEND_TEXT = "ai.cmd.send_text"
 AI_PLAN_RECEIVED = "ai.plan.received"
 AI_CONVERSATION_TRANSCRIPTION = "ai.conversation.transcription"
