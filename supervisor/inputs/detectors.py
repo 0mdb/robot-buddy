@@ -74,6 +74,12 @@ def detect_clear_path(
     return float(np.clip(confidence, 0.0, 1.0))
 
 
+# Shape gates for detect_ball (see the reject there).
+_BALL_MIN_CIRCULARITY = 0.6
+_BALL_MIN_FILL = 0.55
+_BALL_MAX_RADIUS_FRAC = 0.45
+
+
 # def detect_ball(
 #     frame: np.ndarray,
 #     # hsv_low: Tuple[int, int, int] = (0, 120, 70),
@@ -155,7 +161,8 @@ def detect_ball(
 
     - Uses wrap-around hue by default
     - Softer S/V floors
-    - Scores candidates by size + circularity + fill + purity (no hard gates)
+    - Scores candidates by size + circularity + fill + purity, after hard rejects of
+      shapes that are not round, not solid, or bigger than the frame
     """
     if frame is None or frame.size == 0:
         return None
@@ -218,6 +225,18 @@ def detect_ball(
 
         circle_area = float(np.pi * r * r)
         fill = area / (circle_area + 1e-6)  # 0..1
+
+        # Hard rejects. The soft score alone let a warm beige wall through: the camera's
+        # white balance read it as hue 12, saturation 172 (inside the red/orange range),
+        # one blob over a third of the frame scored 0.50 on size, and Buddy kept saying
+        # "I found a ball!" at a wall (2026-11-16; circularity 0.47, fill 0.47, radius
+        # 139 px in a 240 px frame). A ball is round, solid, and smaller than the frame.
+        if (
+            circularity < _BALL_MIN_CIRCULARITY
+            or fill < _BALL_MIN_FILL
+            or r > _BALL_MAX_RADIUS_FRAC * min(frame.shape[0], frame.shape[1])
+        ):
+            continue
 
         circle_mask = np.zeros_like(mask)
         cv2.circle(circle_mask, (int(cx), int(cy)), int(r), 255, -1)
