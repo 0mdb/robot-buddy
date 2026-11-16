@@ -1,0 +1,21 @@
+# Dev-box Ollama for Buddy: the conversation LLM (gemma4 26B) and the Orpheus TTS (Q8 GGUF).
+# User-local 0.40.16 on :11435; the system ollama.service (0.16.1) is too old for gemma4.
+# Install: just devbox-services
+[Unit]
+Description=Ollama for robot-buddy (LLM + Orpheus TTS)
+After=network-online.target
+
+[Service]
+Environment=OLLAMA_HOST=127.0.0.1:11435
+Environment=OLLAMA_MODELS=%h/.local/ollama-models
+Environment=OLLAMA_KEEP_ALIVE=60m
+Environment=OLLAMA_GPU_OVERHEAD=1610612736
+Environment=OLLAMA_NUM_PARALLEL=1
+Environment=OLLAMA_FLASH_ATTENTION=1
+Environment=OLLAMA_CONTEXT_LENGTH=8192
+ExecStart=%h/.local/ollama-0.40.16/bin/ollama serve
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

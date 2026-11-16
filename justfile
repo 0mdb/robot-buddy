@@ -86,6 +86,14 @@ run *args:
     cd {{project}}/supervisor && uv run python -m supervisor {{args}}
 
 # Run planner server
+# Install/refresh the dev-box user services (Ollama :11435 + server :8100) and start them.
+devbox-services:
+    mkdir -p ~/.config/systemd/user
+    cp deploy/devbox/buddy-ollama.service deploy/devbox/buddy-server.service ~/.config/systemd/user/
+    systemctl --user daemon-reload
+    systemctl --user enable --now buddy-ollama.service buddy-server.service
+    systemctl --user --no-pager status buddy-ollama.service buddy-server.service | grep -E "Active|●"
+
 run-server:
     bash -lc 'set -a; [ -f "{{project}}/.env" ] && source "{{project}}/.env"; set +a; cd "{{project}}/server" && uv run python -m app.main'
 

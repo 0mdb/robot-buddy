@@ -1,0 +1,16 @@
+# Dev-box robot-buddy server (STT, conversation, TTS) on :8100, reading the main checkout.
+# Install: just devbox-services. Logs: journalctl --user -fu buddy-server
+[Unit]
+Description=robot-buddy server
+After=buddy-ollama.service
+Wants=buddy-ollama.service
+
+[Service]
+WorkingDirectory=%h/robot-buddy/server
+ExecStart=/bin/bash -lc 'set -a; [ -f %h/robot-buddy/.env ] && . %h/robot-buddy/.env; set +a; exec %h/robot-buddy/server/.venv/bin/python -m app.main'
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=30
+
+[Install]
+WantedBy=default.target
