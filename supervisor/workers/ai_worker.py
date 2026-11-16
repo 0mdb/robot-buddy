@@ -660,7 +660,10 @@ class AIWorker(BaseWorker):
 
         loop = asyncio.get_running_loop()
         try:
-            while self._ws_connected and self._state in ("listening",):
+            # "thinking" too: after the end of utterance the ear keeps listening until
+            # the reply starts (late resume), and the server needs the child's words if
+            # they go on. It ends when the reply arrives ("speaking").
+            while self._ws_connected and self._state in ("listening", "thinking"):
                 # Refresh sock in case ear reconnected mid-session.
                 current = self._mic_client
                 if current is not sock:
