@@ -430,6 +430,21 @@ class OrpheusTTS:
             )
             return
 
+        if settings.orpheus_runtime == "ollama":
+            from app.tts.orpheus_ollama import OllamaOrpheus
+
+            url = settings.orpheus_ollama_url or settings.ollama_url
+            model = OllamaOrpheus(settings.orpheus_ollama_model, url)
+            if not model.warm():
+                log.warning(
+                    "Orpheus on Ollama (%s at %s) gave no audio", model.model, url
+                )
+            self._model = model
+            self._backend = "orpheus_tts"
+            self._loaded = True
+            log.info("Orpheus TTS on Ollama: %s at %s", model.model, url)
+            return
+
         log.info(
             "Loading Orpheus TTS model %s on %s...", self._model_name, self._device
         )

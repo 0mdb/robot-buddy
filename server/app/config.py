@@ -106,6 +106,13 @@ class Settings:
     )
     tts_voice: str = os.environ.get("TTS_VOICE", "en-us")
     orpheus_voice: str = os.environ.get("ORPHEUS_VOICE", "tara")
+    # "vllm" (bf16, in-process engine) or "ollama" (GGUF on llama.cpp: Q8_0 runs
+    # 2.17x real time vs 1.15x, in 4.6 GB instead of 7.6; app/tts/orpheus_ollama.py).
+    orpheus_runtime: str = os.environ.get("ORPHEUS_RUNTIME", "vllm").strip().lower()
+    orpheus_ollama_model: str = os.environ.get(
+        "ORPHEUS_OLLAMA_MODEL", "hf.co/lex-au/Orpheus-3b-FT-Q8_0.gguf"
+    )
+    orpheus_ollama_url: str = os.environ.get("ORPHEUS_OLLAMA_URL", "")
     tts_rate_wpm: int = int(os.environ.get("TTS_RATE_WPM", "165"))
     orpheus_gpu_memory_utilization: float = float(
         os.environ.get("ORPHEUS_GPU_MEMORY_UTILIZATION", "0.45")
