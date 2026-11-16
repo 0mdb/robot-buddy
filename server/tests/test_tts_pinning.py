@@ -42,3 +42,33 @@ def test_orpheus_speech_backend_prefixes_voice() -> None:
 
     audio = tts._synthesize_sync("Hello", "happy")
     assert isinstance(audio, (bytes, bytearray))
+
+
+def test_lead_trim_drops_leading_silence_keeps_a_little() -> None:
+    import numpy as np
+
+    from app.tts.orpheus import LeadTrim
+
+    quiet = np.zeros(160, np.int16).tobytes()
+    loud = (np.ones(160) * 2000).astype(np.int16).tobytes()
+    t = LeadTrim(keep=6)
+    out: list[bytes] = []
+    for c in [quiet] * 50 + [loud] * 3 + [quiet] * 4:
+        out += t.feed(c)
+    out += t.flush()
+    assert len(out) == 6 + 3 + 4  # 44 leading quiet chunks (440 ms) dropped
+    assert out[6] == loud
+
+
+def test_lead_trim_never_loses_a_quiet_clip() -> None:
+    import numpy as np
+
+    from app.tts.orpheus import LeadTrim
+
+    quiet = np.zeros(160, np.int16).tobytes()
+    t = LeadTrim(keep=6, max_hold=20)
+    out: list[bytes] = []
+    for _ in range(30):
+        out += t.feed(quiet)
+    out += t.flush()
+    assert len(out) == 7 + 10  # the held 6 + the 20th at the cap, then passed through

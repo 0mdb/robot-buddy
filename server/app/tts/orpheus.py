@@ -78,6 +78,52 @@ OUTPUT_SAMPLE_RATE = 16000
 OUTPUT_SAMPLE_WIDTH = 2  # 16-bit signed
 OUTPUT_CHANNELS = 1
 CHUNK_SAMPLES = 160  # 10ms chunks at 16 kHz
+
+
+class LeadTrim:
+    """Drop the near-silence Orpheus puts before the first word (0.2-1.1 s, measured
+    2026-11-15): it was dead air before Buddy spoke, counted as already speaking. Holds
+    10 ms chunks until one is loud, then releases the last `keep` chunks before it (so a
+    soft consonant isn't clipped) and passes everything after. Gives up after `max_hold`
+    chunks and releases what it holds, so a quiet clip is never lost."""
+
+    def __init__(
+        self, *, threshold: float = 300.0, keep: int = 6, max_hold: int = 200
+    ) -> None:
+        self._threshold = threshold
+        self._keep = keep
+        self._max_hold = max_hold
+        self._held: list[bytes] = []
+        self._seen = 0
+        self._open = False
+
+    def feed(self, chunk: bytes) -> list[bytes]:
+        if self._open:
+            return [chunk]
+        import numpy as np  # lazy, like the resamplers below
+
+        self._seen += 1
+        x = np.frombuffer(chunk, dtype=np.int16)
+        loud = (
+            len(x) > 0 and float(np.abs(x.astype(np.float32)).mean()) > self._threshold
+        )
+        self._held.append(chunk)
+        if loud:
+            self._open = True
+            out, self._held = self._held[-(self._keep + 1) :], []
+            return out
+        if self._seen >= self._max_hold:
+            self._open = True
+            out, self._held = self._held, []
+            return out
+        del self._held[: -self._keep]  # only the last few quiet chunks matter
+        return []
+
+    def flush(self) -> list[bytes]:
+        out, self._held = self._held, []
+        return out
+
+
 # The finetuned Orpheus model's built-in speakers.
 ORPHEUS_VOICES = frozenset({"tara", "leah", "jess", "leo", "dan", "mia", "zac", "zoe"})
 ORPHEUS_IDLE_TIMEOUT_S = settings.orpheus_idle_timeout_s
@@ -946,6 +992,7 @@ class OrpheusTTS:
                 ).start()
 
                 buf = b""
+                lead = LeadTrim()
                 while True:
                     try:
                         item = await asyncio.wait_for(
@@ -963,8 +1010,11 @@ class OrpheusTTS:
                         raise item
                     buf += item
                     while len(buf) >= chunk_bytes:
-                        yield buf[:chunk_bytes]
+                        for out in lead.feed(buf[:chunk_bytes]):
+                            yield out
                         buf = buf[chunk_bytes:]
+                for out in lead.flush():
+                    yield out
                 if buf:
                     yield buf
             else:
