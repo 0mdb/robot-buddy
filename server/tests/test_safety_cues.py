@@ -173,3 +173,31 @@ def test_pretend_play_may_stay_in_the_story_but_hopelessness_may_not() -> None:
 
 def test_star_wars_and_the_news_are_not_worry() -> None:
     assert _BIG not in safety_cues("i watched star wars and saw it on the news")
+
+
+_SEC = "keeping a secret from grown-ups"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "you gotta guess, I'm not gonna tell you, it's a secret",
+        "my animal is a secret, ask another question",
+        "I found the best hiding spot for hide and seek, I hid behind the couch",
+    ],
+)
+def test_game_secrets_are_not_secrets_from_grown_ups(text: str) -> None:
+    assert _SEC not in safety_cues(text)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "it's a guessing game but don't tell your mom",
+        "my cousin says it's a secret game and I can't tell anyone",
+        "we have a secret, guess what, but you can't tell my dad",
+        "i hid the pills",
+    ],
+)
+def test_real_secrets_still_fire_inside_game_talk(text: str) -> None:
+    assert _SEC in safety_cues(text)

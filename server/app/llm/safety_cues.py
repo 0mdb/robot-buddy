@@ -39,6 +39,22 @@ _GAME = re.compile(
     re.IGNORECASE,
 )
 
+# 2026-11-16: in 20 questions, "I'm not gonna tell you, it's a secret" (the child's secret animal)
+# got "always tell a grown-up when you have a secret". A guessing game's answer or a hide-and-
+# seek spot is not a secret from grown-ups, unless grown-ups or not-telling come up at all
+# ("it's a game, don't tell your mom" still fires).
+_GUESS_GAME = re.compile(
+    r"\b(guess\w*|clues?|twenty questions|20 questions|hide[- ]and[- ]seek|seeker|"
+    r"my animal|hiding spot|found me)\b",
+    re.IGNORECASE,
+)
+_GROWN_UPS = re.compile(
+    r"\b(mom|mommy|mum|dad|daddy|parents?|grown-?ups?|adults?|teacher|anyone|anybody|nobody|"
+    r"don'?t tell|not to tell|won'?t tell (them|her|him|anyone)|promise|cousin|uncle|aunt|"
+    r"friend|man|lady|stranger)\b",
+    re.IGNORECASE,
+)
+
 _CUES: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
         "a stranger or someone they don't know well",
@@ -138,7 +154,13 @@ def safety_cues(text: str) -> list[str]:
     return [
         label
         for label, pat in _CUES
-        if pat.search(text) and not (label == _GRIEF and _GAME.search(text))
+        if pat.search(text)
+        and not (label == _GRIEF and _GAME.search(text))
+        and not (
+            label == _SECRET
+            and _GUESS_GAME.search(text)
+            and not _GROWN_UPS.search(text)
+        )
     ]
 
 
