@@ -119,3 +119,33 @@ async def test_a_stream_never_iterated_holds_no_busy_slot() -> None:
     async for _ in tts.stream("Hello there"):
         assert tts._active_requests == 1
     assert tts._active_requests == 0
+
+
+@pytest.mark.asyncio
+async def test_an_abandoned_stream_stops_the_orpheus_request() -> None:
+    # A cancelled reply used to leave the producer generating (and holding Ollama's
+    # Orpheus slot) until a 10 s put timeout.
+    import asyncio
+    import time as _time
+
+    pulled: list[int] = []
+
+    class SlowModel:
+        def generate_speech(self, **_kwargs):
+            for i in range(500):
+                pulled.append(i)
+                _time.sleep(0.005)
+                yield struct.pack("<240h", *([1000] * 240))
+
+    tts = OrpheusTTS(orpheus_voice="tara")
+    tts._loaded = True
+    tts._backend = "orpheus_tts"
+    tts._model = SlowModel()
+    stream = tts.stream("A long sentence that nobody will hear the end of.")
+    async for _ in stream:
+        break
+    await stream.aclose()
+    n = len(pulled)
+    await asyncio.sleep(0.8)
+    assert len(pulled) - n <= 3  # stopped, not still generating
+    assert tts._active_requests == 0

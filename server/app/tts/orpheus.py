@@ -11,6 +11,7 @@ the robot's speaker.
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import audioop
 import io
 import logging
@@ -1011,6 +1012,25 @@ class OrpheusTTS:
                 loop = asyncio.get_running_loop()
                 q: asyncio.Queue[bytes | Exception | None] = asyncio.Queue(maxsize=16)
                 model = self._model
+                # Set when the consumer goes away (reply cancelled, late resume): the
+                # producer stops generating, which closes the Orpheus request. Before,
+                # it only noticed through a 10 s put timeout, holding the request (and
+                # Ollama's one Orpheus slot) open and leaving pending puts behind
+                # ("Task was destroyed but it is pending!", 2026-11-16).
+                stop = threading.Event()
+
+                def _put(item: bytes | Exception | None) -> bool:
+                    """Hand one item to the consumer; False once it has gone."""
+                    while not stop.is_set():
+                        fut = asyncio.run_coroutine_threadsafe(q.put(item), loop)
+                        try:
+                            fut.result(timeout=0.5)
+                            return True
+                        except concurrent.futures.TimeoutError:
+                            fut.cancel()
+                        except Exception:
+                            return False
+                    return False
 
                 def _producer() -> None:
                     try:
@@ -1021,27 +1041,17 @@ class OrpheusTTS:
                             voice=stream_voice,
                             request_id=req_id,
                         ):
+                            if stop.is_set():
+                                break
                             pcm = pcm_int16_resample_to_int16(
                                 bytes(raw_chunk), src_rate=24000
                             )
-                            if pcm:
-                                asyncio.run_coroutine_threadsafe(
-                                    q.put(pcm), loop
-                                ).result(timeout=10.0)
+                            if pcm and not _put(pcm):
+                                break
                     except Exception as exc:
-                        try:
-                            asyncio.run_coroutine_threadsafe(q.put(exc), loop).result(
-                                timeout=5.0
-                            )
-                        except Exception:
-                            pass
+                        _put(exc)
                     finally:
-                        try:
-                            asyncio.run_coroutine_threadsafe(q.put(None), loop).result(
-                                timeout=5.0
-                            )
-                        except Exception:
-                            pass
+                        _put(None)
 
                 threading.Thread(
                     target=_producer, daemon=True, name="orpheus-stream"
@@ -1049,30 +1059,33 @@ class OrpheusTTS:
 
                 buf = b""
                 lead = LeadTrim()
-                while True:
-                    try:
-                        item = await asyncio.wait_for(
-                            q.get(), timeout=ORPHEUS_IDLE_TIMEOUT_S
-                        )
-                    except asyncio.TimeoutError:
-                        log.warning(
-                            "orpheus stream idle timeout (%.0fs)",
-                            ORPHEUS_IDLE_TIMEOUT_S,
-                        )
-                        break
-                    if item is None:
-                        break
-                    if isinstance(item, Exception):
-                        raise item
-                    buf += item
-                    while len(buf) >= chunk_bytes:
-                        for out in lead.feed(buf[:chunk_bytes]):
-                            yield out
-                        buf = buf[chunk_bytes:]
-                for out in lead.flush():
-                    yield out
-                if buf:
-                    yield buf
+                try:
+                    while True:
+                        try:
+                            item = await asyncio.wait_for(
+                                q.get(), timeout=ORPHEUS_IDLE_TIMEOUT_S
+                            )
+                        except asyncio.TimeoutError:
+                            log.warning(
+                                "orpheus stream idle timeout (%.0fs)",
+                                ORPHEUS_IDLE_TIMEOUT_S,
+                            )
+                            break
+                        if item is None:
+                            break
+                        if isinstance(item, Exception):
+                            raise item
+                        buf += item
+                        while len(buf) >= chunk_bytes:
+                            for out in lead.feed(buf[:chunk_bytes]):
+                                yield out
+                            buf = buf[chunk_bytes:]
+                    for out in lead.flush():
+                        yield out
+                    if buf:
+                        yield buf
+                finally:
+                    stop.set()
             else:
                 # espeak / orpheus_speech / backend not loaded: full synthesis
                 # then chunk.
