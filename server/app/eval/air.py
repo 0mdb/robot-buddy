@@ -1889,7 +1889,7 @@ def main() -> int:
     )
     lt.add_argument("--trials", type=int, default=3)
     x = sub.add_parser(
-        "textlab", "textlab", help="Claude-kid conversation typed to /converse (fast)"
+        "textlab", help="Claude-kid conversation typed to /converse (fast)"
     )
     x.add_argument("--script", default="twenty_questions",
                    help="a script name, or free text describing the kid")  # fmt: skip
