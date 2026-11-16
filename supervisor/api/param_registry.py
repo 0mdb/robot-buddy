@@ -1210,6 +1210,18 @@ def create_default_registry() -> ParamRegistry:
     )
     reg.register(
         ParamDef(
+            name="conversation.quiet_mode",
+            type="bool",
+            default=False,
+            owner="supervisor",
+            safety="safe",
+            doc="Quiet mode: no unprompted remarks (planner lines, ball/boop/petting/wander "
+            "comments). Battery and safety announcements still play, and Buddy still answers "
+            "when spoken to",
+        )
+    )
+    reg.register(
+        ParamDef(
             name="conversation.follow_up_delay_ms",
             type="int",
             min=0,

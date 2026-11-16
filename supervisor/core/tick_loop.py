@@ -119,6 +119,12 @@ _TELEM_EVERY_N = max(1, TICK_HZ // 20)  # 20 Hz telemetry
 _PLAN_RETRY_S = 5.0
 
 
+def _essential_speech(source_event: str) -> bool:
+    """Speech-policy lines that play even in quiet mode: faults and battery."""
+    key = source_event.removeprefix("held:")
+    return key.startswith(("fault.", "power."))
+
+
 class TickLoop:
     """The v2 50 Hz control loop."""
 
@@ -1249,9 +1255,13 @@ class TickLoop:
             hold_say=conversation_active,
         )
 
+        quiet = self._quiet_mode()
         for action in due:
             action_type = action.get("action", "")
             if action_type == "say":
+                if quiet:
+                    self._drop_quiet()
+                    continue
                 await self._enqueue_say(
                     action.get("text", ""), source="planner", priority=2
                 )
@@ -1269,6 +1279,9 @@ class TickLoop:
                 now_mono_ms=now_ms,
             )
             for intent in intents:
+                if quiet and not _essential_speech(intent.source_event):
+                    self._drop_quiet()
+                    continue
                 await self._enqueue_say(intent.text, source="speech_policy", priority=3)
 
         # Periodic plan requests
@@ -1661,6 +1674,16 @@ class TickLoop:
         self._end_conversation()
 
     # ── Late resume ──────────────────────────────────────────────
+
+    def _quiet_mode(self) -> bool:
+        if self._param_registry is None:
+            return False
+        return bool(self._param_registry.get_value("conversation.quiet_mode", False))
+
+    def _drop_quiet(self) -> None:
+        self.world.say_dropped_reason["quiet_mode"] = (
+            self.world.say_dropped_reason.get("quiet_mode", 0) + 1
+        )
 
     def _late_resume_ms(self) -> int:
         if self._param_registry is None:

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { HouseholdPanel } from '../components/HouseholdPanel'
 import { ParentAlertsPanel } from '../components/ParentAlertsPanel'
+import { QuietModePanel } from '../components/QuietModePanel'
 import { Sparkline } from '../components/Sparkline'
 import { TimeSeriesChart } from '../components/TimeSeriesChart'
 import { FAULT_NAMES, RANGE_STATUS } from '../constants'
@@ -1012,6 +1013,9 @@ export default function MonitorTab() {
         <DriveHealthPanel faultFlags={faultFlags} speedCaps={speedCaps} />
         <WorkerHealthPanel workers={workers} />
       </div>
+
+      {/* Quiet mode: no unprompted remarks */}
+      <QuietModePanel />
 
       {/* Quiet alerts for parents (secrets and serious disclosures) */}
       <ParentAlertsPanel />
