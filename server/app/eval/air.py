@@ -83,6 +83,10 @@ def trim(pcm: bytes, floor: float = 300.0) -> bytes:
 
 
 CALIBRATION = RUN_DIR / "calibration.json"
+# Acoustic heard latency minus the Pi-clock estimate (speaker output lag + the VAD
+# calling the end of speech after the sound stopped): measured by `air latency`,
+# saved in the calibration file, added to the Pi-clock numbers in talk reports.
+HEARD_OFFSET_MS: float | None = None
 
 
 class Speaker:
@@ -1050,10 +1054,18 @@ def talk_report(
 ) -> str:
     lat = [t.heard_latency_ms for t in turns if t.heard_latency_ms is not None]
     fus = [t.follow_up for t in turns if t.follow_up is not None]
+    off = HEARD_OFFSET_MS
+    heard = (
+        f"Heard latency, acoustic estimate (Pi clock + {off:.0f} ms measured by "
+        f"`air latency`): p50 {fmt(pct([x + off for x in lat], 0.5), ' ms')}, p90 "
+        f"{fmt(pct([x + off for x in lat], 0.9), ' ms')}. "
+        if off is not None and lat
+        else "Heard latency: no acoustic offset yet (run `air latency`). "
+    )
     lines = [
         f"### {name}",
         "",
-        f"Heard latency (end of kid speech -> Buddy's first sound): p50 "
+        heard + f"Pi clock (end of speech -> playback start): p50 "
         f"{fmt(pct(lat, 0.5), ' ms')}, p90 {fmt(pct(lat, 0.9), ' ms')}, max "
         f"{fmt(max(lat) if lat else None, ' ms')}. Follow-up opened without the wake word: "
         f"{sum(fus)}/{len(fus)}. Mean WER {statistics.mean(t.wer for t in turns or [TurnResult('')]):.2f}.",
@@ -1682,6 +1694,8 @@ async def _main(a: argparse.Namespace) -> int:
         print(f"note: no calibration for {a.device}; playing at 0 dB (run `calibrate`)")
         cal = {}
     speaker = Speaker(a.device, float(cal.get("gain_db", 0.0)))
+    global HEARD_OFFSET_MS
+    HEARD_OFFSET_MS = cal.get("heard_offset_ms")
     report: list[str] = [
         f"# Over-the-air run {run.name}",
         "",
@@ -1769,6 +1783,20 @@ async def _main(a: argparse.Namespace) -> int:
                 *[f"- {r}" for r in rs],
             ]
             (run / "latency.json").write_text(json.dumps(rs, indent=1))
+            offs = [
+                r["acoustic_heard_ms"] - r["pi_clock_heard_ms"]
+                for r in rs
+                if "acoustic_heard_ms" in r
+                and r["acoustic_heard_ms"] > r["pi_clock_heard_ms"]
+            ]
+            if len(offs) >= 3 and cal:
+                merged = json.loads(CALIBRATION.read_text())
+                merged["heard_offset_ms"] = round(statistics.median(offs))
+                CALIBRATION.write_text(json.dumps(merged, indent=1))
+                report += [
+                    "",
+                    f"Saved heard_offset_ms={merged['heard_offset_ms']} (median of {offs}).",
+                ]
         elif a.cmd == "textlab":
             sc = SCRIPTS.get(a.script)
             style = sc["style"] if sc else a.script
