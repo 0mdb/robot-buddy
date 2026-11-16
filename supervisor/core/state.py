@@ -349,6 +349,10 @@ class WorldState:
 
     # MJPEG frame buffer (latest base64-encoded JPEG from vision worker)
     latest_jpeg_b64: str = ""
+    # When it arrived (monotonic ms): look() judges the picture's own age by this. The
+    # detection age said nothing about it, and look() served one stale frame for an hour
+    # after the last /video viewer turned encoding off (2026-11-16).
+    latest_jpeg_mono_ms: float = 0.0
 
     # Personality engine (PE spec S2 §11.2)
     personality_mood: str = "neutral"

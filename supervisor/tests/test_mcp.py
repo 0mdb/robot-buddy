@@ -330,6 +330,8 @@ def _prime_tick_frame(
     tick.world.vision_rx_mono_ms = (
         0.0 if age_ms < 0 else max(0.001, _time.monotonic() * 1000.0 - age_ms)
     )
+    # look() judges the picture by its own arrival time.
+    tick.world.latest_jpeg_mono_ms = tick.world.vision_rx_mono_ms
 
 
 class TestLookTool:
@@ -503,3 +505,46 @@ class TestWsMcp:
             data = json.loads(msg)
             assert data["type"] == "snapshot"
             assert data["entries"] == []
+
+
+class TestLookFreshness:
+    """2026-11-16: /video's disconnect turned JPEG encoding off and look() served the last
+    viewer's frame for an hour, judged fresh by the (still fresh) detection age."""
+
+    @pytest.mark.asyncio
+    async def test_an_old_picture_is_not_passed_off_by_a_fresh_detection(self, audit):
+        import time as _time
+
+        tick = FakeTick()
+        _prime_tick_frame(tick, age_ms=100.0)  # detection: fresh
+        tick.world.latest_jpeg_mono_ms = _time.monotonic() * 1000.0 - 600_000  # 10 min
+        workers = FakeWorkersWithConsent(memory_consent=True)
+
+        content = await look_impl(tick, workers, hint=None, audit=audit)
+
+        meta = json.loads(content[-1].text)
+        assert meta["reason"] == "stale" and len(content) == 1
+        # ...and it asked the vision worker to encode again.
+        assert any(
+            c[1] == "vision.config.update" and c[2] == {"mjpeg_enabled": True}
+            for c in workers._sent
+        )
+
+    @pytest.mark.asyncio
+    async def test_it_waits_for_the_new_frame(self, audit):
+        import asyncio
+        import time as _time
+
+        tick = FakeTick()
+        _prime_tick_frame(tick, jpeg_b64="b2xk")  # "old"
+        tick.world.latest_jpeg_mono_ms = _time.monotonic() * 1000.0 - 5000
+        workers = FakeWorkersWithConsent(memory_consent=True)
+
+        async def new_frame() -> None:
+            await asyncio.sleep(0.1)
+            tick.world.latest_jpeg_b64 = "bmV3"  # "new"
+            tick.world.latest_jpeg_mono_ms = _time.monotonic() * 1000.0
+
+        asyncio.ensure_future(new_frame())
+        content = await look_impl(tick, workers, hint=None, audit=audit)
+        assert content[0].type == "image" and content[0].data == "bmV3"

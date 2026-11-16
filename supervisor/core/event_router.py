@@ -89,6 +89,7 @@ class EventRouter:
 
         elif t == VISION_FRAME_JPEG:
             self._world.latest_jpeg_b64 = str(p.get("data_b64", ""))
+            self._world.latest_jpeg_mono_ms = now_ms
 
         elif t == VISION_STATUS_HEALTH:
             self._world.worker_last_heartbeat_ms["vision"] = now_ms

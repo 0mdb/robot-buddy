@@ -78,7 +78,7 @@ def _build_vision_worker_config(registry: object) -> dict[str, object]:
         "contrast": _get_float(registry, "vision.contrast", 1.0),
         "saturation": _get_float(registry, "vision.saturation", 1.0),
         "sharpness": _get_float(registry, "vision.sharpness", 1.0),
-        "jpeg_quality": _get_int(registry, "vision.jpeg_quality", 50),
+        "jpeg_quality": _get_int(registry, "vision.jpeg_quality", 80),
     }
 
 

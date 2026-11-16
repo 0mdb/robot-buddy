@@ -10,6 +10,7 @@ Phase 0 scope: get_state, get_memory, recent_events, look.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import math
@@ -20,6 +21,7 @@ from typing import TYPE_CHECKING, Any
 from mcp.types import ImageContent, TextContent
 
 from supervisor.mcp.audit import McpAuditBroadcaster, McpAuditEntry
+from supervisor.messages.types import VISION_CONFIG_UPDATE
 
 if TYPE_CHECKING:
     from supervisor.core.tick_loop import TickLoop
@@ -276,6 +278,27 @@ def _memory_consent_from_workers(workers: WorkerManager) -> bool:
         return False
 
 
+LOOK_FRESH_MS = 300.0
+LOOK_WAIT_S = 0.7
+
+
+async def _fresh_jpeg(tick: TickLoop, workers: WorkerManager) -> None:
+    """Make sure the frame look() returns was taken just now: (re)enable encoding and
+    wait for a newer JPEG when the latest is older than LOOK_FRESH_MS."""
+    world = tick.world
+    now_ms = time.monotonic() * 1000.0
+    if (
+        world.latest_jpeg_mono_ms > 0
+        and now_ms - world.latest_jpeg_mono_ms < LOOK_FRESH_MS
+    ):
+        return
+    before = world.latest_jpeg_mono_ms
+    await workers.send_to("vision", VISION_CONFIG_UPDATE, {"mjpeg_enabled": True})
+    deadline = time.monotonic() + LOOK_WAIT_S
+    while time.monotonic() < deadline and world.latest_jpeg_mono_ms <= before:
+        await asyncio.sleep(0.02)
+
+
 async def look_impl(
     tick: TickLoop,
     workers: WorkerManager,
@@ -290,8 +313,9 @@ async def look_impl(
       - TextContent (JSON metadata) always, explaining what the consumer is
         seeing (or why no image came back: consent-off, stale, no-frame).
 
-    The JPEG is the same 320x240 downsized frame the /video MJPEG endpoint
-    serves; no new frame capture or encoding happens here. `hint` is
+    The JPEG is the latest frame the vision worker encoded (the full capture, the same
+    one /video serves). If it is older than LOOK_FRESH_MS, encoding is (re)enabled and
+    look() waits up to LOOK_WAIT_S for a new one; "age" is the picture's own age. `hint` is
     free-form text the caller can echo for its own reasoning ("what colors
     do you see?") — we log it but don't interpret it.
 
@@ -309,7 +333,13 @@ async def look_impl(
     try:
         consent = _memory_consent_from_workers(workers)
         world = tick.world
-        age_ms = world.vision_age_ms
+        if consent:
+            await _fresh_jpeg(tick, workers)
+        age_ms = (
+            time.monotonic() * 1000.0 - world.latest_jpeg_mono_ms
+            if world.latest_jpeg_mono_ms > 0
+            else -1.0
+        )
         frame_seq = int(world.vision_frame_seq)
         ball_conf = float(world.ball_confidence)
         ball_bearing = float(world.ball_bearing_deg)

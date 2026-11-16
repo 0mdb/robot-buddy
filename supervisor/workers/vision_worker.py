@@ -80,7 +80,7 @@ class VisionWorker(BaseWorker):
         self._contrast = 1.0
         self._saturation = 1.0
         self._sharpness = 1.0
-        self._jpeg_quality = 50
+        self._jpeg_quality = 80
 
         # Controls are applied from the camera thread to avoid racing capture_request().
         self._pending_controls: dict[str, Any] = {}
@@ -546,8 +546,10 @@ class VisionWorker(BaseWorker):
                 ):
                     self._last_jpeg_t = now
                     quality = max(10, min(95, int(self._jpeg_quality)))
+                    # The full capture (640x480), not the 320x240 detection copy: look()
+                    # hands this to the LLM to say what it sees.
                     _, jpeg = cv2.imencode(
-                        ".jpg", small, [cv2.IMWRITE_JPEG_QUALITY, quality]
+                        ".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, quality]
                     )
                     self.send(
                         VISION_FRAME_JPEG,

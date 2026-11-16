@@ -165,9 +165,8 @@ def create_app(
             # Pin MJPEG encoding on while the MCP server runs so look() has
             # a fresh frame the moment a consumer LLM asks. The /video
             # endpoint still toggles mjpeg_enabled on dashboard connect /
-            # disconnect; look() re-asserts it on every call as a safety
-            # net, so worst case is one stale-frame call after a dashboard
-            # tab closes.
+            # disconnect; look() re-enables it and waits for a fresh frame
+            # when the latest is older than 300 ms.
             asyncio.ensure_future(
                 workers.send_to("vision", VISION_CONFIG_UPDATE, {"mjpeg_enabled": True})
             )
@@ -712,12 +711,9 @@ def create_app(
                         )
                     await asyncio.sleep(0.1)  # 10 FPS max
             finally:
-                _video_clients -= 1
-                if _video_clients <= 0:
-                    _video_clients = 0
-                    await workers.send_to(
-                        "vision", "vision.config.update", {"mjpeg_enabled": False}
-                    )
+                # Encoding stays on: the MCP server pins it for look(), and turning it off
+                # here left look() serving the last viewer's frame (2026-11-16).
+                _video_clients = max(0, _video_clients - 1)
                 log.info("video: client disconnected (%d active)", _video_clients)
 
         return StreamingResponse(

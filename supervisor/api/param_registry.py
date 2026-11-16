@@ -907,7 +907,7 @@ def create_default_registry() -> ParamRegistry:
             min=10,
             max=95,
             step=1,
-            default=50,
+            default=80,
             owner="vision",
             doc="MJPEG /video JPEG quality (10-95)",
         )
