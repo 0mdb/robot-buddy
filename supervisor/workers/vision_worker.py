@@ -110,6 +110,7 @@ class VisionWorker(BaseWorker):
         self._frame_writer: Any | None = None
         self._frame_shm_failed = False
         self._frames_published = 0
+        self._cam_meta: dict[str, Any] = {}
 
         # Vision masks (exclusion polys; applied to processed `small` frame)
         self._mask_obj: dict[str, Any] | None = None
@@ -230,6 +231,9 @@ class VisionWorker(BaseWorker):
             "camera_ok": self._camera_ok,
             "last_error": self._last_error,
             "frames_published": self._frames_published,
+            # What the camera reports it is doing (focus/exposure diagnosis: soft frames
+            # whose sharpness did not change with LensPosition, 2026-11-16).
+            "camera": dict(self._cam_meta),
         }
 
     def _publish_frame(self, frame: Any, t_cam_ns: int) -> None:
@@ -369,6 +373,21 @@ class VisionWorker(BaseWorker):
                     arr = request.make_array("main")
                     metadata = request.get_metadata()
                     t_cam_ns = metadata.get("SensorTimestamp", 0)
+                    self._cam_meta = {
+                        k: metadata[k]
+                        for k in (
+                            "LensPosition",
+                            "AfState",
+                            "AfPauseState",
+                            "ExposureTime",
+                            "AnalogueGain",
+                            "DigitalGain",
+                            "Lux",
+                            "ColourTemperature",
+                            "FocusFoM",
+                        )
+                        if k in metadata
+                    }
                     return arr, int(t_cam_ns)
                 finally:
                     request.release()
