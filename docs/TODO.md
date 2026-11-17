@@ -395,6 +395,8 @@ Ben: "a mode for myself: check local Home Assistant, bank accounts, or other thi
 - [ ] Repoint Pi 5 `SD CARD` sub-parts off `C:\Users\Ben\Desktop\robots\buddy\model\…` (see skill "Known state"); re-check `sw.py refs`
 - [ ] Save the 3 virtual components in `RB-ASM-100_chassis` (`Part2`, `MirrorPart2`, `Part8`) out to `CAD/parts/` with real names
 
+- [ ] **Charge-input extension through the cover** (Ben, 2026-11-17): wire an extension from the UPS HAT's AC-adapter input to a panel jack in the canopy/shell, so Buddy charges without opening it. CAD: jack hole + boss in the shell (pick the jack type to match the HAT's barrel/connector, keep it clear of kid fingers and the tracks), strain relief and routing past the Pi stack. Measure the HAT input connector first.
+
 **Chassis: the remaining build.** It holds the MCUs, motors, screen and mic/speaker. Frame spec: `docs/cad/06_frame_design_spec.md` (rear-follower tensioning, 3-piece body: plate / front bulkhead / canopy, plate 170 × 110).
 - [ ] **Materials / fasteners / FEA**: `docs/cad/07_materials_fasteners_fea.md`. Measure insert stock (M2.5/M3 OD × L) + screw stock; print **insert ladder coupon** in PET-CF + ASA (07 §4.2); port fpv250 `swsim.cs` → `tools/swsim.cs`; run S1/S2/S5 before the first PET-CF print, S3/S4 with the canopy (07 §3)
 - [x] **Assembly rebuild in chassis frame** (06 §2, 2026-10-30): `RB-ASM-101_chassis` + `RB-PRT-001_base_plate` + `TT_Motor_envelope_v2` via `tools/chassis.py rebuild`. Open: delete old `RB-ASM-100` (Ben's OK), measure TT motor widths (interference 🟡)
