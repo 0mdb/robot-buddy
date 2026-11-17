@@ -225,3 +225,105 @@ def test_face_track_param_off_falls_back():
     _see_face(loop, 0.75, 1)
     _tick(loop)
     assert loop.robot.face_gaze_target is None
+
+
+# ── Range, presence events, NEARBY ───────────────────────────────
+
+
+def test_range_from_face_width():
+    import math
+
+    # A 0.14 m face filling 20% of a 66° frame: r = 0.14 / (2 * 0.2 * tan 33°).
+    f = face_from_row(_row(128, 96, 64, 64), 320, 240, 66.0)
+    expected = 140.0 / (2 * 0.2 * math.tan(math.radians(33)))
+    assert f["range_mm"] == pytest.approx(expected, abs=1)
+
+
+def _bus_world(faces, age_ok=True):
+    import time
+
+    from supervisor.core.state import RobotState, WorldState
+
+    robot, world = RobotState(), WorldState()
+    world.faces = faces
+    world.vision_rx_mono_ms = time.monotonic() * 1000.0 if age_ok else 0.0
+    return robot, world
+
+
+def _types(bus):
+    return [e.type for e in bus.latest(50)]
+
+
+def test_face_appeared_after_debounce_and_lost_after_absence():
+    from supervisor.core.event_bus import FACE_APPEAR_MS, FACE_LOST_MS, PlannerEventBus
+
+    bus = PlannerEventBus()
+    face = dict(_face(0.6), bearing_deg=6.0, range_mm=900)
+    robot, world = _bus_world([face])
+    robot.tick_mono_ms = 1000.0
+    bus.ingest(robot, world)
+    assert "vision.face_appeared" not in _types(bus)  # one frame is not enough
+    robot.tick_mono_ms = 1000.0 + FACE_APPEAR_MS
+    bus.ingest(robot, world)
+    evt = [e for e in bus.latest(50) if e.type == "vision.face_appeared"]
+    assert evt and evt[0].payload == {"count": 1, "bearing_deg": 6.0, "range_mm": 900}
+
+    world.faces = []
+    robot.tick_mono_ms += FACE_LOST_MS - 100
+    bus.ingest(robot, world)
+    assert "vision.face_lost" not in _types(bus)
+    robot.tick_mono_ms += 200
+    bus.ingest(robot, world)
+    assert _types(bus).count("vision.face_lost") == 1
+
+
+def test_flicker_does_not_announce():
+    from supervisor.core.event_bus import FACE_APPEAR_MS, PlannerEventBus
+
+    bus = PlannerEventBus()
+    robot, world = _bus_world([dict(_face(0.5), range_mm=900)])
+    for i in range(5):
+        world.faces = [dict(_face(0.5), range_mm=900)] if i % 2 == 0 else []
+        robot.tick_mono_ms = 1000.0 + i * (FACE_APPEAR_MS / 3)
+        bus.ingest(robot, world)
+    assert "vision.face_appeared" not in _types(bus)
+
+
+def test_faces_join_the_nearby_audience_as_unknown():
+    import time
+
+    from supervisor.core.state import WorldState
+
+    w = WorldState()
+    assert w.audience_now() == []
+    w.faces_held = [dict(_face(0.75), bearing_deg=16.0, range_mm=800, score=0.9)]
+    w.faces_seen_mono_ms = time.monotonic() * 1000.0
+    (m,) = w.audience_now()
+    assert m.kind == "unknown" and m.policy_kind() == "kid"
+    assert m.range_mm == 800
+    assert m.bearing_deg == pytest.approx(-16.0)  # camera right = robot frame negative
+
+
+def test_held_faces_expire():
+    import time
+
+    from supervisor.core.nearby import HOLD_MS
+    from supervisor.core.state import WorldState
+
+    w = WorldState()
+    w.faces_held = [dict(_face(0.5), range_mm=800)]
+    w.faces_seen_mono_ms = time.monotonic() * 1000.0 - HOLD_MS - 10
+    assert w.audience_now() == []
+
+
+def test_face_ahead_stops_forward_motion():
+    import time
+
+    from supervisor.core.nearby import limit
+    from supervisor.core.state import WorldState
+
+    w = WorldState()
+    w.faces_held = [dict(_face(0.5), bearing_deg=0.0, range_mm=400, score=0.9)]
+    w.faces_seen_mono_ms = time.monotonic() * 1000.0
+    allowed, why = limit(200, w.audience_now())
+    assert allowed == 0 and why

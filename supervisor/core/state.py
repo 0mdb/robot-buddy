@@ -305,6 +305,10 @@ class WorldState:
     # dicts with cx, cy, w, h (normalised), score, bearing_deg, elevation_deg.
     faces: list = field(default_factory=list)
     faces_frame_seq: int = 0
+    # The last non-empty face list and when it arrived: NEARBY holds people for
+    # nearby.HOLD_MS (a missed detection is not a person leaving).
+    faces_held: list = field(default_factory=list)
+    faces_seen_mono_ms: float = 0.0
     # Who is near (core/nearby.py): POST /api/audience -- the sim's oracle now, detection later.
     audience: list = field(default_factory=list)
     audience_rx_mono_ms: float = 0.0
@@ -377,15 +381,39 @@ class WorldState:
     personality_daily_limit_reached: bool = False
 
     def audience_now(self) -> list:
-        """The audience estimate if it is recent enough to act on (nearby.HOLD_MS), else []."""
-        if self.audience_rx_mono_ms <= 0:
-            return []
+        """Who is near, if recent enough to act on (nearby.HOLD_MS): the posted estimate
+        (POST /api/audience, the sim's oracle) plus faces the camera sees."""
         import time
 
         from supervisor.core.nearby import HOLD_MS
 
-        age = time.monotonic() * 1000.0 - self.audience_rx_mono_ms
-        return list(self.audience) if age <= HOLD_MS else []
+        now = time.monotonic() * 1000.0
+        members: list = []
+        if self.audience_rx_mono_ms > 0 and now - self.audience_rx_mono_ms <= HOLD_MS:
+            members.extend(self.audience)
+        if self.faces_seen_mono_ms > 0 and now - self.faces_seen_mono_ms <= HOLD_MS:
+            members.extend(self.face_members())
+        return members
+
+    def face_members(self) -> list:
+        """Held faces as NEARBY members. Kind is unknown (so the child limits apply) until
+        recognition exists; bearing flips to the robot frame (positive = left)."""
+        from supervisor.core.nearby import Member
+
+        out = []
+        for f in self.faces_held:
+            try:
+                out.append(
+                    Member(
+                        kind="unknown",
+                        range_mm=int(f["range_mm"]),
+                        bearing_deg=-float(f.get("bearing_deg", 0.0)),
+                        confidence=float(f.get("score", 0.0)),
+                    )
+                )
+            except (KeyError, TypeError, ValueError):
+                continue
+        return out
 
     @property
     def vision_age_ms(self) -> float:

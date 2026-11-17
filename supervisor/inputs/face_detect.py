@@ -26,6 +26,11 @@ DEFAULT_MODEL = (
 )
 
 
+# Assumed face width (YuNet's box, cheek to cheek) for the range estimate. On the small
+# side of an adult's, so the estimate errs closer: it feeds the NEARBY speed limits.
+FACE_WIDTH_M = 0.14
+
+
 def vfov_from_hfov(hfov_deg: float, width: int, height: int) -> float:
     """Vertical FOV for a rectilinear lens, from the horizontal FOV and the aspect ratio."""
     half = math.radians(hfov_deg) / 2.0
@@ -45,6 +50,9 @@ def face_from_row(
     tan_v = math.tan(math.radians(vfov_from_hfov(hfov_deg, width, height)) / 2.0)
     bearing = math.degrees(math.atan((cx * 2.0 - 1.0) * tan_h))
     elevation = -math.degrees(math.atan((cy * 2.0 - 1.0) * tan_v))
+    # Pinhole: the face spans w/width of the image's 2*tan(hfov/2) at range r.
+    w_norm = max(w / width, 1e-3)
+    range_mm = FACE_WIDTH_M * 1000.0 / (2.0 * w_norm * tan_h)
     return {
         "cx": round(cx, 4),
         "cy": round(cy, 4),
@@ -53,6 +61,7 @@ def face_from_row(
         "score": round(score, 3),
         "bearing_deg": round(bearing, 1),
         "elevation_deg": round(elevation, 1),
+        "range_mm": int(round(range_mm)),
     }
 
 

@@ -5,6 +5,7 @@ Adapted from v1 to accept split RobotState + WorldState.
 
 from __future__ import annotations
 
+import logging
 from collections import deque
 from dataclasses import asdict, dataclass
 
@@ -15,6 +16,13 @@ from supervisor.devices.protocol import (
     TouchEventType,
 )
 from supervisor.core.state import Mode, RobotState, WorldState
+
+log = logging.getLogger(__name__)
+
+# Someone is "here" after this long of continuous face detections, and "gone" after this
+# long without any (people look away, and the detector misses frames).
+FACE_APPEAR_MS = 300.0
+FACE_LOST_MS = 3000.0
 
 
 @dataclass(slots=True)
@@ -44,6 +52,10 @@ class PlannerEventBus:
         self._events: deque[PlannerEvent] = deque(maxlen=max_events)
 
         self._ball_visible = False
+        self._face_present = False
+        self._face_first_ms: float | None = None
+        self._face_last_ms = 0.0
+        self._face_since_ms = 0.0
         self._obstacle_close = False
         self._vision_healthy: bool | None = None
         self._last_fault_flags = 0
@@ -73,6 +85,8 @@ class PlannerEventBus:
         self._soc_critical_pct = critical_pct
 
     def emit(self, event_type: str, payload: dict, t_mono_ms: float) -> None:
+        if event_type.startswith("vision.face_"):
+            log.info("%s %s", event_type, payload)
         self._events.append(
             PlannerEvent(event_type, payload, t_mono_ms, seq=self._next_seq)
         )
@@ -159,6 +173,43 @@ class PlannerEventBus:
             self.emit(
                 "vision.ball_lost",
                 {"confidence": round(effective_ball_conf, 3)},
+                now_ms,
+            )
+
+        # People: debounced presence from face detections
+        faces = world.faces if 0.0 <= vision_age <= self._vision_stale_ms else []
+        if faces:
+            self._face_last_ms = now_ms
+            if self._face_first_ms is None:
+                self._face_first_ms = now_ms
+        else:
+            self._face_first_ms = None
+        if (
+            not self._face_present
+            and self._face_first_ms is not None
+            and now_ms - self._face_first_ms >= FACE_APPEAR_MS
+        ):
+            self._face_present = True
+            self._face_since_ms = now_ms
+            nearest = faces[0]
+            self.emit(
+                "vision.face_appeared",
+                {
+                    "count": len(faces),
+                    "bearing_deg": nearest.get("bearing_deg"),
+                    "range_mm": nearest.get("range_mm"),
+                },
+                now_ms,
+            )
+        elif self._face_present and now_ms - self._face_last_ms >= FACE_LOST_MS:
+            self._face_present = False
+            self.emit(
+                "vision.face_lost",
+                {
+                    "seen_s": round(
+                        (self._face_last_ms - self._face_since_ms) / 1000.0, 1
+                    )
+                },
                 now_ms,
             )
 
