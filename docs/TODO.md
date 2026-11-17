@@ -128,7 +128,7 @@ Stage 4.2 Dirty-Rect A/B Snapshot (2026-02-25, post-dirty firmware + updated sup
 - [x] Mouth follows the gaze part-way (`GAZE_MOUTH_SHIFT_X/Y` 1.5/0.75 px per gaze unit; visual-language §1.5) — flashed 2026-11-11
 - [x] Life motion (visual-language §1.6, 2026-11-11): squash & stretch on eye moves + blink-reopen pop, glance blink on big gaze jumps, 15% double blinks, speech eye pulse + pause glance (ported from the sim), petting (stroke ≥ 160 px → PET event, local content look, host `face.touch.pet` remark w/ 20 s cooldown) — flashed 2026-11-11
 - [ ] On-device: judge life motion by eye (stretch not too rubbery, glance blinks not too frequent, pet look reads as content); tune constants in `config.h` + sim
-- [ ] **Camera-driven gaze** (not implemented yet): no vision → face gaze path exists today; host gaze comes only from the conversation choreographer / conv state. Needs: a target (ball bearing exists, horizontal only; no person/face detection), bearing → gaze mapping from camera FOV to `MAX_GAZE`, smoothing, and priority vs conversation gaze and local finger-follow (finger wins while touching). Verify on hardware that the eyes point at the target. Blocked on the Pi camera ("camera unavailable: list index out of range" since 2026-11-10 13:20)
+- [ ] **Camera-driven gaze** _(built 2026-11-17, e68ed51; verify on hardware)_: the vision worker runs OpenCV YuNet (`supervisor/inputs/face_detect.py`, model in `supervisor/models`, ~8-12 ms at 320x240, vision stays 30 fps) at `vision.face_hz` 15 and puts faces (normalised box, score, bearing/elevation) in the snapshot; `core/face_gaze.py` follows the nearest face (sticks with the same person, snaps on first sight then smooths, holds `gaze.face_hold_ms` 1.5 s after losing it). Priority: thinking aversion / choreographer ramp > face > conversation centre; idle wander pauses while following. Status: `face_count`, `face_bearing`, `face_gaze_target`; vision health `face`. **To verify:** eyes point at a person left/right/centre (flip `gaze.face_gain_x` if they look away; tune `gaze.face_gain_y`, camera is below the screen), no shimmer, wander resumes when they leave. Finger-follow still wins on the MCU. Next: feed faces into `audience`/presence events (someone arrived / left) and the planner.
 
 **Evaluation** `[opus]`
 - [ ] T1: Automated CI tests (parity check, unit tests, linting)
@@ -600,7 +600,7 @@ _138 items archived to `docs/TODO-archive.md` (latest: 2026-02-24). Sections: Fa
 **Phase 1: Face Detection & Recognition** `[opus]`
 - [ ] Spike: evaluate face_recognition (dlib) vs MediaPipe Face Detection vs OpenCV DNN on Pi 5 (latency, accuracy, VRAM/CPU cost)
 - [ ] Family registration UI in dashboard: capture face embeddings for each household member (name + photo enrollment)
-- [ ] Vision worker: add face detection pipeline (separate from existing HSV color detection)
+- [x] Vision worker: add face detection pipeline (separate from existing HSV color detection) — YuNet, 2026-11-17 (see Camera-driven gaze). Recognition can use `cv2.FaceRecognizerSF` (SFace) with YuNet's landmarks, no extra runtime; the stranded SCRFD/MobileFaceNet branch needs onnxruntime + model files of unclear licence
 - [ ] Vision worker: face recognition against registered family embeddings → emit `vision.person_identified` event
 - [ ] Per-person memory profiles: extend memory store (PE spec S2 §8) to partition by identified person
 - [ ] Personality engine: greet by name, recall per-person topics/rituals when face is recognized
