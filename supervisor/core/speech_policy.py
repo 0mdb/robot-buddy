@@ -19,6 +19,8 @@ class SpeechIntent:
 
 
 _FACE_BUSY_HOLD_MS: float = 1500.0
+# Greet a face that appears only if it is about this close (range from face width).
+_GREET_MAX_RANGE_MM: float = 2000.0
 
 
 class SpeechPolicy:
@@ -37,6 +39,9 @@ class SpeechPolicy:
             # lost thresholds, re-emitting ball_acquired every few seconds.
             # One minute matches "per play session" cadence a kid expects.
             "vision.ball_acquired": 60000.0,
+            # Someone stepped into view. Ten minutes so people moving around the room, or
+            # sitting with Buddy, aren't greeted over and over.
+            "vision.face_appeared": 600000.0,
             "mode.changed:WANDER": 7000.0,
             "fault.raised": 6000.0,
             "face.touch.boop": 4000.0,
@@ -56,6 +61,11 @@ class SpeechPolicy:
                 "Ooh, I see a ball!",
                 "Ball spotted!",
                 "I found a ball!",
+            ],
+            "vision.face_appeared": [
+                "Oh, hi!",
+                "Hi there!",
+                "Hello!",
             ],
             "mode.changed:WANDER": [
                 "Wander mode on. Let's explore!",
@@ -166,6 +176,12 @@ class SpeechPolicy:
     def _event_key(self, evt: PlannerEvent) -> str | None:
         if evt.type == "vision.ball_acquired":
             return "vision.ball_acquired"
+        if evt.type == "vision.face_appeared":
+            # Only someone close enough to be visiting Buddy, not across the room.
+            rng = evt.payload.get("range_mm")
+            if isinstance(rng, (int, float)) and rng > _GREET_MAX_RANGE_MM:
+                return None
+            return "vision.face_appeared"
         if evt.type == "fault.raised":
             # PlannerEventBus emits the bitmask as "flags". Reading "fault_flags" made every fault
             # look non-severe, so none was ever spoken (found 2026-11-10).
