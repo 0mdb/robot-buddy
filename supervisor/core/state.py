@@ -141,6 +141,7 @@ class RobotState:
     face_seq_mood_id: int = 0  # Current sequencer mood
     face_seq_intensity: float = 0.0  # Current sequencer intensity
     face_choreo_active: bool = False  # Transition choreographer running
+    face_gaze_target: dict | None = None  # face the eyes are following (face_gaze.py)
     face_cmd_seq_last_applied: int = 0
     face_t_state_applied_us: int = 0
     face_perf_window_frames: int = 0
@@ -230,6 +231,7 @@ class RobotState:
             "face_seq_mood_id": self.face_seq_mood_id,
             "face_seq_intensity": round(self.face_seq_intensity, 3),
             "face_choreo_active": self.face_choreo_active,
+            "face_gaze_target": self.face_gaze_target,
             "face_cmd_seq_last_applied": self.face_cmd_seq_last_applied,
             "face_t_state_applied_us": self.face_t_state_applied_us,
             "face_perf": {
@@ -299,6 +301,10 @@ class WorldState:
     ball_bearing_deg: float = 0.0
     vision_fps: float = 0.0
     vision_rx_mono_ms: float = 0.0
+    # Faces from the vision worker (supervisor/inputs/face_detect.py), largest first:
+    # dicts with cx, cy, w, h (normalised), score, bearing_deg, elevation_deg.
+    faces: list = field(default_factory=list)
+    faces_frame_seq: int = 0
     # Who is near (core/nearby.py): POST /api/audience -- the sim's oracle now, detection later.
     audience: list = field(default_factory=list)
     audience_rx_mono_ms: float = 0.0
@@ -401,6 +407,12 @@ class WorldState:
             "ball_conf": round(self.ball_confidence, 2),
             "ball_bearing": round(self.ball_bearing_deg, 1),
             "vision_fps": round(self.vision_fps, 1),
+            "face_count": len(self.faces),
+            "face_bearing": (
+                round(float(self.faces[0].get("bearing_deg", 0.0)), 1)
+                if self.faces
+                else None
+            ),
             "vision_age_ms": round(self.vision_age_ms, 1),
             "speaking": self.speaking,
             "current_energy": self.current_energy,

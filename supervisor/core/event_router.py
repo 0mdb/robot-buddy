@@ -86,6 +86,9 @@ class EventRouter:
             self._world.vision_fps = float(p.get("fps", 0.0))
             self._world.vision_rx_mono_ms = now_ms
             self._world.vision_frame_seq = int(p.get("frame_seq", 0))
+            faces = p.get("faces")
+            self._world.faces = faces if isinstance(faces, list) else []
+            self._world.faces_frame_seq = int(p.get("faces_frame_seq", 0))
 
         elif t == VISION_FRAME_JPEG:
             self._world.latest_jpeg_b64 = str(p.get("data_b64", ""))

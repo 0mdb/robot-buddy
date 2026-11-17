@@ -62,6 +62,15 @@ class VisionWorker(BaseWorker):
         self._ball_hsv_low = (160, 170, 40)
         self._ball_hsv_high = (8, 255, 255)
         self._min_ball_radius = 8
+        # Face detection (YuNet on the 320x240 processing frame; supervisor/inputs/face_detect)
+        self._face_enabled = True
+        self._face_min_score = 0.6
+        self._face_hz = 15.0
+        self._faces: list[dict[str, float]] = []
+        self._faces_frame_seq = 0
+        self._last_face_t = 0.0
+        self._face_ms = 0.0
+        self._face_detector: Any | None = None
         self._capture_size = (640, 480)
         self._process_size = (320, 240)
 
@@ -168,6 +177,16 @@ class VisionWorker(BaseWorker):
                 self._ball_hsv_high = tuple(p["ball_hsv_high"])
             if "min_ball_radius" in p:
                 self._min_ball_radius = int(p["min_ball_radius"])
+            if "face_enabled" in p:
+                self._face_enabled = bool(int(p["face_enabled"]))
+                if not self._face_enabled:
+                    self._faces = []
+            if "face_min_score" in p:
+                self._face_min_score = float(p["face_min_score"])
+                if self._face_detector is not None:
+                    self._face_detector.set_score_threshold(self._face_min_score)
+            if "face_hz" in p:
+                self._face_hz = max(1.0, float(p["face_hz"]))
 
             # Camera / ISP
             controls_changed = False
@@ -231,6 +250,15 @@ class VisionWorker(BaseWorker):
             "camera_ok": self._camera_ok,
             "last_error": self._last_error,
             "frames_published": self._frames_published,
+            "face": {
+                "enabled": self._face_enabled,
+                "available": bool(
+                    self._face_detector is not None and self._face_detector.available
+                ),
+                "error": self._face_detector.error if self._face_detector else "",
+                "ms": round(self._face_ms, 1),
+                "count": len(self._faces),
+            },
             # What the camera reports it is doing (focus/exposure diagnosis: soft frames
             # whose sharpness did not change with LensPosition, 2026-11-16).
             "camera": dict(self._cam_meta),
@@ -527,6 +555,25 @@ class VisionWorker(BaseWorker):
                     hfov_deg=self._hfov_deg,
                 )
 
+                # Faces at <= face_hz (YuNet ~8 ms at 320x240 on the Pi 5); the last result
+                # rides along in every snapshot until the next detection replaces it.
+                now = time.monotonic()
+                if (
+                    self._face_enabled
+                    and now - self._last_face_t >= 1.0 / self._face_hz
+                ):
+                    self._last_face_t = now
+                    if self._face_detector is None:
+                        from supervisor.inputs.face_detect import FaceDetector
+
+                        self._face_detector = FaceDetector(
+                            score_threshold=self._face_min_score
+                        )
+                    t0 = time.perf_counter()
+                    self._faces = self._face_detector.detect(small, self._hfov_deg)[:3]
+                    self._face_ms = (time.perf_counter() - t0) * 1000.0
+                    self._faces_frame_seq = self._frame_seq + 1
+
                 # FPS tracking
                 self._frame_seq += 1
                 self._frame_count += 1
@@ -555,6 +602,8 @@ class VisionWorker(BaseWorker):
                             if ball_result
                             else 0.0,
                             "fps": round(self._fps, 1),
+                            "faces": self._faces,
+                            "faces_frame_seq": self._faces_frame_seq,
                         },
                     )
 

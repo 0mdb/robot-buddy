@@ -770,6 +770,108 @@ def create_default_registry() -> ParamRegistry:
     )
     reg.register(
         ParamDef(
+            name="vision.face_enabled",
+            type="bool",
+            default=True,
+            owner="vision",
+            safety="safe",
+            doc="Detect faces (YuNet) for gaze and presence",
+        )
+    )
+    reg.register(
+        ParamDef(
+            name="vision.face_min_score",
+            type="float",
+            min=0.3,
+            max=0.95,
+            step=0.05,
+            default=0.6,
+            owner="vision",
+            safety="safe",
+            doc="Minimum YuNet confidence for a face",
+        )
+    )
+    reg.register(
+        ParamDef(
+            name="vision.face_hz",
+            type="float",
+            min=1.0,
+            max=30.0,
+            step=1.0,
+            default=15.0,
+            owner="vision",
+            safety="safe",
+            doc="Face detection rate (Hz); ~8 ms per run on the Pi 5",
+        )
+    )
+    reg.register(
+        ParamDef(
+            name="gaze.face_track",
+            type="bool",
+            default=True,
+            owner="supervisor",
+            safety="safe",
+            doc="Eyes follow the nearest detected face (not while thinking, or while a "
+            "finger is on the screen)",
+        )
+    )
+    reg.register(
+        ParamDef(
+            name="gaze.face_gain_x",
+            type="float",
+            min=-3.0,
+            max=3.0,
+            step=0.1,
+            default=-1.0,
+            owner="supervisor",
+            safety="safe",
+            doc="Gaze x per unit of face offset from image centre (edge of frame = 1). "
+            "Negative because the screen faces the person: a face on the camera's right "
+            "is on the screen's left. Flip the sign if the eyes look away",
+        )
+    )
+    reg.register(
+        ParamDef(
+            name="gaze.face_gain_y",
+            type="float",
+            min=-3.0,
+            max=3.0,
+            step=0.1,
+            default=0.6,
+            owner="supervisor",
+            safety="safe",
+            doc="Gaze y per unit of face offset from image centre (positive = a face low "
+            "in the frame moves the eyes down)",
+        )
+    )
+    reg.register(
+        ParamDef(
+            name="gaze.face_smooth",
+            type="float",
+            min=0.05,
+            max=1.0,
+            step=0.05,
+            default=0.35,
+            owner="supervisor",
+            safety="safe",
+            doc="Gaze smoothing per vision update (1 = no smoothing)",
+        )
+    )
+    reg.register(
+        ParamDef(
+            name="gaze.face_hold_ms",
+            type="float",
+            min=0.0,
+            max=10000.0,
+            step=100.0,
+            default=1500.0,
+            owner="supervisor",
+            safety="safe",
+            doc="Keep looking where a face was for this long after losing it",
+        )
+    )
+    reg.register(
+        ParamDef(
             name="vision.af_mode",
             type="int",
             min=0,

@@ -79,6 +79,10 @@ def _build_vision_worker_config(registry: object) -> dict[str, object]:
         "saturation": _get_float(registry, "vision.saturation", 1.0),
         "sharpness": _get_float(registry, "vision.sharpness", 1.0),
         "jpeg_quality": _get_int(registry, "vision.jpeg_quality", 80),
+        # Face detection (YuNet)
+        "face_enabled": int(bool(registry.get_value("vision.face_enabled", True))),  # type: ignore[attr-defined]
+        "face_min_score": _get_float(registry, "vision.face_min_score", 0.6),
+        "face_hz": _get_float(registry, "vision.face_hz", 15.0),
     }
 
 
@@ -534,6 +538,9 @@ async def async_main(args: argparse.Namespace) -> None:
             "vision.saturation",
             "vision.sharpness",
             "vision.jpeg_quality",
+            "vision.face_enabled",
+            "vision.face_min_score",
+            "vision.face_hz",
         }
         _VISION_POLICY_PARAMS = {
             "vision.stale_ms",
