@@ -32,7 +32,7 @@ def _spoken(loop: TickLoop) -> list[str]:
 async def test_wander_remark_only_when_not_quiet(quiet):
     loop = _loop(quiet)
     await loop._emit_worker_actions(
-        1000.0, [PlannerEvent("mode.changed", {"to": "WANDER"}, 1000.0)]
+        1000.0, [PlannerEvent("mode.changed", {"to": "WANDER"}, 1000.0, seq=1)]
     )
     assert bool(_spoken(loop)) is (not quiet)
     if quiet:
@@ -42,7 +42,7 @@ async def test_wander_remark_only_when_not_quiet(quiet):
 @pytest.mark.asyncio
 async def test_battery_critical_speaks_in_quiet_mode():
     loop = _loop(True)
-    evt = PlannerEvent("power.low_soc_raised", {"severity": "critical"}, 1000.0)
+    evt = PlannerEvent("power.low_soc_raised", {"severity": "critical"}, 1000.0, seq=1)
     await loop._emit_worker_actions(1000.0, [evt])
     assert _spoken(loop)
 
@@ -73,3 +73,18 @@ async def test_planner_say_only_when_not_quiet(quiet):
     )
     await loop._emit_worker_actions(1000.0, [])
     assert bool(_spoken(loop)) is (not quiet)
+
+
+@pytest.mark.asyncio
+async def test_old_event_is_not_announced_again_after_cooldown():
+    # `recent` keeps returning the same ball_acquired event; it must be said once, not
+    # again every time the 60 s cooldown expires (2026-11-17 "I see a ball" every minute).
+    loop = _loop(False)
+    evt = PlannerEvent("vision.ball_acquired", {"confidence": 0.9}, 1000.0, seq=7)
+    await loop._emit_worker_actions(1000.0, [evt])
+    assert len(_spoken(loop)) == 1
+    await loop._emit_worker_actions(1000.0 + 61_000.0, [evt])
+    assert len(_spoken(loop)) == 1
+    newer = PlannerEvent("vision.ball_acquired", {"confidence": 0.9}, 70_000.0, seq=8)
+    await loop._emit_worker_actions(1000.0 + 122_000.0, [evt, newer])
+    assert len(_spoken(loop)) == 2

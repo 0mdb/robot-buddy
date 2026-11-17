@@ -24,6 +24,7 @@ from supervisor.core.action_scheduler import ActionScheduler, PlanValidator
 from supervisor.core.behavior_engine import BehaviorEngine
 from supervisor.core.event_bus import PlannerEvent, PlannerEventBus
 from supervisor.core.event_router import EventRouter
+from supervisor.core.face_gaze import FaceGazeConfig
 from supervisor.core.safety import apply_safety
 from supervisor.core.skill_executor import SkillExecutor
 from supervisor.core.speech_policy import SpeechPolicy
@@ -228,6 +229,16 @@ class TickLoop:
         from supervisor.core.conv_choreographer import ConvTransitionChoreographer
 
         self._conv_choreo = ConvTransitionChoreographer()
+
+        # Highest planner-event seq the speech policy has been offered
+        self._speech_event_seq = 0
+
+        # Camera-driven gaze (eyes follow the nearest face)
+        from supervisor.core.face_gaze import FaceGazeTracker
+
+        self._face_gaze = FaceGazeTracker()
+        # True while idle wander is switched off on the MCU because a face is being followed
+        self._wander_paused_for_face = False
 
         # Emotion queuing (buffered during LISTENING/THINKING, applied on SPEAKING)
         self._queued_emotion: str = ""
@@ -553,6 +564,7 @@ class TickLoop:
             self._face_flags_sent = False  # resend on the next connect
         elif not self._face_flags_sent:
             self._face_flags_sent = True
+            self._wander_paused_for_face = False  # the flags below re-enable wander
             # (Re)connect: send the current conversation state's flags. Not FACE_FLAGS_ALL:
             # that includes AFTERGLOW, which forces a full-screen redraw every frame
             # (~27 FPS) until the next conversation transition overwrote it.
@@ -1095,6 +1107,7 @@ class TickLoop:
             flags = self._conv.get_flags()
             if flags != -1:
                 self._face.send_flags(flags)
+                self._wander_paused_for_face = False
             self._face.send_conv_state(int(self._conv.state))
             self._conv_choreo.on_transition(self._conv.prev_state, self._conv.state)
         elif self.robot.tick_mono_ms - self._conv_keyframe_ms >= _CONV_KEYFRAME_MS:
@@ -1121,12 +1134,50 @@ class TickLoop:
                     float(action.params["intensity"]),
                 )
 
-        # Gaze: choreographer ramp > conv_state override > default
+        from supervisor.devices.protocol import FaceConvState
+
+        # Gaze: choreographer ramp > face tracking > conv_state override > default.
+        # Following a face replaces the conversation's "look straight ahead" with "look at
+        # the person"; thinking aversion and the error flinch still win.
+        face_gaze = self._face_gaze.update(
+            self.world.faces,
+            self.world.faces_frame_seq,
+            self.world.vision_age_ms,
+            self.robot.tick_mono_ms,
+            self._face_gaze_config(),
+        )
         choreo_gaze = self._conv_choreo.get_gaze_override()
         if choreo_gaze is not None:
             gaze: tuple[float, float] | None = choreo_gaze
+            face_gaze = None
+        elif face_gaze is not None and self._conv.state not in (
+            FaceConvState.THINKING,
+            FaceConvState.ERROR,
+        ):
+            gaze = face_gaze
         else:
+            face_gaze = None
             gaze = self._conv.get_gaze_for_send()
+        self.robot.face_gaze_target = (
+            dict(self._face_gaze.target)
+            if face_gaze is not None and self._face_gaze.target
+            else None
+        )
+
+        # Idle wander would pull the eyes off the face between updates: pause it while
+        # following someone outside a conversation (conversation states already pause it).
+        if self._conv.state in (FaceConvState.IDLE, FaceConvState.DONE):
+            want_pause = face_gaze is not None
+            if want_pause != self._wander_paused_for_face:
+                from supervisor.core.conv_state import DEFAULT_FACE_FLAGS
+                from supervisor.devices.protocol import FACE_FLAG_IDLE_WANDER
+
+                self._face.send_flags(
+                    DEFAULT_FACE_FLAGS & ~FACE_FLAG_IDLE_WANDER
+                    if want_pause
+                    else DEFAULT_FACE_FLAGS
+                )
+                self._wander_paused_for_face = want_pause
 
         # Backchannel: NOD during LISTENING (skip if choreographer active)
         if self._conv.consume_nod() and not self._conv_choreo.active:
@@ -1271,11 +1322,18 @@ class TickLoop:
                 self._apply_gesture(action)
 
         # Speech policy (deterministic, idle-priority speech)
+        # Only events it has not seen: `recent` is the last 10 events whatever their age,
+        # so one ball_acquired was re-read every tick and announced again each time its
+        # 60 s cooldown ran out ("I see a ball!" every minute with no ball, 2026-11-17).
+        # The cursor also advances during a conversation, so nothing is announced late.
+        fresh_events = [e for e in recent if e.seq > self._speech_event_seq]
+        if recent:
+            self._speech_event_seq = max(self._speech_event_seq, recent[-1].seq)
         # Conversation owns priority-1 speech; suppress idle chatter during sessions.
         if not conversation_active:
             intents, drops = self._speech_policy.generate(
                 state=self.robot,
-                events=recent,
+                events=fresh_events,
                 now_mono_ms=now_ms,
             )
             for intent in intents:
@@ -1674,6 +1732,18 @@ class TickLoop:
         self._end_conversation()
 
     # ── Late resume ──────────────────────────────────────────────
+
+    def _face_gaze_config(self) -> FaceGazeConfig:
+        reg = self._param_registry
+        if reg is None:
+            return FaceGazeConfig()
+        return FaceGazeConfig(
+            enabled=bool(reg.get_value("gaze.face_track", True)),
+            gain_x=float(reg.get_value("gaze.face_gain_x", -1.0)),
+            gain_y=float(reg.get_value("gaze.face_gain_y", 0.6)),
+            smooth=float(reg.get_value("gaze.face_smooth", 0.35)),
+            hold_ms=float(reg.get_value("gaze.face_hold_ms", 1500.0)),
+        )
 
     def _quiet_mode(self) -> bool:
         if self._param_registry is None:
