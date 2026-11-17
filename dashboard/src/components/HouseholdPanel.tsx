@@ -2,8 +2,11 @@ import { useState } from 'react'
 import {
   type MemberKind,
   useAddMember,
+  useEnrollFace,
   useForgetEveryone,
+  useForgetFace,
   useHousehold,
+  useHouseholdFaces,
   useRemoveMember,
   useSetHouseholdEnabled,
 } from '../hooks/useHousehold'
@@ -19,6 +22,23 @@ export function HouseholdPanel() {
   const add = useAddMember()
   const remove = useRemoveMember()
   const forget = useForgetEveryone()
+  const faces = useHouseholdFaces()
+  const enroll = useEnrollFace()
+  const forgetFace = useForgetFace()
+  // Whose face is being captured (the request runs up to ~25 s), and the last outcome.
+  const [capturing, setCapturing] = useState<string | null>(null)
+  const [faceNote, setFaceNote] = useState<{ id: string; ok: boolean; text: string } | null>(null)
+
+  const captureFace = (id: string) => {
+    setCapturing(id)
+    setFaceNote(null)
+    enroll.mutate(id, {
+      onSuccess: (r) =>
+        setFaceNote({ id, ok: true, text: `Face saved (${r.samples ?? 0} samples)` }),
+      onError: (e) => setFaceNote({ id, ok: false, text: (e as Error).message }),
+      onSettled: () => setCapturing(null),
+    })
+  }
   const [confirmForget, setConfirmForget] = useState(false)
   const [name, setName] = useState('')
   const [kind, setKind] = useState<MemberKind>('kid')
@@ -110,7 +130,9 @@ export function HouseholdPanel() {
       <p style={{ color: 'var(--text-dim)', fontSize: 12, margin: '0 0 8px' }}>
         Stored on this robot. With the roster on, Buddy knows who lives here and speaks to anyone it
         does not recognise as it would to the oldest child listed. Names go to Buddy&apos;s own
-        conversation server on your network, never to outside services.
+        conversation server on your network, never to outside services. Faces let Buddy recognise
+        people (and use adult speed limits near adults); face prints stay on the robot and are
+        deleted with the person.
       </p>
 
       {failure && (
@@ -129,7 +151,20 @@ export function HouseholdPanel() {
                   {mem.species ?? KIND_LABEL[mem.kind]}
                   {mem.age !== undefined ? `, ${mem.age}` : ''}
                 </td>
-                <td style={{ textAlign: 'right' }}>
+                <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                  {mem.kind !== 'animal' && (
+                    <FaceControls
+                      name={mem.name}
+                      samples={faces.data?.samples?.[mem.id] ?? 0}
+                      busy={capturing !== null}
+                      capturingThis={capturing === mem.id}
+                      onCapture={() => captureFace(mem.id)}
+                      onForget={() => {
+                        setFaceNote(null)
+                        forgetFace.mutate(mem.id)
+                      }}
+                    />
+                  )}{' '}
                   <button
                     type="button"
                     className={`${styles.badge} ${styles.badgeDim}`}
@@ -144,6 +179,33 @@ export function HouseholdPanel() {
             ))}
           </tbody>
         </table>
+      )}
+
+      {capturing !== null && (
+        <div style={{ marginBottom: 8 }}>
+          <p style={{ fontSize: 12, margin: '0 0 4px' }}>
+            Capturing {data?.members.find((x) => x.id === capturing)?.name ?? ''}&apos;s face: stand
+            alone in front of Buddy, facing the camera, within about 2 m. Takes a few seconds.
+          </p>
+          <img
+            src="/video"
+            alt="Camera view"
+            style={{ width: '100%', maxWidth: 320, borderRadius: 4, display: 'block' }}
+          />
+        </div>
+      )}
+
+      {faceNote && (
+        <output
+          style={{
+            display: 'block',
+            fontSize: 12,
+            marginBottom: 8,
+            color: faceNote.ok ? 'var(--green, #4caf50)' : 'var(--red, #f44336)',
+          }}
+        >
+          {data?.members.find((x) => x.id === faceNote.id)?.name}: {faceNote.text}
+        </output>
       )}
 
       <form onSubmit={submit} style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -192,5 +254,52 @@ export function HouseholdPanel() {
         </button>
       </form>
     </div>
+  )
+}
+
+/** Face status and actions for one person: "Add face" / "Add more" (samples accumulate, up to 20), "Forget face". */
+function FaceControls(props: {
+  name: string
+  samples: number
+  busy: boolean
+  capturingThis: boolean
+  onCapture: () => void
+  onForget: () => void
+}) {
+  const { name, samples, busy, capturingThis, onCapture, onForget } = props
+  return (
+    <>
+      <span
+        className={`${styles.badge} ${samples > 0 ? styles.badgeGreen : styles.badgeDim}`}
+        title={samples > 0 ? `${samples} face samples stored` : 'No face stored'}
+      >
+        {samples > 0 ? 'Face ✓' : 'No face'}
+      </span>{' '}
+      <button
+        type="button"
+        className={`${styles.badge} ${styles.badgeDim}`}
+        style={{ cursor: busy ? 'default' : 'pointer', border: 'none' }}
+        aria-label={`${samples > 0 ? 'Add more face samples' : 'Add face'} for ${name}`}
+        disabled={busy}
+        onClick={onCapture}
+      >
+        {capturingThis ? 'Capturing…' : samples > 0 ? 'Add more' : 'Add face'}
+      </button>
+      {samples > 0 && (
+        <>
+          {' '}
+          <button
+            type="button"
+            className={`${styles.badge} ${styles.badgeDim}`}
+            style={{ cursor: busy ? 'default' : 'pointer', border: 'none' }}
+            aria-label={`Forget face for ${name}`}
+            disabled={busy}
+            onClick={onForget}
+          >
+            Forget face
+          </button>
+        </>
+      )}
+    </>
   )
 }

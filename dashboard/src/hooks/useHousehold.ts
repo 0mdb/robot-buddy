@@ -42,7 +42,11 @@ function useRosterMutation<T>(fn: (arg: T) => Promise<Household>) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: fn,
-    onSuccess: (data) => qc.setQueryData(KEY, data),
+    onSuccess: (data) => {
+      qc.setQueryData(KEY, data)
+      // Removing a member (or everyone) also removes their face prints.
+      qc.invalidateQueries({ queryKey: ['household', 'faces'] })
+    },
   })
 }
 
@@ -66,4 +70,62 @@ export function useRemoveMember() {
 
 export function useForgetEveryone() {
   return useRosterMutation((_: undefined) => call('/api/household', { method: 'DELETE' }))
+}
+
+// -- Face prints (supervisor/inputs/face_id.py) --------------------------------------
+// Stored on the robot by member id; removed with the member or "Forget everyone".
+
+const FACES_KEY = ['household', 'faces']
+
+export interface FaceSamples {
+  samples: Record<string, number> // member id -> stored samples
+}
+
+export interface EnrollResult {
+  ok: boolean
+  samples?: number
+  error?: string
+  reason?: string
+}
+
+export function useHouseholdFaces() {
+  return useQuery<FaceSamples>({
+    queryKey: FACES_KEY,
+    queryFn: async () => {
+      const res = await fetch('/api/household/faces')
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(body.reason ?? `${res.status}`)
+      return { samples: body?.samples ?? {} }
+    },
+  })
+}
+
+/** Capture a member's face: the robot collects samples while they stand alone in front of
+ * the camera. Resolves with the result (the server waits up to ~25 s). */
+export function useEnrollFace() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (id: string): Promise<EnrollResult> => {
+      const res = await fetch(`/api/household/members/${encodeURIComponent(id)}/face`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ samples: 8 }),
+      })
+      const body = (await res.json().catch(() => ({}))) as EnrollResult
+      if (!res.ok || !body.ok) throw new Error(body.error || body.reason || `${res.status}`)
+      return body
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: FACES_KEY }),
+  })
+}
+
+export function useForgetFace() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (id: string) => {
+      await fetch(`/api/household/members/${encodeURIComponent(id)}/face`, { method: 'DELETE' })
+    },
+    // The vision worker applies the forget on its next pass; refetch shortly after.
+    onSettled: () => setTimeout(() => qc.invalidateQueries({ queryKey: FACES_KEY }), 500),
+  })
 }

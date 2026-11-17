@@ -7,6 +7,8 @@ import { HouseholdPanel } from './HouseholdPanel'
 // A fake /api/household with the server's rules that matter here. Synthetic names only.
 let state: Household
 let calls: string[]
+let faces: Record<string, number>
+let enrollReply: { ok: boolean; samples?: number; error?: string }
 
 function reply(body: unknown, status = 200) {
   return Promise.resolve(new Response(JSON.stringify(body), { status }))
@@ -15,10 +17,23 @@ function reply(body: unknown, status = 200) {
 beforeEach(() => {
   state = { enabled: false, members: [] }
   calls = []
+  faces = {}
+  enrollReply = { ok: true, samples: 8 }
   vi.stubGlobal('fetch', (url: string, init?: RequestInit) => {
     const method = init?.method ?? 'GET'
     calls.push(`${method} ${url}`)
     const body = init?.body ? JSON.parse(String(init.body)) : {}
+    if (url === '/api/household/faces') return reply({ samples: faces })
+    const face = url.match(/^\/api\/household\/members\/([^/]+)\/face$/)
+    if (face) {
+      if (method === 'DELETE') {
+        delete faces[face[1]]
+        return reply({ ok: true })
+      }
+      if (!enrollReply.ok) return reply(enrollReply, 422)
+      faces[face[1]] = (faces[face[1]] ?? 0) + (enrollReply.samples ?? 0)
+      return reply(enrollReply)
+    }
     if (method === 'GET') return reply(state)
     if (url === '/api/household/enabled') state = { ...state, enabled: body.enabled }
     else if (method === 'POST') {
@@ -105,4 +120,32 @@ test('a pet has a type instead of an age', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Add' }))
   expect(await screen.findByText('Test Cat')).toBeTruthy()
   expect(screen.getByText('cat')).toBeTruthy()
+})
+
+test('capture a face, see it stored, forget it', async () => {
+  state = { enabled: true, members: [{ id: 'k1', name: 'Test Kid', kind: 'kid', age: 6 }] }
+  renderPanel()
+  fireEvent.click(await screen.findByRole('button', { name: 'Add face for Test Kid' }))
+  expect(await screen.findByText(/Face saved \(8 samples\)/)).toBeTruthy()
+  expect(calls).toContain('POST /api/household/members/k1/face')
+  expect(await screen.findByText('Face ✓')).toBeTruthy()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Forget face for Test Kid' }))
+  await waitFor(() => expect(calls).toContain('DELETE /api/household/members/k1/face'))
+  expect(await screen.findByText('No face', {}, { timeout: 2000 })).toBeTruthy()
+})
+
+test('a failed capture shows the reason; pets have no face button', async () => {
+  state = {
+    enabled: true,
+    members: [
+      { id: 'k1', name: 'Test Kid', kind: 'kid', age: 6 },
+      { id: 'p1', name: 'Test Pet', kind: 'animal', species: 'cat' },
+    ],
+  }
+  enrollReply = { ok: false, samples: 0, error: 'no single clear face in view' }
+  renderPanel()
+  fireEvent.click(await screen.findByRole('button', { name: 'Add face for Test Kid' }))
+  expect(await screen.findByText(/no single clear face in view/)).toBeTruthy()
+  expect(screen.queryByRole('button', { name: /face for Test Pet/ })).toBeNull()
 })
