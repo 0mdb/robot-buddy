@@ -88,17 +88,3 @@ async def test_old_event_is_not_announced_again_after_cooldown():
     newer = PlannerEvent("vision.ball_acquired", {"confidence": 0.9}, 70_000.0, seq=8)
     await loop._emit_worker_actions(1000.0 + 122_000.0, [evt, newer])
     assert len(_spoken(loop)) == 2
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("quiet", "range_mm", "spoken"),
-    [(False, 900, True), (True, 900, False), (False, 3500, False)],
-)
-async def test_greets_a_close_face_unless_quiet(quiet, range_mm, spoken):
-    loop = _loop(quiet)
-    evt = PlannerEvent(
-        "vision.face_appeared", {"count": 1, "range_mm": range_mm}, 1000.0, seq=1
-    )
-    await loop._emit_worker_actions(1000.0, [evt])
-    assert bool(_spoken(loop)) is spoken

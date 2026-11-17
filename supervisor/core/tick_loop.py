@@ -230,8 +230,13 @@ class TickLoop:
 
         self._conv_choreo = ConvTransitionChoreographer()
 
-        # Roster kinds for recognised faces (_refresh_household_kinds)
+        # Roster kinds for recognised faces (_refresh_household_kinds); names only for
+        # the greeter, never put in world state or telemetry.
         self._roster_file: Any = None
+        self._household_names: dict[str, str] = {}
+        from supervisor.core.greeter import Greeter
+
+        self._greeter = Greeter()
         self._kinds_refresh_ms = -1e9
 
         # Highest planner-event seq the speech policy has been offered
@@ -1347,6 +1352,22 @@ class TickLoop:
                     continue
                 await self._enqueue_say(intent.text, source="speech_policy", priority=3)
 
+        # Greeting people who come up to Buddy (by name when recognised; core/greeter.py)
+        greeting = None
+        for e in fresh_events:
+            line = self._greeter.on_event(
+                e.type, e.payload, now_ms, self._household_names
+            )
+            greeting = line or greeting
+        greeting = self._greeter.poll(now_ms) or greeting
+        if conversation_active or self.robot.face_listening or self.robot.face_talking:
+            self._greeter.cancel()  # already engaged: no hello
+        elif greeting:
+            if quiet:
+                self._drop_quiet()
+            else:
+                await self._enqueue_say(greeting, source="greeter", priority=3)
+
         # Periodic plan requests
         _plan_period_s = (
             self._param_registry.get_value("planner.plan_period_s", 5.0)
@@ -1755,9 +1776,13 @@ class TickLoop:
             self.world.household_kinds = (
                 {m.id: m.kind for m in r.members} if r.enabled else {}
             )
+            self._household_names = (
+                {m.id: m.name for m in r.members} if r.enabled else {}
+            )
         except Exception as e:  # noqa: BLE001 -- a bad roster file must not stop the loop
             log.debug("roster read failed: %s", e)
             self.world.household_kinds = {}
+            self._household_names = {}
 
     def _face_gaze_config(self) -> FaceGazeConfig:
         reg = self._param_registry
