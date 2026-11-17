@@ -460,3 +460,75 @@ class TestVoiceDirection:
         w._handle_voice_direction(quiet)
         w._handle_voice_direction(quiet)
         assert [p["speech"] for _, p in sent] == [True, False]
+
+
+# ── Wake word speech gate (coughs, sneezes, barks) ───────────────
+
+
+class _FakeOww:
+    def __init__(self, score: float):
+        self.score = score
+        self.resets = 0
+
+    def predict(self, _samples):
+        return {"alexa": self.score}
+
+    def reset(self):
+        self.resets += 1
+
+
+class TestWakeSpeechGate:
+    def _worker(self, speech_prob: float | None, gate: float = 0.5):
+        w = EarWorker()
+        w._oww_model = _FakeOww(0.85)
+        w._wake_speech_gate = gate
+        w._recent_speech_prob = lambda: speech_prob  # type: ignore[method-assign]
+        sent: list[tuple[str, dict]] = []
+        w.send = lambda t, p=None: sent.append((t, p or {}))  # type: ignore[method-assign]
+        return w, sent
+
+    @staticmethod
+    def _wakes(sent):
+        from supervisor.messages.types import EAR_EVENT_WAKE_WORD
+
+        return [p for t, p in sent if t == EAR_EVENT_WAKE_WORD]
+
+    @pytest.mark.asyncio
+    async def test_bark_without_speech_is_rejected(self):
+        w, sent = self._worker(speech_prob=0.09)
+        await w._check_wake_word(b"\x00\x00" * (_OWW_FRAME_BYTES // 2))
+        assert self._wakes(sent) == []
+        assert w._wake_rejected == 1
+        assert w.health_payload()["wake_rejected_no_speech"] == 1
+        assert w._oww_model.resets == 1
+
+    @pytest.mark.asyncio
+    async def test_spoken_wake_word_passes(self):
+        w, sent = self._worker(speech_prob=0.93)
+        await w._check_wake_word(b"\x00\x00" * (_OWW_FRAME_BYTES // 2))
+        assert len(self._wakes(sent)) == 1
+        assert w._wake_rejected == 0
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("prob,gate", [(None, 0.5), (0.05, 0.0)])
+    async def test_no_vad_or_gate_off_accepts(self, prob, gate):
+        w, sent = self._worker(speech_prob=prob, gate=gate)
+        await w._check_wake_word(b"\x00\x00" * (_OWW_FRAME_BYTES // 2))
+        assert len(self._wakes(sent)) == 1
+
+    def test_tuning_param(self):
+        w = EarWorker()
+        w._apply_tuning({"wake_speech_gate": 0.7})
+        assert w._wake_speech_gate == 0.7
+        w._apply_tuning({"wake_speech_gate": 5})
+        assert w._wake_speech_gate == 0.95
+
+    def test_recent_speech_prob_scans_last_second(self):
+        w = EarWorker()
+        w._vad_session = _FakeStateVadSession()
+        w._vad_schema = "state"
+        w._vad_state_shape = (2, 1, 128)
+        w._recent_audio = bytearray(b"\x01\x00" * (SAMPLE_RATE))  # 1 s
+        probs = iter([0.1] * 10 + [0.8] + [0.2] * 100)
+        w._silero_prob = lambda _f: next(probs)  # type: ignore[method-assign]
+        assert w._recent_speech_prob() == 0.8

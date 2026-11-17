@@ -79,6 +79,8 @@ _VAD_START_HOLDOFF_S = 0.35
 
 # Wake word cooldown — suppress re-triggers during active conversation
 _WW_COOLDOWN_S = 3.0
+# Audio kept for the wake word's speech check: "Alexa" is ~0.6 s and OWW fires at its end.
+_WAKE_GATE_BYTES = SAMPLE_RATE * SAMPLE_WIDTH  # 1.0 s
 
 # Mic socket: once this much un-sent audio piles up (~1 s at 16 kHz mono
 # s16, on top of the kernel buffer), the AI worker has stopped reading.
@@ -136,6 +138,10 @@ class EarWorker(BaseWorker):
         self._mic_socket_path: str = ""
         self._wakeword_model_path: str = ""
         self._wakeword_threshold: float = 0.5
+        self._wake_speech_gate: float = 0.5
+        self._recent_audio = bytearray()
+        self._wake_rejected = 0
+        self._wake_last_speech_prob: float | None = None
         # VAD end-of-utterance knobs. Empirically (2026-04-18 session),
         # Silero v5 only spikes above 0.5 briefly for short/quick phrases,
         # so a 0.5 prob gate + 300 ms min_speech blocks EoU from ever
@@ -373,6 +379,7 @@ class EarWorker(BaseWorker):
             )
             self._vad_max_utterance_ms = int(p.get("vad_max_utterance_ms", 15000))
             self._vad_tentative_ms = int(p.get("vad_tentative_ms", 450))
+            self._wake_speech_gate = float(p.get("wake_speech_gate", 0.5))
             log.info(
                 "configured: mic=%s (ch %d of %d), xvf=%s, ww_model=%s, threshold=%.2f",
                 self._mic_device,
@@ -448,6 +455,8 @@ class EarWorker(BaseWorker):
             self._vad_speech_prob_threshold = max(
                 0.01, min(0.99, float(p["vad_speech_prob_threshold"]))
             )
+        if "wake_speech_gate" in p:
+            self._wake_speech_gate = max(0.0, min(0.95, float(p["wake_speech_gate"])))
         log.info(
             "tuning: wake>=%.2f vad prob>%.2f min_speech=%dms silence=%dms",
             self._wakeword_threshold,
@@ -516,6 +525,9 @@ class EarWorker(BaseWorker):
             "vad_loaded": self._vad_session is not None,
             "vad_schema": self._vad_schema,
             "wakeword_threshold": self._wakeword_threshold,
+            "wake_speech_gate": self._wake_speech_gate,
+            "wake_rejected_no_speech": self._wake_rejected,
+            "wake_last_speech_prob": self._wake_last_speech_prob,
             "stream_scores": self._stream_scores,
             "mic_device": self._mic_device,
             "mic_channel": self._mic_channel,
@@ -716,6 +728,10 @@ class EarWorker(BaseWorker):
                 if not data:
                     continue
             self._update_level(data)
+
+            self._recent_audio.extend(data)
+            if len(self._recent_audio) > _WAKE_GATE_BYTES:
+                del self._recent_audio[: len(self._recent_audio) - _WAKE_GATE_BYTES]
 
             # Always: accumulate for wake word detection
             self._ww_buffer.extend(data)
@@ -951,7 +967,31 @@ class EarWorker(BaseWorker):
             for name, score in prediction.items():
                 if score >= self._wakeword_threshold:
                     self._last_ww_mono = now
-                    log.info("wake word detected: %s (score=%.3f)", name, score)
+                    speech = self._recent_speech_prob()
+                    self._wake_last_speech_prob = speech
+                    if (
+                        speech is not None
+                        and self._wake_speech_gate > 0.0
+                        and speech < self._wake_speech_gate
+                    ):
+                        # Coughs, sneezes and barks fire OWW at full-scale level with no
+                        # speech in them (2026-11-17: ten overnight wakes, VAD max 0.09).
+                        self._wake_rejected += 1
+                        log.info(
+                            "wake word rejected: %s (score=%.3f) but no speech (vad %.3f < %.2f)",
+                            name,
+                            score,
+                            speech,
+                            self._wake_speech_gate,
+                        )
+                        self._oww_model.reset()
+                        return
+                    log.info(
+                        "wake word detected: %s (score=%.3f, speech %s)",
+                        name,
+                        score,
+                        "n/a" if speech is None else f"{speech:.2f}",
+                    )
                     self.send(
                         EAR_EVENT_WAKE_WORD,
                         {
@@ -965,6 +1005,81 @@ class EarWorker(BaseWorker):
         except Exception:
             log.exception("wake word inference error")
 
+    def _silero_prob(self, pcm_30ms: bytes) -> float:
+        """One Silero VAD step on a 32 ms frame; advances the recurrent state."""
+        import numpy as np
+
+        samples = np.frombuffer(pcm_30ms, dtype=np.int16).astype(np.float32) / 32768.0
+        samples = samples.reshape(1, -1)
+
+        # Silero v5 at 16 kHz expects 64 samples of context prepended to
+        # each 512-sample frame (total 576 samples). Without this the
+        # model silently returns near-constant ~0.0005 regardless of
+        # input. Roll the last 64 samples of the previous frame as the
+        # next context.
+        if self._vad_context is None:
+            self._vad_context = np.zeros((1, 64), dtype=np.float32)
+        model_input = np.concatenate([self._vad_context, samples], axis=1)
+        self._vad_context = samples[:, -64:].copy()
+
+        ort_inputs: dict[str, Any] = {
+            "input": model_input,
+            "sr": np.array(SAMPLE_RATE, dtype=np.int64),
+        }
+        if self._vad_schema == _VAD_SCHEMA_STATE:
+            if self._vad_state is None:
+                self._reset_vad_state()
+            ort_inputs["state"] = self._vad_state
+        elif self._vad_schema == _VAD_SCHEMA_HC:
+            if self._vad_h is None or self._vad_c is None:
+                self._reset_vad_state()
+            ort_inputs["h"] = self._vad_h
+            ort_inputs["c"] = self._vad_c
+        else:
+            return 0.0
+
+        ort_outputs = self._vad_session.run(None, ort_inputs)
+        speech_prob = float(
+            np.asarray(ort_outputs[self._vad_prob_output_idx]).reshape(-1)[0]
+        )
+
+        if self._vad_schema == _VAD_SCHEMA_STATE:
+            idx = self._vad_state_output_idx
+            if idx is None or idx >= len(ort_outputs):
+                raise ValueError("VAD state output missing for schema=state")
+            self._vad_state = ort_outputs[idx]
+        elif self._vad_schema == _VAD_SCHEMA_HC:
+            h_idx = self._vad_h_output_idx
+            c_idx = self._vad_c_output_idx
+            if (
+                h_idx is None
+                or c_idx is None
+                or h_idx >= len(ort_outputs)
+                or c_idx >= len(ort_outputs)
+            ):
+                raise ValueError("VAD h/c outputs missing for schema=hc")
+            self._vad_h = ort_outputs[h_idx]
+            self._vad_c = ort_outputs[c_idx]
+        return speech_prob
+
+    def _recent_speech_prob(self) -> float | None:
+        """Max Silero speech probability over the last second of audio, or None
+        without VAD. Only called while not listening, so it may borrow the VAD state."""
+        if self._vad_session is None or self._vad_schema == _VAD_SCHEMA_DISABLED:
+            return None
+        audio = bytes(self._recent_audio)
+        try:
+            self._reset_vad_state()
+            best = 0.0
+            for i in range(0, len(audio) - _VAD_FRAME_BYTES + 1, _VAD_FRAME_BYTES):
+                best = max(best, self._silero_prob(audio[i : i + _VAD_FRAME_BYTES]))
+            return best
+        except Exception:
+            log.exception("wake speech check failed; accepting the wake word")
+            return None
+        finally:
+            self._reset_vad_state()
+
     def _check_vad(self, pcm_30ms: bytes) -> None:
         """Run Silero VAD inference on a 30 ms frame. Updates state machine."""
         if self._vad_session is None or self._vad_schema == _VAD_SCHEMA_DISABLED:
@@ -973,59 +1088,7 @@ class EarWorker(BaseWorker):
         try:
             import numpy as np
 
-            samples = (
-                np.frombuffer(pcm_30ms, dtype=np.int16).astype(np.float32) / 32768.0
-            )
-            samples = samples.reshape(1, -1)
-
-            # Silero v5 at 16 kHz expects 64 samples of context prepended to
-            # each 512-sample frame (total 576 samples). Without this the
-            # model silently returns near-constant ~0.0005 regardless of
-            # input. Roll the last 64 samples of the previous frame as the
-            # next context.
-            if self._vad_context is None:
-                self._vad_context = np.zeros((1, 64), dtype=np.float32)
-            model_input = np.concatenate([self._vad_context, samples], axis=1)
-            self._vad_context = samples[:, -64:].copy()
-
-            ort_inputs: dict[str, Any] = {
-                "input": model_input,
-                "sr": np.array(SAMPLE_RATE, dtype=np.int64),
-            }
-            if self._vad_schema == _VAD_SCHEMA_STATE:
-                if self._vad_state is None:
-                    self._reset_vad_state()
-                ort_inputs["state"] = self._vad_state
-            elif self._vad_schema == _VAD_SCHEMA_HC:
-                if self._vad_h is None or self._vad_c is None:
-                    self._reset_vad_state()
-                ort_inputs["h"] = self._vad_h
-                ort_inputs["c"] = self._vad_c
-            else:
-                return
-
-            ort_outputs = self._vad_session.run(None, ort_inputs)
-            speech_prob = float(
-                np.asarray(ort_outputs[self._vad_prob_output_idx]).reshape(-1)[0]
-            )
-
-            if self._vad_schema == _VAD_SCHEMA_STATE:
-                idx = self._vad_state_output_idx
-                if idx is None or idx >= len(ort_outputs):
-                    raise ValueError("VAD state output missing for schema=state")
-                self._vad_state = ort_outputs[idx]
-            elif self._vad_schema == _VAD_SCHEMA_HC:
-                h_idx = self._vad_h_output_idx
-                c_idx = self._vad_c_output_idx
-                if (
-                    h_idx is None
-                    or c_idx is None
-                    or h_idx >= len(ort_outputs)
-                    or c_idx >= len(ort_outputs)
-                ):
-                    raise ValueError("VAD h/c outputs missing for schema=hc")
-                self._vad_h = ort_outputs[h_idx]
-                self._vad_c = ort_outputs[c_idx]
+            speech_prob = self._silero_prob(pcm_30ms)
 
             now = time.monotonic()
             is_speech = speech_prob > self._vad_speech_prob_threshold
@@ -1036,7 +1099,8 @@ class EarWorker(BaseWorker):
             # as speech.
             if speech_prob > self._vad_diag_max_prob:
                 self._vad_diag_max_prob = speech_prob
-            frame_peak = float(np.abs(samples).max()) if samples.size else 0.0
+            samples = np.frombuffer(pcm_30ms, dtype=np.int16)
+            frame_peak = float(np.abs(samples).max()) / 32768.0 if samples.size else 0.0
             if frame_peak > self._vad_diag_max_amp:
                 self._vad_diag_max_amp = frame_peak
             if now >= self._vad_diag_next_log_mono:

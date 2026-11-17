@@ -248,6 +248,17 @@ EAR_TUNING_PARAMS: list[tuple[str, str, float, float, float, float, str]] = [
         0.3,
         "Silero VAD probability counted as speech",
     ),
+    (
+        "ear.wake_speech_gate",
+        "float",
+        0.0,
+        0.95,
+        0.05,
+        0.5,
+        "A wake word only counts if Silero VAD hears speech (at least this probability) "
+        "in the last second; coughs, sneezes and barks score high on the wake model but "
+        "not as speech. 0 = off",
+    ),
 ]
 
 # Param name -> key in the ear worker's config payload.
@@ -258,6 +269,7 @@ EAR_TUNING_KEYS: dict[str, str] = {
     "ear.vad_speech_prob": "vad_speech_prob_threshold",
     "ear.vad_max_utterance_ms": "vad_max_utterance_ms",
     "ear.vad_tentative_ms": "vad_tentative_ms",
+    "ear.wake_speech_gate": "wake_speech_gate",
 }
 
 
