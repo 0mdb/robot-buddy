@@ -83,7 +83,20 @@ def _build_vision_worker_config(registry: object) -> dict[str, object]:
         "face_enabled": int(bool(registry.get_value("vision.face_enabled", True))),  # type: ignore[attr-defined]
         "face_min_score": _get_float(registry, "vision.face_min_score", 0.6),
         "face_hz": _get_float(registry, "vision.face_hz", 15.0),
+        "face_id_enabled": int(
+            bool(registry.get_value("vision.face_id_enabled", True))
+        ),  # type: ignore[attr-defined]
+        "face_id_hz": _get_float(registry, "vision.face_id_hz", 3.0),
+        "face_gallery_path": str(_face_gallery_path()),
     }
+
+
+def _face_gallery_path() -> Path:
+    """Beside the roster the API manages (http_server's default path)."""
+    from supervisor.inputs.face_id import gallery_path
+    from supervisor.personality.roster import default_path
+
+    return gallery_path(default_path("./data/personality_memory.json")).resolve()
 
 
 def _configure_vision_policy_from_registry(registry: object) -> None:
@@ -541,6 +554,8 @@ async def async_main(args: argparse.Namespace) -> None:
             "vision.face_enabled",
             "vision.face_min_score",
             "vision.face_hz",
+            "vision.face_id_enabled",
+            "vision.face_id_hz",
         }
         _VISION_POLICY_PARAMS = {
             "vision.stale_ms",

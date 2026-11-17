@@ -309,6 +309,12 @@ class WorldState:
     # nearby.HOLD_MS (a missed detection is not a person leaving).
     faces_held: list = field(default_factory=list)
     faces_seen_mono_ms: float = 0.0
+    # Roster member id -> kind ("kid"/"adult"/"animal"), refreshed by the tick loop; a
+    # recognised face gets its member's NEARBY limits, anyone else the child's.
+    household_kinds: dict = field(default_factory=dict)
+    # Last face enrollment result from the vision worker, and a counter that bumps on each.
+    face_enroll_result: dict = field(default_factory=dict)
+    face_enroll_seq: int = 0
     # Who is near (core/nearby.py): POST /api/audience -- the sim's oracle now, detection later.
     audience: list = field(default_factory=list)
     audience_rx_mono_ms: float = 0.0
@@ -403,9 +409,10 @@ class WorldState:
         out = []
         for f in self.faces_held:
             try:
+                kind = self.household_kinds.get(f.get("member_id"), "unknown")
                 out.append(
                     Member(
-                        kind="unknown",
+                        kind=kind,
                         range_mm=int(f["range_mm"]),
                         bearing_deg=-float(f.get("bearing_deg", 0.0)),
                         confidence=float(f.get("score", 0.0)),

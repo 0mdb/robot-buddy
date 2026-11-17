@@ -12,6 +12,10 @@ from __future__ import annotations
 VISION_DETECTION_SNAPSHOT = "vision.detection.snapshot"
 VISION_CONFIG_UPDATE = "vision.config.update"
 VISION_FRAME_JPEG = "vision.frame.jpeg"
+# Face enrollment (supervisor/inputs/face_id.py): Core -> vision, and the result back.
+VISION_FACE_ENROLL = "vision.face.enroll"
+VISION_FACE_FORGET = "vision.face.forget"
+VISION_FACE_ENROLL_RESULT = "vision.face.enroll_result"
 VISION_STATUS_HEALTH = "vision.status.health"
 VISION_LIFECYCLE_STARTED = "vision.lifecycle.started"
 VISION_LIFECYCLE_STOPPED = "vision.lifecycle.stopped"

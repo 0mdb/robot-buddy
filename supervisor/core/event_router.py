@@ -44,6 +44,7 @@ from supervisor.messages.types import (
     PERSONALITY_STATE_SNAPSHOT,
     PERSONALITY_STATUS_HEALTH,
     VISION_DETECTION_SNAPSHOT,
+    VISION_FACE_ENROLL_RESULT,
     VISION_FRAME_JPEG,
     VISION_LIFECYCLE_ERROR,
     VISION_STATUS_HEALTH,
@@ -92,6 +93,10 @@ class EventRouter:
             if self._world.faces:
                 self._world.faces_held = list(self._world.faces)
                 self._world.faces_seen_mono_ms = now_ms
+
+        elif t == VISION_FACE_ENROLL_RESULT:
+            self._world.face_enroll_result = dict(p)
+            self._world.face_enroll_seq += 1
 
         elif t == VISION_FRAME_JPEG:
             self._world.latest_jpeg_b64 = str(p.get("data_b64", ""))

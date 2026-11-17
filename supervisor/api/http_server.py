@@ -35,6 +35,8 @@ from supervisor.messages.types import (
     TTS_CMD_SET_OUTPUT_LAG,
     TTS_CMD_SET_VOLUME,
     VISION_CONFIG_UPDATE,
+    VISION_FACE_ENROLL,
+    VISION_FACE_FORGET,
 )
 from supervisor.vision.mask_store import (
     default_mask,
@@ -557,7 +559,54 @@ def create_app(
         except KeyError:
             return _roster_error(KeyError("no such member"), 404)
         household.save(roster_path, r)
+        await workers.send_to("vision", VISION_FACE_FORGET, {"member_id": member_id})
         return _roster_reply(r)
+
+    # -- Face enrollment (inputs/face_id.py) ---------------------------------
+    # Face prints are keyed by member id in the roster's sidecar directory; names never
+    # leave the roster file.
+
+    @app.get("/api/household/faces")
+    async def get_household_faces():
+        from supervisor.inputs.face_id import FaceGallery, gallery_path
+
+        g = FaceGallery(gallery_path(roster_path))
+        g.refresh()
+        return JSONResponse({"samples": g.counts()})
+
+    @app.post("/api/household/members/{member_id}/face")
+    async def enroll_household_face(member_id: str, body: dict | None = None):
+        """Capture this member's face: they stand alone in front of Buddy, facing it, within
+        about 2 m. Waits for the result (up to ~25 s)."""
+        try:
+            r = household.load_strict(roster_path)
+        except household.RosterError as e:
+            return _roster_error(e, 409)
+        if not any(m.id == member_id for m in r.members):
+            return _roster_error(KeyError("no such member"), 404)
+        samples = 8
+        if body and isinstance(body.get("samples"), int):
+            samples = max(1, min(20, body["samples"]))
+        before = tick.world.face_enroll_seq
+        sent = await workers.send_to(
+            "vision", VISION_FACE_ENROLL, {"member_id": member_id, "samples": samples}
+        )
+        if not sent:
+            return JSONResponse({"ok": False, "reason": "vision not running"}, 503)
+        for _ in range(250):
+            await asyncio.sleep(0.1)
+            res = tick.world.face_enroll_result
+            if (
+                tick.world.face_enroll_seq != before
+                and res.get("member_id") == member_id
+            ):
+                return JSONResponse(res, status_code=200 if res.get("ok") else 422)
+        return JSONResponse({"ok": False, "reason": "timed out"}, 504)
+
+    @app.delete("/api/household/members/{member_id}/face")
+    async def forget_household_face(member_id: str):
+        await workers.send_to("vision", VISION_FACE_FORGET, {"member_id": member_id})
+        return JSONResponse({"ok": True})
 
     @app.delete("/api/household")
     async def forget_household():

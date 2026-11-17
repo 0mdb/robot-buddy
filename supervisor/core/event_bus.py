@@ -56,6 +56,7 @@ class PlannerEventBus:
         self._face_first_ms: float | None = None
         self._face_last_ms = 0.0
         self._face_since_ms = 0.0
+        self._identified: set[str] = set()  # members seen this presence session
         self._obstacle_close = False
         self._vision_healthy: bool | None = None
         self._last_fault_flags = 0
@@ -85,7 +86,7 @@ class PlannerEventBus:
         self._soc_critical_pct = critical_pct
 
     def emit(self, event_type: str, payload: dict, t_mono_ms: float) -> None:
-        if event_type.startswith("vision.face_"):
+        if event_type.startswith(("vision.face_", "vision.person_")):
             log.info("%s %s", event_type, payload)
         self._events.append(
             PlannerEvent(event_type, payload, t_mono_ms, seq=self._next_seq)
@@ -203,6 +204,7 @@ class PlannerEventBus:
             )
         elif self._face_present and now_ms - self._face_last_ms >= FACE_LOST_MS:
             self._face_present = False
+            self._identified.clear()
             self.emit(
                 "vision.face_lost",
                 {
@@ -212,6 +214,23 @@ class PlannerEventBus:
                 },
                 now_ms,
             )
+
+        # Who: each recognised member once per presence session (ids, never names)
+        if self._face_present:
+            for f in faces:
+                mid = f.get("member_id")
+                if mid and mid not in self._identified:
+                    self._identified.add(mid)
+                    self.emit(
+                        "vision.person_identified",
+                        {
+                            "member_id": mid,
+                            "id_score": f.get("id_score"),
+                            "bearing_deg": f.get("bearing_deg"),
+                            "range_mm": f.get("range_mm"),
+                        },
+                        now_ms,
+                    )
 
         # Obstacle detection
         obstacle_now = (

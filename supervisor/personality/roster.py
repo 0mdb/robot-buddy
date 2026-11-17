@@ -37,8 +37,9 @@ MAX_NAME_LEN = 40
 KID_AGE = (1, 17)
 ADULT_AGE = (18, 120)
 
-# Things stored beside the roster for it (voice embeddings, from stage 5). Removed with it.
-_SIDECAR_DIR = "household_voice"
+# Things stored beside the roster for it (voice embeddings from stage 5; face prints,
+# supervisor/inputs/face_id.py). Removed with it.
+_SIDECAR_DIRS = ("household_voice", "household_faces")
 
 
 class RosterError(ValueError):
@@ -300,7 +301,8 @@ def forget_everyone(path: Path) -> None:
     """Delete the roster and everything stored beside it for the roster."""
     path.unlink(missing_ok=True)
     path.with_name(path.name + ".tmp").unlink(missing_ok=True)
-    shutil.rmtree(path.parent / _SIDECAR_DIR, ignore_errors=True)
+    for d in _SIDECAR_DIRS:
+        shutil.rmtree(path.parent / d, ignore_errors=True)
 
 
 def default_path(memory_path: str | Path) -> Path:

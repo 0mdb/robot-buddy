@@ -88,3 +88,7 @@ server/eval_out/
 # (deploy/robot-buddy-supervisor.service); `just run` runs from supervisor/.
 /data/
 /supervisor/data/
+
+# Fetched by deploy/fetch_models.sh (too big for git)
+supervisor/models/face_recognition_sface_2021dec.onnx
+supervisor/models/*.part

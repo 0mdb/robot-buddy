@@ -806,6 +806,29 @@ def create_default_registry() -> ParamRegistry:
     )
     reg.register(
         ParamDef(
+            name="vision.face_id_enabled",
+            type="bool",
+            default=True,
+            owner="vision",
+            safety="safe",
+            doc="Recognise enrolled household members' faces (SFace; prints stay on the robot)",
+        )
+    )
+    reg.register(
+        ParamDef(
+            name="vision.face_id_hz",
+            type="float",
+            min=0.2,
+            max=10.0,
+            step=0.2,
+            default=3.0,
+            owner="vision",
+            safety="safe",
+            doc="Face recognitions per second, one face each (~32 ms on the Pi 5)",
+        )
+    )
+    reg.register(
+        ParamDef(
             name="gaze.face_track",
             type="bool",
             default=True,

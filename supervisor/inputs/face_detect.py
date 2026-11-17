@@ -124,16 +124,24 @@ class FaceDetector:
 
     def detect(self, frame_bgr: Any, hfov_deg: float) -> list[dict[str, float]]:
         """Faces in ``frame_bgr``, largest first."""
+        return [f for f, _ in self.detect_with_rows(frame_bgr, hfov_deg)]
+
+    def detect_with_rows(
+        self, frame_bgr: Any, hfov_deg: float, rows: Any = None
+    ) -> list[tuple[dict[str, float], Any]]:
+        """(face, YuNet row) pairs, largest first. The row (box + landmarks, in this
+        frame's pixels) is what the recognizer aligns with."""
         height, width = frame_bgr.shape[:2]
-        if not self._ensure(width, height):
-            return []
-        try:
-            _, rows = self._det.detect(frame_bgr)  # type: ignore[union-attr]
-        except Exception as e:  # noqa: BLE001
-            self.error = f"face detect: {e}"
-            return []
         if rows is None:
-            return []
-        faces = [face_from_row(r, width, height, hfov_deg) for r in rows]
-        faces.sort(key=lambda f: f["w"] * f["h"], reverse=True)
-        return faces
+            if not self._ensure(width, height):
+                return []
+            try:
+                _, rows = self._det.detect(frame_bgr)  # type: ignore[union-attr]
+            except Exception as e:  # noqa: BLE001
+                self.error = f"face detect: {e}"
+                return []
+            if rows is None:
+                return []
+        pairs = [(face_from_row(r, width, height, hfov_deg), r) for r in rows]
+        pairs.sort(key=lambda p: p[0]["w"] * p[0]["h"], reverse=True)
+        return pairs

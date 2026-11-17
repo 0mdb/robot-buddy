@@ -20,6 +20,9 @@ from typing import Any
 from supervisor.messages.envelope import Envelope
 from supervisor.messages.types import (
     VISION_CONFIG_UPDATE,
+    VISION_FACE_ENROLL,
+    VISION_FACE_ENROLL_RESULT,
+    VISION_FACE_FORGET,
     VISION_DETECTION_SNAPSHOT,
     VISION_FRAME_JPEG,
     VISION_LIFECYCLE_ERROR,
@@ -71,6 +74,12 @@ class VisionWorker(BaseWorker):
         self._last_face_t = 0.0
         self._face_ms = 0.0
         self._face_detector: Any | None = None
+        # Recognition (SFace) against the household gallery; path from Core's config
+        self._face_id_enabled = True
+        self._face_id_hz = 3.0
+        self._face_gallery_path = ""
+        self._face_id: Any | None = None
+        self._pending_face_cmds: list[tuple[str, dict]] = []
         self._capture_size = (640, 480)
         self._process_size = (320, 240)
 
@@ -164,6 +173,10 @@ class VisionWorker(BaseWorker):
             self._pending_controls = controls
 
     async def on_message(self, envelope: Envelope) -> None:
+        if envelope.type in (VISION_FACE_ENROLL, VISION_FACE_FORGET):
+            # Applied on the vision loop, which owns the recognizer and gallery.
+            self._pending_face_cmds.append((envelope.type, dict(envelope.payload)))
+            return
         if envelope.type == VISION_CONFIG_UPDATE:
             p = envelope.payload
             self._mjpeg_enabled = bool(p.get("mjpeg_enabled", self._mjpeg_enabled))
@@ -187,6 +200,14 @@ class VisionWorker(BaseWorker):
                     self._face_detector.set_score_threshold(self._face_min_score)
             if "face_hz" in p:
                 self._face_hz = max(1.0, float(p["face_hz"]))
+            if "face_id_enabled" in p:
+                self._face_id_enabled = bool(int(p["face_id_enabled"]))
+            if "face_id_hz" in p:
+                self._face_id_hz = max(0.2, float(p["face_id_hz"]))
+                if self._face_id is not None:
+                    self._face_id.id_hz = self._face_id_hz
+            if p.get("face_gallery_path") and not self._face_gallery_path:
+                self._face_gallery_path = str(p["face_gallery_path"])
 
             # Camera / ISP
             controls_changed = False
@@ -258,11 +279,63 @@ class VisionWorker(BaseWorker):
                 "error": self._face_detector.error if self._face_detector else "",
                 "ms": round(self._face_ms, 1),
                 "count": len(self._faces),
+                "id": self._face_id_health(),
             },
             # What the camera reports it is doing (focus/exposure diagnosis: soft frames
             # whose sharpness did not change with LensPosition, 2026-11-16).
             "camera": dict(self._cam_meta),
         }
+
+    def _face_id_health(self) -> dict[str, Any]:
+        fid = self._face_id
+        if fid is None:
+            return {"enabled": self._face_id_enabled, "loaded": False}
+        return {
+            "enabled": self._face_id_enabled,
+            "loaded": True,
+            "available": fid.embedder.available,
+            "error": fid.embedder.error,
+            "ms": round(fid.ms, 1),
+            # Member ids and sample counts only; names stay in the roster.
+            "gallery": fid.gallery.counts(),
+            "enrolling": fid.enrolling,
+        }
+
+    def _ensure_face_id(self) -> Any | None:
+        if self._face_id is None and self._face_gallery_path:
+            from supervisor.inputs.face_id import (
+                FaceEmbedder,
+                FaceGallery,
+                FaceIdTracker,
+            )
+
+            self._face_id = FaceIdTracker(
+                FaceEmbedder(), FaceGallery(self._face_gallery_path), self._face_id_hz
+            )
+        return self._face_id
+
+    def _run_face_cmds(self, now: float) -> None:
+        cmds, self._pending_face_cmds = self._pending_face_cmds, []
+        for kind, p in cmds:
+            member_id = str(p.get("member_id", ""))
+            fid = self._ensure_face_id()
+            if fid is None or not member_id:
+                if kind == VISION_FACE_ENROLL:
+                    self.send(
+                        VISION_FACE_ENROLL_RESULT,
+                        {
+                            "member_id": member_id,
+                            "ok": False,
+                            "samples": 0,
+                            "error": "face recognition not configured",
+                        },
+                    )
+                continue
+            if kind == VISION_FACE_ENROLL:
+                fid.start_enroll(member_id, int(p.get("samples", 8)), now)
+                log.info("face enroll started: %s", member_id)
+            else:
+                log.info("face forget %s: %s", member_id, fid.forget(member_id))
 
     def _publish_frame(self, frame: Any, t_cam_ns: int) -> None:
         """Latest-wins into the frame slot; a size change (rotation) recreates it, and the
@@ -570,8 +643,28 @@ class VisionWorker(BaseWorker):
                             score_threshold=self._face_min_score
                         )
                     t0 = time.perf_counter()
-                    self._faces = self._face_detector.detect(small, self._hfov_deg)[:3]
+                    pairs = self._face_detector.detect_with_rows(small, self._hfov_deg)[
+                        :3
+                    ]
                     self._face_ms = (time.perf_counter() - t0) * 1000.0
+                    if self._pending_face_cmds:
+                        self._run_face_cmds(now)
+                    fid = self._ensure_face_id() if self._face_id_enabled else None
+                    if fid is not None:
+                        # Recognition aligns on the full-resolution picture.
+                        scale = frame.shape[1] / small.shape[1]
+                        self._faces = fid.process(pairs, frame, scale, now)
+                        result = fid.take_result()
+                        if result is not None:
+                            log.info(
+                                "face enroll %s: ok=%s samples=%s",
+                                result["member_id"],
+                                result["ok"],
+                                result["samples"],
+                            )
+                            self.send(VISION_FACE_ENROLL_RESULT, result)
+                    else:
+                        self._faces = [f for f, _ in pairs]
                     self._faces_frame_seq = self._frame_seq + 1
 
                 # FPS tracking

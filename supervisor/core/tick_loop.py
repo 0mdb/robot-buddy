@@ -230,6 +230,10 @@ class TickLoop:
 
         self._conv_choreo = ConvTransitionChoreographer()
 
+        # Roster kinds for recognised faces (_refresh_household_kinds)
+        self._roster_file: Any = None
+        self._kinds_refresh_ms = -1e9
+
         # Highest planner-event seq the speech policy has been offered
         self._speech_event_seq = 0
 
@@ -467,6 +471,7 @@ class TickLoop:
         ):
             skill = self._scheduler.active_skill = "patrol_drift"
         self.world.active_skill = skill
+        self._refresh_household_kinds(now_ms)
         recent = self._event_bus.latest(10)
         desired = self._behavior.step(self.robot, self.world, recent)
         self.robot.twist_cmd = desired
@@ -1732,6 +1737,27 @@ class TickLoop:
         self._end_conversation()
 
     # ── Late resume ──────────────────────────────────────────────
+
+    def _refresh_household_kinds(self, now_ms: float) -> None:
+        """Member id -> kind for recognised faces (NEARBY limits). One stat every 2 s; an
+        absent or disabled roster means nobody is known, so every face gets child limits."""
+        if now_ms - self._kinds_refresh_ms < 2000.0:
+            return
+        self._kinds_refresh_ms = now_ms
+        try:
+            if self._roster_file is None:
+                from supervisor.personality.roster import RosterFile, default_path
+
+                self._roster_file = RosterFile(
+                    default_path("./data/personality_memory.json")
+                )
+            r = self._roster_file.get()
+            self.world.household_kinds = (
+                {m.id: m.kind for m in r.members} if r.enabled else {}
+            )
+        except Exception as e:  # noqa: BLE001 -- a bad roster file must not stop the loop
+            log.debug("roster read failed: %s", e)
+            self.world.household_kinds = {}
 
     def _face_gaze_config(self) -> FaceGazeConfig:
         reg = self._param_registry

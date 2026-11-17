@@ -43,6 +43,9 @@ uv pip install --python "$SUPERVISOR_DIR/.venv/bin/python" --no-deps 'openwakewo
 
 ok "dependencies up to date"
 
+# ── 2b. Models too big for git (face recognition) ──────────────────────────────
+bash "$REPO_ROOT/deploy/fetch_models.sh" || echo "[update] WARNING: model fetch failed; face recognition stays off"
+
 # ── 3. Sync tools dependencies ───────────────────────────────────────────────
 TOOLS_DIR="$REPO_ROOT/tools"
 if [[ -d "$TOOLS_DIR/.venv" ]]; then
