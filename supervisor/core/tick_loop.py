@@ -234,6 +234,7 @@ class TickLoop:
         # the greeter, never put in world state or telemetry.
         self._roster_file: Any = None
         self._household_names: dict[str, str] = {}
+        self._household_ages: dict[str, int] = {}
         from supervisor.core.greeter import Greeter
 
         self._greeter = Greeter()
@@ -907,6 +908,7 @@ class TickLoop:
         elif env.type == PERSONALITY_LLM_PROFILE:
             if self.world.session_id:
                 profile = dict(env.payload)
+                self._add_present_faces(profile)
                 profile["turn_id"] = self.world.turn_id
                 profile["session_id"] = self.world.session_id
                 asyncio.ensure_future(
@@ -1779,10 +1781,55 @@ class TickLoop:
             self._household_names = (
                 {m.id: m.name for m in r.members} if r.enabled else {}
             )
+            self._household_ages = (
+                {m.id: m.age for m in r.members if m.age is not None}
+                if r.enabled
+                else {}
+            )
         except Exception as e:  # noqa: BLE001 -- a bad roster file must not stop the loop
             log.debug("roster read failed: %s", e)
             self.world.household_kinds = {}
             self._household_names = {}
+            self._household_ages = {}
+
+    def _add_present_faces(self, profile: dict) -> None:
+        """Replace the roster's "someone unknown" with who the camera sees: recognised
+        members by kind, age and name (to Buddy's LAN server only), anyone else unknown.
+        Who is *speaking* stays unset: with two people in view the camera can't tell."""
+        audience = profile.get("audience")
+        if not isinstance(audience, dict):
+            return
+        present = []
+        for f in self.world.audience_faces():
+            mid = f.get("member_id")
+            kind = self.world.household_kinds.get(mid) if mid else None
+            if kind in ("kid", "adult"):
+                entry: dict = {
+                    "kind": kind,
+                    # A match (similarity >= 0.363) is a confident identity: 0.75-1.0.
+                    "confidence": round(
+                        min(1.0, 0.6 + 0.4 * float(f.get("id_score") or 0.0)), 2
+                    ),
+                    "sources": ["face"],
+                    "name": self._household_names.get(mid, ""),
+                }
+                if mid in self._household_ages:
+                    entry["age"] = self._household_ages[mid]
+                present.append(entry)
+            else:
+                present.append(
+                    {"kind": "unknown", "confidence": 0.0, "sources": ["face"]}
+                )
+        if present and not any(p["kind"] != "adult" for p in present):
+            # Only grown-ups in view: a child may be talking from out of frame (a parent
+            # often sits watching), so keep the kid-level profile. Recognition never moves
+            # Buddy to adult talk on its own.
+            present.append({"kind": "unknown", "confidence": 0.0, "sources": ["face"]})
+        if present:
+            audience = dict(audience)
+            audience["present"] = present
+            audience["speaking"] = 0 if len(present) == 1 else None
+            profile["audience"] = audience
 
     def _face_gaze_config(self) -> FaceGazeConfig:
         reg = self._param_registry

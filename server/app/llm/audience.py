@@ -20,7 +20,8 @@ The fallback rules are fixed policy, not tunables:
 4. Recognition never loosens safety: the content rules are in the prompt, not in a profile.
 
 Roster ``member`` ids are accepted and deliberately never rendered into a prompt. Names reach the
-model only through ``household.members`` (the roster), sanitised; they may go to Buddy's own LAN
+model only from the roster: ``household.members``, and a recognised person's ``name`` in
+``present`` when it is one of those members (face recognition on the robot), sanitised; they may go to Buddy's own LAN
 models but never to external APIs (operator decision 2026-11-16).
 """
 
@@ -102,6 +103,8 @@ class Member:
     confidence: float
     age: int | None
     sources: tuple[str, ...]
+    # A household member the robot recognised (face): their roster name, sanitised.
+    name: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -154,7 +157,8 @@ def parse_audience(raw: object) -> Audience | None:
         sources = tuple(str(s) for s in m.get("sources") or [] if isinstance(s, str))[
             :4
         ]
-        present.append(Member(kind, confidence, age, sources))
+        name = _clean_name(m.get("name")) if kind in ("kid", "adult") else ""
+        present.append(Member(kind, confidence, age, sources, name))
     speaking = raw.get("speaking")
     if not (isinstance(speaking, int) and 0 <= speaking < len(present)):
         speaking = None
@@ -184,6 +188,13 @@ def parse_audience(raw: object) -> Audience | None:
         )
         species = _clean_name(hm.get("species"))[:20] if kind == "animal" else ""
         members.append(HouseholdMember(name, kind, hage, species or None))
+    # A recognised name is shown only if it is a household member's: nothing else can put a
+    # name into the prompt.
+    known = {hm.name for hm in members[:12]}
+    present = [
+        m if m.name in known else Member(m.kind, m.confidence, m.age, m.sources)
+        for m in present
+    ]
     return Audience(tuple(present), speaking, kid_age, tuple(members[:12]))
 
 
@@ -257,6 +268,8 @@ def render_audience_block(audience: Audience | None) -> str:
         parts = []
         for i, m in enumerate(audience.present):
             label = m.kind if m.age is None else f"{m.kind}, {m.age}"
+            if m.name:
+                label += f", {m.name}"
             if _effective_kind(m) != m.kind:
                 label += ", unsure"
             if i == audience.speaking:
@@ -270,9 +283,28 @@ def render_audience_block(audience: Audience | None) -> str:
             f"{m.name} ({m.species or label[m.kind]}{', ' + str(m.age) if m.age else ''})"
             for m in audience.household
         )
-        line += (
-            f"\nHOUSEHOLD (who lives with Buddy): {people}. You do not know which of them is"
-            " talking unless they tell you or it is plain from the conversation: never guess a"
-            " name. Once someone says who they are, use their name now and then."
-        )
+        seen = [m for m in audience.present if m.name]
+        if (
+            len(seen) == 1
+            and audience.speaking is not None
+            and (audience.present[audience.speaking] is seen[0])
+        ):
+            line += (
+                f"\nHOUSEHOLD (who lives with Buddy): {people}. Buddy's camera recognises"
+                f" {seen[0].name} in front of it, the only person there: that is who you are"
+                " talking to. Use their name now and then, not every turn."
+            )
+        elif seen:
+            names = " and ".join(m.name for m in seen)
+            line += (
+                f"\nHOUSEHOLD (who lives with Buddy): {people}. Buddy's camera recognises"
+                f" {names} nearby, but you do not know who is talking unless they tell you or"
+                " it is plain from the conversation: never guess a name."
+            )
+        else:
+            line += (
+                f"\nHOUSEHOLD (who lives with Buddy): {people}. You do not know which of them"
+                " is talking unless they tell you or it is plain from the conversation: never"
+                " guess a name. Once someone says who they are, use their name now and then."
+            )
     return line

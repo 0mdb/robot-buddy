@@ -301,3 +301,92 @@ def test_no_household_no_household_line() -> None:
 
     a = parse_audience({"present": [], "household": {"primary_kid_age": 7}})
     assert "HOUSEHOLD" not in render_audience_block(a)
+
+
+# ── Faces recognised on the robot (names from the roster; synthetic here) ──
+
+
+def _hh_with(present, speaking):
+    from app.llm.audience import parse_audience
+
+    return parse_audience(
+        {
+            "present": present,
+            "speaking": speaking,
+            "household": {
+                "primary_kid_age": 9,
+                "members": [
+                    {"name": "Test Kid", "kind": "kid", "age": 9},
+                    {"name": "Test Parent", "kind": "adult"},
+                ],
+            },
+        }
+    )
+
+
+def test_one_recognised_kid_is_who_we_are_talking_to():
+    from app.llm.audience import render_audience_block, resolve_profile
+
+    a = _hh_with(
+        [
+            {
+                "kind": "kid",
+                "age": 9,
+                "confidence": 0.9,
+                "sources": ["face"],
+                "name": "Test Kid",
+            }
+        ],
+        0,
+    )
+    block = render_audience_block(a)
+    assert "kid, 9, Test Kid, speaking" in block
+    assert "that is who you are talking to" in block
+    assert resolve_profile(a).kind == "kid"
+
+
+def test_adult_with_unknown_keeps_kid_profile_and_does_not_assume_speaker():
+    from app.llm.audience import render_audience_block, resolve_profile
+
+    a = _hh_with(
+        [
+            {
+                "kind": "adult",
+                "confidence": 0.9,
+                "sources": ["face"],
+                "name": "Test Parent",
+            },
+            {"kind": "unknown", "confidence": 0.0, "sources": ["face"]},
+        ],
+        None,
+    )
+    block = render_audience_block(a)
+    assert "Test Parent nearby" in block and "never guess a name" in block
+    assert resolve_profile(a).kind == "kid"
+
+
+def test_name_is_sanitised_and_never_given_to_unknown_or_animals():
+    from app.llm.audience import parse_audience
+
+    a = parse_audience(
+        {
+            "present": [
+                {"kind": "kid", "confidence": 0.9, "name": "Test<script>Kid"},
+                {"kind": "unknown", "confidence": 0.0, "name": "Someone"},
+                {"kind": "animal", "confidence": 0.9, "name": "Rex"},
+            ]
+        }
+    )
+    # No household: no name can be rendered at all.
+    assert [m.name for m in a.present] == ["", "", ""]
+
+
+def test_recognised_name_must_be_a_household_member():
+    a = _hh_with(
+        [
+            {"kind": "kid", "confidence": 0.9, "name": "Test Kid"},
+            {"kind": "kid", "confidence": 0.9, "name": "Not A Member"},
+        ],
+        None,
+    )
+    assert [m.name for m in a.present] == ["Test Kid", ""]

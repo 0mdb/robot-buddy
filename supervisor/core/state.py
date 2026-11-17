@@ -401,6 +401,18 @@ class WorldState:
             members.extend(self.face_members())
         return members
 
+    def audience_faces(self) -> list:
+        """Faces seen within nearby.HOLD_MS (a missed detection is not someone leaving)."""
+        import time
+
+        from supervisor.core.nearby import HOLD_MS
+
+        if self.faces_seen_mono_ms <= 0:
+            return []
+        if time.monotonic() * 1000.0 - self.faces_seen_mono_ms > HOLD_MS:
+            return []
+        return list(self.faces_held)
+
     def face_members(self) -> list:
         """Held faces as NEARBY members. Kind is unknown (so the child limits apply) until
         recognition exists; bearing flips to the robot frame (positive = left)."""

@@ -159,3 +159,57 @@ async def test_no_greeting_mid_conversation():
     await loop._emit_worker_actions(1000.0, [a])
     await loop._emit_worker_actions(1000.0 + WAIT_MS, [a])
     assert _spoken(loop) == []
+
+
+# ── Who is present, for the conversation profile ─────────────────
+
+
+def _profile_loop(faces):
+    import time
+
+    loop = _loop()
+    loop.world.household_kinds = {"m_kid": "kid", "m_adult": "adult"}
+    loop._household_ages = {"m_kid": 9}
+    loop.world.faces_held = faces
+    loop.world.faces_seen_mono_ms = time.monotonic() * 1000.0
+    return loop
+
+
+def _base_profile():
+    return {
+        "audience": {
+            "present": [{"kind": "unknown", "confidence": 0.0, "sources": []}],
+            "speaking": 0,
+            "household": {"members": []},
+        }
+    }
+
+
+def test_recognised_kid_alone_is_the_speaker():
+    loop = _profile_loop([{"member_id": "m_kid", "id_score": 0.7}])
+    p = _base_profile()
+    loop._add_present_faces(p)
+    (kid,) = p["audience"]["present"]
+    assert kid["kind"] == "kid" and kid["age"] == 9 and kid["name"] == "Test Kid"
+    assert kid["confidence"] >= 0.75 and p["audience"]["speaking"] == 0
+
+
+def test_adult_alone_keeps_a_possible_child():
+    loop = _profile_loop([{"member_id": "m_adult", "id_score": 0.9}])
+    p = _base_profile()
+    loop._add_present_faces(p)
+    kinds = [x["kind"] for x in p["audience"]["present"]]
+    assert kinds == ["adult", "unknown"] and p["audience"]["speaking"] is None
+
+
+def test_stranger_is_unknown_and_no_faces_keeps_roster_default():
+    loop = _profile_loop([{"member_id": None}])
+    p = _base_profile()
+    loop._add_present_faces(p)
+    assert p["audience"]["present"][0]["kind"] == "unknown"
+    assert "name" not in p["audience"]["present"][0]
+
+    loop = _profile_loop([])
+    p = _base_profile()
+    loop._add_present_faces(p)
+    assert p == _base_profile()
