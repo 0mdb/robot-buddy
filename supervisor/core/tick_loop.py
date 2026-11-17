@@ -742,6 +742,19 @@ class TickLoop:
         from supervisor.devices.protocol import FaceConvState
 
         ptt_on = not self._ptt_on()
+        if (
+            ptt_on
+            and self.world.session_id
+            and (
+                self.world.speaking
+                or self._conv.state in (FaceConvState.THINKING, FaceConvState.SPEAKING)
+            )
+        ):
+            # A child holding Buddy's face mid-reply is not "my turn to talk": starting a
+            # PTT turn reopened the server connection and dropped the reply on its way, and
+            # the turn then stalled for 20 s (2026-11-17). Ignore it until Buddy is done.
+            log.info("long-press ignored: Buddy is replying")
+            return
         self.world.ptt_active = ptt_on
         if ptt_on:
             if self.world.session_id:

@@ -1142,6 +1142,34 @@ class TestScreenGestures:
         assert loop.world.session_id  # session survives (multi-turn)
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("phase", ["thinking", "speaking"])
+    async def test_long_press_mid_reply_is_ignored(self, phase):
+        # A child holding the face while Buddy replies must not start a PTT turn: that
+        # reopened the server connection and dropped the reply (2026-11-17).
+        import asyncio
+
+        from supervisor.devices.protocol import FaceConvState
+        from supervisor.messages.types import AI_CMD_START_CONVERSATION
+
+        loop = self._make_tick_loop()
+        loop._on_face_button(self._long())
+        loop._on_face_button(self._long())  # end utterance → THINKING
+        if phase == "speaking":
+            loop._conv.set_state(FaceConvState.SPEAKING)
+            loop.world.speaking = True
+        await asyncio.sleep(0)
+        starts = lambda: [  # noqa: E731
+            c
+            for c in loop._workers.send_to.call_args_list
+            if len(c.args) >= 2 and c.args[1] == AI_CMD_START_CONVERSATION
+        ]
+        before = len(starts())
+        loop._on_face_button(self._long())
+        await asyncio.sleep(0)
+        assert len(starts()) == before
+        assert not loop.world.ptt_active
+
+    @pytest.mark.asyncio
     async def test_tap_while_ptt_held_ends_utterance(self):
         from supervisor.devices.protocol import FaceConvState
 
