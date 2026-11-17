@@ -390,3 +390,23 @@ def test_recognised_name_must_be_a_household_member():
         None,
     )
     assert [m.name for m in a.present] == ["Test Kid", ""]
+
+
+def test_adult_alone_in_view_is_probably_the_speaker_but_kid_profile_stays():
+    from app.llm.audience import render_audience_block, resolve_profile
+
+    a = _hh_with(
+        [
+            {
+                "kind": "adult",
+                "confidence": 0.9,
+                "sources": ["face"],
+                "name": "Test Parent",
+            },
+            {"kind": "unknown", "confidence": 0.0, "sources": ["face"]},
+        ],
+        0,
+    )
+    block = render_audience_block(a)
+    assert "probably Test Parent talking" in block
+    assert resolve_profile(a).kind == "kid"

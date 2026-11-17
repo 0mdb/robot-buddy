@@ -284,15 +284,23 @@ def render_audience_block(audience: Audience | None) -> str:
             for m in audience.household
         )
         seen = [m for m in audience.present if m.name]
-        if (
+        named_speaker = (
             len(seen) == 1
             and audience.speaking is not None
-            and (audience.present[audience.speaking] is seen[0])
-        ):
+            and audience.present[audience.speaking] is seen[0]
+        )
+        if named_speaker and len(audience.present) == 1:
             line += (
                 f"\nHOUSEHOLD (who lives with Buddy): {people}. Buddy's camera recognises"
                 f" {seen[0].name} in front of it, the only person there: that is who you are"
                 " talking to. Use their name now and then, not every turn."
+            )
+        elif named_speaker:
+            line += (
+                f"\nHOUSEHOLD (who lives with Buddy): {people}. Buddy's camera recognises"
+                f" {seen[0].name} in front of it, so it is probably {seen[0].name} talking"
+                " (someone out of view could be too). Use their name now and then, and if"
+                " the conversation shows it is someone else, go with that."
             )
         elif seen:
             names = " and ".join(m.name for m in seen)

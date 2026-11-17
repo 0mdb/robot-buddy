@@ -199,7 +199,7 @@ def test_adult_alone_keeps_a_possible_child():
     p = _base_profile()
     loop._add_present_faces(p)
     kinds = [x["kind"] for x in p["audience"]["present"]]
-    assert kinds == ["adult", "unknown"] and p["audience"]["speaking"] is None
+    assert kinds == ["adult", "unknown"] and p["audience"]["speaking"] == 0
 
 
 def test_stranger_is_unknown_and_no_faces_keeps_roster_default():

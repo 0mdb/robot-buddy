@@ -1833,15 +1833,17 @@ class TickLoop:
                 present.append(
                     {"kind": "unknown", "confidence": 0.0, "sources": ["face"]}
                 )
+        # One person in view: they are most likely the one talking.
+        speaking = 0 if len(present) == 1 else None
         if present and not any(p["kind"] != "adult" for p in present):
             # Only grown-ups in view: a child may be talking from out of frame (a parent
             # often sits watching), so keep the kid-level profile. Recognition never moves
-            # Buddy to adult talk on its own.
+            # Buddy to adult talk on its own; the server words the speaker as "probably".
             present.append({"kind": "unknown", "confidence": 0.0, "sources": ["face"]})
         if present:
             audience = dict(audience)
             audience["present"] = present
-            audience["speaking"] = 0 if len(present) == 1 else None
+            audience["speaking"] = speaking
             profile["audience"] = audience
 
     def _face_gaze_config(self) -> FaceGazeConfig:
