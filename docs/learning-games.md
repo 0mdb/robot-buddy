@@ -169,9 +169,24 @@ Guess My Face (feelings on the screen), Memory List, and the movement games once
 
 ## 7. Build order
 
-1. **Cards + menu, no scoring.** Card loader, keyword cue, injection, `Game:` in notes; games
-   1, 2, 5, 6 at base level from the roster age. Trim the GAMES AND STORIES section of the
-   system prompt into the menu line (guessing-game rules move into its own card).
+1. **Cards + menu, no scoring.** _(built 2026-11-18, not yet on the robot.)_ Card loader
+   (`server/app/llm/games/`), keyword cue, injection, `Game:` in notes; Guessing Game, Number
+   Detective, Rocket Math, Sound Swap, Rhyme Time at base level from the speaker's age. The
+   guessing-game rules stay in the core prompt for now (short, proven in play).
+   **Playtest lessons (2026-11-18, real model, scripted child):**
+   - Left to judge, the model called wrong answers right (5 + 4 = 13 "You got it!"; "hat"
+     for a ball-to-tall swap). So **Rocket Math and Sound Swap are run by code**
+     (`games/drill.py`): the server picks each item per grade (sums; Sound Swap from word
+     tables, with cue words instead of letter names for K/G1), checks the answer, keeps the
+     score, and hands the model the verdict and the exact next item. Number Detective's
+     higher/lower is checked by code too.
+   - The model writes its words before its notes, so items it chose in the notes went
+     unsaid. The server now gives the item before the words are written, and if a reply
+     still skips it, speaks the item itself after the reply.
+   - Game questions are exempt from the profiles' "don't tack on a question" speech rule.
+   - Result: Rocket Math rounds honest end to end (verdicts, score, every question spoken);
+     Sound Swap the same with an occasional repeated puzzle; Number Detective's
+     higher/lower always right (praise for a poor guess can still be generous).
 2. **Scoring and progress.** `practice` field (spec amendment), robot progress store per
    member, code checking for math (and rhyme/word tables), `learner` in the profile, steps
    per skill, mastery and confident rules, the checker check (§2.1).

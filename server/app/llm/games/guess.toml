@@ -1,0 +1,10 @@
+id = "guess"
+name = "Guessing Game"
+menu = "guess my animal, food or thing, or I guess yours"
+skill = ""
+keywords = ["guess(?:ing)? game", "guess (?:my|the|what)", "20 questions", "twenty questions", "i'?m thinking of", "you think of"]
+rules = """
+Yes/no guessing, either way round. The GAMES AND STORIES rules apply (notes keep the secret
+and every answer). When you pick, use the GAME PICKS secret for its kind. A good question from
+the child deserves a word of credit; after about eight questions, offer a hint.
+"""

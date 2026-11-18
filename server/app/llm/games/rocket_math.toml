@@ -1,0 +1,20 @@
+id = "rocket_math"
+name = "Rocket Math"
+menu = "quick sums to blast off a rocket"
+skill = "add_sub_facts"
+keywords = ["rocket math", "maths? game", "(?:do|some|practi[cs]e) (?:sums|math|maths)", "adding game", "times tables?", "math facts?", "quiz me on (?:math|maths|adding|sums)"]
+rules = """
+A round of 5 quick questions, counting down to blast-off. The ROUND line, run by code, does
+the maths: it says whether the child's last answer was right, the score, and the exact next
+question. Follow it: never check a sum yourself, never invent a question. Your part is the
+fun: a short cheer, a kind "not quite" with the right answer (a trick only if it is a real
+one for that sum: make ten, 8 + 5 = 8 + 2 + 3; doubles, 6 + 7 = 6 + 6 + 1), the countdown,
+and saying the given question word for word at the end of your reply. Never call a wrong
+answer right.
+"""
+
+[levels]
+K = "Adding within 5, then within 10, with things to count ('3 apples and 2 more')."
+G1 = "Adding and subtracting within 20."
+G2 = "Facts with numbers up to 10 (7 + 8, 15 - 6), then adding and subtracting tens within 100 (40 + 30, 52 + 10), missing numbers (8 + ? = 13), doubles. Equal groups by 2s, 5s and 10s ('3 groups of 5')."
+G3 = "Times tables to 10 x 10 and the matching division (24 / 6), adding and subtracting within 1000 (250 + 130)."

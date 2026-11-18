@@ -1,0 +1,20 @@
+id = "rhyme_time"
+name = "Rhyme Time"
+menu = "take turns finding rhymes"
+skill = "sounds"
+keywords = ["rhyme time", "rhym(?:e|es|ing) game", "play rhym\\w*", "rhyming"]
+rules = """
+Take turns saying a word that rhymes with the round's word. A round ends when someone is
+stuck; the other person starts the next round with a new word. Track in notes: "Word: cat.
+Said: hat, bat. Turn: child".
+- Real rhymes only (cat/hat, not cat/cap); kindly say so if it doesn't rhyme and why it
+  nearly does.
+- Nonsense words get a laugh and a "real word, please!".
+- Never repeat a word already said in the round. Let the child win most rounds.
+"""
+
+[levels]
+K = "Short, easy words: cat, bug, sun, pig, bed. Also 'do cat and hat rhyme?' yes/no questions."
+G1 = "One-syllable words with many rhymes: day, cake, light, bee, cold."
+G2 = "Rhymes spelled differently: say, weigh, they; blue, shoe, two; and two-syllable words: funny, honey, bunny."
+G3 = "Longer words and silly poems: make a two-line rhyme together, or a limerick line."

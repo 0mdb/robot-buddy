@@ -178,6 +178,8 @@ _RECENT: dict[str, deque[str]] = {
 class GamePicks:
     def __init__(self, rng: random.Random | None = None) -> None:
         self._rng = rng or random.Random()
+        # Fixed for the conversation: Rocket Math's questions are derived from it.
+        self.seed = self._rng.randrange(1 << 30)
         self.picks: dict[str, str] = {c: self._fresh(c) for c in CATEGORIES}
 
     def _fresh(self, category: str) -> str:

@@ -34,6 +34,7 @@ from app.llm.expressions import (
     normalize_gesture_name,
 )
 from app.llm.schemas import VALID_EMOTIONS
+from app.llm import games
 from app.llm.game_picks import GamePicks
 from app.llm.persona import ROBOT_NAME
 
@@ -87,6 +88,7 @@ every time they say they feel bad, not only the first time.
 - Always say something: "text" is never empty.
 
 GAMES AND STORIES
+<<GAMES>>
 - Keep the game in "notes": whose turn it is, the rules, your secret, the clues so far.
 - When you pick a secret (an animal you are thinking of), name it in notes right away, \
 e.g. "Secret: <the animal>". Never change it until it is guessed.
@@ -174,6 +176,7 @@ def build_system_prompt(profile_id: str = DEFAULT_PROFILE_ID) -> str:
         _PROMPT_TEMPLATE.replace("<<INTRO>>", p.intro_text)
         .replace("<<SPEECH>>", "\n".join(f"- {line}" for line in p.speech))
         .replace("<<EXAMPLES>>", "\n\n".join(_render_example(e) for e in p.examples))
+        .replace("<<GAMES>>", games.menu_line())
     )
 
 
@@ -322,6 +325,24 @@ SAFETY_CHECK = (
     "being bullied, feeling sad or scared, or wants a secret kept, your reply must tell them to "
     "tell their mom, dad, or another trusted grown-up. Comfort first, then the grown-up."
 )
+
+
+def _learner_grade(profile: dict[str, object] | None) -> str:
+    """The grade a game card is pitched at: the speaking child's age (face ID), else the
+    household's primary child (docs/learning-games.md §2). Until per-child progress exists
+    (step 2) this is the base level only; Grade 3 stretch comes with the two locks."""
+    audience = parse_audience(profile.get("audience")) if profile else None
+    age = None
+    if audience is not None:
+        if audience.speaking is not None and 0 <= audience.speaking < len(
+            audience.present
+        ):
+            m = audience.present[audience.speaking]
+            if m.kind == "kid":
+                age = m.age
+        if age is None:
+            age = audience.household_kid_age
+    return games.grade_for_age(age)
 
 
 def _memory_label(profile: dict[str, object]) -> str:
@@ -549,6 +570,17 @@ class ConversationHistory:
                     break
             msgs.insert(insert_idx, {"role": "system", "content": state_block})
 
+        # Game card (docs/learning-games.md §3): the rules of the game being played, only
+        # while it is played, right before the child's message (after the cached prefix).
+        card = self._game_card()
+        if card is not None:
+            insert_idx = len(msgs)
+            for i in range(len(msgs) - 1, -1, -1):
+                if msgs[i]["role"] == "user":
+                    insert_idx = i
+                    break
+            msgs.insert(insert_idx, {"role": "system", "content": card})
+
         # Safety cue (SIM-INTERACTION stage 1, B1-B6): a targeted note right before the child's
         # latest message when it mentions a danger, a secret, being hurt, or feeling bad.
         last_user = next(
@@ -579,6 +611,53 @@ class ConversationHistory:
             msgs.insert(insert_idx, {"role": "system", "content": PERSONALITY_ANCHOR})
 
         return self._enforce_token_budget(msgs)
+
+    def _game_card(self) -> str | None:
+        last_user = next(
+            (m.content for m in reversed(self._messages) if m.role == "user"), ""
+        )
+        last_notes = next(
+            (m.notes for m in reversed(self._messages) if m.role == "assistant"), ""
+        )
+        found = games.active_game(last_user, last_notes)
+        if found is None:
+            return None
+        card, asked = found
+        text = card.render(
+            _learner_grade(self._profile), asked=asked, drilled=card.id in games.DRILLS
+        )
+        check = None
+        drill = games.DRILLS.get(card.id)
+        if drill is not None:
+            check = games.drill.status(
+                drill,
+                self._reply_pairs(),
+                self.game_picks.seed,
+                _learner_grade(self._profile),
+            )
+        elif not asked and card.id == "number_detective":
+            check = games.checker.check_guess(last_notes, last_user)
+        return f"{text}\n{check}" if check else text
+
+    def game_tail_line(self, text: str, notes: str) -> str | None:
+        """For a drill game (Rocket Math, Sound Swap): the item the reply's notes say was asked
+        (``Q#<n>``) when its words didn't ask it, to be spoken after them; else None."""
+        grade = _learner_grade(self._profile)
+        for drill in games.DRILLS.values():
+            line = games.drill.tail(drill, notes, text, self.game_picks.seed, grade)
+            if line:
+                return line
+        return None
+
+    def _reply_pairs(self) -> list[tuple[str, str]]:
+        """(the reply's notes, what the child said next) for each reply so far."""
+        msgs = list(self._messages)
+        out: list[tuple[str, str]] = []
+        for i, m in enumerate(msgs):
+            if m.role == "assistant":
+                nxt = next((x.content for x in msgs[i + 1 :] if x.role == "user"), "")
+                out.append((m.notes, nxt))
+        return out
 
     def clear(self) -> None:
         self._messages.clear()
@@ -676,7 +755,7 @@ async def generate_conversation_response(
         raise LLMError("Empty content in Ollama response")
 
     response = parse_conversation_response_content(content)
-    history.add_assistant(response.text, emotion=response.emotion)
+    history.add_assistant(response.text, emotion=response.emotion, notes=response.notes)
 
     if settings.log_transcripts:
         log.info(

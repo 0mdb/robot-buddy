@@ -672,6 +672,7 @@ async def _generate_and_stream_live(
     llm_latency_ms: int | None = None
     first_audio_latency_ms: int | None = None
     metadata_seen = False
+    game_tail: str | None = None
     emotion_for_tts = "neutral"
     intensity_for_tts = 0.5
 
@@ -733,7 +734,7 @@ async def _generate_and_stream_live(
 
     async def _produce(tg: asyncio.TaskGroup) -> None:
         nonlocal metadata_seen, emotion_for_tts, intensity_for_tts
-        nonlocal llm_latency_ms, sent_first
+        nonlocal llm_latency_ms, sent_first, game_tail
 
         cancelled = False
         held_emotion: dict[str, object] | None = None
@@ -850,6 +851,16 @@ async def _generate_and_stream_live(
                         intensity=0.0,
                     )
                     coalesce_buf.clear()
+                # A game question the reply's notes promise but its words never asked
+                # (the model writes the words before the notes): say it, so the child
+                # isn't left waiting (learning-games.md; Rocket Math playtests 2026-11-18).
+                end = parser.final_response()
+                game_tail = history.game_tail_line(
+                    parser.full_text(), end.notes if end is not None else ""
+                )
+                if game_tail:
+                    log.info("game: added the unasked question to the reply")
+                    await _dispatch_tts(game_tail, tg, emotion="neutral", intensity=0.0)
                 # EOF signal to consumer. Guarded so we don't deadlock if the
                 # group is already tearing down.
                 try:
@@ -930,6 +941,8 @@ async def _generate_and_stream_live(
         return
 
     full_text = parser.full_text()
+    if game_tail:
+        full_text = f"{full_text} {game_tail}".strip()
 
     if metadata_seen:
         final = parser.final_response()

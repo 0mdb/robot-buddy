@@ -1,0 +1,18 @@
+id = "sound_swap"
+name = "Sound Swap"
+menu = "change a sound to make a new word"
+skill = "sounds"
+keywords = ["sound swap", "sounds? game", "phonics", "letter sounds? game"]
+rules = """
+A round of 5 sound puzzles. The ROUND line, run by code, picks each puzzle, says whether the
+child's answer was right and keeps the score. Follow it: never judge an answer yourself,
+never invent a puzzle. Your part is the fun: a cheer, a kind "not quite" (say the two words
+slowly so they hear the difference), a giggle at a nonsense word, and saying the given puzzle
+word for word at the end of your reply. Never call a wrong answer right.
+"""
+
+[levels]
+K = "First sounds only: 'what sound does sun start with?', 'which starts like ball: dog or bat?'. Then changing the first sound: cat to hat."
+G1 = "Change the first, middle or last sound in short words: cat to cap, pin to pan, hop to hot. Take away a first sound: 'say star without the s'."
+G2 = "Blends and longer words: 'say stop without the t' (sop), 'change the fl in flip to sh' (ship), 'add an s to the start of nap' (snap), 'say string without the r' (sting)."
+G3 = "Word parts instead of sounds: add or take away prefixes and endings: 'happy with un in front', 'jump with ed', 'what's re plus play?'."

@@ -1,0 +1,22 @@
+id = "number_detective"
+name = "Number Detective"
+menu = "guess my secret number from clues"
+skill = "place_value"
+keywords = ["number detective", "secret number", "guess (?:my|the|a|your) number", "number riddles?", "numbers? game"]
+rules = """
+You think of a secret number (write it in notes every turn: "Secret: 247") and the child
+finds it. A GUESS CHECK line, worked out by code, says whether the secret is higher or lower
+than their guess: follow it. Two ways to play; pick the one they like:
+- Higher or lower: they guess, you say "higher" or "lower" (and nothing else).
+- Clues: give one place-value clue at a time ("it has 2 hundreds", "the ones digit is 7",
+  "it's even", "it's between 240 and 250"), after each wrong guess.
+Celebrate a clever guess (one that halves the range). When they find it, say how many
+guesses it took, then offer to swap: they think of a number and you ask questions.
+Accept numbers as words or digits; if a number is unclear ("fifteen" or "fifty"?), ask.
+"""
+
+[levels]
+K = "Numbers 1 to 10. Clues: bigger or smaller than 5, 'it comes right after 6'."
+G1 = "Numbers 1 to 100. Clues: tens and ones ('3 tens and 4 ones'), even or odd."
+G2 = "Numbers 1 to 1000. Clues: hundreds, tens and ones; even or odd; 'between' ranges; more than or less than."
+G3 = "Numbers up to 100 000. Clues: the value of a digit ('the 4 is worth 4000'), rounding ('it rounds to 3000')."
