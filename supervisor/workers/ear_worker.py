@@ -105,6 +105,20 @@ def select_channel(data: bytes, channels: int, index: int) -> bytes:
     return samples[index::channels].tobytes()
 
 
+def wake_model_list(spec: str) -> list[str]:
+    """The wake word models in a comma-separated spec: existing files and built-in
+    names (no path separators); a missing file is skipped with a warning."""
+    out: list[str] = []
+    for item in (s.strip() for s in spec.split(",")):
+        if not item:
+            continue
+        if Path(item).exists() or ("/" not in item and "\\" not in item):
+            out.append(item)
+        else:
+            log.warning("wake word model not found at %s — skipped", item)
+    return out
+
+
 class EarWorker(BaseWorker):
     domain = "ear"
 
@@ -664,34 +678,22 @@ class EarWorker(BaseWorker):
     def _load_models(self) -> None:
         """Load OpenWakeWord and Silero VAD models (runs in thread)."""
         # ── OpenWakeWord ──────────────────────────────────────────
-        ww_path = self._wakeword_model_path
-        if not ww_path:
+        # One or more, comma-separated: each a model file or a built-in name ("alexa",
+        # "hey_jarvis"). Several run side by side (e.g. "alexa" while the kids learn
+        # "hey buddy"); a detection names the model that fired.
+        models = wake_model_list(self._wakeword_model_path)
+        if not models:
             log.warning("no wake word model configured — wake word disabled")
-        elif not Path(ww_path).exists() and "/" not in ww_path and "\\" not in ww_path:
-            # Treat as a built-in model name (e.g. "alexa", "hey_jarvis")
-            try:
-                from openwakeword.model import Model  # type: ignore[import-untyped]
-
-                self._oww_model = Model(
-                    wakeword_models=[ww_path],
-                    inference_framework="onnx",
-                )
-                log.info("OpenWakeWord built-in model loaded by name: %s", ww_path)
-            except Exception:
-                log.exception("failed to load OpenWakeWord built-in model: %s", ww_path)
-        elif Path(ww_path).exists():
-            try:
-                from openwakeword.model import Model  # type: ignore[import-untyped]
-
-                self._oww_model = Model(
-                    wakeword_models=[ww_path],
-                    inference_framework="onnx",
-                )
-                log.info("OpenWakeWord model loaded from path: %s", ww_path)
-            except Exception:
-                log.exception("failed to load OpenWakeWord model")
         else:
-            log.warning("wake word model not found at %s — wake word disabled", ww_path)
+            try:
+                from openwakeword.model import Model  # type: ignore[import-untyped]
+
+                self._oww_model = Model(
+                    wakeword_models=models, inference_framework="onnx"
+                )
+                log.info("OpenWakeWord models loaded: %s", ", ".join(models))
+            except Exception:
+                log.exception("failed to load OpenWakeWord models: %s", models)
 
         # ── Silero VAD ────────────────────────────────────────────
         vad_path = Path(__file__).parent.parent / "models" / "silero_vad.onnx"

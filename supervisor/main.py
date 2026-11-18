@@ -247,7 +247,7 @@ def parse_args() -> argparse.Namespace:
             "WAKEWORD_MODEL",
             str(Path(__file__).parent / "models" / "hey_buddy.onnx"),
         ),
-        help="Wake word ONNX model path, or built-in name (alexa, hey_jarvis, hey_mycroft, hey_rhasspy). Also reads WAKEWORD_MODEL env var. Default: hey_buddy.onnx",
+        help="Wake word model(s), comma-separated: ONNX paths or built-in names (alexa, hey_jarvis, hey_mycroft, hey_rhasspy), e.g. alexa,supervisor/models/hey_buddy.onnx to run both. Also reads WAKEWORD_MODEL env var. Default: hey_buddy.onnx",
     )
     p.add_argument(
         "--power-monitor",

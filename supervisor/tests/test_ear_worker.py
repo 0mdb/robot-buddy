@@ -542,3 +542,13 @@ class TestWakeSpeechGate:
         probs = iter([0.1] * 10 + [0.8] + [0.2] * 100)
         w._silero_prob = lambda _f: next(probs)  # type: ignore[method-assign]
         assert w._recent_speech_prob() == 0.8
+
+
+def test_wake_model_list_takes_names_and_files(tmp_path):
+    from supervisor.workers.ear_worker import wake_model_list
+
+    f = tmp_path / "hey_buddy.onnx"
+    f.write_bytes(b"x")
+    assert wake_model_list(f"alexa, {f}") == ["alexa", str(f)]
+    assert wake_model_list(f"alexa,{tmp_path}/missing.onnx,") == ["alexa"]
+    assert wake_model_list("") == []
