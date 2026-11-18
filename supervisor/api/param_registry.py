@@ -259,6 +259,17 @@ EAR_TUNING_PARAMS: list[tuple[str, str, float, float, float, float, str]] = [
         "in the last second; coughs, sneezes and barks score high on the wake model but "
         "not as speech. 0 = off",
     ),
+    (
+        "ear.chime_holdoff_ms",
+        "int",
+        0,
+        1000,
+        50,
+        100,
+        "After the wake word's listening chime, ignore this long before speech can "
+        "start the turn (the mic hears the chime). 350 without echo cancellation; with "
+        "the speaker on the reSpeaker the chip removes the chime, so short",
+    ),
 ]
 
 # Param name -> key in the ear worker's config payload.
@@ -270,6 +281,7 @@ EAR_TUNING_KEYS: dict[str, str] = {
     "ear.vad_max_utterance_ms": "vad_max_utterance_ms",
     "ear.vad_tentative_ms": "vad_tentative_ms",
     "ear.wake_speech_gate": "wake_speech_gate",
+    "ear.chime_holdoff_ms": "chime_holdoff_ms",
 }
 
 
@@ -1364,12 +1376,12 @@ def create_default_registry() -> ParamRegistry:
             min=0,
             max=3000,
             step=50,
-            default=400,
+            default=100,
             owner="supervisor",
             safety="safe",
             doc="Wait after Buddy's speech is reported finished before the follow-up window "
-            "opens: covers speaker output lag, so the mic doesn't hear Buddy's own last words "
-            "(no echo cancellation with the USB speaker)",
+            "opens, so the mic doesn't hear Buddy's own last words. 100 with the speaker on "
+            "the reSpeaker (its echo cancellation removes Buddy's voice); 400 without",
         )
     )
     reg.register(

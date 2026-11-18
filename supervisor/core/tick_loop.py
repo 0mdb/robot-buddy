@@ -1700,7 +1700,7 @@ class TickLoop:
 
     # ── Wake-word follow-up ──────────────────────────────────────
 
-    _FOLLOW_UP_DELAY_S = 0.4  # let the speaker tail die away before listening
+    _FOLLOW_UP_DELAY_S = 0.1  # conversation.follow_up_delay_ms default (AEC speaker)
 
     def _schedule_follow_up(self) -> None:
         """After a wake-word reply: listen briefly for a follow-up, no wake word."""

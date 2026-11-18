@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import struct
+import time
 
 import numpy as np
 import pytest
@@ -522,6 +523,15 @@ class TestWakeSpeechGate:
         assert w._wake_speech_gate == 0.7
         w._apply_tuning({"wake_speech_gate": 5})
         assert w._wake_speech_gate == 0.95
+
+    def test_chime_holdoff_tunable(self):
+        w = EarWorker()
+        w._apply_tuning({"chime_holdoff_ms": 250})
+        w._start_listening(chime_holdoff=True)
+        assert 0.2 < w._vad_holdoff_until - time.monotonic() <= 0.25
+        w._stop_listening()
+        w._start_listening(chime_holdoff=False)
+        assert w._vad_holdoff_until == 0.0
 
     def test_recent_speech_prob_scans_last_second(self):
         w = EarWorker()

@@ -74,8 +74,10 @@ _ARECORD_RETRY_MAX_S = 5.0
 
 # Input level window for the health payload
 _LEVEL_WINDOW_S = 1.0
-# Skip VAD this long after listening starts: the 0.2 s listening chime + speaker latency.
-_VAD_START_HOLDOFF_S = 0.35
+# Skip VAD this long after a chimed listening start (``ear.chime_holdoff_ms``): the
+# 0.2 s chime + speaker latency. 0.35 s without echo cancellation; the reSpeaker's AEC
+# removes the chime when it plays through the Flex, so the default is short.
+_VAD_START_HOLDOFF_S = 0.1
 
 # Wake word cooldown — suppress re-triggers during active conversation
 _WW_COOLDOWN_S = 3.0
@@ -148,6 +150,7 @@ class EarWorker(BaseWorker):
         # firing. Loosened defaults catch normal speech; override via
         # EAR_CONFIG_INIT payload (see on_message EAR_CONFIG_INIT handler).
         self._vad_silence_ms: int = 800
+        self._chime_holdoff_s: float = _VAD_START_HOLDOFF_S
         self._vad_min_speech_ms: int = 150
         self._vad_speech_prob_threshold: float = 0.3
         self._vad_max_utterance_ms: int = 15000
@@ -380,6 +383,8 @@ class EarWorker(BaseWorker):
             self._vad_max_utterance_ms = int(p.get("vad_max_utterance_ms", 15000))
             self._vad_tentative_ms = int(p.get("vad_tentative_ms", 450))
             self._wake_speech_gate = float(p.get("wake_speech_gate", 0.5))
+            if "chime_holdoff_ms" in p:
+                self._chime_holdoff_s = max(0.0, float(p["chime_holdoff_ms"]) / 1000.0)
             log.info(
                 "configured: mic=%s (ch %d of %d), xvf=%s, ww_model=%s, threshold=%.2f",
                 self._mic_device,
@@ -457,6 +462,8 @@ class EarWorker(BaseWorker):
             )
         if "wake_speech_gate" in p:
             self._wake_speech_gate = max(0.0, min(0.95, float(p["wake_speech_gate"])))
+        if "chime_holdoff_ms" in p:
+            self._chime_holdoff_s = max(0.0, float(p["chime_holdoff_ms"]) / 1000.0)
         log.info(
             "tuning: wake>=%.2f vad prob>%.2f min_speech=%dms silence=%dms",
             self._wakeword_threshold,
@@ -474,7 +481,7 @@ class EarWorker(BaseWorker):
         # Only when a chime plays: a follow-up window opens silently, and a child often
         # answers the moment Buddy stops (the hold-off cost them their first words).
         self._vad_holdoff_until = (
-            time.monotonic() + _VAD_START_HOLDOFF_S if chime_holdoff else 0.0
+            time.monotonic() + self._chime_holdoff_s if chime_holdoff else 0.0
         )
         self._reset_vad_state()
         self._vad_diag_max_prob = 0.0
