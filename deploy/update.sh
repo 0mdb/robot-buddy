@@ -46,6 +46,17 @@ ok "dependencies up to date"
 # ── 2b. Models too big for git (face recognition) ──────────────────────────────
 bash "$REPO_ROOT/deploy/fetch_models.sh" || echo "[update] WARNING: model fetch failed; face recognition stays off"
 
+# ── 2c. Keep logs across reboots (size- and age-capped) ────────────────────────
+JOURNALD_SRC="$REPO_ROOT/deploy/journald-robot-buddy.conf"
+JOURNALD_DEST="/etc/systemd/journald.conf.d/robot-buddy.conf"
+if ! cmp -s "$JOURNALD_SRC" "$JOURNALD_DEST"; then
+    sudo mkdir -p /etc/systemd/journald.conf.d /var/log/journal
+    sudo cp "$JOURNALD_SRC" "$JOURNALD_DEST"
+    sudo systemd-tmpfiles --create --prefix /var/log/journal
+    sudo systemctl restart systemd-journald
+    ok "logs now kept across reboots (200 MB / 14 days max)"
+fi
+
 # ── 3. Sync tools dependencies ───────────────────────────────────────────────
 TOOLS_DIR="$REPO_ROOT/tools"
 if [[ -d "$TOOLS_DIR/.venv" ]]; then

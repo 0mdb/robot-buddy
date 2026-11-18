@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { ConversationHistoryPanel } from '../components/ConversationHistoryPanel'
 import { HouseholdPanel } from '../components/HouseholdPanel'
 import { ParentAlertsPanel } from '../components/ParentAlertsPanel'
 import { QuietModePanel } from '../components/QuietModePanel'
@@ -1025,6 +1026,9 @@ export default function MonitorTab() {
 
       {/* Household roster (SIM-INTERACTION I3) */}
       <HouseholdPanel />
+
+      {/* Opt-in conversation history for review and tuning (robot-local) */}
+      <ConversationHistoryPanel />
     </div>
   )
 }

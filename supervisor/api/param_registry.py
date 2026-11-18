@@ -1388,6 +1388,30 @@ def create_default_registry() -> ParamRegistry:
     )
     reg.register(
         ParamDef(
+            name="conversation.history_enabled",
+            type="bool",
+            default=False,
+            owner="supervisor",
+            safety="safe",
+            doc="Keep a conversation history on the robot for the parent to review in the "
+            "dashboard (what the children said and Buddy's replies). Off by default",
+        )
+    )
+    reg.register(
+        ParamDef(
+            name="conversation.history_days",
+            type="int",
+            min=1,
+            max=30,
+            step=1,
+            default=3,
+            owner="supervisor",
+            safety="safe",
+            doc="Days the conversation history keeps entries before deleting them",
+        )
+    )
+    reg.register(
+        ParamDef(
             name="conversation.speech_wait_s",
             type="float",
             min=3.0,

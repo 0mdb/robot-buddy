@@ -11,7 +11,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from app.llm.base import LLMBusyError, LLMError, LLMTimeoutError, LLMUnavailableError
-from app.llm.prompts import QUIET_PLAN_TTL_MS, is_quiet_tick
+from app.llm.prompts import QUIET_PLAN_TTL_MS, is_quiet_tick, presence_only_tick
 from app.llm.schemas import ModelPlan, PlanResponse, WorldState
 
 log = logging.getLogger(__name__)
@@ -91,12 +91,37 @@ async def create_plan(
         if gate is not None:
             await gate.release()
 
+    actions = list(plan.actions)
+    dropped = 0
+    if presence_only_tick(state):
+        kept = [a for a in actions if a.action != "say"]
+        dropped, actions = len(actions) - len(kept), kept
+    log.info(
+        "plan: trigger=%s new=%s actions=[%s]%s",
+        state.trigger,
+        ",".join(state.new_events or []) or "-",
+        ", ".join(_describe(a) for a in actions),
+        f" (dropped {dropped} say: someone arrived/left, the greeter answers)"
+        if dropped
+        else "",
+    )
     return PlanResponse(
         plan_id=uuid.uuid4().hex,
         robot_id=state.robot_id,
         seq=state.seq,
         monotonic_ts_ms=state.monotonic_ts_ms,
         server_monotonic_ts_ms=int(time.monotonic() * 1000),
-        actions=plan.actions,
+        actions=actions,
         ttl_ms=plan.ttl_ms,
     )
+
+
+def _describe(a: object) -> str:
+    """One plan action for the log, without its words (logs are read off the robot's
+    network; spoken text may carry household names)."""
+    kind = getattr(a, "action", "?")
+    if kind == "say":
+        return f"say({len(getattr(a, 'text', ''))} chars)"
+    if kind == "emote":
+        return f"emote:{getattr(a, 'name', '?')}({getattr(a, 'intensity', 0):.1f})"
+    return f"{kind}:{getattr(a, 'name', '?')}"

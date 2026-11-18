@@ -47,6 +47,7 @@ from supervisor.devices.power_monitor import NullPowerMonitor, PowerMonitor
 from supervisor.devices.protocol import (
     FaceButtonEventType,
     FaceButtonId,
+    FaceMood,
     FaceSystemMode,
 )
 from supervisor.api.conversation_capture import ConversationCapture
@@ -169,6 +170,10 @@ class TickLoop:
         self._late_resume_open = False
         self._late_resume_timer: asyncio.TimerHandle | None = None
         self._late_resumed = False  # dropped a reply; until the next end of utterance
+        # Turn timing for the log: the first end of speech of a turn, and late resumes.
+        self._turn_t0 = 0.0
+        self._turn_last_eou = 0.0
+        self._turn_resumes = 0
 
         # State
         self.robot = RobotState()
@@ -233,6 +238,7 @@ class TickLoop:
         # Roster kinds for recognised faces (_refresh_household_kinds); names only for
         # the greeter, never put in world state or telemetry.
         self._roster_file: Any = None
+        self._history = self._make_history()
         self._household_names: dict[str, str] = {}
         self._household_ages: dict[str, int] = {}
         from supervisor.core.greeter import Greeter
@@ -441,6 +447,8 @@ class TickLoop:
             self._handle_face_events(env)
             if self._conv_capture is not None:
                 self._conv_capture.capture_envelope(env)
+            if self._history is not None:
+                self._history.feed(env)
             if self._parent_alerts is not None:
                 self._parent_alerts.capture_envelope(env)
 
@@ -828,6 +836,7 @@ class TickLoop:
             else:
                 self._conversation_emotion = emotion
                 self._conversation_intensity = intensity
+            self._note_expression("conversation", emotion, intensity)
             # Forward to personality worker (PE spec §11.1)
             pe_payload: dict[str, object] = {
                 "emotion": emotion,
@@ -990,12 +999,33 @@ class TickLoop:
                 )
                 self._late_resumed = False
                 self._open_late_resume_window()
+                self._turn_last_eou = time.monotonic()
+                if not self._turn_t0:
+                    self._turn_t0 = (
+                        self._turn_last_eou
+                    )  # the first end of speech this turn
                 self.robot.face_listening = False
                 self._start_turn_watchdog(self._TURN_STAGE_AWAITING)
 
         # TTS events → conversation state transitions
         elif env.type == TTS_EVENT_STARTED:
             self._close_late_resume_window()
+            if self._turn_t0 and not self._late_resumed:
+                now = time.monotonic()
+                log.info(
+                    "turn: Buddy spoke %.0f ms after the end of speech"
+                    " (%.0f ms after the first; %d late resume%s)",
+                    (now - self._turn_last_eou) * 1000,
+                    (now - self._turn_t0) * 1000,
+                    self._turn_resumes,
+                    "" if self._turn_resumes == 1 else "s",
+                )
+                if self._history is not None:
+                    self._history.reply_timing(
+                        (now - self._turn_last_eou) * 1000, self._turn_resumes
+                    )
+                self._turn_t0 = 0.0
+                self._turn_resumes = 0
             if self._late_resumed:
                 # Audio of the dropped reply that reached the speaker before the AI
                 # worker began discarding it: stop it, keep listening.
@@ -1226,9 +1256,11 @@ class TickLoop:
             # the deterministic conversation phase, not the robot's affect.
             conv_clamp = self._conv.get_mood_hint()
 
+            mood_why = "conversation phase"
             if conv_clamp is not None:
                 target_mood, target_intensity = conv_clamp
             else:
+                mood_why = "personality"
                 # Normal mood pipeline: PE snapshot (primary) or fallback.
                 pe_age_ms = now_ms - self.world.personality_snapshot_ts_ms
                 pe_fresh = (
@@ -1264,6 +1296,7 @@ class TickLoop:
                     )
 
             # Step 3: Feed to mood sequencer
+            self._log_mood_change(target_mood, target_intensity, mood_why)
             self._mood_seq.request_mood(target_mood, target_intensity)
         else:
             # Choreographer suppressing mood pipeline — process mood nudge only
@@ -1445,8 +1478,36 @@ class TickLoop:
             self.world.speech_source = source
             self.world.speech_priority = priority
             # Unprompted speech (planner, speech policy, idle): logged so "talking non-stop"
-            # can be measured before its defaults change.
-            log.info("say [%s p%d]: %s", source, priority, text[:120])
+            # can be measured before its defaults change. Not the words: greetings carry
+            # names, and logs are read off the home network; the words go to the opt-in
+            # conversation history instead.
+            log.info("say [%s p%d]: %d chars", source, priority, len(text))
+            if self._history is not None:
+                self._history.say(source, text)
+
+    # ── Expression log ───────────────────────────────────────────
+    # Which part of Buddy asked for an expression, and when the face's mood actually
+    # changed: "why was the face amber?" (2026-11-18) had no answer in the logs.
+
+    def _note_expression(self, source: str, name: str, intensity: float) -> None:
+        self._last_expression = (source, name, time.monotonic())
+        log.info("expression request: %s %s (%.2f)", source, name, intensity)
+
+    def _log_mood_change(self, mood_id: int, intensity: float, why: str) -> None:
+        if mood_id == getattr(self, "_logged_mood", None):
+            return
+        self._logged_mood = mood_id
+        try:
+            name = FaceMood(mood_id).name.lower()
+        except ValueError:
+            name = str(mood_id)
+        last = getattr(self, "_last_expression", None)
+        req = (
+            f"; last request {last[0]} {last[1]} {time.monotonic() - last[2]:.1f}s ago"
+            if last
+            else ""
+        )
+        log.info("face mood -> %s (%.2f) via %s%s", name, intensity, why, req)
 
     def _apply_emote(self, action: dict) -> None:
         """Route planner emote action through PE as impulse (face comm S2 Layer 3).
@@ -1457,6 +1518,7 @@ class TickLoop:
         if not name:
             return
         intensity = float(action.get("intensity", 0.7))
+        self._note_expression("planner", name, intensity)
         asyncio.ensure_future(
             self._workers.send_to(
                 "personality",
@@ -1482,6 +1544,8 @@ class TickLoop:
     def _start_conversation(self, trigger: str = "ptt", *, chime: bool = True) -> None:
         """Start a conversation (PTT button, wake word, or text chat)."""
         is_text = trigger == "text"
+        self._turn_t0 = 0.0  # a turn that never got a reply does not time the next
+        self._turn_resumes = 0
 
         # Text chat doesn't need audio sockets
         if not is_text and not self.world.both_audio_links_up:
@@ -1784,6 +1848,47 @@ class TickLoop:
 
     # ── Late resume ──────────────────────────────────────────────
 
+    @property
+    def conversation_history(self) -> Any:
+        return self._history
+
+    def _make_history(self) -> Any:
+        """The opt-in conversation history (core/conversation_history.py), beside the roster."""
+        from supervisor.core.conversation_history import (
+            ConversationHistory,
+            history_path,
+        )
+        from supervisor.personality.roster import default_path
+
+        reg = self._param_registry
+
+        def enabled() -> bool:
+            return (
+                bool(reg.get_value("conversation.history_enabled", False))
+                if reg
+                else False
+            )
+
+        def days() -> float:
+            return float(reg.get_value("conversation.history_days", 3)) if reg else 3.0
+
+        def present() -> list[str]:
+            # Who the camera recognises: names stay on the robot, in this file.
+            return sorted(
+                {
+                    self._household_names[mid]
+                    for f in self.world.faces
+                    if (mid := f.get("member_id")) in self._household_names
+                }
+            )
+
+        return ConversationHistory(
+            history_path(default_path("./data/personality_memory.json")),
+            enabled,
+            days,
+            present,
+        )
+
     def _refresh_household_kinds(self, now_ms: float) -> None:
         """Member id -> kind for recognised faces (NEARBY limits). One stat every 2 s; an
         absent or disabled roster means nobody is known, so every face gets child limits."""
@@ -1911,6 +2016,7 @@ class TickLoop:
         from supervisor.devices.protocol import FaceConvState
 
         log.info("late resume: speech after the end of utterance, dropping the reply")
+        self._turn_resumes += 1
         self._close_late_resume_window(stop=False)  # the ear keeps listening
         self._late_resumed = True
         self._cancel_turn_watchdog()

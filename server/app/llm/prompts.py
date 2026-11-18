@@ -99,6 +99,9 @@ Rules:
   end), return an EMPTY actions list: {{"actions": [], "ttl_ms": 500}}.
   The child is not interacting — do NOT greet, do NOT chitchat, do NOT
   narrate. Silence is the correct response.
+- Someone arriving or leaving (vision.face_appeared, vision.person_identified,
+  vision.face_lost) is answered by the supervisor, which says hello itself. React to
+  those with a face or gesture only: never say hello, "I see you" or "where did you go".
 - When a new event DOES appear, prefer nonverbal acknowledgement
   (emote/gesture) over speech. Speak only when speech is clearly the
   right response to what just happened.
@@ -159,6 +162,20 @@ def _planner_events(events: list[str], state: WorldState) -> list[str]:
     if not ball_seen(state):
         hidden = hidden | {"vision.ball_acquired"}
     return [e for e in events if e not in hidden]
+
+
+# Face presence: the supervisor's greeter says hello (by name when it knows the face). The
+# planner greeted too, about every 2 minutes on 2026-11-18 ("I see you!", "Where did you
+# go?"), over the greeter's hello; the prompt rule alone did not hold.
+FACE_PRESENCE_EVENTS = frozenset(
+    {"vision.face_appeared", "vision.person_identified", "vision.face_lost"}
+)
+
+
+def presence_only_tick(state: WorldState) -> bool:
+    """The only news is someone arriving or leaving: the plan may emote, not speak."""
+    new = planner_new_events(state)
+    return bool(new) and all(e in FACE_PRESENCE_EVENTS for e in new)
 
 
 def planner_new_events(state: WorldState) -> list[str] | None:

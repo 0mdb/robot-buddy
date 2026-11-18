@@ -936,10 +936,11 @@ async def _generate_and_stream_live(
 
     if first_audio_latency_ms is not None and llm_latency_ms is not None:
         log.info(
-            "streaming turn: llm=%dms first_audio=%dms text_len=%d",
+            "streaming turn: llm=%dms first_audio=%dms text_len=%d emotion=%s",
             llm_latency_ms,
             first_audio_latency_ms,
             len(full_text),
+            emotion_for_tts,
         )
 
     await ws.send_json(

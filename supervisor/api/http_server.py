@@ -15,7 +15,7 @@ import json
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 
 from fastapi import Body, FastAPI, Request, WebSocket, WebSocketDisconnect
@@ -565,6 +565,31 @@ def create_app(
     # -- Face enrollment (inputs/face_id.py) ---------------------------------
     # Face prints are keyed by member id in the roster's sidecar directory; names never
     # leave the roster file.
+
+    # -- Conversation history (opt-in, robot-local; core/conversation_history.py) --
+
+    def _history() -> Any:
+        return getattr(tick, "conversation_history", None)
+
+    @app.get("/api/conversations")
+    async def get_conversations():
+        h = _history()
+        return JSONResponse(
+            {
+                "enabled": bool(
+                    registry.get_value("conversation.history_enabled", False)
+                ),
+                "days": registry.get_value("conversation.history_days", 3),
+                "entries": h.read() if h is not None else [],
+            }
+        )
+
+    @app.delete("/api/conversations")
+    async def clear_conversations():
+        h = _history()
+        if h is not None:
+            h.clear()
+        return JSONResponse({"ok": True})
 
     @app.get("/api/household/faces")
     async def get_household_faces():

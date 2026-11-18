@@ -190,3 +190,27 @@ async def test_quiet_tick_returns_empty_plan_without_the_model(monkeypatch):
         resp = await _request("POST", "/plan", json=ws)
         assert len(resp.json()["actions"]) == 2
     assert len(calls) == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("new_events", "kinds"),
+    [
+        (["vision.face_appeared", "vision.person_identified"], ["emote"]),
+        (["vision.face_lost"], ["emote"]),
+        (["vision.face_appeared", "button.pressed"], ["emote", "say"]),
+    ],
+)
+async def test_someone_arriving_gets_a_face_not_a_hello(monkeypatch, new_events, kinds):
+    """The greeter says hello; the planner's "I see you!" doubled it (2026-11-18)."""
+    _attach_fake_ollama()
+
+    async def mock_generate_plan(self, state):
+        return VALID_PLAN
+
+    monkeypatch.setattr(OllamaClient, "generate_plan", mock_generate_plan)
+    resp = await _request(
+        "POST", "/plan", json={**WORLD_STATE, "new_events": new_events}
+    )
+    assert resp.status_code == 200
+    assert [a["action"] for a in resp.json()["actions"]] == kinds
