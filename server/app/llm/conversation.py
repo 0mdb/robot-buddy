@@ -112,10 +112,7 @@ RESPONSE FORMAT
   "text": "<spoken response>",
   "mood_reason": "<5-15 words: why this emotion>",
   "notes": "<private, never spoken: what you must remember next turn, e.g. your secret answer in a game; empty if nothing>",
-  "memory_tags": [{{"tag": "<semantic label>", "category": "<name|topic|ritual|tone|preference>"}}],
-  "inner_thought": "<one short sentence: what you were thinking>",
-  "emotional_arc": "<rising|stable|falling|peak|recovery>",
-  "child_affect": "<positive|neutral|negative|unclear>"
+  "memory_tags": [{{"tag": "<semantic label>", "category": "<name|topic|ritual|tone|preference>"}}]
 }}
 
 WHAT TO REMEMBER (memory_tags)
@@ -139,10 +136,10 @@ EXAMPLES
 <<EXAMPLES>>
 
 User: "A man said he has kittens in his van and I can come see."
-{{"emotion": "thinking", "intensity": 0.4, "gestures": [], "text": "Thank you for telling me. Please don't go with him. Go tell your mom or dad right now, okay?", "mood_reason": "child may be in danger", "memory_tags": [], "inner_thought": "A stranger luring a child. Safety first: calm, clear, tell a grown-up now. No excitement about the kittens.", "emotional_arc": "stable", "child_affect": "unclear"}}
+{{"emotion": "thinking", "intensity": 0.4, "gestures": [], "text": "Thank you for telling me. Please don't go with him. Go tell your mom or dad right now, okay?", "mood_reason": "child may be in danger", "memory_tags": []}}
 
 User: "Nobody likes me."
-{{"emotion": "sad", "intensity": 0.3, "gestures": [], "text": "Oh, that sounds really hard. I like talking with you. Can you tell your mom or dad how you feel? A big hug might help.", "mood_reason": "empathizing with a lonely child", "memory_tags": [], "inner_thought": "The child feels lonely. Comfort first, then point to a trusted grown-up.", "emotional_arc": "stable", "child_affect": "negative"}}\
+{{"emotion": "sad", "intensity": 0.3, "gestures": [], "text": "Oh, that sounds really hard. I like talking with you. Can you tell your mom or dad how you feel? A big hug might help.", "mood_reason": "empathizing with a lonely child", "memory_tags": []}}\
 """
 
 
@@ -158,9 +155,6 @@ _EXAMPLE_KEYS = (
     "mood_reason",
     "notes",
     "memory_tags",
-    "inner_thought",
-    "emotional_arc",
-    "child_affect",
 )
 
 
@@ -233,12 +227,9 @@ class ConversationResponseV2(BaseModel):
         default_factory=list,
         description="Things to remember from this turn, with decay-tier category",
     )
-    inner_thought: str = Field(
-        default="",
-        description="One short sentence: what Buddy was thinking (logged only)",
-    )
-    emotional_arc: Literal["rising", "stable", "falling", "peak", "recovery"] = "stable"
-    child_affect: Literal["positive", "neutral", "negative", "unclear"] = "neutral"
+    # inner_thought, emotional_arc and child_affect were dropped 2026-11-18 (spec S2 §12.3
+    # amendment): nothing read them, and ~50 tokens a turn were generated on the GPU while
+    # Orpheus was speaking.
 
     # Guided decoding follows this schema, and a field with a default is optional in it: the
     # model could emit schema-valid JSON with no "text" and Buddy said nothing (SIM-INTERACTION

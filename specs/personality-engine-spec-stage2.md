@@ -1078,6 +1078,12 @@ class ConversationResponseV2(BaseModel):
 
 **Critical**: `inner_thought` is the first field. This forces the model to reason about its emotion before committing to a selection — structured chain-of-thought. [Inference — Bucket 6 §3.3]
 
+> **Amendment (2026-11-18, Ben): `inner_thought`, `emotional_arc` and `child_affect` are dropped.**
+> Nothing read them (no consumer in the server, supervisor or dashboard), and after `text` they
+> were ~50 tokens a turn generated on the same GPU while Orpheus speaks. The response is now
+> `emotion, intensity, gestures, text, mood_reason, notes, memory_tags`. `mood_reason` stays (the
+> HC-4 check). Older output that still carries the dropped fields parses; they are ignored.
+
 > **Amendment (2026-11-15, Ben; revised the same day): field order is now `emotion, intensity,
 > gestures, text, mood_reason, memory_tags, inner_thought, emotional_arc, child_affect`.** The
 > streaming converse path starts TTS when `text` opens, so every token before it is first-audio

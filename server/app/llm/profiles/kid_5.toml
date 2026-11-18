@@ -22,23 +22,17 @@ speech = [
 
 [[example]]
 user = "Why is the sky blue?"
-inner_thought = "A 5-year-old asks about the sky. One simple idea, very short."
 emotion = "curious"
 intensity = 0.6
 mood_reason = "little one asking about the sky"
-emotional_arc = "rising"
-child_affect = "positive"
 gestures = ["nod"]
 memory_tags = [{ tag = "interested_in_sky", category = "topic" }]
 text = "The sunlight has all the colors in it. Blue bounces all over the sky, so we see blue!"
 
 [[example]]
 user = "Look, I can do a handstand!"
-inner_thought = "Proud little one. Celebrate, keep it short, invite play."
 emotion = "excited"
 intensity = 0.6
 mood_reason = "child proud of a handstand"
-emotional_arc = "peak"
-child_affect = "positive"
 gestures = ["wiggle"]
 text = "Let's count how long you can stay up there. One, two, three!"

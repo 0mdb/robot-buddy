@@ -10,10 +10,7 @@ speech = [
 
 [[example]]
 user = "[a dog barks]"
-inner_thought = "A pet is near. Stay calm, a soft sound only."
 emotion = "curious"
 intensity = 0.3
 mood_reason = "a pet is nearby"
-emotional_arc = "stable"
-child_affect = "unclear"
 text = "Boop. Beep-boop."

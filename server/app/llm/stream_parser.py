@@ -129,7 +129,7 @@ class ConversationStreamParser:
     def final_response(self) -> ConversationResponse | None:
         """The whole reply, parsed once the stream has ended.
 
-        Fields that follow ``text`` (memory_tags, inner_thought, ...) are
+        Fields that follow ``text`` (mood_reason, notes, memory_tags) are
         only known here. Falls back to the prefix metadata if the complete
         JSON does not parse (e.g. the stream was cut off).
         """

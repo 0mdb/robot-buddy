@@ -270,12 +270,10 @@ class TestConversationResponseV2:
     def test_schema_has_all_fields(self):
         schema = ConversationResponseV2.model_json_schema()
         props = schema["properties"]
-        assert "inner_thought" in props
         assert "emotion" in props
         assert "intensity" in props
         assert "mood_reason" in props
-        assert "emotional_arc" in props
-        assert "child_affect" in props
+        assert "notes" in props
         assert "text" in props
         assert "gestures" in props
         assert "memory_tags" in props
@@ -284,30 +282,29 @@ class TestConversationResponseV2:
         r = ConversationResponseV2()
         assert r.emotion == "neutral"
         assert r.intensity == 0.5
-        assert r.emotional_arc == "stable"
-        assert r.child_affect == "neutral"
 
     def test_intensity_clamped(self):
         with pytest.raises(Exception):
             ConversationResponseV2(intensity=1.5)
 
-    def test_emotional_arc_literals(self):
-        for arc in ("rising", "stable", "falling", "peak", "recovery"):
-            r = ConversationResponseV2(emotional_arc=arc)
-            assert r.emotional_arc == arc
+    def test_unused_fields_dropped(self):
+        """inner_thought / emotional_arc / child_affect were dropped 2026-11-18 (nothing
+        read them); old output that still has them parses, they are ignored."""
+        props = ConversationResponseV2.model_json_schema()["properties"]
+        for gone in ("inner_thought", "emotional_arc", "child_affect"):
+            assert gone not in props
+        r = ConversationResponseV2(text="hi", inner_thought="x", emotional_arc="peak")
+        assert r.text == "hi"
 
     def test_guided_decoding_schema_structure(self):
-        """JSON schema has all 9 v2 fields with correct types for guided decoding."""
+        """JSON schema has the v2 fields with correct types for guided decoding."""
         schema = ConversationResponseV2.model_json_schema()
         props = schema["properties"]
-        # All 9 fields present
         expected_fields = {
-            "inner_thought",
             "emotion",
             "intensity",
             "mood_reason",
-            "emotional_arc",
-            "child_affect",
+            "notes",
             "text",
             "gestures",
             "memory_tags",
