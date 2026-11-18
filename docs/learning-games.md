@@ -8,12 +8,20 @@ played one end to end on 2026-11-17 and again today). This doc adds math, phonic
 games pitched at each child's grade, which move up as the child shows they know a skill.
 Grade 3 material is available as stretch, behind two locks.
 
+## 0. Settled decisions (Ben, 2026-11-18)
+
+| # | Decision |
+|---|---|
+| L1 | **Ceilings:** Owen up to **Grade 3**; the five-year-old up to **Grade 1**. Grade 3 only once progress is measured (§2.1). |
+| L2 | **Offering:** at most **once a day per child**, and only when she **sees** that child (face ID), not in the middle of something else. |
+| L3 | **Telling kids about progress:** yes, but only for a skill where the measurement is solid (§2.1, "confident"). |
+
 ## 1. Principles
 
 1. **A game first, a lesson second.** Short turns, her own personality, silly stakes ("if you
    get five, I'll do my rocket face"). Never a worksheet read aloud.
-2. **The child chooses.** She offers a learning game at most once per conversation
-   ("want to try a number riddle?"), and only when nothing else is going on. Any "no", "stop"
+2. **The child chooses.** She offers a learning game at most once a day per child, when she
+   sees them ("want to try a number riddle?"), and only when nothing else is going on. Any "no", "stop"
    or "something else" ends it straight away, cheerfully.
 3. **Honest and kind.** The existing HONESTY rule applies: a wrong answer is named kindly
    before helping ("not quite, 7 + 8 is 15; want a trick for that one?"). Praise is specific,
@@ -32,13 +40,54 @@ current step per child, starting at the base level.
 A skill moves up one step only when **both locks** open:
 
 1. **Parent ceiling (lock 1):** a per-child setting in the dashboard (Household panel), the
-   highest grade Alexa may use. Default: base level + 1 (Owen: up to Grade 3; the
-   five-year-old: up to Grade 1).
+   highest grade Alexa may use. Set: Owen up to Grade 3, the five-year-old up to Grade 1 (L1);
+   default for a new child is base level + 1.
 2. **Mastery (lock 2):** at least 80% correct in each of **3 games on 3 different days** at the
    current step. Shown in the dashboard per child and skill.
 
 A skill can step down one level if a child misses most of 2 games in a row. That isn't shown
 to the child; it only keeps games fun.
+
+### 2.1 Measuring progress
+
+Progress is only worth anything if the scoring is right, so the model's own "correct" is not
+trusted where the robot can check it.
+
+**Each attempt is recorded** (per member, robot-local `data/learning_progress.json`):
+skill, step, the item ("7 + 8", "swap c→h in cat", "un + happy"), the expected answer, what
+the child said (as transcribed), correct or not, **who decided** (`checked` by code or
+`model`), and the game and date.
+
+**Who decides "correct":**
+- **Math is checked by code.** The card asks the model to put each question in a fixed form in
+  the `practice` field (e.g. `{"item": "7+8", "answer": "15"}`); the server computes the
+  expected result and compares it with the number in the child's transcript (words or digits,
+  "fifteen" / "15"). The model can't mark a wrong sum right, and a garbled number ("fifty"
+  for "fifteen") is recorded as *unclear*, not wrong.
+- **Words and sounds are checked by code where a list exists:** rhyme pairs (CMU
+  pronouncing dictionary, already in the training venv), prefix/suffix and opposite pairs
+  from a small table per card. Anything else falls back to the model's judgement, marked
+  `model`.
+
+**What counts:**
+- **Accuracy per game** at the current step (unclear items left out).
+- **Mastery** (lock 2): ≥80% in 3 games on 3 different days, with at least 5 scored items in
+  each game.
+- **Confident** (when she may tell the child, L3): mastery reached on items that were mostly
+  `checked` by code (≥80% of them). A skill judged mainly by the model is never announced.
+- **Trend:** accuracy over the last 5 games, shown to parents.
+
+**What she says** when a skill is confident: something specific and true ("you got every
+5s question today, and last week those were tricky!"), at most once per game, never a
+comparison with a sibling, never about a skill that isn't confident.
+
+**Parents see** in the dashboard, per child and skill: current step, ceiling, accuracy per
+game, trend, items missed most, and how much was code-checked. Progress can be reset per
+child.
+
+**Checking the checker:** before scoring goes live, replay 50 recorded attempts from the
+conversation history (opt-in) and compare the code's verdict with a hand label; fix the
+number parser on any mismatch.
 
 ## 3. How it works (progressive disclosure)
 
@@ -124,13 +173,11 @@ Guess My Face (feelings on the screen), Memory List, and the movement games once
    1, 2, 5, 6 at base level from the roster age. Trim the GAMES AND STORIES section of the
    system prompt into the menu line (guessing-game rules move into its own card).
 2. **Scoring and progress.** `practice` field (spec amendment), robot progress store per
-   member, `learner` in the profile, steps per skill, mastery rule.
+   member, code checking for math (and rhyme/word tables), `learner` in the profile, steps
+   per skill, mastery and confident rules, the checker check (§2.1).
 3. **Dashboard.** Per-child ceiling setting; progress per skill; reset.
 4. **The rest of the games**, and Grade 3 content behind the locks.
 
 ## 8. Open questions
 
-1. Ceiling defaults: Owen up to Grade 3, the five-year-old up to Grade 1?
-2. How often may she offer a learning game unprompted: once per conversation, or less?
-3. Should progress ever be mentioned to the child ("you've got your 5s down!"), or only shown
-   to parents?
+None open; L1-L3 settled 2026-11-18.

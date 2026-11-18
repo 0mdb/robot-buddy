@@ -285,13 +285,16 @@ Design + settled decisions: `docs/follow-me.md` (2026-11-18). Kids can command m
 
 ### Learning Games — `docs/learning-games.md`
 
-Design 2026-11-18: math, phonics and word games pitched per child (roster age → base grade), Grade 3 as stretch behind two locks (parent ceiling per child + mastery: 80% in 3 games on 3 days). Game cards loaded only while a game is on (progressive disclosure; system prompt stays cached). Curriculum: `docs/research/alberta-curriculum-g2-g3.md`.
+Design 2026-11-18: math, phonics and word games pitched per child (roster age → base grade), Grade 3 as stretch behind two locks (parent ceiling per child + mastery: 80% in 3 games on 3 days). **Settled (Ben):** Owen up to Grade 3, the five-year-old up to Grade 1; offer once a day per child when she sees them; may tell kids about progress only for "confident" skills (mastery on code-checked items, §2.1). Game cards loaded only while a game is on (progressive disclosure; system prompt stays cached). Curriculum: `docs/research/alberta-curriculum-g2-g3.md`.
 - [ ] `[sonnet]` Test first: isolated sounds through Orpheus ("shh... ih... puh"), spelling aloud through Whisper, teen/ty numbers in transcripts
 - [ ] `[opus]` Step 1: card loader + keyword cue + `Game: <id>` in notes; games Number Detective, Rocket Math, Sound Swap, Rhyme Time at base level; GAMES section → menu line + guessing-game card
-- [ ] `[opus]` Step 2: `practice` reply field (spec amendment), per-member progress store, `learner` in the profile, mastery rule
+- [ ] `[opus]` Step 2: `practice` reply field (spec amendment), per-member progress store, math checked by code (number parser for words/digits, "unclear" not wrong), rhyme/word tables, `learner` in the profile, mastery + confident rules; then replay 50 recorded attempts against hand labels before scoring goes live
+- [ ] `[sonnet]` Offer rule: once a day per recognised child, when she sees them and nothing else is going on
 - [ ] `[sonnet]` Step 3: dashboard ceiling per child + progress view; Step 4: remaining games, Grade 3 content
 
 ### Conversation & Voice
+
+- [ ] **Before any more Anthropic API tuning runs (Ben, 2026-11-18): set up prompt caching.** Every Claude call in the eval rigs goes through `anthropic_chat()` in `server/app/eval/converse_sim.py` (used by `converse_sim` and `air.py`: simulated users, the judge); it sends no `cache_control`, so each call pays full price for the same long system prompt (persona / judge rubric) and the growing dialogue. Add caching there (the stable system prompt first, then a breakpoint after it; check the claude-api docs for current syntax and minimum cacheable length), log `cache_creation_input_tokens` / `cache_read_input_tokens` per run, and confirm reads on a short run before a full one. Household names still never go to the API (rigs redact)
 
 _3 items complete (LLM session memory, TTS resampler hardening, conversation studio session_id fix) — see archive_
 - [x] **Milestone 2026-11-17: the kids talked with Buddy and played several games successfully, first time end to end on the robot.**
