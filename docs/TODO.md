@@ -292,6 +292,10 @@ Design 2026-11-18: math, phonics and word games pitched per child (roster age �
 - [ ] `[sonnet]` Offer rule: once a day per recognised child, when she sees them and nothing else is going on
 - [ ] `[sonnet]` Step 3: dashboard ceiling per child + progress view; Step 4: remaining games, Grade 3 content
 - [ ] Touch-screen games: see `docs/learning-games.md` §9 (proposal from another session; needs a `docs/protocols.md` amendment and a face flash before build; starts after Step 1)
+- [ ] **Screen ideas, collecting only (Ben, 2026-11-18): do not build yet.** The screen is her face, so first gather the options, then review UX and personality (how she stays present, what replaces her expressions, when the face comes back) before building any. Ideas so far:
+  - Tic-tac-toe against Buddy on the screen (she thinks out loud, loses well about 40% of the time)
+  - Celebration images on the face: a rocket taking off at Rocket Math blast-off, stars/confetti for a good round
+  - The rest are in `docs/learning-games.md` §9.4 (touch games) and `docs/screen-ui-and-admin.md` §5 (kid menu, picture cards, visual timer, routine checklist, read-along, drawing pad)
 
 ### Conversation & Voice
 
