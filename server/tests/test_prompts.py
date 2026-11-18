@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from app.llm.prompts import SYSTEM_PROMPT, format_user_prompt
 from app.llm.schemas import WorldState
+from app.llm.persona import ROBOT_NAME
 
 
 def test_system_prompt_not_empty():
@@ -219,7 +220,7 @@ def test_supervisor_owned_and_gated_events_are_hidden_and_quiet():
 
 def test_fault_note_only_when_faulted():
     base = dict(robot_id="r", seq=1, monotonic_ts_ms=0, mode="WANDER", range_mm=900)
-    assert "NOTE: Buddy has a fault" not in format_user_prompt(WorldState(**base))
+    assert "NOTE: you have a fault" not in format_user_prompt(WorldState(**base))
     p = format_user_prompt(WorldState(**base, faults=["STALL"]))
-    assert "NOTE: Buddy has a fault" in p
-    assert p.index("NOTE: Buddy has a fault") < p.index("What should Robot Buddy do")
+    assert "NOTE: you have a fault" in p
+    assert p.index("NOTE: you have a fault") < p.index(f"What should {ROBOT_NAME} do")

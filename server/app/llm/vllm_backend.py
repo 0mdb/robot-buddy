@@ -29,6 +29,7 @@ from app.llm.conversation import (
 from app.llm.model_config import resolve_template_config
 from app.llm.prompts import SYSTEM_PROMPT, format_user_prompt
 from app.llm.schemas import ModelPlan, WorldState
+from app.llm.persona import ROBOT_NAME
 
 if TYPE_CHECKING:
     from app.llm.preamble import ToolResult
@@ -75,7 +76,7 @@ def _extract_json_object(text: str) -> str:
         return candidate
 
 
-_NOTE_PREFIX = "(Note for Buddy, not said by the child: "
+_NOTE_PREFIX = f"(Note for {ROBOT_NAME}, not said by the child: "
 
 
 def fold_late_system_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:

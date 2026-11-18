@@ -285,6 +285,9 @@ class TickLoop:
         self._follow_up_armed = False  # a wake-word reply is playing
         self._follow_up_session = ""  # session opened as a follow-up
         self._follow_up_task: asyncio.Task[None] | None = None
+        # A greeting is playing: when it finishes, listen as after a reply, so the person
+        # can answer "Hi, Sam!" without the wake word.
+        self._greet_listen_armed = False
 
         # PE system event forwarding state
         self._pe_boot_sent: bool = False
@@ -1063,6 +1066,12 @@ class TickLoop:
         elif env.type in (TTS_EVENT_FINISHED, TTS_EVENT_CANCELLED):
             if not self._barge_in:
                 asyncio.ensure_future(self._workers.send_to("ear", EAR_CMD_RESUME_VAD))
+            greet_listen = (
+                self._greet_listen_armed
+                and env.type == TTS_EVENT_FINISHED
+                and self.world.speech_source == "greeter"
+            )
+            self._greet_listen_armed = False
             if self._ignore_next_tts_end:
                 # End of the reply a barge-in interrupted: the new session owns
                 # the conversation state now.
@@ -1072,7 +1081,7 @@ class TickLoop:
             self.world.speech_priority = 3  # idle: nothing is speaking now
             follow_up = self._follow_up_armed and env.type == TTS_EVENT_FINISHED
             self._follow_up_armed = False
-            if follow_up:
+            if follow_up or (greet_listen and not self._conversation_busy()):
                 self._schedule_follow_up()
             if env.type == TTS_EVENT_FINISHED:
                 # Trail the talking animation to cover OS/hardware audio buffer drain.
@@ -1418,6 +1427,7 @@ class TickLoop:
                 self._drop_quiet()
             else:
                 await self._enqueue_say(greeting, source="greeter", priority=3)
+                self._arm_greet_listen()
 
         # Periodic plan requests
         _plan_period_s = (
@@ -1703,7 +1713,7 @@ class TickLoop:
     _FOLLOW_UP_DELAY_S = 0.1  # conversation.follow_up_delay_ms default (AEC speaker)
 
     def _schedule_follow_up(self) -> None:
-        """After a wake-word reply: listen briefly for a follow-up, no wake word."""
+        """After a wake-word reply or a greeting: listen briefly, no wake word."""
         window_s = 6.0
         if self._param_registry is not None:
             window_s = float(
@@ -1752,6 +1762,13 @@ class TickLoop:
                 self._end_conversation()
 
         self._follow_up_task = asyncio.ensure_future(_follow_up())
+
+    def _arm_greet_listen(self) -> None:
+        """A greeting was just sent to TTS: listen when it finishes (if it was not dropped)."""
+        enabled = self._param_registry is None or bool(
+            self._param_registry.get_value("conversation.listen_after_greeting", True)
+        )
+        self._greet_listen_armed = enabled and self.world.speech_source == "greeter"
 
     def _conversation_busy(self) -> bool:
         """A conversation owns the robot: a session is open, a wake-word reply

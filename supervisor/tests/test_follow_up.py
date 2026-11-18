@@ -253,3 +253,60 @@ async def test_unintelligible_turn_listens_again_at_once() -> None:
     assert loop.world.session_id == ""  # the dead turn ended now, not after 20 s
     await asyncio.sleep(0.05)
     assert loop.world.session_id and loop.world.session_id != first  # listening again
+
+
+class TestListenAfterGreeting:
+    """A greeting ("Hi, Sam!") opens the same window, so the person can just answer."""
+
+    def test_param_registered(self) -> None:
+        reg = create_default_registry()
+        assert reg.get_value("conversation.listen_after_greeting") is True
+
+    async def _greet(self, loop, *, finished: bool = True) -> None:
+        await loop._enqueue_say("Hi, Sam!", source="greeter", priority=3)
+        loop._arm_greet_listen()
+        loop._handle_face_events(_env(TTS_EVENT_STARTED))
+        loop._handle_face_events(
+            _env(TTS_EVENT_FINISHED if finished else TTS_EVENT_CANCELLED)
+        )
+
+    @pytest.mark.asyncio
+    async def test_listens_after_greeting(self) -> None:
+        loop = _tick_loop()
+        await self._greet(loop)
+        await asyncio.sleep(0.05)
+        assert loop.world.session_id
+        assert loop.world.conversation_trigger == "wake_word"
+        assert _count(loop, "ear", EAR_CMD_START_LISTENING) == 1
+        await asyncio.sleep(WINDOW_S * 2)
+        assert loop.world.session_id == ""  # nobody answered: window closes
+
+    @pytest.mark.asyncio
+    async def test_no_window_after_cancelled_greeting(self) -> None:
+        loop = _tick_loop()
+        await self._greet(loop, finished=False)
+        await asyncio.sleep(0.05)
+        assert loop.world.session_id == ""
+
+    @pytest.mark.asyncio
+    async def test_param_off(self) -> None:
+        loop = _tick_loop()
+        loop._param_registry = _Params(
+            **{
+                "conversation.follow_up_window_s": WINDOW_S,
+                "conversation.listen_after_greeting": False,
+            }
+        )
+        await self._greet(loop)
+        await asyncio.sleep(0.05)
+        assert loop.world.session_id == ""
+
+    @pytest.mark.asyncio
+    async def test_other_speech_does_not_open_window(self) -> None:
+        loop = _tick_loop()
+        await loop._enqueue_say("Look, a ball!", source="speech_policy", priority=3)
+        loop._arm_greet_listen()
+        loop._handle_face_events(_env(TTS_EVENT_STARTED))
+        loop._handle_face_events(_env(TTS_EVENT_FINISHED))
+        await asyncio.sleep(0.05)
+        assert loop.world.session_id == ""

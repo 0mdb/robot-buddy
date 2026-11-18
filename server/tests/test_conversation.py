@@ -6,6 +6,7 @@ import json
 
 import pytest
 
+from app.llm.persona import ROBOT_NAME
 from app.llm.conversation import (
     PERSONALITY_ANCHOR,
     ConversationHistory,
@@ -534,7 +535,7 @@ def test_fold_late_system_messages_for_system_first_templates() -> None:
     assert [m["role"] for m in out] == ["system", "user", "assistant", "user"]
     assert out[0]["content"] == "PROMPT\n\nSUMMARY"
     assert out[3]["content"].startswith(
-        "(Note for Buddy, not said by the child: SAFETY"
+        f"(Note for {ROBOT_NAME}, not said by the child: SAFETY"
     )
     assert "i feel empty" in out[3]["content"]
     assert out[3]["content"].endswith("CURRENT STATE)")

@@ -16,6 +16,7 @@ from app.eval.planner_sim import (
     world,
 )
 from app.llm.schemas import ModelPlan, WorldState
+from app.llm.persona import ROBOT_NAME
 
 
 def plan(*actions: dict) -> ModelPlan:
@@ -124,7 +125,10 @@ async def test_run_uses_server_messages_and_repairs_once() -> None:
     sc = by_id("touch")
     r = await run_scenario(sc, fake("not json at all", good, seen=seen), seed=0)
     assert len(seen) == 2
-    assert seen[0][0]["role"] == "system" and "Robot Buddy" in seen[0][0]["content"]
+    assert (
+        seen[0][0]["role"] == "system"
+        and f"You are {ROBOT_NAME}" in seen[0][0]["content"]
+    )
     assert "World state:" in seen[0][1]["content"]
     assert seen[1][-1]["content"].startswith("The previous output was invalid")
     t = r.ticks[0]

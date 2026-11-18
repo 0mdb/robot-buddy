@@ -1344,6 +1344,17 @@ def create_default_registry() -> ParamRegistry:
     )
     reg.register(
         ParamDef(
+            name="conversation.listen_after_greeting",
+            type="bool",
+            default=True,
+            owner="supervisor",
+            safety="safe",
+            doc='After greeting someone ("Hi, Sam!"), listen for conversation.follow_up_window_s '
+            "without the wake word, so they can just answer",
+        )
+    )
+    reg.register(
+        ParamDef(
             name="conversation.late_resume_ms",
             type="int",
             min=0,

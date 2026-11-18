@@ -269,7 +269,7 @@ def _format_tool_result_msg(tool: str, args: dict, result_text: str) -> str:
         # SIM-INTERACTION B7: asked about the children, the model invented topics. These
         # entries are all Buddy knows; an empty list means it has no notes, and it says so.
         grounding += (
-            " These entries are everything Buddy remembers. Mention only these, in plain words."
+            " These entries are everything you remember. Mention only these, in plain words."
             " If there are no entries, say you don't have any notes about that. Never invent"
             " conversations, topics, or activities."
         )

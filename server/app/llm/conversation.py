@@ -34,6 +34,7 @@ from app.llm.expressions import (
     normalize_gesture_name,
 )
 from app.llm.schemas import VALID_EMOTIONS
+from app.llm.persona import ROBOT_NAME
 
 log = logging.getLogger(__name__)
 
@@ -303,7 +304,9 @@ class ConversationMessage:
 
     def rendered(self) -> str:
         if self.role == "assistant" and self.notes:
-            return f"{self.content}\n[Buddy's private notes, never said aloud: {self.notes}]"
+            return (
+                f"{self.content}\n[Your private notes, never said aloud: {self.notes}]"
+            )
         return self.content
 
 
@@ -313,7 +316,7 @@ class ConversationMessage:
 _ANCHOR_INTERVAL_TURNS = 5
 
 PERSONALITY_ANCHOR = (
-    "[Reminder: Buddy is calm (energy 0.40), gently responsive. "
+    f"[Reminder: {ROBOT_NAME} is calm (energy 0.40), gently responsive. "
     "Emotions lean positive. Negative emotions are mild and brief. "
     "Stay in character.]"
 )
@@ -334,7 +337,7 @@ def _build_current_state_block(profile: dict[str, object]) -> str:
 
     Example output:
         CURRENT STATE
-        Buddy is feeling curious at intensity 0.4.
+        Alexa is feeling curious at intensity 0.4.
         Session turn: 5. Conversation has been gently positive.
         Emotional continuity: maintain positive trajectory, don't snap to a different mood.
     """
@@ -356,7 +359,7 @@ def _build_current_state_block(profile: dict[str, object]) -> str:
     if mood in negative_moods:
         continuity = "moving toward recovery, gradually lighten"
     elif mood in {"neutral", "thinking", "confused"}:
-        continuity = "Buddy is in a stable, calm state"
+        continuity = "you are in a stable, calm state"
     else:
         continuity = "maintain positive trajectory, don't snap to a different mood"
 
@@ -372,7 +375,7 @@ def _build_current_state_block(profile: dict[str, object]) -> str:
         # Say so explicitly: with nothing here the model invented past conversations when an
         # adult asked about the children (SIM-INTERACTION B7).
         memory_line = (
-            "\nKnown about this child: nothing on record. Buddy has no record of past "
+            "\nKnown about this child: nothing on record. You have no record of past "
             "conversations; never invent them."
         )
 
@@ -385,7 +388,7 @@ def _build_current_state_block(profile: dict[str, object]) -> str:
 
     return (
         f"CURRENT STATE\n"
-        f"Buddy is feeling {mood} at intensity {intensity:.1f}.\n"
+        f"{ROBOT_NAME} is feeling {mood} at intensity {intensity:.1f}.\n"
         f"Session turn: {turn_id}. Conversation has been {arc}.\n"
         f"Emotional continuity: {continuity}"
         f"{memory_line}"

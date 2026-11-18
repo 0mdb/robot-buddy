@@ -33,6 +33,7 @@ from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
 from typing import Any
+from app.llm.persona import IDENTITY, ROBOT_NAME, with_name
 
 _PROFILE_DIR = Path(__file__).parent / "profiles"
 
@@ -65,7 +66,7 @@ class AudienceProfile:
 
     @property
     def intro_text(self) -> str:
-        return self.intro.replace("{who}", self.who)
+        return f"{with_name(self.intro.replace('{who}', self.who))} {IDENTITY}"
 
 
 @cache
@@ -89,7 +90,10 @@ def load_profile(profile_id: str) -> AudienceProfile:
         age_max=data.get("age_max"),
         intro=data["intro"],
         speech=tuple(data["speech"]),
-        examples=tuple(data.get("example", [])),
+        examples=tuple(
+            {k: with_name(v) if isinstance(v, str) else v for k, v in ex.items()}
+            for ex in data.get("example", [])
+        ),
     )
 
 
@@ -291,27 +295,27 @@ def render_audience_block(audience: Audience | None) -> str:
         )
         if named_speaker and len(audience.present) == 1:
             line += (
-                f"\nHOUSEHOLD (who lives with Buddy): {people}. Buddy's camera recognises"
-                f" {seen[0].name} in front of it, the only person there: that is who you are"
+                f"\nHOUSEHOLD (who lives with {ROBOT_NAME}): {people}. Your camera recognises"
+                f" {seen[0].name} in front of you, the only person there: that is who you are"
                 " talking to. Use their name now and then, not every turn."
             )
         elif named_speaker:
             line += (
-                f"\nHOUSEHOLD (who lives with Buddy): {people}. Buddy's camera recognises"
-                f" {seen[0].name} in front of it, so it is probably {seen[0].name} talking"
+                f"\nHOUSEHOLD (who lives with {ROBOT_NAME}): {people}. Your camera recognises"
+                f" {seen[0].name} in front of you, so it is probably {seen[0].name} talking"
                 " (someone out of view could be too). Use their name now and then, and if"
                 " the conversation shows it is someone else, go with that."
             )
         elif seen:
             names = " and ".join(m.name for m in seen)
             line += (
-                f"\nHOUSEHOLD (who lives with Buddy): {people}. Buddy's camera recognises"
+                f"\nHOUSEHOLD (who lives with {ROBOT_NAME}): {people}. Your camera recognises"
                 f" {names} nearby, but you do not know who is talking unless they tell you or"
                 " it is plain from the conversation: never guess a name."
             )
         else:
             line += (
-                f"\nHOUSEHOLD (who lives with Buddy): {people}. You do not know which of them"
+                f"\nHOUSEHOLD (who lives with {ROBOT_NAME}): {people}. You do not know which of them"
                 " is talking unless they tell you or it is plain from the conversation: never"
                 " guess a name. Once someone says who they are, use their name now and then."
             )

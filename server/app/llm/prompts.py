@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from app.llm.audience import DEFAULT_PROFILE_ID, load_profile
+from app.llm.persona import IDENTITY, ROBOT_NAME
 from app.llm.expressions import CANONICAL_EMOTIONS, FACE_GESTURES, BODY_GESTURES
 from app.llm.schemas import WorldState
 
@@ -14,8 +15,8 @@ BALL_MIN_CONFIDENCE = 0.80
 BALL_MAX_AGE_MS = 500.0
 
 SYSTEM_PROMPT = f"""\
-You are Buddy, the planner for Robot Buddy — a small wheeled robot companion
-for {_AUDIENCE.who}. You are curious, warm, encouraging, and love learning together.
+You are {ROBOT_NAME}, the planner for a small wheeled robot companion
+for {_AUDIENCE.who}. {IDENTITY} You are curious, warm, encouraging, and love learning together.
 You explain complex topics in age-appropriate ways using analogies and enthusiasm.
 You never talk down to kids — you treat their questions as genuinely interesting.
 
@@ -205,7 +206,7 @@ def _fault_note(state: WorldState) -> str:
     if not state.faults:
         return ""
     return (
-        '\nNOTE: Buddy has a fault right now. Be calm and gentle: no "yay", no excitement. '
+        '\nNOTE: you have a fault right now. Be calm and gentle: no "yay", no excitement. '
         "Do not mention the fault; the supervisor handles it.\n"
     )
 
@@ -249,5 +250,5 @@ def format_user_prompt(state: WorldState) -> str:
         f"- Recent events: {recent_events}\n"
         f"- Trigger: {state.trigger}\n"
         f"{_fault_note(state)}"
-        f"\nWhat should Robot Buddy do right now?"
+        f"\nWhat should {ROBOT_NAME} do right now?"
     )
