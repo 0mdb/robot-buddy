@@ -42,6 +42,12 @@ _(all items completed)_
 2. Phase 2: Voice identification (spike → enrollment → ear pipeline → face+voice fusion)
 3. Phase 3: Person & animal detection (YOLO/MobileNet spike → detection pipeline → personality responses)
 
+### Track F: Mobility & Voice Commands (follow-me) — `docs/follow-me.md`
+_Waits on Track C Phases 4–5 + odometry._
+1. L0 prep: camera field-of-view check, stop-phrase grammar, voice-direction calibration
+2. L1 short moves → L2 "come here"
+3. Person detection (shared with Track E Phase 3) → L3 follow-me (tethered until cliff sensors work)
+
 ---
 
 ## Active Backlog
@@ -244,6 +250,37 @@ Context: single-rail 5V topology per `docs/power.md` (UPS HAT (B) → Pi + ESP32
 - [ ] Dev-board motor bring-up: power the breadboard's 5V rail from the UPS HAT (tap Pi header 5V/GND) — validates the power plan and motor driver simultaneously; bench supply @ 5V/≥3A is the backup if Pi isn't nearby
 
 ---
+
+### Mobility & Voice Commands (follow-me)
+
+Design + settled decisions: `docs/follow-me.md` (2026-11-18). Kids can command movement from day one; "stop" is handled on the Pi, never via the LLM; the LLM can only pick from a closed list of motion commands. Waits on Reflex Phases 4–5 and odometry.
+
+**L0 — Prep (can start before the PCB lands)**
+- [ ] `[sonnet]` Camera field of view: log `ScalerCrop` from Picamera2 metadata at the 640×480 capture. If the 16:9 sensor is cropped to 4:3 (~52° horizontal, not the assumed `vision.hfov_deg` 66), switch to 16:9 (e.g. 640×360) or correct `hfov_deg`; re-check face gaze gains after
+- [ ] `[sonnet]` Motion command list (closed enum in `messages/types.py`) + local grammar on the Pi over the STT transcript, before `/converse`; stop phrases ("stop", "Buddy stop", "freeze", "halt") from anyone → zero twist + IDLE. Tests for matching and for not matching normal chat ("don't stop the story")
+- [ ] `[sonnet]` A tap or long-press on the screen while in a motion mode = stop (`tick_loop._on_face_button`)
+- [ ] `[sonnet]` Calibrate `--doa-offset-deg` / `--doa-sign` on the mounted XVF3800 (voice at 0/90/180/270° → bearing in the robot frame); note whether voice direction holds up with the motors running
+- [ ] `[opus]` Server: the LLM may return one motion command from the closed list (MCP tool), never numbers; the supervisor checks it against mode guards
+
+**L1 — Short moves** _(after Phase 5 PID + odometry)_
+- [ ] `[sonnet]` `MOVE` mode + odometry-limited skill: forward/back ~30 cm, turn left/right 90°, turn around, spin; 10 s cap; speed caps per follow-me §7
+- [ ] Hardware test: ±10% distance / ±15° turn on a hard floor; stop phrase ends a move within 300 ms of the end of the word
+
+**L2 — "Come here"**
+- [ ] `[opus]` `APPROACH` mode: turn to the voice direction → find the face nearest it → drive to ~1 m facing them (ultrasonic for the last metre); 20 s cap; spoken refusal/fallback lines
+- [ ] Hardware test: 4 directions × 2–3 m, 8/10 ending 0.8–1.2 m from the speaker, facing them
+
+**L3 — "Follow me"** _(person detection = Track E Phase 3 spike, do once)_
+- [ ] `[opus]` Person detector in the vision worker (YOLO-nano ncnn, 320 px), ≥10 fps with face detection at 15 Hz and the audio stack running; record CPU. Under budget → evaluate the Hailo AI HAT+ (13 TOPS; check stack height beside the UPS HAT (B))
+- [ ] `[opus]` Tracker (Kalman + IoU, stable ids) + clothing signature (top/bottom HSV histograms); `persons[]` in the snapshot
+- [ ] `[opus]` `FOLLOW` mode: lock-on (voice direction → face → body), follow controller (gap 1.3 m, min 0.8 m), LOST/SEARCHING/WAITING/give-up states, "leader keeps Buddy" rule, `follow.*` tunables in the dashboard
+- [ ] `[sonnet]` Personality lines + face "moving" indicator (amend `specs/face-visual-language.md` first)
+- [ ] Hardware test (tethered, an adult beside Buddy): 2-room walk with a doorway at a kid's pace; 2-person crossing never swaps the leader (5 trials)
+
+**Cliff sensors** _(required before following without a tether)_
+- [ ] `[opus]` Choose sensors (2–4 downward VL53L0X/VL6180X) + where they connect (spare I2C/GPIO on the v2 reflex board?); reflex `CLIFF` fault like OBSTACLE (reverse escape only); mounts in CAD
+
+**L4/L5 (later):** room AprilTags + named places taught while following ("this is the kitchen") → "go to the kitchen" → "go find Sam". Write the design up once L3 works.
 
 ### Conversation & Voice
 
