@@ -267,3 +267,23 @@ async def test_audio_heard_while_a_turn_finishes_is_discarded(
     )
     assert slow_gen["stt"] == [3200, 3200]
     assert slow_gen["histories"][-1].turn_count == 2
+
+
+@pytest.mark.asyncio
+async def test_a_long_turn_keeps_its_newest_audio(
+    fakes: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Past the buffer cap the oldest audio goes, not the whole turn: clearing it threw
+    away what the child had just said and sent an error that ended the conversation."""
+    monkeypatch.setattr(conv, "_MAX_AUDIO_BUFFER_BYTES", 8000)
+    ws = _ScriptedWS()
+    await _run(ws, [*[_audio() for _ in range(5)], {"type": "end_utterance"}, 0.1])
+    assert fakes["stt"] == [8000]
+    assert ws.types() == ["transcription", "emotion", "audio", "done"]
+
+
+def test_trim_oldest_keeps_whole_samples(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(conv, "_MAX_AUDIO_BUFFER_BYTES", 10)
+    buf = bytearray(range(13))
+    conv._trim_oldest(buf)
+    assert bytes(buf) == bytes(range(4, 13))  # 3 over → 4 dropped, sample-aligned

@@ -944,6 +944,7 @@ class TickLoop:
                 self._cancel_follow_up()
                 self._start_conversation("wake_word")
                 self._conv.set_state(FaceConvState.ATTENTION)
+                self._start_turn_watchdog(self._TURN_STAGE_WAITING)
 
         elif env.type in (EAR_EVENT_UTTERANCE_PAUSE, EAR_EVENT_SPEECH_RESUMED):
             # Speculative end of turn (wake-word turns end on VAD; PTT ends on release).
@@ -956,6 +957,8 @@ class TickLoop:
                 asyncio.ensure_future(self._workers.send_to("ai", cmd))
 
         elif env.type == EAR_EVENT_SPEECH_STARTED:
+            if self._turn_watchdog_stage == self._TURN_STAGE_WAITING:
+                self._cancel_turn_watchdog()  # someone spoke after the wake word
             if (
                 self._late_resume_open
                 and self.world.session_id
@@ -1572,6 +1575,7 @@ class TickLoop:
         self._start_conversation("wake_word")
         if self.world.session_id:
             self._conv.set_state(FaceConvState.ATTENTION)
+            self._start_turn_watchdog(self._TURN_STAGE_WAITING)
 
     def _on_param_change(self, name: str, _value: Any) -> None:
         """Handle param registry changes."""
@@ -1704,9 +1708,15 @@ class TickLoop:
     # Turn watchdog stages: waiting for the reply to start, and mid-reply.
     _TURN_STAGE_AWAITING = "awaiting_reply"
     _TURN_STAGE_REPLYING = "replying"
+    # After a wake word, until speech starts. Without it a wake word nobody followed up
+    # (or speech the VAD never picked up) left the mic streaming to the server for
+    # minutes, overnight too (2026-11-17).
+    _TURN_STAGE_WAITING = "waiting_for_speech"
 
     def _turn_budget_s(self, stage: str) -> float:
-        if stage == self._TURN_STAGE_REPLYING:
+        if stage == self._TURN_STAGE_WAITING:
+            name, default = "conversation.speech_wait_s", 8.0
+        elif stage == self._TURN_STAGE_REPLYING:
             name, default = "conversation.reply_timeout_s", 60.0
         else:
             name, default = "conversation.turn_timeout_s", 20.0

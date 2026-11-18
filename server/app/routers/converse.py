@@ -61,6 +61,24 @@ router = APIRouter()
 _MAX_AUDIO_BUFFER_BYTES = 16_000 * 2 * 30  # ~30 seconds of PCM 16-bit mono
 
 
+def _trim_oldest(buf: bytearray) -> None:
+    """Keep the newest ``_MAX_AUDIO_BUFFER_BYTES`` of a turn's audio.
+
+    The buffer holds everything since the last end of utterance: the quiet before the
+    child spoke and, after late resumes, the merged turns. Clearing it on overflow
+    threw away what the child had just said and sent an error that ended the
+    conversation (seen 2026-11-16..17); the oldest audio is the least useful.
+    """
+    excess = len(buf) - _MAX_AUDIO_BUFFER_BYTES
+    if excess > 0:
+        del buf[: excess + (excess & 1)]  # whole 16-bit samples
+
+
+def _append_capped(buf: bytearray, data: bytes) -> None:
+    buf.extend(data)
+    _trim_oldest(buf)
+
+
 @router.websocket("/converse")
 async def converse(ws: WebSocket):
     """Bidirectional conversation WebSocket.
@@ -151,24 +169,9 @@ async def converse(ws: WebSocket):
                     # before Buddy spoke) belongs to no one once it has finished.
                     active = None
                     audio_buffer.clear()
-                # Accumulate audio chunks with overflow protection.
                 data = msg.get("data", "")
                 if data:
-                    decoded = base64.b64decode(data)
-                    if len(audio_buffer) + len(decoded) > _MAX_AUDIO_BUFFER_BYTES:
-                        log.warning(
-                            "Audio buffer overflow (%d + %d > %d), clearing",
-                            len(audio_buffer),
-                            len(decoded),
-                            _MAX_AUDIO_BUFFER_BYTES,
-                        )
-                        audio_buffer.clear()
-                        await ws.send_json(
-                            {"type": "error", "message": "audio_buffer_overflow"}
-                        )
-                        await ws.send_json({"type": "listening"})
-                        continue
-                    audio_buffer.extend(decoded)
+                    _append_capped(audio_buffer, base64.b64decode(data))
 
             elif msg_type == "end_utterance":
                 if active is not None and not active.task.done():
@@ -226,6 +229,7 @@ async def converse(ws: WebSocket):
                     a, active = active, None
                     await _drop_speculation(a, history, late=True)
                     audio_buffer[:0] = a.pcm
+                    _trim_oldest(audio_buffer)
 
             elif msg_type == "text":
                 # Direct text input (bypass STT)

@@ -18,6 +18,7 @@ from supervisor.messages.types import (
     AI_CONVERSATION_FIRST_AUDIO,
     AI_CONVERSATION_TURN_ERROR,
     EAR_EVENT_END_OF_UTTERANCE,
+    EAR_EVENT_SPEECH_STARTED,
     EAR_EVENT_WAKE_WORD,
     TTS_CMD_CANCEL,
     TTS_EVENT_CANCELLED,
@@ -183,6 +184,45 @@ class TestTurnWatchdog:
         loop = _tick_loop()
         loop._handle_face_events(_env(EAR_EVENT_WAKE_WORD))
         sid = loop.world.session_id
-        assert loop._turn_watchdog is None
+        # Only the (8 s) wait for speech; the turn budget starts at the utterance end.
+        assert loop._turn_watchdog_stage == "waiting_for_speech"
         await asyncio.sleep(TURN_S * 3)
         assert loop.world.session_id == sid
+
+
+class TestSpeechWait:
+    """After a wake word, a session where nobody starts speaking ends; it used to
+    stream the mic to the server for minutes (overnight, 2026-11-17)."""
+
+    def _loop(self):
+        loop = _tick_loop()
+        loop._param_registry = _Params(
+            **{"conversation.speech_wait_s": TURN_S, "conversation.turn_timeout_s": 5.0}
+        )
+        return loop
+
+    def test_param_registered(self) -> None:
+        assert create_default_registry().get_value("conversation.speech_wait_s") == 8.0
+
+    @pytest.mark.asyncio
+    async def test_no_speech_after_wake_word_ends_the_session(self) -> None:
+        loop = self._loop()
+        loop._handle_face_events(_env(EAR_EVENT_WAKE_WORD))
+        sid = loop.world.session_id
+        assert loop._turn_watchdog_stage == "waiting_for_speech"
+        await asyncio.sleep(TURN_S * 3)
+        assert loop.world.session_id == ""
+        ends = _sends(loop, "ai", AI_CMD_END_CONVERSATION)
+        assert ends and ends[-1].args[2]["session_id"] == sid
+
+    @pytest.mark.asyncio
+    async def test_speech_started_keeps_the_session(self) -> None:
+        loop = self._loop()
+        loop._handle_face_events(_env(EAR_EVENT_WAKE_WORD))
+        sid = loop.world.session_id
+        loop._handle_face_events(_env(EAR_EVENT_SPEECH_STARTED))
+        assert loop._turn_watchdog_stage == ""
+        await asyncio.sleep(TURN_S * 3)
+        assert loop.world.session_id == sid
+        loop._handle_face_events(_env(EAR_EVENT_END_OF_UTTERANCE))
+        assert loop._turn_watchdog_stage == "awaiting_reply"

@@ -1388,6 +1388,20 @@ def create_default_registry() -> ParamRegistry:
     )
     reg.register(
         ParamDef(
+            name="conversation.speech_wait_s",
+            type="float",
+            min=3.0,
+            max=60.0,
+            step=1.0,
+            default=8.0,
+            owner="supervisor",
+            safety="safe",
+            doc="After a wake word, end the session if nobody starts speaking "
+            "within this long",
+        )
+    )
+    reg.register(
+        ParamDef(
             name="conversation.reply_timeout_s",
             type="float",
             min=10.0,
