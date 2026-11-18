@@ -51,6 +51,7 @@ from supervisor.devices.protocol import (
     FaceSystemMode,
 )
 from supervisor.api.conversation_capture import ConversationCapture
+from supervisor.personality.learning import LearningStore
 from supervisor.personality.parent_alerts import ParentAlerts
 from supervisor.devices.reflex_client import ReflexClient
 from supervisor.messages.envelope import Envelope
@@ -85,6 +86,7 @@ from supervisor.messages.types import (
     PERSONALITY_EVENT_CONV_STARTED,
     PERSONALITY_EVENT_GUARDRAIL_TRIGGERED,
     PERSONALITY_EVENT_MEMORY_EXTRACT,
+    PERSONALITY_EVENT_PRACTICE,
     PERSONALITY_EVENT_SPEECH_ACTIVITY,
     PERSONALITY_EVENT_SYSTEM_STATE,
     PERSONALITY_LLM_PROFILE,
@@ -149,6 +151,7 @@ class TickLoop:
         teleop_ttl_s: float = 0.5,
         parent_alerts: ParentAlerts | None = None,
         barge_in: bool = False,
+        learning: LearningStore | None = None,
     ) -> None:
         self._reflex = reflex
         self._face = face
@@ -156,6 +159,8 @@ class TickLoop:
         self._on_telemetry = on_telemetry
         self._conv_capture = conv_capture
         self._parent_alerts = parent_alerts
+        # Learning-game progress per child (personality/learning.py); None = not kept.
+        self._learning = learning
         self._param_registry = param_registry
         self._power_monitor: PowerMonitor = power_monitor or NullPowerMonitor()
         self._power_task: asyncio.Task[None] | None = None
@@ -939,6 +944,7 @@ class TickLoop:
                 profile = dict(env.payload)
                 self._add_present_faces(profile)
                 self._pick_memory(profile)
+                self._add_learner(profile)
                 profile["turn_id"] = self.world.turn_id
                 profile["session_id"] = self.world.session_id
                 asyncio.ensure_future(
@@ -955,6 +961,10 @@ class TickLoop:
                     "personality", PERSONALITY_EVENT_MEMORY_EXTRACT, payload
                 )
             )
+
+        # A learning-game answer checked by the server → the recognised child's progress
+        elif env.type == PERSONALITY_EVENT_PRACTICE:
+            self._record_practice(env.payload.get("record"))
 
         # Ear worker events
         elif env.type == EAR_EVENT_WAKE_WORD:
@@ -2070,6 +2080,38 @@ class TickLoop:
         self._queued_intensity = 0.0
         self.robot.face_listening = True
         self._conv.set_state(FaceConvState.LISTENING)
+
+    def _speaking_kid(self) -> str | None:
+        """The recognised speaker when they are a child (progress is kept for children)."""
+        mid = self._speaker_member_id()
+        return mid if mid and self.world.household_kinds.get(mid) == "kid" else None
+
+    def _record_practice(self, record: object) -> None:
+        """File a checked answer under the recognised child (the same rule as per-person
+        memory). Nobody recognised: not recorded (there is no household progress)."""
+        kid = self._speaking_kid()
+        if self._learning is None or not isinstance(record, dict) or kid is None:
+            return
+        try:
+            for change in self._learning.record(
+                kid, self._household_ages.get(kid), record
+            ):
+                log.info("learning: %s", change)
+        except Exception as e:  # noqa: BLE001 -- progress must never stop the loop
+            log.warning("learning progress not recorded: %s", e)
+
+    def _add_learner(self, profile: dict) -> None:
+        """``learner`` for the recognised child (docs/learning-games.md §3): base level,
+        parent ceiling, step per skill, confident skills. The server pitches games with it."""
+        kid = self._speaking_kid()
+        if self._learning is None or kid is None:
+            return
+        try:
+            profile["learner"] = self._learning.learner(
+                kid, self._household_ages.get(kid)
+            )
+        except Exception as e:  # noqa: BLE001
+            log.warning("learner not added: %s", e)
 
     def _speaker_member_id(self) -> str | None:
         """The recognised household member in front of the camera when they are the only

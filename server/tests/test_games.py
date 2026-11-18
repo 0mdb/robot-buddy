@@ -195,3 +195,116 @@ def test_sound_swap_tail_and_status() -> None:
     assert h.game_tail_line(f"Ready? {it.ask}", "Game: sound_swap. Q#0") is None
     s = drill.status(sound_swap.DRILL, [("Game: sound_swap. Q#0", it.answer)], 9, "G2")
     assert "Q#1" in s
+
+
+# ── Progress records and the learner's step (learning-games.md §2, §2.1) ─────
+
+from app.llm.games import drill  # noqa: E402
+
+
+def _kid_profile(learner: dict | None) -> dict:
+    p = {"mood": "happy", "intensity": 0.5, "turn_id": 2, "valence": 0.2,
+         "audience": {"present": [{"kind": "kid", "confidence": 0.9, "age": 7,
+                                   "sources": ["face"]}], "speaking": 0}}  # fmt: skip
+    if learner is not None:
+        p["learner"] = learner
+    return p
+
+
+def test_practice_record_for_the_answered_item() -> None:
+    h = ConversationHistory()
+    h.update_profile(_kid_profile(None))
+    q = rocket.question(h.game_picks.seed, 0, "G2")
+    h.add_user("rocket math please")
+    assert h.practice_record() is None  # nothing asked yet
+    h.add_assistant(f"Go! {q.ask}", notes="Game: rocket_math. Q#0")
+    h.add_user(f"it's {q.answer}")
+    rec = h.practice_record()
+    assert rec is not None
+    assert rec["verdict"] == "right" and rec["decided"] == "code"
+    assert rec["skill"] == "add_sub_facts" and rec["step"] == "G2" and rec["q"] == 0
+    assert rec["key"] == f"{h.game_picks.seed}:rocket_math:0"
+    h.add_assistant("Yes!", notes="Game: rocket_math. Q#1")
+    h.add_user("um I don't know")
+    assert h.practice_record()["verdict"] == "none"  # a miss, counted
+
+
+def test_goodbye_is_not_a_miss_and_gets_no_question() -> None:
+    h = ConversationHistory()
+    h.add_user("rocket math")
+    h.add_assistant("Go!", notes="Game: rocket_math. Q#2")
+    h.add_user("goodbye alexa")
+    assert h.practice_record() is None
+    # The reply's notes still promise Q#3 (playtest 2026-11-18): no question after goodbye.
+    assert h.game_tail_line("Bye bye!", "Game: rocket_math. Q#3") is None
+
+
+def test_learner_step_pitches_the_game_and_round_keeps_its_grade() -> None:
+    h = ConversationHistory()
+    h.update_profile(
+        _kid_profile({"base": "G2", "ceiling": "G3", "steps": {"add_sub_facts": "G3"}})
+    )
+    h.add_user("let's play rocket math")
+    t = _text(h)
+    assert "LEVEL (Grade 3)" in t
+    q0 = rocket.question(h.game_picks.seed, 0, "G3")
+    assert q0.ask in t
+    # The step drops mid-round (or someone else steps up): this round stays at Grade 3.
+    h.add_assistant(f"Go! {q0.ask}", notes="Game: rocket_math. Q#0")
+    h.update_profile(
+        _kid_profile({"base": "G2", "ceiling": "G3", "steps": {"add_sub_facts": "G2"}})
+    )
+    h.add_user(q0.answer)
+    rec = h.practice_record()
+    assert rec["step"] == "G3" and rec["verdict"] == "right"
+    assert rocket.question(h.game_picks.seed, 1, "G3").ask in _text(h)
+
+
+def test_confident_skill_may_be_praised() -> None:
+    h = ConversationHistory()
+    h.update_profile(
+        _kid_profile(
+            {"base": "G2", "ceiling": "G3", "steps": {}, "confident": ["add_sub_facts"]}
+        )  # fmt: skip
+    )
+    h.add_user("rocket math")
+    assert "PROGRESS: " in _text(h)
+    h2 = ConversationHistory()
+    h2.update_profile(_kid_profile({"base": "G2", "ceiling": "G3", "steps": {}}))
+    h2.add_user("rocket math")
+    assert "PROGRESS: " not in _text(h2)
+
+
+def test_ending_words() -> None:
+    for said in (
+        "goodbye",
+        "bye alexa",
+        "I want to stop",
+        "can we play something else",
+    ):
+        assert drill.ending(said), said
+    for said in ("15", "fifteen", "is it nine"):
+        assert not drill.ending(said), said
+
+
+def test_practice_record_keeps_parsed_answer_not_words() -> None:
+    from app.llm.games import drill, rocket
+
+    it = drill.item(rocket.DRILL, 21, 0, "G2")
+    rec = drill.practice(
+        rocket.DRILL, "add_sub_facts", "Game: rocket_math. Q#0",
+        f"um my brother says it's {it.answer}", 21, "G2",
+    )  # fmt: skip
+    assert rec is not None and rec["verdict"] == "right"
+    assert rec["answer"] == it.answer and "said" not in rec
+    assert "brother" not in str(rec)
+
+
+def test_naming_a_game_mid_round_is_not_scored() -> None:
+    h = ConversationHistory()
+    h.add_user("rocket math please")
+    h.add_assistant("Five questions to blast-off! What is 2 plus 2?",
+                    notes="Game: rocket_math. Q#0")  # fmt: skip
+    h.add_user("can we play sound swap instead")
+    h.add_assistant("Sure!", notes="Game: sound_swap. Q#0")
+    assert h.practice_record() is None

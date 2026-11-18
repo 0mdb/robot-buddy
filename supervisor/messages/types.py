@@ -183,6 +183,9 @@ PERSONALITY_STATUS_HEALTH = "personality.status.health"
 PERSONALITY_EVENT_MOOD_CHANGED = "personality.event.mood_changed"
 PERSONALITY_EVENT_GUARDRAIL_TRIGGERED = "personality.event.guardrail_triggered"
 PERSONALITY_EVENT_MEMORY_EXTRACT = "personality.event.memory_extract"
+# A learning-game answer checked by the server (docs/learning-games.md §2.1); the tick loop
+# files it under the recognised child (personality/learning.py).
+PERSONALITY_EVENT_PRACTICE = "personality.event.practice"
 PERSONALITY_CMD_RESET_MEMORY = "personality.cmd.reset_memory"
 
 # ── Source IDs ───────────────────────────────────────────────────

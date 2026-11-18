@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import json
 from collections import deque
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from functools import cache
 from typing import TYPE_CHECKING, Any, Literal
@@ -327,10 +327,24 @@ SAFETY_CHECK = (
 )
 
 
-def _learner_grade(profile: dict[str, object] | None) -> str:
-    """The grade a game card is pitched at: the speaking child's age (face ID), else the
-    household's primary child (docs/learning-games.md §2). Until per-child progress exists
-    (step 2) this is the base level only; Grade 3 stretch comes with the two locks."""
+def _learner(profile: dict[str, object] | None) -> dict[str, Any] | None:
+    """The robot's ``learner`` block for the recognised child (learning-games.md §3)."""
+    raw = profile.get("learner") if profile else None
+    return raw if isinstance(raw, dict) else None
+
+
+def _learner_grade(profile: dict[str, object] | None, skill: str = "") -> str:
+    """The grade a game card is pitched at (docs/learning-games.md §2): the recognised child's
+    current step for the skill (the robot's ``learner``: progress within the parent ceiling),
+    else their base level; with nobody recognised, the speaking child's age, else the
+    household's primary child."""
+    learner = _learner(profile)
+    if learner is not None:
+        steps = learner.get("steps")
+        step = steps.get(skill) if isinstance(steps, dict) else None
+        grade = step if step in games.GRADES else learner.get("base")
+        if grade in games.GRADES:
+            return str(grade)
     audience = parse_audience(profile.get("audience")) if profile else None
     age = None
     if audience is not None:
@@ -452,6 +466,8 @@ class ConversationHistory:
         self._max_context_tokens = max_context_tokens
         self._profile: dict[str, object] | None = None
         self.game_picks = GamePicks()
+        # (game id, round) -> grade it started at; a round keeps its grade (drill.Grade).
+        self._round_grades: dict[tuple[str, int], str] = {}
 
     def update_profile(self, profile: dict[str, object]) -> None:
         """Store the latest personality profile for prompt injection (§12.5)."""
@@ -624,8 +640,18 @@ class ConversationHistory:
             return None
         card, asked = found
         text = card.render(
-            _learner_grade(self._profile), asked=asked, drilled=card.id in games.DRILLS
+            _learner_grade(self._profile, card.skill),
+            asked=asked,
+            drilled=card.id in games.DRILLS,
         )
+        learner = _learner(self._profile)
+        confident = learner.get("confident") if learner else None
+        if card.skill and isinstance(confident, list) and card.skill in confident:
+            text += (
+                "\nPROGRESS: this child has really learned this skill (checked over several"
+                " days). Once in this game you may say so, specifically and truly (e.g. what"
+                " they got right today); never compare them with anyone."
+            )
         check = None
         drill = games.DRILLS.get(card.id)
         if drill is not None:
@@ -633,7 +659,7 @@ class ConversationHistory:
                 drill,
                 self._reply_pairs(),
                 self.game_picks.seed,
-                _learner_grade(self._profile),
+                self._grade_of(card.id, card.skill),
             )
         elif not asked and card.id == "number_detective":
             check = games.checker.check_guess(last_notes, last_user)
@@ -642,11 +668,60 @@ class ConversationHistory:
     def game_tail_line(self, text: str, notes: str) -> str | None:
         """For a drill game (Rocket Math, Sound Swap): the item the reply's notes say was asked
         (``Q#<n>``) when its words didn't ask it, to be spoken after them; else None."""
-        grade = _learner_grade(self._profile)
-        for drill in games.DRILLS.values():
-            line = games.drill.tail(drill, notes, text, self.game_picks.seed, grade)
+        last_user = next(
+            (m.content for m in reversed(self._messages) if m.role == "user"), ""
+        )
+        for game_id, drill in games.DRILLS.items():
+            card = games.cards().get(game_id)
+            grade = self._grade_of(game_id, card.skill if card else "")
+            line = games.drill.tail(
+                drill, notes, text, self.game_picks.seed, grade, child=last_user
+            )
             if line:
                 return line
+        return None
+
+    def _grade_of(self, game_id: str, skill: str) -> Callable[[int], str]:
+        """Grade per round for a drill: pinned when the round is first used."""
+
+        def grade(rnd: int) -> str:
+            key = (game_id, rnd)
+            if key not in self._round_grades:
+                self._round_grades[key] = _learner_grade(self._profile, skill)
+            return self._round_grades[key]
+
+        return grade
+
+    def practice_record(self) -> dict[str, Any] | None:
+        """The progress record for the drill item the child just answered (their last
+        message answers the last reply's ``Q#<n>``), checked by code; None if none. Sent to
+        the robot when the turn completes, never while a prompt is built (speculative turns
+        are rolled back). learning-games.md §2.1."""
+        msgs = list(self._messages)
+        users = [i for i, m in enumerate(msgs) if m.role == "user"]
+        if not users:
+            return None
+        said = msgs[users[-1]].content
+        if any(
+            c.keywords.search(said) for c in games.cards().values()
+        ):  # asking for a game mid-round is not an answer
+            return None
+        notes = next(
+            (m.notes for m in reversed(msgs[: users[-1]]) if m.role == "assistant"), ""
+        )
+        for game_id, drill in games.DRILLS.items():
+            card = games.cards().get(game_id)
+            skill = card.skill if card else ""
+            rec = games.drill.practice(
+                drill,
+                skill,
+                notes,
+                said,
+                self.game_picks.seed,
+                self._grade_of(game_id, skill),
+            )
+            if rec is not None:
+                return rec
         return None
 
     def _reply_pairs(self) -> list[tuple[str, str]]:
@@ -661,6 +736,7 @@ class ConversationHistory:
 
     def clear(self) -> None:
         self._messages.clear()
+        self._round_grades.clear()
 
     @property
     def turn_count(self) -> int:

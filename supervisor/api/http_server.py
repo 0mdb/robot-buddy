@@ -27,6 +27,9 @@ from starlette.responses import Response
 from supervisor.api.param_persistence import load_params, on_param_changed
 from supervisor.api.param_registry import EAR_TUNING_KEYS, XVF_PARAMS
 from supervisor.mcp import McpAuditBroadcaster, build_mcp_server
+from supervisor.personality.learning import GRADE_NAMES, LearningStore
+from supervisor.personality.learning import GRADES as LEARNING_GRADES
+from supervisor.personality.learning import default_path as learning_default_path
 from supervisor.messages.types import (
     EAR_CMD_SET_MIC_CHANNEL,
     EAR_CMD_SET_TUNING,
@@ -144,6 +147,7 @@ def create_app(
     tts_endpoint: str = "",
     household_path: Path | None = None,
     parent_alerts: ParentAlerts | None = None,
+    learning: LearningStore | None = None,
 ) -> FastAPI:
     import psutil
 
@@ -152,6 +156,8 @@ def create_app(
     roster_path = household_path or household.default_path(
         "./data/personality_memory.json"
     )
+    if learning is None:
+        learning = LearningStore(learning_default_path(roster_path))
 
     # -- MCP server --------------------------------------------------------
     # Built before FastAPI so the session manager can be driven from its
@@ -559,6 +565,7 @@ def create_app(
         except KeyError:
             return _roster_error(KeyError("no such member"), 404)
         household.save(roster_path, r)
+        learning.forget(member_id)
         await workers.send_to("vision", VISION_FACE_FORGET, {"member_id": member_id})
         from supervisor.messages.types import PERSONALITY_CMD_RESET_MEMORY
 
@@ -651,6 +658,47 @@ def create_app(
             "personality", PERSONALITY_CMD_RESET_MEMORY, {"all_members": True}
         )
         return _roster_reply(household.Roster())
+
+    # -- Learning progress (docs/learning-games.md §2, §2.1) -------------------
+    # Robot-local, per child: parent ceiling (lock 1), steps, games, reset.
+
+    def _kid(member_id: str) -> household.Member | None:
+        r = household.load(roster_path)
+        return next(
+            (m for m in r.members if m.id == member_id and m.kind == "kid"), None
+        )
+
+    @app.get("/api/learning")
+    async def get_learning():
+        r = household.load(roster_path)
+        kids = [m for m in r.members if m.kind == "kid"]
+        return {
+            "enabled": r.enabled,
+            "grades": [{"id": g, "name": GRADE_NAMES[g]} for g in LEARNING_GRADES],
+            "children": [
+                learning.summary(m.id, m.age) | {"name": m.name, "age": m.age}
+                for m in kids
+            ],
+        }
+
+    @app.put("/api/learning/{member_id}/ceiling")
+    async def set_learning_ceiling(member_id: str, body: dict):
+        kid = _kid(member_id)
+        if kid is None:
+            return JSONResponse({"error": "no such child"}, status_code=404)
+        try:
+            learning.set_ceiling(member_id, body.get("ceiling"))
+        except ValueError as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+        return learning.summary(member_id, kid.age) | {"name": kid.name, "age": kid.age}
+
+    @app.delete("/api/learning/{member_id}")
+    async def reset_learning(member_id: str):
+        kid = _kid(member_id)
+        if kid is None:
+            return JSONResponse({"error": "no such child"}, status_code=404)
+        learning.reset(member_id)
+        return learning.summary(member_id, kid.age) | {"name": kid.name, "age": kid.age}
 
     # -- Parent alerts (secrets and serious disclosures) ----------------------
     # Robot-local inbox; the child's words never leave the robot.

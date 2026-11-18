@@ -39,7 +39,12 @@ ADULT_AGE = (18, 120)
 
 # Things stored beside the roster for it (voice embeddings from stage 5; face prints,
 # supervisor/inputs/face_id.py). Removed with it.
-_SIDECAR_DIRS = ("household_voice", "household_faces", "conversation_history")
+_SIDECAR_DIRS = (
+    "household_voice",
+    "household_faces",
+    "conversation_history",
+    "household_learning",  # learning-game progress (personality/learning.py)
+)
 
 
 class RosterError(ValueError):

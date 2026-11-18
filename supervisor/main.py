@@ -309,6 +309,12 @@ async def async_main(args: argparse.Namespace) -> None:
     log.info(
         "parent alerts: inbox on, Home Assistant push %s", "on" if ha_push else "off"
     )
+    from supervisor.personality import learning as learning_mod
+    from supervisor.personality.roster import default_path as roster_default_path
+
+    learning = learning_mod.LearningStore(
+        learning_mod.default_path(roster_default_path(cfg.personality.memory_path))
+    )
     mock_reflex = None
     reflex = None
     face = None
@@ -392,6 +398,7 @@ async def async_main(args: argparse.Namespace) -> None:
             robot_id=args.robot_id,
             conv_capture=conv_capture,
             parent_alerts=parent_alerts,
+            learning=learning,
             param_registry=registry,
             power_monitor=power_monitor,
             barge_in=args.barge_in,
@@ -408,6 +415,7 @@ async def async_main(args: argparse.Namespace) -> None:
             conv_capture=conv_capture,
             tts_endpoint=tts_endpoint,
             parent_alerts=parent_alerts,
+            learning=learning,
         )
         http_config = uvicorn.Config(
             app,

@@ -115,11 +115,16 @@ child's message
   2026-11-18) the robot knows who is talking. It adds `learner` to the profile for the
   recognised speaker: base level, ceiling, and current step per skill. Nobody recognised →
   no learner info → the card's base-level content for the audience profile's age.
-- **Scoring:** during a learning game the reply gets one short trailing field after `text`,
-  e.g. `"practice": {"skill": "add_sub_facts", "correct": true}`, or empty. The robot stores
-  it per member (`data/learning_progress.json`, beside the memory file; local only, parent
-  can view and reset). It costs a few tokens, and only during learning games. Spec
-  amendment needed (response schema) before building.
+- **Scoring (as built, 2026-11-18):** no reply field. For the drill games the server already
+  knows each verdict (`drill.py`), so when a turn completes it sends the robot a `practice`
+  record: game, skill, step, the item, the expected answer, the child's answer *as parsed* (a
+  number or the right word, never their raw words), the verdict, `decided: code` and
+  `source: voice|touch`. Records are keyed `<seed>:<game>:<Q#>` and replaced if re-answered,
+  never counted twice; a dropped speculative turn sends nothing. The robot files it under the
+  recognised child (only face in view; nobody recognised → not recorded) in
+  `data/household_learning/progress.json` (mode 600, removed with the member or "Forget
+  everyone"). A model-filled field (and its spec amendment) waits until a model-judged game
+  needs scoring.
 
 ## 4. Skills and their steps (from the curriculum)
 
@@ -187,10 +192,20 @@ Guess My Face (feelings on the screen), Memory List, and the movement games once
    - Result: Rocket Math rounds honest end to end (verdicts, score, every question spoken);
      Sound Swap the same with an occasional repeated puzzle; Number Detective's
      higher/lower always right (praise for a poor guess can still be generous).
-2. **Scoring and progress.** `practice` field (spec amendment), robot progress store per
-   member, code checking for math (and rhyme/word tables), `learner` in the profile, steps
-   per skill, mastery and confident rules, the checker check (§2.1).
-3. **Dashboard.** Per-child ceiling setting; progress per skill; reset.
+2. **Scoring and progress.** _(built 2026-11-18, with robot-buddy-86's first draft.)_
+   Server `practice` records for drill items (above), robot `LearningStore`
+   (`supervisor/personality/learning.py`): rounds of 5, mastery (≥80% in 3 games on 3 days)
+   moves a skill up within the ceiling, two poor games step it down, confident when ≥80%
+   code-checked; `learner` (base, ceiling, step per skill, confident skills) in the profile
+   for the recognised child; the server pitches each round at that step (a round keeps its
+   grade) and adds a PROGRESS line for confident skills. Saying goodbye mid-round is not a
+   miss and gets no question. Still open: the checker check (§2.1 replay of 50 labelled
+   attempts) needs opt-in conversation history and some real games.
+3. **Dashboard.** _(built 2026-11-18.)_ Monitor tab → Learning: per child, the ceiling
+   (default one grade above start), each skill's step, mastered grades, last games, trend,
+   code-checked share, items missed most, and reset. API: `GET /api/learning`,
+   `PUT /api/learning/{id}/ceiling`, `DELETE /api/learning/{id}`. No login yet (see
+   `screen-ui-and-admin.md` §4): anyone on the home network can change the ceilings.
 4. **The rest of the games**, and Grade 3 content behind the locks.
 
 ## 8. Open questions
@@ -249,7 +264,7 @@ supervisor ── game engine (Python, deterministic) ── SET_SCENE ──> f
   the board, score, right/wrong check and Buddy's moves are plain Python on the supervisor, so
   games run with the server down. The LLM gets the state as the game card and adds her voice.
   A tap gets an instant local highlight and, if needed, a canned line; it never waits on the LLM.
-- **Scoring:** a tap answer writes the same `practice` record as §3 to the robot's progress
+- **Scoring:** a tap answer writes the same `practice` record as §3 (with `source: touch`) to the robot's progress
   store, marked `source: touch`. It counts for mastery: a tap is an exact answer, so in §2.1
   terms it is `checked` (decided by code). Touch-heavy skills will reach "confident" sooner.
 - **Where each engine lives:** voice games keep cards and answer checking on the server (§3,

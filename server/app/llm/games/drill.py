@@ -15,11 +15,15 @@ from __future__ import annotations
 import random
 import re
 from collections.abc import Callable
+from typing import Any
 from dataclasses import dataclass
 
 from app.llm.games.checker import _CONFUSABLE, number_in
 
 ROUND = 5
+# A grade, or the grade for a round number: a round keeps the grade it started with, so a
+# step change (progress, learning-games.md §2) or a new speaker can't swap items mid-round.
+Grade = str | Callable[[int], str]
 _QNUM = re.compile(r"\bQ#(\d+)\b")
 _COUNT = ("one", "two", "three", "four")
 
@@ -57,6 +61,11 @@ def item(drill: Drill, seed: int, n: int, grade: str) -> Item:
     return picked[pos]
 
 
+def _at(grade: Grade, n: int) -> str:
+    """The grade for item ``n``."""
+    return grade(n // ROUND) if callable(grade) else grade
+
+
 def _words(text: str) -> str:
     return " " + re.sub(r"[^a-z ]+", " ", (text or "").lower()) + " "
 
@@ -78,7 +87,7 @@ def verdict(it: Item, said: str) -> str:
     return "wrong" if w.strip() else "none"
 
 
-def status(drill: Drill, pairs: list[tuple[str, str]], seed: int, grade: str) -> str:
+def status(drill: Drill, pairs: list[tuple[str, str]], seed: int, grade: Grade) -> str:
     """The ROUND lines for the card. ``pairs``: (reply notes, the child's next words) for
     every reply so far, oldest first; the last pair's words are being answered now."""
     tag = f"Game: {drill.game_id}"
@@ -89,19 +98,19 @@ def status(drill: Drill, pairs: list[tuple[str, str]], seed: int, grade: str) ->
         if m:
             k = int(m.group(1))
             asked.append(k)
-            verdicts[k] = verdict(item(drill, seed, k, grade), said)
+            verdicts[k] = verdict(item(drill, seed, k, _at(grade, k)), said)
     m = _QNUM.search(pairs[-1][0]) if pairs else None
     if m is None:  # starting, or a new round after a finished one
         nxt = max(asked) + 1 if asked else 0
         nxt += (-nxt) % ROUND
-        it = item(drill, seed, nxt, grade)
+        it = item(drill, seed, nxt, _at(grade, nxt))
         return (
             f"ROUND (run by code; trust it): a new round of {ROUND}. One short excited"
             f' sentence, then end your reply with exactly: "{drill.start} {it.ask}" Notes:'
             f' "{tag}. Q#{nxt}".'
         )
     n = int(m.group(1))
-    it = item(drill, seed, n, grade)
+    it = item(drill, seed, n, _at(grade, n))
     v = verdicts.get(n, "none")
     if v == "unclear":
         return (
@@ -122,20 +131,41 @@ def status(drill: Drill, pairs: list[tuple[str, str]], seed: int, grade: str) ->
             + drill.finish.format(right=right, total=ROUND)
             + f' Offer another round. Notes: "{tag}. Round over" (no Q#).'
         )
-    nxt = item(drill, seed, n + 1, grade)
+    nxt = item(drill, seed, n + 1, _at(grade, n + 1))
     count = drill.countdown.format(n=_COUNT[ROUND - pos - 2])
     return (
         f'{head} Then say "{count}" and end with the next one, word for word: "{nxt.ask}"'
-        f' Notes: "{tag}. Q#{n + 1}".'
+        f' Notes: "{tag}. Q#{n + 1}". But if the child said goodbye or wants to stop, stop'
+        f' instead: no question, and notes "{tag}. Stopped" (no Q#).'
     )
 
 
-def tail(drill: Drill, notes: str, text: str, seed: int, grade: str) -> str | None:
-    """The item the notes say was asked when the words didn't ask it, to be spoken."""
+# The child or the reply ends the game: never add a question after it (playtest 2026-11-18:
+# "goodbye" mid-round, she said goodbye, then the server asked the next sum).
+_ENDING = re.compile(
+    r"\b(good ?bye|bye|see (?:you|ya)|good ?night|stop|i ?(?:am|'m) done|no more|"
+    r"that'?s enough|something else|play (?:something|another)|later)\b",
+    re.IGNORECASE,
+)
+
+
+def ending(text: str) -> bool:
+    """Words that end the game (goodbye, stop, something else)."""
+    return bool(_ENDING.search(text or ""))
+
+
+def tail(
+    drill: Drill, notes: str, text: str, seed: int, grade: Grade, child: str = ""
+) -> str | None:
+    """The item the notes say was asked when the words didn't ask it, to be spoken. Never
+    when the child's words (``child``) or the reply end the game."""
+    if ending(child) or ending(text):
+        return None
     m = re.search(rf"Game:\s*{drill.game_id}\b.*?\bQ#(\d+)", notes or "")
     if not m:
         return None
-    it = item(drill, seed, int(m.group(1)), grade)
+    n = int(m.group(1))
+    it = item(drill, seed, n, _at(grade, n))
     if it.kind == "number":
         said = re.findall(r"\d+", text or "")
         if all(x in said for x in re.findall(r"\d+", it.ask)):
@@ -143,3 +173,43 @@ def tail(drill: Drill, notes: str, text: str, seed: int, grade: str) -> str | No
     elif _words(it.ask).strip()[:24] in _words(text):
         return None
     return it.ask
+
+
+def _parsed(it: Item, said: str, v: str) -> str:
+    if it.kind == "number":
+        got = number_in(said)
+        return "" if got is None else str(got)
+    return it.answer if v == "right" else ""
+
+
+def practice(
+    drill: Drill, skill: str, notes: str, said: str, seed: int, grade: Grade
+) -> dict[str, Any] | None:
+    """The progress record for the item the last reply asked (``Q#<n>`` in its notes),
+    answered by ``said``; None if no item was asked or the answer was unclear (a teen/ty
+    mix-up is asked again and never counted). Checked by code (learning-games.md §2.1)."""
+    m = re.search(rf"Game:\s*{drill.game_id}\b.*?\bQ#(\d+)", notes or "")
+    if not m or not skill:
+        return None
+    n = int(m.group(1))
+    g = _at(grade, n)
+    it = item(drill, seed, n, g)
+    v = verdict(it, said)
+    if v == "unclear" or (v != "right" and ending(said)):
+        return None  # asked again, or the child left the game: not a miss
+    return {
+        "key": f"{seed}:{drill.game_id}:{n}",
+        "q": n,
+        "game": drill.game_id,
+        "skill": skill,
+        "step": g,
+        "item": it.ask,
+        "expected": it.answer,
+        # What the child answered, as parsed: a number, or the right word. Never their raw
+        # words: the progress file is always on, and transcripts belong only in the opt-in
+        # conversation history (PE spec S2 §8.5).
+        "answer": _parsed(it, said, v),
+        "verdict": v,
+        "decided": "code",
+        "source": "voice",
+    }

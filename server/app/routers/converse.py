@@ -17,6 +17,7 @@ Protocol:
         {"type": "emotion", "emotion": "excited", "intensity": 0.8, "mood_reason": "..."}
         {"type": "gestures", "names": ["nod"]}
         {"type": "memory_tags", "tags": [{"tag": "likes_dinosaurs", "category": "topic"}]}
+        {"type": "practice", "record": {...}}  # a drill answer checked by code (learning games)
         {"type": "audio", "data": "<base64 PCM 16kHz 16-bit mono>", "chunk_index": N}
         {"type": "done"}
         {"type": "error", "message": "..."}
@@ -541,6 +542,22 @@ async def _generate_and_stream(
         )
 
 
+async def _send_practice(
+    ws: WebSocket, history: ConversationHistory, turn_id: str | None
+) -> None:
+    """A drill answer checked by code, for the robot's progress store (learning-games.md
+    §2.1). Sent as the turn completes; a dropped speculation's messages are never sent
+    (_GatedWS), and the robot replaces a record with the same key, so nothing counts twice."""
+    try:
+        rec = history.practice_record()
+    except Exception:  # noqa: BLE001 -- progress must never break a turn
+        log.exception("practice record failed")
+        return
+    if rec is not None:
+        log.info("practice: %s %s -> %s", rec["game"], rec["item"], rec["verdict"])
+        await ws.send_json({"type": "practice", "turn_id": turn_id, "record": rec})
+
+
 async def _generate_and_stream_batch(
     ws: WebSocket,
     llm: PlannerLLMBackend,
@@ -596,6 +613,7 @@ async def _generate_and_stream_batch(
 
     if response.memory_tags:
         await ws.send_json({"type": "memory_tags", "tags": response.memory_tags})
+    await _send_practice(ws, history, None)
 
     if response.text:
         await ws.send_json({"type": "assistant_text", "text": response.text})
@@ -953,6 +971,7 @@ async def _generate_and_stream_live(
             emotion=emotion_for_tts,
             notes=final.notes if final is not None else "",
         )
+        await _send_practice(ws, history, turn_id)
 
     if full_text:
         await ws.send_json(

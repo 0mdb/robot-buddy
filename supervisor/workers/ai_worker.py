@@ -50,6 +50,7 @@ from supervisor.messages.types import (
     AI_PLAN_RECEIVED,
     AI_STATE_CHANGED,
     PERSONALITY_EVENT_MEMORY_EXTRACT,
+    PERSONALITY_EVENT_PRACTICE,
 )
 from supervisor.workers.base import BaseWorker, worker_main
 
@@ -549,6 +550,18 @@ class AIWorker(BaseWorker):
                                 "turn_id": self._turn_id,
                                 "planner_turn_id": planner_turn_id,
                                 "tags": tags,
+                            },
+                        )
+
+                elif msg_type == "practice":
+                    record = msg.get("record")
+                    if isinstance(record, dict):
+                        self.send(
+                            PERSONALITY_EVENT_PRACTICE,
+                            {
+                                "session_id": self._session_id,
+                                "turn_id": self._turn_id,
+                                "record": record,
                             },
                         )
 
