@@ -107,7 +107,7 @@ def build_mcp_server(
 
     @mcp.tool()
     async def look(hint: str | None = None, turn_id: str | None = None) -> list[Any]:
-        """Return the robot's current camera view — a fresh JPEG (320x240)
+        """Return the robot's current camera view — a fresh JPEG (640x360)
         plus ball-detection metadata (ball visible, bearing, frame age).
         Use this when the child references something visual ("look at
         this!", "see my drawing?", "what color is it?"). `hint` is optional

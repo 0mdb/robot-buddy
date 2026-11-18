@@ -777,7 +777,7 @@ def create_default_registry() -> ParamRegistry:
             step=1.0,
             default=66.0,
             owner="vision",
-            doc="Horizontal field of view (deg) used for ball bearing estimation",
+            doc="Horizontal field of view (deg) of the captured frame, for face/ball bearings. 66 = IMX708 full width (2304x1296 mode, 16:9 capture)",
         )
     )
     reg.register(

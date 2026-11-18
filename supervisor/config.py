@@ -51,9 +51,9 @@ class VisionConfig:
     enabled: bool = True
     camera_id: int = 0
     capture_width: int = 640
-    capture_height: int = 480
+    capture_height: int = 360
     process_width: int = 320
-    process_height: int = 240
+    process_height: int = 180
 
 
 @dataclass

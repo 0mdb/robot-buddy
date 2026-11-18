@@ -65,7 +65,7 @@ class VisionWorker(BaseWorker):
         self._ball_hsv_low = (160, 170, 40)
         self._ball_hsv_high = (8, 255, 255)
         self._min_ball_radius = 8
-        # Face detection (YuNet on the 320x240 processing frame; supervisor/inputs/face_detect)
+        # Face detection (YuNet on the 320x180 processing frame; supervisor/inputs/face_detect)
         self._face_enabled = True
         self._face_min_score = 0.6
         self._face_hz = 15.0
@@ -80,8 +80,13 @@ class VisionWorker(BaseWorker):
         self._face_gallery_path = ""
         self._face_id: Any | None = None
         self._pending_face_cmds: list[tuple[str, dict]] = []
-        self._capture_size = (640, 480)
-        self._process_size = (320, 240)
+        # 16:9 from the full-width binned sensor mode = the whole 66 x 41 deg view of the
+        # IMX708. Asking for 640x480 alone made libcamera pick the 1536x864 mode, which is
+        # centre-cropped, and the ISP then cut it to 4:3: only 36 x 28 deg (measured
+        # 2026-11-18 from ScalerCrop; docs/follow-me.md §2).
+        self._capture_size = (640, 360)
+        self._process_size = (320, 180)
+        self._raw_size = (2304, 1296)
 
         # Camera / ISP config (Picamera2/libcamera) — updated via vision.config.update
         self._rotate_deg = 180
@@ -385,24 +390,43 @@ class VisionWorker(BaseWorker):
         cam = Picamera2(0)
         # Picamera2 format names are inverted vs OpenCV: "RGB888" yields
         # B,G,R bytes in memory (what cv2 expects), "BGR888" yields R,G,B.
-        # Prefer "RGB888" so no conversion is needed on the hot path.
-        try:
-            cam.configure(
-                cam.create_video_configuration(
-                    main={"size": self._capture_size, "format": "RGB888"},
-                )
-            )
-            self._camera_main_format = "RGB888"
-        except Exception:
-            cam.configure(
-                cam.create_video_configuration(
-                    main={"size": self._capture_size, "format": "BGR888"},
-                )
-            )
-            self._camera_main_format = "BGR888"
+        # Prefer "RGB888" so no conversion is needed on the hot path. Pin the raw
+        # (sensor) mode to the full-width one; fall back to libcamera's pick for a
+        # sensor without that mode.
+        last_err: Exception | None = None
+        for raw in ({"size": self._raw_size}, None):
+            for fmt in ("RGB888", "BGR888"):
+                kwargs: dict[str, Any] = {
+                    "main": {"size": self._capture_size, "format": fmt}
+                }
+                if raw is not None:
+                    kwargs["raw"] = raw
+                try:
+                    cam.configure(cam.create_video_configuration(**kwargs))
+                except Exception as e:  # noqa: BLE001
+                    last_err = e
+                    continue
+                self._camera_main_format = fmt
+                break
+            else:
+                continue
+            break
+        else:
+            raise RuntimeError(f"camera configure failed: {last_err}")
         cam.start()
         self._camera_ok = True
-        log.info("camera opened (format=%s)", self._camera_main_format)
+        try:
+            crop = cam.capture_metadata().get("ScalerCrop")
+            raw_size = cam.camera_configuration()["raw"]["size"]
+        except Exception:  # noqa: BLE001
+            crop, raw_size = None, None
+        log.info(
+            "camera opened (format=%s, main=%s, raw=%s, ScalerCrop=%s)",
+            self._camera_main_format,
+            self._capture_size,
+            raw_size,
+            crop,
+        )
         return cam
 
     async def run(self) -> None:
@@ -707,7 +731,7 @@ class VisionWorker(BaseWorker):
                 ):
                     self._last_jpeg_t = now
                     quality = max(10, min(95, int(self._jpeg_quality)))
-                    # The full capture (640x480), not the 320x240 detection copy: look()
+                    # The full capture (640x360), not the 320x180 detection copy: look()
                     # hands this to the LLM to say what it sees.
                     _, jpeg = cv2.imencode(
                         ".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, quality]

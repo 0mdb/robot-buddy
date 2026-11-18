@@ -2,7 +2,7 @@
 
 YuNet ships with OpenCV (4.5.4+), so there is no extra runtime: the model is a 230 KB
 ONNX file (opencv_zoo, MIT) in ``supervisor/models``. On the Pi 5 it takes ~8 ms on a
-320x240 frame. It also returns five landmarks (eyes, nose, mouth corners), which a later
+320x180 frame. It also returns five landmarks (eyes, nose, mouth corners), which a later
 recognition stage (e.g. cv2.FaceRecognizerSF) needs for alignment.
 
 Faces come back in normalised frame coordinates plus bearing/elevation in degrees, the
