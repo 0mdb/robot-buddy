@@ -10,8 +10,10 @@ import {
   useRemoveMember,
   useSetHouseholdEnabled,
 } from '../hooks/useHousehold'
+import { useTelemetry } from '../hooks/useTelemetry'
 import styles from '../styles/global.module.css'
 import m from '../styles/monitor.module.css'
+import type { TelemetryPayload } from '../types'
 
 const KIND_LABEL: Record<MemberKind, string> = { kid: 'Child', adult: 'Adult', animal: 'Pet' }
 
@@ -28,6 +30,8 @@ export function HouseholdPanel() {
   // Whose face is being captured (the request runs up to ~25 s), and the last outcome.
   const [capturing, setCapturing] = useState<string | null>(null)
   const [faceNote, setFaceNote] = useState<{ id: string; ok: boolean; text: string } | null>(null)
+  // Live camera beside the list, to line up a face before pressing "Add face".
+  const [showCamera, setShowCamera] = useState(false)
 
   const captureFace = (id: string) => {
     setCapturing(id)
@@ -141,74 +145,85 @@ export function HouseholdPanel() {
         </div>
       )}
 
-      {data && data.members.length > 0 && (
-        <table style={{ width: '100%', fontSize: 13, marginBottom: 8 }}>
-          <tbody>
-            {data.members.map((mem) => (
-              <tr key={mem.id}>
-                <td>{mem.name}</td>
-                <td style={{ color: 'var(--text-dim)' }}>
-                  {mem.species ?? KIND_LABEL[mem.kind]}
-                  {mem.age !== undefined ? `, ${mem.age}` : ''}
-                </td>
-                <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                  {mem.kind !== 'animal' && (
-                    <FaceControls
-                      name={mem.name}
-                      samples={faces.data?.samples?.[mem.id] ?? 0}
-                      busy={capturing !== null}
-                      capturingThis={capturing === mem.id}
-                      onCapture={() => captureFace(mem.id)}
-                      onForget={() => {
-                        setFaceNote(null)
-                        forgetFace.mutate(mem.id)
-                      }}
-                    />
-                  )}{' '}
-                  <button
-                    type="button"
-                    className={`${styles.badge} ${styles.badgeDim}`}
-                    style={{ cursor: 'pointer', border: 'none' }}
-                    aria-label={`Remove ${mem.name}`}
-                    onClick={() => remove.mutate(mem.id)}
-                  >
-                    Remove
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+        <div style={{ flex: '1 1 280px', minWidth: 0 }}>
+          {data?.members.some((x) => x.kind !== 'animal') && (
+            <button
+              type="button"
+              className={`${styles.badge} ${showCamera ? styles.badgeGreen : styles.badgeDim}`}
+              style={{ cursor: 'pointer', border: 'none', marginBottom: 6 }}
+              aria-pressed={showCamera}
+              onClick={() => setShowCamera((v) => !v)}
+            >
+              {showCamera ? 'Hide camera' : 'Show camera'}
+            </button>
+          )}
+          {data && data.members.length > 0 && (
+            <table style={{ width: '100%', fontSize: 13, marginBottom: 8 }}>
+              <tbody>
+                {data.members.map((mem) => (
+                  <tr key={mem.id}>
+                    <td>{mem.name}</td>
+                    <td style={{ color: 'var(--text-dim)' }}>
+                      {mem.species ?? KIND_LABEL[mem.kind]}
+                      {mem.age !== undefined ? `, ${mem.age}` : ''}
+                    </td>
+                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      {mem.kind !== 'animal' && (
+                        <FaceControls
+                          name={mem.name}
+                          samples={faces.data?.samples?.[mem.id] ?? 0}
+                          busy={capturing !== null}
+                          capturingThis={capturing === mem.id}
+                          onCapture={() => captureFace(mem.id)}
+                          onForget={() => {
+                            setFaceNote(null)
+                            forgetFace.mutate(mem.id)
+                          }}
+                        />
+                      )}{' '}
+                      <button
+                        type="button"
+                        className={`${styles.badge} ${styles.badgeDim}`}
+                        style={{ cursor: 'pointer', border: 'none' }}
+                        aria-label={`Remove ${mem.name}`}
+                        onClick={() => remove.mutate(mem.id)}
+                      >
+                        Remove
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
 
-      {capturing !== null && (
-        <div style={{ marginBottom: 8 }}>
-          <p style={{ fontSize: 12, margin: '0 0 4px' }}>
-            Capturing {data?.members.find((x) => x.id === capturing)?.name ?? ''}&apos;s face: stand
-            alone in front of Buddy, within about 2 m, and turn your head slowly a little left,
-            right, up and down. Takes a few seconds. Adding more later, in other spots and light,
-            helps most.
-          </p>
-          <img
-            src="/video"
-            alt="Camera view"
-            style={{ width: '100%', maxWidth: 320, borderRadius: 4, display: 'block' }}
-          />
+          {capturing !== null && (
+            <div style={{ marginBottom: 8 }}>
+              <p style={{ fontSize: 12, margin: '0 0 4px' }}>
+                Capturing {data?.members.find((x) => x.id === capturing)?.name ?? ''}&apos;s face:
+                stand alone in front of Buddy, within about 2 m, and turn your head slowly a little
+                left, right, up and down. Takes a few seconds. Adding more later, in other spots and
+                light, helps most.
+              </p>
+            </div>
+          )}
+
+          {faceNote && (
+            <output
+              style={{
+                display: 'block',
+                fontSize: 12,
+                marginBottom: 8,
+                color: faceNote.ok ? 'var(--green, #4caf50)' : 'var(--red, #f44336)',
+              }}
+            >
+              {data?.members.find((x) => x.id === faceNote.id)?.name}: {faceNote.text}
+            </output>
+          )}
         </div>
-      )}
-
-      {faceNote && (
-        <output
-          style={{
-            display: 'block',
-            fontSize: 12,
-            marginBottom: 8,
-            color: faceNote.ok ? 'var(--green, #4caf50)' : 'var(--red, #f44336)',
-          }}
-        >
-          {data?.members.find((x) => x.id === faceNote.id)?.name}: {faceNote.text}
-        </output>
-      )}
+        {(showCamera || capturing !== null) && <CameraPreview />}
+      </div>
 
       <form onSubmit={submit} style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
         <input
@@ -303,5 +318,38 @@ function FaceControls(props: {
         </>
       )}
     </>
+  )
+}
+
+/** The live camera and whether exactly one face is in view (what a capture needs). */
+function CameraPreview() {
+  const count = useTelemetry((s) => (s.snapshot as TelemetryPayload).face_count, 250)
+  const [hint, ok] =
+    count === undefined
+      ? ['', false]
+      : count === 1
+        ? ['One face in view: ready', true]
+        : count === 0
+          ? ['No face seen: step into view, facing Buddy', false]
+          : [`${count} faces: only the person being added`, false]
+  return (
+    <div style={{ flex: '0 1 320px', marginBottom: 8 }}>
+      <img
+        src="/video"
+        alt="Camera view"
+        style={{ width: '100%', maxWidth: 320, borderRadius: 4, display: 'block' }}
+      />
+      {hint && (
+        <div
+          style={{
+            fontSize: 12,
+            marginTop: 4,
+            color: ok ? 'var(--green, #4caf50)' : 'var(--text-dim)',
+          }}
+        >
+          {hint}
+        </div>
+      )}
+    </div>
   )
 }

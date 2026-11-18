@@ -88,6 +88,7 @@ export interface TelemetryPayload {
   ball_conf: number
   ball_bearing: number
   vision_fps: number
+  face_count?: number // faces the camera sees now
   vision_age_ms: number
   vision_frame_seq: number
 

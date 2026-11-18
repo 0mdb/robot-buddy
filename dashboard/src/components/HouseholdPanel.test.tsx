@@ -149,3 +149,19 @@ test('a failed capture shows the reason; pets have no face button', async () => 
   expect(await screen.findByText(/no single clear face in view/)).toBeTruthy()
   expect(screen.queryByRole('button', { name: /face for Test Pet/ })).toBeNull()
 })
+
+test('the camera shows beside the list, with whether one face is in view', async () => {
+  const { useTelemetryStore } = await import('../stores/telemetryStore')
+  state = { enabled: true, members: [{ id: 'k1', name: 'Test Kid', kind: 'kid', age: 6 }] }
+  renderPanel()
+  const toggle = await screen.findByRole('button', { name: 'Show camera' })
+  expect(screen.queryByAltText('Camera view')).toBeNull()
+  fireEvent.click(toggle)
+  expect(screen.getByAltText('Camera view').getAttribute('src')).toBe('/video')
+  useTelemetryStore.getState().push({ face_count: 1 })
+  expect(await screen.findByText(/One face in view: ready/)).toBeTruthy()
+  // Add face is still right there, next to the preview.
+  expect(screen.getByRole('button', { name: 'Add face for Test Kid' })).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: 'Hide camera' }))
+  expect(screen.queryByAltText('Camera view')).toBeNull()
+})
