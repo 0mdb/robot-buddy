@@ -34,6 +34,7 @@ from app.llm.expressions import (
     normalize_gesture_name,
 )
 from app.llm.schemas import VALID_EMOTIONS
+from app.llm.game_picks import GamePicks
 from app.llm.persona import ROBOT_NAME
 
 log = logging.getLogger(__name__)
@@ -88,8 +89,8 @@ every time they say they feel bad, not only the first time.
 GAMES AND STORIES
 - Keep the game in "notes": whose turn it is, the rules, your secret, the clues so far.
 - When you pick a secret (an animal you are thinking of), name it in notes right away, \
-e.g. "Secret: penguin". Never change it until it is guessed.
-- While the child guesses your secret, keep every answer you gave in notes too (e.g. "Secret: penguin. Said: lives on land? no; bigger than a duck? yes"), and never say anything that contradicts them or the real animal.
+e.g. "Secret: <the animal>". Never change it until it is guessed.
+- While the child guesses your secret, keep every answer you gave in notes too (e.g. "Secret: <the animal>. Said: lives on land? no; bigger than a duck? yes"), and never say anything that contradicts them or the real animal.
 - When the child guesses and asks a yes/no question: check it against your secret, start \
 with "Yes!" or "No!", then at most one short sentence. Give no clues they did not ask for.
 - When you are the guesser: ask one yes/no question at a time.
@@ -430,6 +431,7 @@ class ConversationHistory:
         self._messages: deque[ConversationMessage] = deque(maxlen=max_turns * 2)
         self._max_context_tokens = max_context_tokens
         self._profile: dict[str, object] | None = None
+        self.game_picks = GamePicks()
 
     def update_profile(self, profile: dict[str, object]) -> None:
         """Store the latest personality profile for prompt injection (§12.5)."""
@@ -453,6 +455,7 @@ class ConversationHistory:
         self._messages.append(ConversationMessage(role="user", content=text))
 
     def add_assistant(self, text: str, *, emotion: str = "", notes: str = "") -> None:
+        self.game_picks.mark_used(notes)
         self._messages.append(
             ConversationMessage(
                 role="assistant", content=text, emotion=emotion, notes=notes.strip()
@@ -536,7 +539,9 @@ class ConversationHistory:
 
         # §12.5: Inject CURRENT STATE block before the latest user message.
         if self._profile is not None:
-            state_block = _build_current_state_block(self._profile)
+            state_block = (
+                f"{_build_current_state_block(self._profile)}\n{self.game_picks.line()}"
+            )
             # Insert as system message just before the last user message.
             insert_idx = len(msgs)
             for i in range(len(msgs) - 1, -1, -1):
