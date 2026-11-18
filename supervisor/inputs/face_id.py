@@ -7,7 +7,13 @@
   name, in ``household_faces/gallery.json`` beside the roster, so "forget everyone" deletes
   them with it. Robot-local and git-ignored, like the roster.
 - **Match:** the best cosine similarity over a member's samples; at or above the threshold
-  (OpenCV's SFace figure is 0.363) the face is that member.
+  (OpenCV's SFace figure is 0.363) the face is that member. One frame is not enough to
+  name someone: the tracker averages each member's score over a face's checks and names
+  the face only when the best member leads the next by ``MATCH_MARGIN`` (a single
+  off-angle frame named Ben's face as a child at 0.384, 2026-11-18).
+- **Samples vary:** enrollment skips a frame nearly identical to one already taken, and a
+  full gallery drops its most redundant sample, not its oldest: 20 near-copies from one
+  sitting (0.90 alike) matched live faces at only 0.37-0.6.
 """
 
 from __future__ import annotations
@@ -27,7 +33,11 @@ DEFAULT_MODEL = (
 )
 GALLERY_DIR = "household_faces"
 MATCH_THRESHOLD = 0.363
+MATCH_MARGIN = 0.08  # best member's averaged score over the runner-up's
 MAX_SAMPLES = 20
+SAME_SAMPLE_SIM = (
+    0.95  # enrollment: a frame this alike to one already taken adds nothing
+)
 _GALLERY_VERSION = 1
 
 
@@ -75,9 +85,17 @@ class FaceGallery:
         return {mid: len(embs) for mid, embs in self._members.items()}
 
     def add(self, member_id: str, embeddings: list[Any]) -> int:
-        """Append samples for a member (keeping the newest MAX_SAMPLES) and save."""
+        """Append samples for a member and save. Past MAX_SAMPLES the most redundant
+        sample goes (the one most like another), so captures in new places and light
+        replace near-copies instead of the oldest."""
+        import numpy as np
+
         embs = self._members.get(member_id, []) + list(embeddings)
-        self._members[member_id] = embs[-MAX_SAMPLES:]
+        while len(embs) > MAX_SAMPLES:
+            m = np.stack(embs) @ np.stack(embs).T
+            np.fill_diagonal(m, -1.0)
+            embs.pop(int(np.argmax(m.max(axis=1))))
+        self._members[member_id] = embs
         self._save()
         return len(self._members[member_id])
 
@@ -103,20 +121,25 @@ class FaceGallery:
         st = self.path.stat()
         self._stamp = (st.st_ino, st.st_mtime_ns, st.st_size)
 
-    def match(self, embedding: Any) -> tuple[str | None, float]:
-        """(member id, similarity) of the best match, or (None, best) below threshold."""
+    def scores(self, embedding: Any) -> dict[str, float]:
+        """Each member's similarity: the best over their samples."""
         import numpy as np
 
-        best_id, best = None, -1.0
-        for mid, embs in self._members.items():
-            if not embs:
-                continue
-            sim = float(np.max(np.stack(embs) @ embedding))
-            if sim > best:
-                best_id, best = mid, sim
-        if best_id is not None and best >= MATCH_THRESHOLD:
-            return best_id, best
-        return None, best
+        return {
+            mid: float(np.max(np.stack(embs) @ embedding))
+            for mid, embs in self._members.items()
+            if embs
+        }
+
+    def match(self, embedding: Any) -> tuple[str | None, float]:
+        """(member id, similarity) of the best match, or (None, best) below threshold."""
+        sc = self.scores(embedding)
+        if not sc:
+            return None, -1.0
+        best_id = max(sc, key=sc.__getitem__)
+        if sc[best_id] >= MATCH_THRESHOLD:
+            return best_id, sc[best_id]
+        return None, sc[best_id]
 
 
 class FaceEmbedder:
@@ -180,6 +203,9 @@ class FaceIdTracker:
     ENROLL_MIN_WIDTH = 0.06  # of the frame width: closer than ~2 m
     ENROLL_INTERVAL_S = 0.25
     ENROLL_TIMEOUT_S = 20.0
+    ENROLL_MIN_KEEP = (
+        3  # at the timeout, keep a capture with at least this many samples
+    )
     CARRY_DIST = 0.15
 
     def __init__(
@@ -221,6 +247,9 @@ class FaceIdTracker:
     def _enroll_step(self, pairs: list, frame: Any, scale: float, now: float) -> None:
         e = self._enroll
         assert e is not None
+        if now > e["deadline"] and len(e["embs"]) >= self.ENROLL_MIN_KEEP:
+            self._finish_enroll()  # enough to keep; the rest were too alike
+            return
         if now > e["deadline"]:
             self._result = {
                 "member_id": e["member_id"],
@@ -246,20 +275,55 @@ class FaceIdTracker:
             }
             self._enroll = None
             return
-        e["embs"].append(emb)
         e["last_t"] = now
+        if any(float(x @ emb) >= SAME_SAMPLE_SIM for x in e["embs"]):
+            return  # the same view again: wait for the person to move a little
+        e["embs"].append(emb)
         if len(e["embs"]) >= e["want"]:
-            self.gallery.refresh()
-            total = self.gallery.add(e["member_id"], e["embs"])
-            self._result = {
-                "member_id": e["member_id"],
-                "ok": True,
-                "samples": total,
-                "error": "",
-            }
-            self._enroll = None
+            self._finish_enroll()
+
+    def _finish_enroll(self) -> None:
+        e = self._enroll
+        assert e is not None
+        self.gallery.refresh()
+        total = self.gallery.add(e["member_id"], e["embs"])
+        self._result = {
+            "member_id": e["member_id"],
+            "ok": True,
+            "samples": total,
+            "error": "",
+        }
+        self._enroll = None
 
     # -- recognition --------------------------------------------------------
+
+    EV_ALPHA = 0.5  # weight of the newest check in a face's running score per member
+
+    def _decide(self, face: dict, scores: dict[str, float]) -> tuple[str | None, float]:
+        """Fold one check into the face's running scores and name it if one member leads
+        clearly: at or above the threshold and ``MATCH_MARGIN`` over the runner-up. An
+        unclear check keeps the name the face already had while that member still
+        clears the threshold."""
+        ev: dict[str, float] = face.setdefault("_ev", {})
+        for mid, sim in scores.items():
+            ev[mid] = (
+                sim
+                if mid not in ev
+                else (1 - self.EV_ALPHA) * ev[mid] + self.EV_ALPHA * sim
+            )
+        for mid in [m for m in ev if m not in scores]:
+            del ev[mid]  # forgotten meanwhile
+        if not ev:
+            return None, -1.0
+        ranked = sorted(ev.items(), key=lambda kv: kv[1], reverse=True)
+        best_id, best = ranked[0]
+        runner = ranked[1][1] if len(ranked) > 1 else -1.0
+        if best >= MATCH_THRESHOLD and best - runner >= MATCH_MARGIN:
+            return best_id, best
+        prior = face.get("member_id")
+        if prior is not None and ev.get(prior, -1.0) >= MATCH_THRESHOLD:
+            return prior, ev[prior]
+        return None, best
 
     def process(self, pairs: list, frame: Any, scale: float, now: float) -> list[dict]:
         """Faces (from ``pairs``) with identities. ``frame`` is the full-resolution picture,
@@ -283,6 +347,7 @@ class FaceIdTracker:
             else:
                 f["member_id"] = None
                 f["_id_t"] = best.get("_id_t", 0.0) if best is not None else 0.0
+            f["_ev"] = dict(best.get("_ev", {})) if best is not None else {}
 
         if self._enroll is not None:
             self._enroll_step(pairs, frame, scale, now)
@@ -303,7 +368,7 @@ class FaceIdTracker:
             emb = self.embedder.embed(frame, _scaled_row(pairs[i][1], scale))
             self.ms = (time.perf_counter() - t0) * 1000.0
             if emb is not None:
-                mid, sim = self.gallery.match(emb)
+                mid, sim = self._decide(faces[i], self.gallery.scores(emb))
                 faces[i]["member_id"] = mid
                 faces[i]["id_score"] = round(sim, 3)
                 faces[i]["_id_t"] = now

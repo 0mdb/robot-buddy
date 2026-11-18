@@ -185,7 +185,9 @@ export function HouseholdPanel() {
         <div style={{ marginBottom: 8 }}>
           <p style={{ fontSize: 12, margin: '0 0 4px' }}>
             Capturing {data?.members.find((x) => x.id === capturing)?.name ?? ''}&apos;s face: stand
-            alone in front of Buddy, facing the camera, within about 2 m. Takes a few seconds.
+            alone in front of Buddy, within about 2 m, and turn your head slowly a little left,
+            right, up and down. Takes a few seconds. Adding more later, in other spots and light,
+            helps most.
           </p>
           <img
             src="/video"

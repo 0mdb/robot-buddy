@@ -20,7 +20,9 @@ from __future__ import annotations
 
 import random
 
-WAIT_MS = 1500.0
+# Long enough for recognition to settle: at 1.5 s a known face often got "Oh, hi!" a
+# moment before it was recognised (2026-11-18); faces are named over several checks now.
+WAIT_MS = 3000.0
 MAX_RANGE_MM = 2000.0
 MEMBER_COOLDOWN_MS = 30 * 60 * 1000.0
 GENERIC_COOLDOWN_MS = 10 * 60 * 1000.0

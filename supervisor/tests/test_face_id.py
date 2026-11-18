@@ -59,10 +59,20 @@ def test_gallery_round_trip_match_and_forget(tmp_path):
     assert g.counts() == {"m_b": 1}
 
 
-def test_gallery_keeps_newest_samples(tmp_path):
+def test_gallery_keeps_at_most_max_samples(tmp_path):
     g = FaceGallery(tmp_path / "g.json")
     g.add("m", [_unit(i) for i in range(30)])
     assert g.counts() == {"m": 20}
+
+
+def test_full_gallery_drops_near_copies_not_the_new_view(tmp_path):
+    g = FaceGallery(tmp_path / "g.json")
+    a = _unit(1)
+    g.add("m", [_near(a, 0.01, i) for i in range(20)])  # one sitting, one pose
+    new_view = _unit(2)  # somewhere else, other light
+    g.add("m", [new_view])
+    assert g.counts() == {"m": 20}
+    assert g.match(new_view) == ("m", pytest.approx(1.0, abs=1e-5))
 
 
 def test_gallery_missing_or_bad_file_is_empty(tmp_path):
@@ -102,7 +112,10 @@ class FakeEmbedder:
 
     def embed(self, frame, row):
         self.calls += 1
-        return self.table[int(row[15])]
+        v = self.table[int(row[15])]
+        if isinstance(v, list):  # a person moving: a different view each call
+            return v[(self.calls - 1) % len(v)]
+        return v
 
 
 def _pair(cx: float, who: int, score: float = 0.9, w: float = 0.2):
@@ -129,7 +142,8 @@ def test_no_gallery_no_recognition(tmp_path):
 
 def test_enroll_then_recognise(tmp_path):
     a = _unit(1)
-    t = _tracker(tmp_path, {1: a, 2: _near(a, 0.15, 5)})
+    views = [_near(a, 0.04, 10 + i) for i in range(5)]  # ~0.9 alike: distinct views
+    t = _tracker(tmp_path, {1: views, 2: _near(a, 0.05, 5)})
     t.start_enroll("m_a", 3, now=0.0)
     now = 0.0
     while t.enrolling:
@@ -296,3 +310,81 @@ def test_removing_a_member_forgets_their_face(api):
     assert c.get("/api/household/faces").json() == {"samples": {mid: 1}}
     c.delete(f"/api/household/members/{mid}")
     assert ("vision", VISION_FACE_FORGET, {"member_id": mid}) in workers._sent
+
+
+def _two_members(tmp_path, table):
+    a, b = _qr_pair()
+    t = _tracker(tmp_path, table(a, b))
+    t.gallery.add("m_adult", [a])
+    t.gallery.add("m_kid", [b])
+    return t
+
+
+def _qr_pair():
+    q = np.linalg.qr(np.stack([_unit(1), _unit(2), _unit(3)]).T)[0].T
+    return q[0].astype(np.float32), q[1].astype(np.float32)
+
+
+def _probe(a, b, sa: float, sb: float) -> np.ndarray:
+    q = np.linalg.qr(np.stack([a, b, _unit(3)]).T)[0].T
+    v = sa * q[0] + sb * q[1]
+    return (v + np.sqrt(1 - float(v @ v)) * q[2]).astype(np.float32)
+
+
+def test_a_close_call_names_nobody(tmp_path):
+    t = _two_members(tmp_path, lambda a, b: {1: _probe(a, b, 0.40, 0.37)})
+    (f,) = t.process([_pair(0.5, 1)], FRAME, 2.0, 1.0)
+    assert f["member_id"] is None
+
+
+def test_one_off_angle_frame_does_not_rename_a_face(tmp_path):
+    """2026-11-18: Ben, already recognised, was named as a child from one frame (0.384)."""
+    t = _two_members(
+        tmp_path,
+        lambda a, b: {1: _probe(a, b, 0.6, 0.2), 2: _probe(a, b, 0.33, 0.384)},
+    )
+    (f,) = t.process([_pair(0.5, 1)], FRAME, 2.0, 1.0)
+    assert f["member_id"] == "m_adult"
+    (f,) = t.process([_pair(0.5, 2)], FRAME, 2.0, 2.0)  # same face, bad frame
+    assert f["member_id"] == "m_adult"
+
+
+def test_a_clear_lead_over_checks_still_names_the_other(tmp_path):
+    t = _two_members(
+        tmp_path,
+        lambda a, b: {1: _probe(a, b, 0.6, 0.2), 2: _probe(a, b, 0.1, 0.7)},
+    )
+    t.process([_pair(0.5, 1)], FRAME, 2.0, 1.0)
+    names = [
+        t.process([_pair(0.5, 2)], FRAME, 2.0, 2.0 + k)[0]["member_id"]
+        for k in range(3)
+    ]
+    assert names[-1] == "m_kid"
+
+
+def test_enroll_skips_repeated_views_and_keeps_a_partial_capture(tmp_path):
+    a = _unit(1)
+    views = [
+        a,
+        _near(a, 0.01, 2),
+        _near(a, 0.05, 3),
+        _near(a, 0.05, 4),
+    ]  # first 2 alike
+    t = _tracker(tmp_path, {1: views[:3] + [views[1]] * 50})
+    t.start_enroll("m_a", 8, now=0.0)
+    now = 0.0
+    while t.enrolling:
+        now += 0.3
+        t.process([_pair(0.5, 1)], FRAME, 2.0, now)
+    res = t.take_result()
+    assert (
+        res is not None and res["ok"] is False
+    )  # 2 distinct views: below the keep floor
+    t2 = _tracker(tmp_path, {1: views + [views[1]] * 50})
+    t2.start_enroll("m_b", 8, now=0.0)
+    now = 0.0
+    while t2.enrolling:
+        now += 0.3
+        t2.process([_pair(0.5, 1)], FRAME, 2.0, now)
+    res = t2.take_result()
+    assert res is not None and res["ok"] is True and res["samples"] == 3
