@@ -181,3 +181,118 @@ Guess My Face (feelings on the screen), Memory List, and the movement games once
 ## 8. Open questions
 
 None open; L1-L3 settled 2026-11-18.
+
+## 9. Touch-screen games (proposal, 2026-11-18)
+
+**Status:** idea, not settled. Builds on §1-§7; nothing here changes them.
+
+### 9.1 Why
+
+Answering by tap removes three of the §6 risks at once: spoken spelling through Whisper,
+teen/ty numbers, and isolated sounds (she says a whole word, the child taps the picture that
+starts with /sh/). A tap is an exact answer, so the mastery and confident rules in §2 can
+trust it. Voice stays the main way to play; the screen is a prop, and every touch question can
+also be answered out loud.
+
+### 9.2 What the hardware already does
+
+- Face MCU: 320×240 2.8" ILI9341, FT6336 capacitive touch, LVGL running, 8 MB PSRAM.
+- Raw `TOUCH_EVENT` (x, y) and SCREEN gestures (tap, long-press, pet) already reach the
+  supervisor (`docs/protocols.md`).
+- Missing: the face protocol only carries small fixed commands (mood, gesture, border). There
+  is no way to say "draw these tiles", and only Montserrat 14 is compiled in.
+- Face link frames are capped at 768 bytes (`esp32-face/main/usb_rx.cpp`, `MAX_FRAME`). A
+  scene of 4-12 short tiles fits easily; a full frame (~150 KB) does not, so no streaming.
+
+### 9.3 Design: the face draws the scene, the supervisor runs the game
+
+```
+LLM server ── talk, personality, game card with state (§3) ──┐
+                                                             v
+supervisor ── game engine (Python, deterministic) ── SET_SCENE ──> face MCU (LVGL draws,
+     ^                                                                hit-tests, highlights
+     └──────────────────────── SCENE_TAP(tile_id) <──────────────────  the tap instantly)
+```
+
+- **Protocol (amendment needed in `docs/protocols.md` before building):**
+  - `SET_SCENE` (new command, variable length): scene id, layout id, then tiles
+    (id, text up to ~8 chars or icon id, colour, state). Layout 0 = no scene, full face.
+  - `SET_TILE` (new command): change one tile's text/colour/state (mark right, wrong, taken)
+    without resending the scene.
+  - `SCENE_TAP` (new telemetry): scene id, tile id, event (tap, drag-end with value for the
+    clock hands). Stale scene ids are dropped by the supervisor.
+- **Layouts (firmware templates, about five cover §4):**
+  1. 2×2 choice (answers, pictures)
+  2. N×M grid (boards, memory cards, ten-frames, pizza slices); up to 4×3 at 320×240
+  3. letter-tile row + answer slots (spelling, word parts)
+  4. number pad 0-9 + entry
+  5. clock face with draggable hands
+- **Face stays present.** During a scene the face shrinks to a corner (about 80 px); on
+  Buddy's turn it grows back with thinking eyes and gaze toward the tile it is about to pick
+  (`face_gaze.py`). The conversation border keeps working.
+- **Rules in code, not in the LLM** (the lesson of server-picked guessing secrets, 81321fd):
+  the board, score, right/wrong check and Buddy's moves are plain Python on the supervisor, so
+  games run with the server down. The LLM gets the state as the game card and adds her voice.
+  A tap gets an instant local highlight and, if needed, a canned line; it never waits on the LLM.
+- **Scoring:** a tap answer writes the same `practice` record as §3 to the robot's progress
+  store, marked `source: touch`. It counts for mastery: a tap is an exact answer, so in §2.1
+  terms it is `checked` (decided by code). Touch-heavy skills will reach "confident" sooner.
+- **Where each engine lives:** voice games keep cards and answer checking on the server (§3,
+  §7 step 1), where the transcript is; touch games run on the supervisor. Both write the same
+  record. For touch games the server's game card (`server/app/llm/games/<id>.toml`) also
+  carries the current scene state, so she can talk about the board.
+- **Firmware extras:** Montserrat 28 and 48, a small icon atlas in flash (coins, shapes,
+  animals, simple pictures for phonics), tap targets at least 60 px.
+- **Prototype in `tools/face_sim_v3` first**, then flash.
+
+### 9.4 Games
+
+**Practice (§4 skills, scored):**
+
+| Skill | Touch version |
+|---|---|
+| Add/subtract, times tables | Rocket Math with 4 answer tiles; tap or say it |
+| Phonics, sounds | She says "ship"; tap the picture or word that starts with /sh/ |
+| Spelling, word parts | She says a word; build it from letter tiles; "un + happy" from parts |
+| Place value | Tap tens rods and ones cubes to make 47 |
+| Money | Tap coins onto a pile to make 35¢; Grade 3: change from a dollar |
+| Time | "Show me quarter to four": drag the clock hands |
+| Fractions, shapes | Shade 3/8 of a pizza; tap every triangle |
+
+**Buddy plays against the kids (not scored, or scored where the game uses a skill):**
+tic-tac-toe, small Connect Four (7×5), Nim / race to 21 (adding plus strategy), Memory with
+math pairs (3+4 ↔ 7). A minimax engine picks her moves, tuned so she loses about 40% of the
+time; she thinks out loud, brags a little and loses well.
+
+**Playing together:**
+- **Teach Buddy:** she confidently gets one wrong; the child taps the right answer and
+  explains. Extends the Skip-Count Relay mistakes in §5.
+- **Team vs the clock:** child and Buddy beat a timer together.
+- **Two kids:** pass-and-play with her as host, or a quiz buzzer with half the screen each
+  (who answered from the half tapped, confirmed by voice ID).
+
+**Beyond the screen:** camera games with `look()` ("draw a triangle and show me", "hold up 7
+fingers", "find something red"); movement answers once Track F lands (drive to the answer
+card, one spin per right answer).
+
+### 9.5 Limits
+
+- Small screen: 4-6 targets for the five-year-old, up to 12 for Grade 2-3; two kids crowd it.
+- Not a tablet: same session limits (§1.5), short games, the face always comes back.
+- Firmware flash and RAM for fonts and icons need checking against the current build.
+
+### 9.6 Build order (after §7 step 1)
+
+1. Protocol amendment in `docs/protocols.md`; `SET_SCENE`/`SET_TILE`/`SCENE_TAP`; layout 1
+   (2×2) in the face sim and firmware (face flash is manual, Ben only); supervisor scene
+   manager; Rocket Math playable by tap or voice, using the §7 step 1 card for her talk.
+2. Layout 3 (letter tiles): spelling and phonics pictures.
+3. Layout 2 (grid): tic-tac-toe and Memory against Buddy.
+4. Layouts 4-5: number pad, clock; coins.
+
+### 9.7 Open questions
+
+1. Does a game scene replace the face fully on the child's turn, or always keep the corner face?
+2. Touch engine on the supervisor (offline, fast) as proposed, or on the server beside the cards?
+
+Settled: touch answers count for mastery (`checked`, §2.1).
