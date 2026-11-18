@@ -256,6 +256,11 @@ supervisor ── game engine (Python, deterministic) ── SET_SCENE ──> f
   §7 step 1), where the transcript is; touch games run on the supervisor. Both write the same
   record. For touch games the server's game card (`server/app/llm/games/<id>.toml`) also
   carries the current scene state, so she can talk about the board.
+- **Drills reuse `drill.py`.** Rocket Math and Sound Swap are already run by code on the server
+  (`server/app/llm/games/drill.py`: item, `Q#<n>`, verdict, score). For those, a tap is just
+  another way to answer item n: the supervisor sends it to the server as the answer to `Q#<n>`
+  and the existing verdict flow checks it. Only games with no server engine (board games
+  against Buddy, §9.4) get a supervisor engine.
 - **Firmware extras:** Montserrat 28 and 48, a small icon atlas in flash (coins, shapes,
   animals, simple pictures for phonics), tap targets at least 60 px.
 - **Prototype in `tools/face_sim_v3` first**, then flash.

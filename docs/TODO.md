@@ -398,6 +398,12 @@ _3 items complete (LLM session memory, TTS resampler hardening, conversation stu
 
 ### Owner mode (Ben's assistant on the same speech stack) — plan, 2026-11-15
 
+**2026-11-18 (Ben):** owner mode is a **separate service ("Jarvis")** from day one, not a mode
+inside buddy-server; Buddy's screen and speaker are one client. Screen side, PIN + face ID
+unlock, the service boundary and the risk tiers: `docs/screen-ui-and-admin.md`.
+- [ ] `[opus]` **Dashboard login first** (`docs/screen-ui-and-admin.md` §4): supervisor HTTP, WebSocket and MCP endpoints have no auth today, so anyone on the LAN can change household, memory, guardrails and grade ceilings
+- [ ] `[opus]` Screen settings: kid menu (swipe down from the top), PIN + face ID grown-up settings, Jarvis client mode (design; needs `docs/protocols.md` and face spec §9.5 amendments, incl. the swipe-vs-pet rule; shares the scene protocol with `learning-games.md` §9)
+
 Ben: "a mode for myself: check local Home Assistant, bank accounts, or other things local models look after. Buddy is how we tune the speech interface; the house and the robot use the same stack." Same pipeline (wake word, speculative end of turn, Whisper, LLM, Orpheus, follow-up windows) and the same air rig for tuning; a different profile, tools, and memory.
 
 - [ ] **Gate on identity first.** Owner tools only when the speaker is recognised as Ben (voice ID, SIM-INTERACTION stage 5) with a high-confidence threshold; anyone else (kids, guests, a TV) gets Buddy. A spoken PIN or the dashboard as a fallback. Nothing owner-mode ever answers a child.
