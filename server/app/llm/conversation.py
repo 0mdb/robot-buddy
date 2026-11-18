@@ -706,17 +706,14 @@ class ConversationHistory:
             c.keywords.search(said) for c in games.cards().values()
         ):  # asking for a game mid-round is not an answer
             return None
-        notes = next(
-            (m.notes for m in reversed(msgs[: users[-1]]) if m.role == "assistant"), ""
-        )
+        pairs = self._reply_pairs(msgs[: users[-1] + 1])
         for game_id, drill in games.DRILLS.items():
             card = games.cards().get(game_id)
             skill = card.skill if card else ""
             rec = games.drill.practice(
                 drill,
                 skill,
-                notes,
-                said,
+                pairs,
                 self.game_picks.seed,
                 self._grade_of(game_id, skill),
             )
@@ -724,9 +721,11 @@ class ConversationHistory:
                 return rec
         return None
 
-    def _reply_pairs(self) -> list[tuple[str, str]]:
+    def _reply_pairs(
+        self, msgs: list[ConversationMessage] | None = None
+    ) -> list[tuple[str, str]]:
         """(the reply's notes, what the child said next) for each reply so far."""
-        msgs = list(self._messages)
+        msgs = list(self._messages) if msgs is None else msgs
         out: list[tuple[str, str]] = []
         for i, m in enumerate(msgs):
             if m.role == "assistant":

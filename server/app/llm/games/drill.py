@@ -70,35 +70,76 @@ def _words(text: str) -> str:
     return " " + re.sub(r"[^a-z ]+", " ", (text or "").lower()) + " "
 
 
-def verdict(it: Item, said: str) -> str:
-    """right | wrong | none (no answer) | unclear (teen/ty mix-up)."""
+_DUNNO = re.compile(
+    r"\b(?:don'?t know|don ?t know|do not know|no idea|not sure|dunno|i give up|help me|"
+    r"pass)\b"
+)
+# "I said 90": the child disputes how their last answer was heard (Owen, 2026-11-18).
+_DISPUTE = re.compile(
+    r"\b(?:i said|i did say|i answered|that'?s what i said|i got it)\b"
+)
+
+
+def verdict(it: Item, said: str, *, asked_before: bool = False) -> str:
+    """right | wrong | none (didn't know) | unclear (ask again: no clear number, a restated
+    sum, "2 or 3", a teen/ty mix-up). ``asked_before``: this item was already asked again
+    once, so an unclear answer now counts as none (no endless re-asking)."""
+    low = (said or "").lower()
     if it.kind == "number":
-        got = number_in(said)
+        got = number_in(said, expect=int(it.answer))
         if got is None:
-            return "none"
+            return "none" if _DUNNO.search(low) or asked_before else "unclear"
         if str(got) == it.answer:
             return "right"
-        return "unclear" if str(_CONFUSABLE.get(got)) == it.answer else "wrong"
+        if str(_CONFUSABLE.get(got)) == it.answer:
+            return "wrong" if asked_before else "unclear"
+        return "wrong"
     w = _words(said)
     if f" {it.answer} " in w or it.answer.replace(" ", "") in w.replace(" ", ""):
         return "right"
-    if re.search(r"\b(don ?t know|no idea|not sure|dunno|i give up|help)\b", w):
+    if _DUNNO.search(w):
         return "none"
     return "wrong" if w.strip() else "none"
+
+
+def replay(
+    drill: Drill, pairs: list[tuple[str, str]], seed: int, grade: Grade
+) -> tuple[dict[int, str], list[int]]:
+    """Every item's verdict so far, oldest first (a re-asked item keeps its latest), and the
+    item numbers asked. A dispute ("I said 90" when 90 was the last item's answer) marks
+    the last item right and the current one "disputed" (asked again)."""
+    verdicts: dict[int, str] = {}
+    times: dict[int, int] = {}
+    asked: list[int] = []
+    for notes, said in pairs:
+        m = _QNUM.search(notes)
+        if not m:
+            continue
+        k = int(m.group(1))
+        asked.append(k)
+        times[k] = times.get(k, 0) + 1
+        prev = k - 1
+        if (
+            prev in verdicts
+            and prev // ROUND == k // ROUND
+            and verdicts[prev] != "right"
+            and _DISPUTE.search((said or "").lower())
+        ):
+            p_it = item(drill, seed, prev, _at(grade, prev))
+            if p_it.kind == "number" and str(number_in(said)) == p_it.answer:
+                verdicts[prev] = "right"
+                verdicts[k] = "disputed"
+                continue
+        it = item(drill, seed, k, _at(grade, k))
+        verdicts[k] = verdict(it, said, asked_before=times[k] > 1)
+    return verdicts, asked
 
 
 def status(drill: Drill, pairs: list[tuple[str, str]], seed: int, grade: Grade) -> str:
     """The ROUND lines for the card. ``pairs``: (reply notes, the child's next words) for
     every reply so far, oldest first; the last pair's words are being answered now."""
     tag = f"Game: {drill.game_id}"
-    verdicts: dict[int, str] = {}
-    asked: list[int] = []
-    for notes, said in pairs:
-        m = _QNUM.search(notes)
-        if m:
-            k = int(m.group(1))
-            asked.append(k)
-            verdicts[k] = verdict(item(drill, seed, k, _at(grade, k)), said)
+    verdicts, asked = replay(drill, pairs, seed, grade)
     m = _QNUM.search(pairs[-1][0]) if pairs else None
     if m is None:  # starting, or a new round after a finished one
         nxt = max(asked) + 1 if asked else 0
@@ -112,15 +153,26 @@ def status(drill: Drill, pairs: list[tuple[str, str]], seed: int, grade: Grade) 
     n = int(m.group(1))
     it = item(drill, seed, n, _at(grade, n))
     v = verdicts.get(n, "none")
-    if v == "unclear":
-        return (
-            f"ROUND (run by code; trust it): the answer sounded unclear (maybe {it.answer}"
-            f' misheard). Ask them to say it again: "{it.ask}" Notes: "{tag}. Q#{n}".'
-        )
     rnd, pos = divmod(n, ROUND)
     right = sum(1 for k, x in verdicts.items() if k // ROUND == rnd and x == "right")
+    if v == "unclear":
+        return (
+            "ROUND (run by code; trust it): that wasn't a clear answer (it may have been"
+            " misheard, or they said the sum back). Don't mark it, don't change the subject:"
+            f' ask for just the number, e.g. "Just the number this time: {it.ask}" Notes:'
+            f' "{tag}. Q#{n}".'
+        )
+    if v == "disputed":
+        prev = item(drill, seed, n - 1, _at(grade, n - 1))
+        return (
+            f"ROUND (run by code; trust it): the child says they answered the last one with"
+            f" {prev.answer}, and that was RIGHT ({prev.say_answer}): say sorry for mishearing"
+            f" and count it. Score {right}/{pos}. Then ask the current one again, word for"
+            f' word: "{it.ask}" Notes: "{tag}. Q#{n}".'
+        )
     said_line = {
-        "right": f"RIGHT ({it.say_answer}). Cheer briefly.",
+        "right": f"RIGHT ({it.say_answer}; their answer may have come through as a"
+        " different word, but it was right). Cheer briefly.",
         "wrong": f'WRONG. Start with "Not quite, {it.say_answer}."',
         "none": f'no answer. Say kindly "{it.say_answer}."',
     }[v]
@@ -183,20 +235,27 @@ def _parsed(it: Item, said: str, v: str) -> str:
 
 
 def practice(
-    drill: Drill, skill: str, notes: str, said: str, seed: int, grade: Grade
+    drill: Drill, skill: str, pairs: list[tuple[str, str]], seed: int, grade: Grade
 ) -> dict[str, Any] | None:
-    """The progress record for the item the last reply asked (``Q#<n>`` in its notes),
-    answered by ``said``; None if no item was asked or the answer was unclear (a teen/ty
-    mix-up is asked again and never counted). Checked by code (learning-games.md §2.1)."""
+    """The progress record for the child's last answer (the last pair's words answer the
+    ``Q#<n>`` in that pair's notes); None if no item was asked, the answer is to be asked
+    again, or the child left the game. A dispute re-scores the previous item (same key, so
+    the robot replaces it). Checked by code (learning-games.md §2.1)."""
+    if not skill or not pairs:
+        return None
+    notes, said = pairs[-1]
     m = re.search(rf"Game:\s*{drill.game_id}\b.*?\bQ#(\d+)", notes or "")
-    if not m or not skill:
+    if not m:
         return None
     n = int(m.group(1))
+    verdicts, _ = replay(drill, pairs, seed, grade)
+    v = verdicts.get(n, "none")
+    if v == "disputed":
+        n, v = n - 1, "right"
+    elif v == "unclear" or (v != "right" and ending(said)):
+        return None
     g = _at(grade, n)
     it = item(drill, seed, n, g)
-    v = verdict(it, said)
-    if v == "unclear" or (v != "right" and ending(said)):
-        return None  # asked again, or the child left the game: not a miss
     return {
         "key": f"{seed}:{drill.game_id}:{n}",
         "q": n,
@@ -208,7 +267,7 @@ def practice(
         # What the child answered, as parsed: a number, or the right word. Never their raw
         # words: the progress file is always on, and transcripts belong only in the opt-in
         # conversation history (PE spec S2 §8.5).
-        "answer": _parsed(it, said, v),
+        "answer": it.answer if v == "right" else _parsed(it, said, v),
         "verdict": v,
         "decided": "code",
         "source": "voice",

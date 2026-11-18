@@ -2,7 +2,7 @@ id = "rocket_math"
 name = "Rocket Math"
 menu = "quick sums to blast off a rocket"
 skill = "add_sub_facts"
-keywords = ["rocket math", "maths? game", "(?:do|some|practi[cs]e) (?:sums|math|maths)", "adding game", "times tables?", "math facts?", "quiz me on (?:math|maths|adding|sums)"]
+keywords = ["rocket math", "the rocket one", "rocket game", "blast ?off game", "maths? game", "(?:do|some|practi[cs]e) (?:sums|math|maths)", "adding game", "times tables?", "math facts?", "quiz me on (?:math|maths|adding|sums)"]
 rules = """
 A round of 5 quick questions, counting down to blast-off. The ROUND line, run by code, does
 the maths: it says whether the child's last answer was right, the score, and the exact next
@@ -10,7 +10,10 @@ question. Follow it: never check a sum yourself, never invent a question. Your p
 fun: a short cheer, a kind "not quite" with the right answer (a trick only if it is a real
 one for that sum: make ten, 8 + 5 = 8 + 2 + 3; doubles, 6 + 7 = 6 + 6 + 1), the countdown,
 and saying the given question word for word at the end of your reply. Never call a wrong
-answer right.
+answer right. If the child says something that isn't an answer, the ROUND line says what to
+do: never drop the game or change the subject while a question is open.
+If they ask how it works, one sentence, then start: "I ask you five quick sums, you say the
+answer, and after five our rocket blasts off!"
 """
 
 [levels]

@@ -994,6 +994,7 @@ class TickLoop:
                 and self.world.session_id
                 and self.world.conversation_trigger == "wake_word"
                 and not self.world.speaking
+                and self._confident_resume(env.payload)
             ):
                 self._late_resume()
             elif (
@@ -2066,6 +2067,21 @@ class TickLoop:
                     self._workers.send_to("ear", EAR_CMD_STOP_LISTENING)
                 )
 
+    def _confident_resume(self, payload: dict) -> bool:
+        """Only a confident start of speech drops a reply that is ready: a 0.31 blip right
+        after "90" dropped Buddy's reply and Owen had to say it again (2026-11-18). A child
+        who really goes on can still talk over the reply (barge-in)."""
+        need = 0.5
+        if self._param_registry is not None:
+            need = float(
+                self._param_registry.get_value("conversation.late_resume_min_prob", 0.5)
+            )
+        prob = payload.get("prob")
+        if isinstance(prob, (int, float)) and prob < need:
+            log.info("late resume: ignored a weak start of speech (prob %.2f)", prob)
+            return False
+        return True
+
     def _late_resume(self) -> None:
         """The child went on before Buddy spoke: drop the reply, keep listening."""
         from supervisor.devices.protocol import FaceConvState
@@ -2122,6 +2138,8 @@ class TickLoop:
         mid = faces[0].get("member_id")
         return str(mid) if mid and mid in self.world.household_kinds else None
 
+    _SAME_CONVERSATION_S = 15.0
+
     def _should_resume(self) -> bool:
         """Continue the last conversation (the server restores its history, game notes and
         all) only a short while after it, and not with someone else: someone who sat down
@@ -2134,12 +2152,18 @@ class TickLoop:
             )
         gap_s = time.monotonic() - self._last_conv_mono
         speaker = self._speaker_member_id()
-        changed = bool(speaker and self._conv_member and speaker != self._conv_member)
+        # Moments after a reply (the follow-up window, a quick answer) it is the same
+        # conversation whoever is in view: Dad leaning in to help Owen mid-Rocket-Math reset
+        # the game (2026-11-18). A change of person only starts fresh after a pause.
+        quick = gap_s <= self._SAME_CONVERSATION_S
+        changed = bool(
+            not quick and speaker and self._conv_member and speaker != self._conv_member
+        )
         resume = gap_s <= window_s and not changed
         if not resume:
             self._conv_member = None
-        if speaker:
-            self._conv_member = speaker
+        if speaker and not (quick and self._conv_member):
+            self._conv_member = speaker  # mid-conversation, the first speaker stays
         log.info(
             "conversation: %s (%.0f s since the last one%s)",
             "continues" if resume else "fresh",

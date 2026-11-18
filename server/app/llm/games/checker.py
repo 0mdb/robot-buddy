@@ -31,31 +31,91 @@ _Q = re.compile(
 _SECRET = re.compile(r"\bSecret:\s*(\d[\d,]*)\b", re.IGNORECASE)
 
 
-def number_in(text: str) -> int | None:
-    """The number a child said, from digits or words ("forty-two", "a hundred and five").
-    None when there is no number, or more than one."""
-    t = (text or "").lower().replace(",", "")
-    digits = re.findall(r"\b\d+\b", t)
-    if digits:
-        return int(digits[0]) if len(set(digits)) == 1 else None
-    total, current, seen = 0, 0, False
-    for w in re.findall(r"[a-z]+", t.replace("-", " ")):
-        if w in _ONES:
-            current += _ONES[w]
-            seen = True
-        elif w in _TENS:
-            current += _TENS[w]
-            seen = True
-        elif w in _SCALES:
-            current = max(current, 1) * _SCALES[w]
-            if w == "thousand":
-                total, current = total + current, 0
-            seen = True
-        elif w in ("and", "a") and seen:
+# Whisper hears a child's lone "three" as "free", "tree" or "sweet" (Rocket Math with Owen,
+# 2026-11-18). Only used when the answer is short and has no real number in it.
+_SOUNDS_LIKE = {"free": 3, "tree": 3, "sweet": 3}
+_SHORT_WORDS = 4
+_OPERATOR = re.compile(
+    r"\b(?:plus|minus|times|divided|take away)\b|(?<=\d)\s*[-+x×*/÷]\s*(?=\d)"
+)
+_EITHER = re.compile(r"\bor\b")
+
+
+def numbers_in(text: str) -> list[int]:
+    """Every number said, in order, from digits or words. Repeats and corrections stay
+    separate: "ninety, ninety" is [90, 90] (not 180), "ten... it's eleven" is [10, 11],
+    "forty two" is [42], "a hundred and five" is [105]."""
+    t = (text or "").lower().replace(",", " ")
+    out: list[int] = []
+    total = current = 0
+    seen = False
+    last = ""  # kind of the last word in the current number: ones, teen, tens, scale
+
+    def flush() -> None:
+        nonlocal total, current, seen, last
+        if seen:
+            out.append(total + current)
+        total = current = 0
+        seen, last = False, ""
+
+    for tok in re.findall(r"\d+|[a-z]+", t.replace("-", " ")):
+        if tok.isdigit():
+            flush()
+            out.append(int(tok))
             continue
-        elif seen:
-            break  # "seven, no wait eight" style corrections are left as the first number
-    return total + current if seen else None
+        if tok in _ONES:
+            v = _ONES[tok]
+            kind = "teen" if v >= 10 else "ones"
+            # a ones word joins a tens word ("forty two") or follows a scale ("hundred five")
+            if (
+                seen
+                and not (kind == "ones" and last in ("tens", "scale"))
+                and not (kind == "teen" and last == "scale")
+            ):
+                flush()
+            current += v
+            seen, last = True, kind
+        elif tok in _TENS:
+            if seen and last != "scale":
+                flush()
+            current += _TENS[tok]
+            seen, last = True, "tens"
+        elif tok in _SCALES:
+            current = max(current, 1) * _SCALES[tok]
+            if tok == "thousand":
+                total, current = total + current, 0
+            seen, last = True, "scale"
+        elif tok in ("and", "a") and (seen or tok == "a"):
+            continue
+        else:
+            flush()
+    flush()
+    return out
+
+
+def number_in(text: str, *, expect: int | None = None) -> int | None:
+    """The child's answer: the last number they said (so "ten... it's eleven" is 11). None
+    when there is no number, or when they restated a sum ("is it 8 plus 6?") or gave two
+    ("2 or 3"). A lone sound-alike in a short answer ("is it free?") counts only when it is
+    ``expect``, the right answer: Whisper's mishearing may give credit, never take it."""
+    if _OPERATOR.search((text or "").lower()):
+        return None
+    nums = numbers_in(text)
+    if len(set(nums)) > 1 and _EITHER.search((text or "").lower()):
+        return None  # "2 or 3": not an answer yet
+    if nums:
+        return nums[-1]
+    words = re.findall(r"[a-z]+", (text or "").lower())
+    if len(words) <= _SHORT_WORDS:
+        alike = [_SOUNDS_LIKE[w] for w in words if w in _SOUNDS_LIKE]
+        if len(alike) == 1 and expect is not None and alike[0] == expect:
+            return alike[0]
+    return None
+
+
+def restated_sum(text: str) -> bool:
+    """The child said a sum back ("is it 8 plus 6?") rather than an answer."""
+    return bool(_OPERATOR.search((text or "").lower())) and bool(numbers_in(text))
 
 
 def _solve(a: int, op: str, b: str, c: str | None) -> int | None:

@@ -1385,6 +1385,21 @@ def create_default_registry() -> ParamRegistry:
     )
     reg.register(
         ParamDef(
+            name="conversation.late_resume_min_prob",
+            type="float",
+            min=0.0,
+            max=1.0,
+            step=0.05,
+            default=0.5,
+            owner="supervisor",
+            safety="safe",
+            doc="Speech must start at least this confidently (VAD probability) to count as the "
+            "child going on and drop a reply that is ready. Below it, the reply plays (the "
+            "child can still talk over it)",
+        )
+    )
+    reg.register(
+        ParamDef(
             name="conversation.quiet_mode",
             type="bool",
             default=False,

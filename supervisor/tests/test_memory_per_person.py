@@ -101,7 +101,9 @@ class TestResume:
         loop = _loop()
         _see(loop, "kid_a")
         loop._should_resume()
-        loop._last_conv_mono = time.monotonic()
+        loop._last_conv_mono = (
+            time.monotonic() - 60
+        )  # after a pause (quick = same talk)
         _see(loop, "dad")
         assert loop._should_resume() is False
 
@@ -136,3 +138,23 @@ class TestPickMemory:
         loop._pick_memory(p)
         assert p["memory_tags"] == ["pet_dog_rosie"]
         assert p["memory_scope"] == "household"
+
+
+class TestHelperLeansIn:
+    def test_quick_answer_from_someone_else_continues(self):
+        """Dad leaned in to help Owen mid-Rocket-Math and the game was reset (2026-11-18)."""
+        loop = _loop()
+        _see(loop, "kid_a")
+        loop._should_resume()
+        loop._last_conv_mono = time.monotonic() - 3  # in the follow-up window
+        _see(loop, "dad")
+        assert loop._should_resume() is True
+        assert loop._conv_member == "kid_a"  # still Owen's conversation
+
+    def test_someone_else_after_a_pause_starts_fresh(self):
+        loop = _loop()
+        _see(loop, "kid_a")
+        loop._should_resume()
+        loop._last_conv_mono = time.monotonic() - 60
+        _see(loop, "dad")
+        assert loop._should_resume() is False

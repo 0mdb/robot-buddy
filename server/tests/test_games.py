@@ -151,7 +151,7 @@ def test_teen_ty_mixup_is_unclear_not_wrong() -> None:
                 seed,
                 g,
             )
-            assert "unclear" in s
+            assert "wasn't a clear answer" in s  # asked again, not marked
             return
     pytest.skip("no teen answer in sample")
 
@@ -292,8 +292,8 @@ def test_practice_record_keeps_parsed_answer_not_words() -> None:
 
     it = drill.item(rocket.DRILL, 21, 0, "G2")
     rec = drill.practice(
-        rocket.DRILL, "add_sub_facts", "Game: rocket_math. Q#0",
-        f"um my brother says it's {it.answer}", 21, "G2",
+        rocket.DRILL, "add_sub_facts",
+        [("Game: rocket_math. Q#0", f"um my brother says it's {it.answer}")], 21, "G2",
     )  # fmt: skip
     assert rec is not None and rec["verdict"] == "right"
     assert rec["answer"] == it.answer and "said" not in rec
@@ -308,3 +308,73 @@ def test_naming_a_game_mid_round_is_not_scored() -> None:
     h.add_user("can we play sound swap instead")
     h.add_assistant("Sure!", notes="Game: sound_swap. Q#0")
     assert h.practice_record() is None
+
+
+# ── Rocket Math with Owen, 2026-11-18 (real transcript) ──────────────────
+
+from app.llm.games.checker import numbers_in  # noqa: E402
+
+
+@pytest.mark.parametrize(
+    ("said", "expected"),
+    [
+        ("Ninety. Ninety. Ninety.", 90),  # was 270: repeats were added up
+        ("Ten. It's eleven.", 11),  # self-correction: the last number
+        ("What is it? Fifteen?", 15),
+        ("Is it free?", 3),  # Whisper's "three"
+        ("Is that sweet?", 3),
+        ("Is it 8 plus 6?", None),  # the sum said back, not an answer
+        ("2 or 3", None),
+        ("Mix 13", 13),
+        ("go for it", None),
+        ("three hundred forty seven", 347),
+        ("a hundred and five", 105),
+    ],
+)
+def test_number_in_real_answers(said: str, expected: int | None) -> None:
+    assert number_in(said, expect=expected) == expected
+
+
+def test_sound_alike_only_gives_credit() -> None:
+    assert number_in("Is it free?", expect=3) == 3
+    assert number_in("Is it free?", expect=7) is None  # unclear, asked again
+    assert number_in("Is it free?") is None
+
+
+def test_numbers_in_keeps_repeats_apart() -> None:
+    assert numbers_in("ninety ninety") == [90, 90]
+    assert numbers_in("forty two") == [42]
+    assert numbers_in("twenty twenty") == [20, 20]
+
+
+def _pairs(*steps: tuple[int, str]) -> list[tuple[str, str]]:
+    return [(f"Game: rocket_math. Q#{n}", said) for n, said in steps]
+
+
+def test_unclear_is_asked_again_once_then_answered() -> None:
+    seed, g = 13, "G2"
+    s1 = rocket.status(_pairs((0, "is it free-ish maybe")), seed, g)
+    assert "Just the number this time" in s1 and "Q#0" in s1
+    s2 = rocket.status(_pairs((0, "is it free-ish maybe"), (0, "umm")), seed, g)
+    assert "no answer" in s2 and "Q#1" in s2  # second time: give the answer, move on
+
+
+def test_dispute_rescored_right_and_current_asked_again() -> None:
+    seed, g = 17, "G2"
+    q0 = rocket.question(seed, 0, g)
+    pairs = _pairs((0, "plus four, plus four"), (1, f"I said {q0.answer}"))
+    s = rocket.status(pairs, seed, g)
+    assert "say sorry for mishearing" in s and "Score 1/1" in s and "Q#1" in s
+    rec = drill_mod.practice(rocket.DRILL, "add_sub_facts", pairs, seed, g)
+    assert rec is not None and rec["q"] == 0 and rec["verdict"] == "right"
+
+
+def test_unclear_and_dispute_not_recorded_as_misses() -> None:
+    seed, g = 19, "G2"
+    rec = drill_mod.practice(
+        rocket.DRILL, "add_sub_facts", _pairs((0, "is it 8 plus 6?")), seed, g
+    )
+    assert rec is None
+
+
+from app.llm.games import drill as drill_mod  # noqa: E402

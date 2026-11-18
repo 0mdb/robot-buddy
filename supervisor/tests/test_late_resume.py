@@ -137,3 +137,18 @@ async def test_session_end_closes_the_window():
     loop._handle_face_events(_env(EAR_EVENT_END_OF_UTTERANCE))
     loop._handle_face_events(_env(AI_CONVERSATION_DONE))
     assert not loop._late_resume_open and loop._late_resume_timer is None
+
+
+@pytest.mark.asyncio
+async def test_a_weak_start_of_speech_does_not_drop_the_reply():
+    """Owen's "90", then a 0.31 blip: the reply was dropped and he had to repeat (2026-11-18)."""
+    loop = _loop()
+    loop._handle_face_events(_env(EAR_EVENT_WAKE_WORD))
+    loop._handle_face_events(_env(EAR_EVENT_END_OF_UTTERANCE))
+    await _settle()
+    loop._handle_face_events(_env(EAR_EVENT_SPEECH_STARTED, {"prob": 0.31}))
+    await _settle()
+    assert _count(loop, "ai", AI_CMD_LATE_RESUME) == 0
+    loop._handle_face_events(_env(EAR_EVENT_SPEECH_STARTED, {"prob": 0.9}))
+    await _settle()
+    assert _count(loop, "ai", AI_CMD_LATE_RESUME) == 1
