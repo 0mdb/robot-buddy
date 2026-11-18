@@ -1,4 +1,4 @@
-# Alberta Grade 2 curriculum (what CBE teaches), for learning games
+# Alberta Grade 2 and Grade 3 curriculum (what CBE teaches), for learning games
 
 Gathered 2026-11-18 by a research agent from official LearnAlberta / alberta.ca sources (plus
 secondary resources that quote the curriculum verbatim). CBE teaches the provincial K-6
@@ -74,6 +74,59 @@ and transportation; democratic discussion and decision making. Detailed outcomes
 Relationships; food guidelines and choices; safety decisions and consent (asking, giving,
 refusing); safety at home, school, online, in emergencies; spend/save/share; self-regulation
 of attention, emotions, behaviour; healthy growth.
+
+## Grade 3 (stretch material; gathered 2026-11-18, mostly via sources that quote the outcomes)
+Arrows mark the Grade 2 → Grade 3 step. Math and ELAL implemented 2023-24; the 2026-27 minor
+update changed nothing in Grade 3 math.
+
+**Mathematics**
+- **Place value 1000 → 100 000:** digit values, each place ×10 the next, numbers in words,
+  decompose (1000 = 10 hundreds = 100 tens), rounding, compare/order.
+- **Money:** nickels, dimes, quarters in cents; loonies, toonies, bills in dollars; $ and ¢.
+- **Add/subtract within 100 → within 1000:** column algorithms with regrouping, estimation,
+  word problems (join, separate, part-part-whole, compare).
+- **Multiplication and division (new), within 100:** equal groups, arrays; sharing,
+  grouping; commutative for ×, not ÷; ×1, ÷1, ×0; remainders and what they mean; missing
+  factors; fact families. **Target: recall facts to 10 × 10 and related division.**
+- **Fractions, unit fractions to tenths → fractions of one whole to twelfths:** numerator,
+  denominator; 3/4 = three 1/4s; a/a = 1; number line; compare same denominator or same
+  numerator.
+- **Equations:** one operation, unknown on either side (balance).
+- **Geometry:** parallel, perpendicular, right angles (paper corner, L, 3 o'clock); polygons
+  to octagons; regular vs irregular; transformations keep properties.
+- **Measurement → standard units:** mm, cm, dm, m (100 cm in a metre); 12 in = 1 ft, 3 ft =
+  1 yd; rough conversions (30 cm ≈ 1 ft); perimeter, missing side. Angles as turns; 90°.
+- **Patterns → number sequences:** ordinal positions, even/odd sequences, finite vs infinite,
+  times-table rows, missing terms, the rule (+, −, ×, ÷).
+- **Time → clocks:** 60 s, 60 min; minutes past and to the hour; analog and digital; a.m./p.m.
+- **Data:** statistical questions, first- vs second-hand data, dot plots, bar graphs.
+- **Financial literacy:** saving goals, needs vs wants, donating.
+
+**English Language Arts and Literature**
+- Phonological awareness ends in Grade 2.
+- **Phonics → word formation:** clusters at both ends (st, str, spr); ph, gh, wh; silent
+  letters (know, write); vowels in unfamiliar multisyllabic words; chunking (in-for-ma-tion).
+- **Morphology:** prefixes re, un, in, dis, non, mis, mal, sub, super; suffixes -ly, and
+  -er/-or/-ar/-ist ("a person who"); compound words.
+- **Vocabulary:** synonyms, antonyms, homophones, homographs, multiple meanings; simile,
+  hyperbole, imagery.
+- **Fluency:** the 300 high-frequency words of Grades 1-2 read fluently (no new count).
+- **Spelling:** y → ies, f/fe → ves, irregular plurals (person/people), possessives ('s, s').
+- **Grammar:** sentence types; subject and predicate; and, but, or, so, for; possessive
+  nouns, adjectives, pronouns (my/mine); prepositions; commas in lists, quotation marks.
+- **Poetry:** haiku, limerick.
+
+**Grade 1 phonics** covers correspondences 1-60 of the 120 list; Grade 2 covers 61-120
+(confirmed by two APLC documents).
+
+**Science Grade 3:** changes of substances and the water cycle; forces and simple machines;
+how Earth's surface changes; rock layers and dinosaur fossils; living things and their
+environment; computational thinking. **Social Studies Grade 3:** Alberta and the Prairies
+(people, places, geography, symbols, government).
+
+Grade 3 sources: Pearson Mathology Grade 3 Alberta correlation (2025-12-15); APLC Math and
+ELAL Grade 3 planning resources; U of Lethbridge Curriculum Lab ELAL 3; 2026-27 minor-update
+PDFs.
 
 ## Gaps
 LearnAlberta pages are browser-only (403 to fetch); detailed Social Studies outcomes, the full
