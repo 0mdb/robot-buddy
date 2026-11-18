@@ -1344,6 +1344,21 @@ def create_default_registry() -> ParamRegistry:
     )
     reg.register(
         ParamDef(
+            name="conversation.resume_window_s",
+            type="float",
+            min=0.0,
+            max=1800.0,
+            step=10.0,
+            default=120.0,
+            owner="supervisor",
+            safety="safe",
+            doc="A new conversation picks up the last one (its history, a game in progress) "
+            "only within this long of it and with the same person (or nobody recognised); "
+            "otherwise it starts fresh",
+        )
+    )
+    reg.register(
+        ParamDef(
             name="conversation.listen_after_greeting",
             type="bool",
             default=True,

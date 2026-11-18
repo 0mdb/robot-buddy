@@ -333,6 +333,14 @@ SAFETY_CHECK = (
 )
 
 
+def _memory_label(profile: dict[str, object]) -> str:
+    """Whose facts these are. The robot keeps memory per recognised person and sends the
+    speaker's facts plus household ones; with nobody recognised, household facts only."""
+    if profile.get("memory_scope") == "household":
+        return "Known about this family (not about whoever is talking)"
+    return "Known about this child"
+
+
 def _build_current_state_block(profile: dict[str, object]) -> str:
     """Build the CURRENT STATE system block from a personality profile (§12.5).
 
@@ -371,7 +379,7 @@ def _build_current_state_block(profile: dict[str, object]) -> str:
         readable = ", ".join(
             str(t).replace("_", " ") for t in memory_tags[:_MAX_MEMORY_TAGS]
         )
-        memory_line = f"\nKnown about this child: {readable}."
+        memory_line = f"\n{_memory_label(profile)}: {readable}."
     else:
         # Say so explicitly: with nothing here the model invented past conversations when an
         # adult asked about the children (SIM-INTERACTION B7).

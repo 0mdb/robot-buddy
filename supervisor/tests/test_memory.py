@@ -214,14 +214,15 @@ class TestMemoryStore:
         path = str(tmp_path / "mem.json")
         store = MemoryStore(path, consent=True)
         store.add_or_reinforce("likes_dinosaurs", "topic")
-        store.add_or_reinforce("child_name_emma", "name")
+        store.add_or_reinforce("child_name_emma", "name", member_id="kid_1")
         store.save()
 
         # Load into new store
         store2 = MemoryStore(path, consent=True)
         store2.load()
         assert store2.entry_count == 2
-        tags = store2.tag_summary()
+        assert store2.tag_summary() == ["likes_dinosaurs"]  # household only
+        tags = store2.tag_summary("kid_1")
         assert "likes_dinosaurs" in tags
         assert "child_name_emma" in tags
 

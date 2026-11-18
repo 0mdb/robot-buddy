@@ -502,6 +502,31 @@ def should_suppress_idle(conversation_active: bool, speaking: bool,
 
 ## 8. Memory System
 
+> **Amendment (2026-11-18, Ben): memory is per person.** The store below was written for one
+> child: every fact went into one pool shown as "Known about this child", and the name tier
+> held one name, so a sibling or a parent was told the oldest child's facts and name. Now:
+> - Each entry carries `member_id`: the household roster member it is about, or `""` for the
+>   household (facts learned while nobody was recognised).
+> - A fact is stored under the **recognised speaker**: the one recognised member when they
+>   are the only face in view (the same rule that marks them as speaking in the audience
+>   block); otherwise the household.
+> - The LLM profile gets the **speaker's facts, then the household's**; with nobody
+>   recognised, household facts only, labelled for the model as about the family, not the
+>   speaker. Other members' facts are never shown.
+> - **Name (T0)** entries need a recognised member (one per member); with nobody recognised
+>   a name is dropped, since the roster already holds names. Household name entries from
+>   before this amendment are dropped on load.
+> - **Limits** (§8.2 max entries, §8.4 total 50) apply **per member** and to the household
+>   bucket; 300 entries across everyone is a backstop.
+> - Removing a member from the roster forgets their facts; "Forget everyone" forgets every
+>   member's facts; "Forget everything" still wipes the whole store (§8.5).
+> - Storage key: household entries keep the bare tag (older files load unchanged); member
+>   entries are `<member_id>:<tag>`. The file stays `version: 1` with the extra field.
+>
+> Related, same day: a new conversation continues the previous one (the server's stashed
+> history, a game in progress) only within `conversation.resume_window_s` (120 s) of it and
+> with the same person or nobody recognised; otherwise it starts fresh.
+
 ### 8.1 Memory Entry Structure
 
 ```python
@@ -518,6 +543,7 @@ class MemoryEntry:
     reinforcement_count: int    # number of times reinforced
     decay_lambda: float         # per-second decay rate (from tier)
     source: str                 # "llm_extract" | "rule_infer"
+    member_id: str = ""         # roster member the fact is about; "" = household (amended 2026-11-18)
 
     def current_strength(self) -> float:
         """Compute current strength with exponential decay since last reinforcement."""

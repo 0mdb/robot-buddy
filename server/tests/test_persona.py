@@ -27,3 +27,13 @@ def test_profile_examples_have_the_name_filled() -> None:
 def test_planner_prompt_names_the_robot() -> None:
     assert f"You are {ROBOT_NAME}," in SYSTEM_PROMPT
     assert "Buddy" not in SYSTEM_PROMPT
+
+
+def test_memory_label_follows_scope() -> None:
+    from app.llm.conversation import _memory_label
+
+    assert _memory_label({"memory_scope": "household"}).startswith(
+        "Known about this family"
+    )
+    assert _memory_label({"memory_scope": "speaker"}) == "Known about this child"
+    assert _memory_label({}) == "Known about this child"  # older robots

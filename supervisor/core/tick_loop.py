@@ -288,6 +288,10 @@ class TickLoop:
         # A greeting is playing: when it finishes, listen as after a reply, so the person
         # can answer "Hi, Sam!" without the wake word.
         self._greet_listen_armed = False
+        # Whether a new conversation continues the last one (server keeps its history) or
+        # starts fresh: the last conversation's end and who it was with (member id or None).
+        self._last_conv_mono = float("-inf")
+        self._conv_member: str | None = None
 
         # PE system event forwarding state
         self._pe_boot_sent: bool = False
@@ -934,6 +938,7 @@ class TickLoop:
             if self.world.session_id:
                 profile = dict(env.payload)
                 self._add_present_faces(profile)
+                self._pick_memory(profile)
                 profile["turn_id"] = self.world.turn_id
                 profile["session_id"] = self.world.session_id
                 asyncio.ensure_future(
@@ -942,9 +947,12 @@ class TickLoop:
 
         # Memory extract from AI worker → forward to personality worker
         elif env.type == PERSONALITY_EVENT_MEMORY_EXTRACT:
+            # Facts are stored under the recognised speaker (household if unsure).
+            payload = dict(env.payload)
+            payload["member_id"] = self._speaker_member_id() or ""
             asyncio.ensure_future(
                 self._workers.send_to(
-                    "personality", PERSONALITY_EVENT_MEMORY_EXTRACT, env.payload
+                    "personality", PERSONALITY_EVENT_MEMORY_EXTRACT, payload
                 )
             )
 
@@ -1078,6 +1086,8 @@ class TickLoop:
                 self._ignore_next_tts_end = False
                 return
             self._cancel_turn_watchdog()
+            if self.world.speech_source == "conversation":
+                self._last_conv_mono = time.monotonic()
             self.world.speech_priority = 3  # idle: nothing is speaking now
             follow_up = self._follow_up_armed and env.type == TTS_EVENT_FINISHED
             self._follow_up_armed = False
@@ -1584,6 +1594,7 @@ class TickLoop:
 
         import uuid
 
+        resume = self._should_resume()
         self.world.session_id = f"sess-{uuid.uuid4().hex[:12]}"
         self.world.turn_id = 1
         self.world.conversation_trigger = trigger
@@ -1603,6 +1614,7 @@ class TickLoop:
                 {
                     "session_id": self.world.session_id,
                     "turn_id": self.world.turn_id,
+                    "resume": resume,
                 },
             )
         )
@@ -1937,6 +1949,22 @@ class TickLoop:
             self._household_names = {}
             self._household_ages = {}
 
+    def _pick_memory(self, profile: dict) -> None:
+        """Per-person memory (PE spec S2 §8.1): the speaker's facts, then the household's.
+        With nobody recognised, household facts only, labelled as such for the model."""
+        by_member = profile.pop("memory_by_member", None)
+        if not isinstance(by_member, dict):
+            return
+        speaker = self._speaker_member_id()
+        if speaker:
+            self._conv_member = speaker
+        tags = (list(by_member.get(speaker, [])) if speaker else []) + list(
+            by_member.get("", [])
+        )
+        profile["memory_scope"] = "speaker" if speaker else "household"
+        if tags:
+            profile["memory_tags"] = tags
+
     def _add_present_faces(self, profile: dict) -> None:
         """Replace the roster's "someone unknown" with who the camera sees: recognised
         members by kind, age and name (to Buddy's LAN server only), anyone else unknown.
@@ -2043,8 +2071,44 @@ class TickLoop:
         self.robot.face_listening = True
         self._conv.set_state(FaceConvState.LISTENING)
 
+    def _speaker_member_id(self) -> str | None:
+        """The recognised household member in front of the camera when they are the only
+        face in view (then they are most likely the one talking); otherwise None."""
+        faces = self.world.audience_faces()
+        if len(faces) != 1:
+            return None
+        mid = faces[0].get("member_id")
+        return str(mid) if mid and mid in self.world.household_kinds else None
+
+    def _should_resume(self) -> bool:
+        """Continue the last conversation (the server restores its history, game notes and
+        all) only a short while after it, and not with someone else: someone who sat down
+        after a child's game was offered that game (2026-11-18). An unrecognised speaker
+        counts as the same person, so a face leaving the frame doesn't end a game."""
+        window_s = 120.0
+        if self._param_registry is not None:
+            window_s = float(
+                self._param_registry.get_value("conversation.resume_window_s", 120.0)
+            )
+        gap_s = time.monotonic() - self._last_conv_mono
+        speaker = self._speaker_member_id()
+        changed = bool(speaker and self._conv_member and speaker != self._conv_member)
+        resume = gap_s <= window_s and not changed
+        if not resume:
+            self._conv_member = None
+        if speaker:
+            self._conv_member = speaker
+        log.info(
+            "conversation: %s (%.0f s since the last one%s)",
+            "continues" if resume else "fresh",
+            min(gap_s, 1e6),
+            ", different person" if changed else "",
+        )
+        return resume
+
     def _end_conversation(self) -> None:
         """End a conversation (PTT off, ACTION cancel, or error teardown)."""
+        self._last_conv_mono = time.monotonic()
         self._close_late_resume_window(stop=False)  # stopped just below
         self._late_resumed = False
         self._cancel_multi_turn_timeout()

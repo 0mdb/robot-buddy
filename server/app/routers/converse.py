@@ -93,6 +93,9 @@ async def converse(ws: WebSocket):
 
     session_seq = _to_int(ws.query_params.get("session_seq"))
     session_monotonic_ts_ms = _to_int(ws.query_params.get("session_monotonic_ts_ms"))
+    # The robot says whether this conversation continues the last one (same person, a
+    # minute or two later) or is a new one; absent = continue, as older robots expect.
+    resume = (ws.query_params.get("resume") or "1").strip() != "0"
 
     # Dev-only per-session generation overrides
     override_temperature = _to_float(ws.query_params.get("override_temperature"))
@@ -122,6 +125,15 @@ async def converse(ws: WebSocket):
 
     # Restore stashed history from a previous connection, or start fresh.
     stashed = registry.take_stashed_history(robot_id)
+    if stashed is not None and not resume:
+        # Someone else, or a while later: the last conversation (a game in progress, its
+        # notes) must not roll over into this one (2026-11-18).
+        log.info(
+            "Conversation WebSocket connected (robot_id=%s, fresh: dropped %d stashed turns)",
+            robot_id,
+            stashed.turn_count,
+        )
+        stashed = None
     if stashed is not None:
         history = stashed
         log.info(

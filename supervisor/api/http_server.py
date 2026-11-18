@@ -560,6 +560,12 @@ def create_app(
             return _roster_error(KeyError("no such member"), 404)
         household.save(roster_path, r)
         await workers.send_to("vision", VISION_FACE_FORGET, {"member_id": member_id})
+        from supervisor.messages.types import PERSONALITY_CMD_RESET_MEMORY
+
+        # What Buddy remembers about them goes too (memory is per member).
+        await workers.send_to(
+            "personality", PERSONALITY_CMD_RESET_MEMORY, {"member_id": member_id}
+        )
         return _roster_reply(r)
 
     # -- Face enrollment (inputs/face_id.py) ---------------------------------
@@ -637,6 +643,13 @@ def create_app(
     async def forget_household():
         """Parent 'Forget everyone': delete the roster and everything stored beside it."""
         household.forget_everyone(roster_path)
+        from supervisor.messages.types import PERSONALITY_CMD_RESET_MEMORY
+
+        # Facts tied to members go with them; household-wide facts stay ("Forget
+        # everything" in the memory panel clears those).
+        await workers.send_to(
+            "personality", PERSONALITY_CMD_RESET_MEMORY, {"all_members": True}
+        )
         return _roster_reply(household.Roster())
 
     # -- Parent alerts (secrets and serious disclosures) ----------------------

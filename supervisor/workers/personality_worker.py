@@ -455,11 +455,13 @@ class PersonalityWorker(BaseWorker):
             "idle_state": self._idle_state(),
             "session_time_s": round(self._session_time_s, 1),
         }
-        # Include active memory tags for LLM context injection (PE spec S2 §12.5)
+        # Active memory tags for LLM context injection (PE spec S2 §12.5), per member id
+        # ("" = household): the tick loop knows who is in front of the camera and picks the
+        # speaker's facts plus the household's (§8.1, per-person memory).
         if self._memory:
-            tags = self._memory.tag_summary()
-            if tags:
-                profile["memory_tags"] = tags
+            by_member = self._memory.tags_by_member()
+            if by_member:
+                profile["memory_by_member"] = by_member
         # Audience hint from the roster: only the youngest child's age, never names
         if self._roster is not None:
             hint = self._roster.get().audience_hint()
@@ -870,6 +872,8 @@ class PersonalityWorker(BaseWorker):
         tags = payload.get("tags", [])
         if not tags:
             return
+        # The recognised speaker when the tags were said (tick loop); "" = household.
+        member_id = str(payload.get("member_id") or "")
         stored = 0
         for tag_entry in tags:
             if isinstance(tag_entry, dict):
@@ -880,7 +884,9 @@ class PersonalityWorker(BaseWorker):
                 category = "topic"
             else:
                 continue
-            if tag and self._memory.add_or_reinforce(tag, category):
+            if tag and self._memory.add_or_reinforce(
+                tag, category, member_id=member_id
+            ):
                 stored += 1
         if stored:
             self._memory.save()
@@ -893,6 +899,19 @@ class PersonalityWorker(BaseWorker):
         tags = payload.get("tags")
         if isinstance(tags, list):
             self._memory.forget([str(t) for t in tags])
+            return
+        member_id = payload.get("member_id")
+        if isinstance(member_id, str) and member_id:
+            n = self._memory.forget_member(member_id)
+            log.info("memory: forgot %d entries for a removed member", n)
+            return
+        if payload.get("all_members"):
+            n = sum(
+                self._memory.forget_member(mid)
+                for mid in self._memory.tags_by_member()
+                if mid
+            )
+            log.info("memory: forgot %d entries for removed members", n)
             return
         count = self._memory.entry_count
         self._memory.reset()

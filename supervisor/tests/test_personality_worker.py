@@ -1401,6 +1401,7 @@ class TestMemoryHandlers:
                 {
                     "session_id": "s1",
                     "turn_id": 1,
+                    "member_id": "kid_1",
                     "tags": [
                         {"tag": "likes_dinosaurs", "category": "topic"},
                         {"tag": "child_name_emma", "category": "name"},
@@ -1409,7 +1410,8 @@ class TestMemoryHandlers:
             )
         )
         assert w._memory.entry_count == 2
-        tags = w._memory.tag_summary()
+        assert w._memory.tag_summary() == []  # all of it is kid_1's
+        tags = w._memory.tag_summary("kid_1")
         assert "likes_dinosaurs" in tags
         assert "child_name_emma" in tags
 
@@ -1482,8 +1484,8 @@ class TestMemoryHandlers:
         profiles = [(t, p) for t, p in sends if t == PERSONALITY_LLM_PROFILE]
         assert len(profiles) == 1
         _, payload = profiles[0]
-        assert "memory_tags" in payload
-        assert "likes_dinosaurs" in payload["memory_tags"]
+        # Per member id; the tick loop picks the speaker's (+ household) for the server.
+        assert payload["memory_by_member"] == {"": ["likes_dinosaurs"]}
 
     @pytest.mark.asyncio
     async def test_health_payload_includes_memory(self, tmp_path):

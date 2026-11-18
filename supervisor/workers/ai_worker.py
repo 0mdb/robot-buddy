@@ -85,6 +85,7 @@ class AIWorker(BaseWorker):
         self._session_id = ""
         self._turn_id = 0
         self._session_seq = 0
+        self._resume = True  # continue the server's stashed history (tick loop decides)
         self._first_audio_emitted = False
         self._discard_turn = False  # a late resume dropped the turn in flight
 
@@ -139,6 +140,7 @@ class AIWorker(BaseWorker):
             self._turn_id = int(p.get("turn_id", 1))
             self._first_audio_emitted = False
             self._discard_turn = False
+            self._resume = bool(p.get("resume", True))
             asyncio.create_task(self._start_conversation())
 
         elif t == AI_CMD_END_UTTERANCE:
@@ -346,6 +348,7 @@ class AIWorker(BaseWorker):
             f"?robot_id={self._robot_id}"
             f"&session_seq={self._session_seq}"
             f"&session_monotonic_ts_ms={int(time.monotonic() * 1000)}"
+            f"&resume={1 if self._resume else 0}"
         )
         # Append dev-only generation overrides if set
         if "temperature" in self._generation_overrides:
