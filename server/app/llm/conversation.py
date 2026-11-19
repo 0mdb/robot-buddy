@@ -665,6 +665,32 @@ class ConversationHistory:
             check = games.checker.check_guess(last_notes, last_user)
         return f"{text}\n{check}" if check else text
 
+    def drill_sentence_fixer(self) -> Callable[[str], str] | None:
+        """For a drill round (Rocket Math, Sound Swap) with an item due in this reply: a
+        function that puts the model's words right before they are spoken (no made-up sum,
+        the true countdown; ``games.drill.fix_sentence``). Call after the child's words are
+        in the history. None when no drill item is due."""
+        last_user = next(
+            (m.content for m in reversed(self._messages) if m.role == "user"), ""
+        )
+        last_notes = next(
+            (m.notes for m in reversed(self._messages) if m.role == "assistant"), ""
+        )
+        found = games.active_game(last_user, last_notes)
+        drill = games.DRILLS.get(found[0].id) if found else None
+        if found is None or drill is None:
+            return None
+        exp = games.drill.expected(
+            drill,
+            self._reply_pairs(),
+            self.game_picks.seed,
+            self._grade_of(found[0].id, found[0].skill),
+            child=last_user,
+        )
+        if exp is None:
+            return None
+        return lambda text: games.drill.fix_sentence(drill, exp, text)
+
     def game_tail_line(self, text: str, notes: str) -> str | None:
         """For a drill game (Rocket Math, Sound Swap): the item the reply's notes say was asked
         (``Q#<n>``) when its words didn't ask it, to be spoken after them; else None."""

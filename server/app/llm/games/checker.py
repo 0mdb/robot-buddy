@@ -39,6 +39,16 @@ _OPERATOR = re.compile(
     r"\b(?:plus|minus|times|divided|take away)\b|(?<=\d)\s*[-+x×*/÷]\s*(?=\d)"
 )
 _EITHER = re.compile(r"\bor\b")
+# Numbers that aren't an answer: "one" as a pronoun ("the first one", "which one") and a count
+# of what's left ("it's one to blast off", "two more"). Rocket Math with Owen, 2026-11-18:
+# "the first one" scored 12 - 5 as wrong, "it's one to blast off" scored 10 + 40 as wrong.
+_NOT_ANSWER = re.compile(
+    r"\b(?:the|this|that|which|first|second|third|last|next|other|another|same|each|"
+    r"every|any|no|right|wrong|easy|hard|big|little)\s+one\b"
+    r"|\b(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+"
+    r"(?:more|left|to go|to blast[- ]?off|questions?)\b",
+    re.IGNORECASE,
+)
 
 
 def numbers_in(text: str) -> list[int]:
@@ -100,6 +110,7 @@ def number_in(text: str, *, expect: int | None = None) -> int | None:
     ``expect``, the right answer: Whisper's mishearing may give credit, never take it."""
     if _OPERATOR.search((text or "").lower()):
         return None
+    text = _NOT_ANSWER.sub(" ", text or "")
     nums = numbers_in(text)
     if len(set(nums)) > 1 and _EITHER.search((text or "").lower()):
         return None  # "2 or 3": not an answer yet

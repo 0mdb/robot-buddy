@@ -18,7 +18,7 @@ from collections.abc import Callable
 from typing import Any
 from dataclasses import dataclass
 
-from app.llm.games.checker import _CONFUSABLE, number_in
+from app.llm.games.checker import _CONFUSABLE, number_in, numbers_in, restated_sum
 
 ROUND = 5
 # A grade, or the grade for a round number: a round keeps the grade it started with, so a
@@ -80,6 +80,20 @@ _DISPUTE = re.compile(
 )
 
 
+def _restated_answer(it: Item, said: str) -> int | None:
+    """The answer inside a sum said back: the one number that isn't the question's own.
+    "3 plus 7" for "3 plus what makes 10?" is 7 (Owen, 2026-11-18: it was "unclear", never
+    scored, so a 5/5 round was called 4/5); "8 plus 6 is 14" is 14; "is it 8 plus 6?" has
+    none, nor does a different sum (asked again)."""
+    given, left = numbers_in(it.ask), numbers_in(said)
+    if not given or given[0] not in left:
+        return None  # a different sum ("is it 8 plus 6?" for 12 - 6): not an answer
+    for g in given:
+        if g in left:
+            left.remove(g)
+    return left[0] if len(left) == 1 else None
+
+
 def verdict(it: Item, said: str, *, asked_before: bool = False) -> str:
     """right | wrong | none (didn't know) | unclear (ask again: no clear number, a restated
     sum, "2 or 3", a teen/ty mix-up). ``asked_before``: this item was already asked again
@@ -87,6 +101,8 @@ def verdict(it: Item, said: str, *, asked_before: bool = False) -> str:
     low = (said or "").lower()
     if it.kind == "number":
         got = number_in(said, expect=int(it.answer))
+        if got is None and restated_sum(said):
+            got = _restated_answer(it, said)
         if got is None:
             return "none" if _DUNNO.search(low) or asked_before else "unclear"
         if str(got) == it.answer:
@@ -192,6 +208,86 @@ def status(drill: Drill, pairs: list[tuple[str, str]], seed: int, grade: Grade) 
     )
 
 
+@dataclass(frozen=True, slots=True)
+class Expected:
+    """What the code will have asked by the end of this reply: ``item``, and ``left`` (the
+    countdown word, e.g. "three") when it is a new item, None for a re-ask."""
+
+    item: Item
+    left: str | None
+
+
+def expected(
+    drill: Drill, pairs: list[tuple[str, str]], seed: int, grade: Grade, child: str = ""
+) -> Expected | None:
+    """The item this reply must end on, as ``status`` tells the model; None when no item is
+    due (the round is over, or the child is leaving). Lets the server keep the model's own
+    words from asking a different item or miscounting (``fix_sentence``)."""
+    if ending(child):
+        return None
+    m = _QNUM.search(pairs[-1][0]) if pairs else None
+    if m is None:
+        verdicts, asked = replay(drill, pairs, seed, grade) if pairs else ({}, [])
+        nxt = max(asked) + 1 if asked else 0
+        nxt += (-nxt) % ROUND
+        return Expected(item(drill, seed, nxt, _at(grade, nxt)), None)
+    n = int(m.group(1))
+    verdicts, _ = replay(drill, pairs, seed, grade)
+    v = verdicts.get(n, "none")
+    if v in ("unclear", "disputed"):
+        return Expected(item(drill, seed, n, _at(grade, n)), None)
+    pos = n % ROUND
+    if pos == ROUND - 1:
+        return None
+    return Expected(
+        item(drill, seed, n + 1, _at(grade, n + 1)), _COUNT[ROUND - pos - 2]
+    )
+
+
+_NUM_WORD = r"(?:one|two|three|four|five|\d)"
+_SPLIT = re.compile(r"(?<=[.!?…])\s+")
+_SUM_ASK = re.compile(
+    r"\b(?:plus|minus|times|divided|take away|makes)\b|\d\s*[-+x×*/÷]\s*\d"
+)
+
+
+def _countdown_re(drill: Drill) -> re.Pattern[str]:
+    """ "{n} to blast-off!" -> matches "two to blast-off", "Two more to blast off"."""
+    words = re.escape(drill.countdown.split("{n}")[1].strip(" !.")).replace(
+        r"\-", "[- ]?"
+    )
+    words = words.replace(r"\ ", r"\s+")
+    return re.compile(rf"\b({_NUM_WORD})(?=(?:\s+more)?\s+{words})", re.IGNORECASE)
+
+
+def fix_sentence(drill: Drill, exp: Expected | None, text: str) -> str:
+    """The model's words with what the code owns put right, before they are spoken: a sum
+    asked that isn't the expected item is dropped (the server then says the right one), and
+    a countdown says the true number left. Owen, 2026-11-18: "Next one: 5 plus 5? What is
+    12 minus 5?" (two sums, the first made up) and "Two to blast-off!" three times running."""
+    if exp is None or not text:
+        return text
+    want = sorted(re.findall(r"\d+", exp.item.ask))
+    cd = _countdown_re(drill)
+    out: list[str] = []
+    for sent in _SPLIT.split(text.strip()):
+        if (
+            exp.item.kind == "number"
+            and sent.rstrip().endswith("?")
+            and _SUM_ASK.search(sent.lower())
+            and re.findall(r"\d+", sent)
+            and sorted(re.findall(r"\d+", sent)) != want
+        ):
+            continue
+        if exp.left is not None:
+            left = exp.left
+            sent = cd.sub(
+                lambda m: left.capitalize() if m.group(1)[0].isupper() else left, sent
+            )
+        out.append(sent)
+    return " ".join(out)
+
+
 # The child or the reply ends the game: never add a question after it (playtest 2026-11-18:
 # "goodbye" mid-round, she said goodbye, then the server asked the next sum).
 _ENDING = re.compile(
@@ -230,6 +326,8 @@ def tail(
 def _parsed(it: Item, said: str, v: str) -> str:
     if it.kind == "number":
         got = number_in(said)
+        if got is None and restated_sum(said):
+            got = _restated_answer(it, said)
         return "" if got is None else str(got)
     return it.answer if v == "right" else ""
 

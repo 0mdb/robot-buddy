@@ -378,3 +378,88 @@ def test_unclear_and_dispute_not_recorded_as_misses() -> None:
 
 
 from app.llm.games import drill as drill_mod  # noqa: E402
+
+
+# ── Rocket Math, 2026-11-18 evening (Owen; server log 19:24-19:30) ──────────
+
+
+@pytest.mark.parametrize(
+    ("said", "expected"),
+    [
+        ("the first one", None),  # "what did you say?" -> "the first one": not 1
+        ("No. Alexa, it's one to blast off.", None),  # a countdown correction
+        ("two more", None),
+        ("one", 1),
+        ("is it one?", 1),
+        ("the first one is seven", 7),
+        ("Oh, God. Oh, sorry. Is it 50?", 50),
+    ],
+)
+def test_one_that_is_not_an_answer(said: str, expected: int | None) -> None:
+    assert number_in(said) == expected
+
+
+def test_sum_said_back_with_the_answer_scores() -> None:
+    missing = drill.Item("3 plus what makes 10?", "7", "3 plus 7 makes 10")
+    assert drill.verdict(missing, "3 plus 7") == "right"
+    assert drill.verdict(missing, "3 plus 6") == "wrong"
+    plain = drill.Item("What is 8 plus 6?", "14", "8 plus 6 is 14")
+    assert drill.verdict(plain, "8 plus 6 is 14") == "right"
+    assert drill.verdict(plain, "8 plus 6 is 15") == "wrong"
+    assert drill.verdict(plain, "Is it 8 plus 6?") == "unclear"
+
+
+def test_expected_item_and_countdown() -> None:
+    seed, g = 11, "G2"
+    q = [rocket.question(seed, n, g) for n in range(5)]
+    # Q#1 answered right: the next item is Q#2 with three left
+    pairs = [
+        ("Game: rocket_math. Q#0", q[0].answer),
+        ("Game: rocket_math. Q#1", q[1].answer),
+    ]
+    exp = drill.expected(rocket.DRILL, pairs, seed, g)
+    assert exp is not None and exp.item == q[2] and exp.left == "three"
+    # unclear: the same item again, no countdown
+    pairs[-1] = ("Game: rocket_math. Q#1", "the first one")
+    exp = drill.expected(rocket.DRILL, pairs, seed, g)
+    assert exp is not None and exp.item == q[1] and exp.left is None
+    # the last item answered: nothing due; goodbye: nothing due
+    last = [(f"Game: rocket_math. Q#{n}", q[n].answer) for n in range(5)]
+    assert drill.expected(rocket.DRILL, last, seed, g) is None
+    assert drill.expected(rocket.DRILL, pairs, seed, g, child="bye Alexa") is None
+
+
+def test_fix_sentence_drops_made_up_sum_and_fixes_countdown() -> None:
+    it = drill.Item("What is 12 minus 5?", "7", "12 minus 5 is 7")
+    exp = drill.Expected(it, "three")
+    fix = lambda t: drill.fix_sentence(rocket.DRILL, exp, t)  # noqa: E731
+    assert fix("You got it! Next one: 5 plus 5?") == "You got it!"
+    assert (
+        fix("Two to blast-off! What is 12 minus 5?")
+        == "Three to blast-off! What is 12 minus 5?"
+    )
+    assert fix("Only two more to blast off!") == "Only three more to blast off!"
+    # the last answer explained (a sum, not a question) stays
+    assert fix("Not quite, 7 plus 6 makes 13.") == "Not quite, 7 plus 6 makes 13."
+    assert (
+        drill.fix_sentence(rocket.DRILL, None, "Two to blast-off!")
+        == "Two to blast-off!"
+    )
+
+
+def test_history_fixer_corrects_words_and_tail_adds_the_real_question() -> None:
+    h = ConversationHistory()
+    seed = h.game_picks.seed
+    q0 = rocket.question(seed, 0, "G2")
+    h.add_user("let's play rocket math")
+    h.add_assistant(
+        f"Five questions to blast-off! First one: {q0.ask}",
+        notes="Game: rocket_math. Q#0",
+    )
+    h.add_user(q0.answer)
+    fix = h.drill_sentence_fixer()
+    assert fix is not None
+    q1 = rocket.question(seed, 1, "G2")
+    spoken = fix("You got it! Two to blast-off! What is 1 plus 1?")
+    assert spoken == "You got it! Four to blast-off!"
+    assert h.game_tail_line(spoken, "Game: rocket_math. Q#1") == q1.ask

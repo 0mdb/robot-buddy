@@ -78,6 +78,10 @@ class ConverseSessionRegistry:
     def __init__(self, *, stash_ttl_s: float = _STASH_TTL_S) -> None:
         self._sessions: dict[str, _ConverseSession] = {}
         self._stash: dict[str, _StashedHistory] = {}
+        # Connections that have hung up but not yet stashed (still finishing a turn), per
+        # robot: a new connection waits for them before it looks for the stash.
+        self._closing: dict[str, set[int]] = {}
+        self._closed = asyncio.Condition()
         self._stash_ttl_s = stash_ttl_s
         self._registered = 0
         self._preempted = 0
@@ -110,8 +114,31 @@ class ConverseSessionRegistry:
             self._registered += 1
             if old is not None and old.websocket is not websocket:
                 self._preempted += 1
+                self._closing.setdefault(rid, set()).add(id(old.websocket))
                 return old.websocket
             return None
+
+    def mark_closing(self, robot_id: str, websocket: Any) -> None:
+        """The connection has hung up and will ``unregister`` (and stash) soon."""
+        rid = robot_id.strip()
+        if rid:
+            self._closing.setdefault(rid, set()).add(id(websocket))
+
+    async def wait_closed(self, robot_id: str, timeout_s: float = 5.0) -> None:
+        """Wait (up to ``timeout_s``) until this robot's closing connections have stashed."""
+        rid = robot_id.strip()
+        if not self._closing.get(rid):
+            return
+        try:
+            async with self._closed:
+                await asyncio.wait_for(
+                    self._closed.wait_for(lambda: not self._closing.get(rid)),
+                    timeout_s,
+                )
+        except TimeoutError:
+            log.warning(
+                "previous %s connection still closing after %.0fs", rid, timeout_s
+            )
 
     async def unregister(
         self,
@@ -156,6 +183,13 @@ class ConverseSessionRegistry:
 
             # Opportunistic cleanup of expired stash entries.
             self._expire_stale_locked()
+        closing = self._closing.get(rid)
+        if closing is not None:
+            closing.discard(id(websocket))
+            if not closing:
+                del self._closing[rid]
+        async with self._closed:
+            self._closed.notify_all()
 
     def take_stashed_history(self, robot_id: str) -> Any | None:
         """Return and remove stashed history if it exists and hasn't expired.

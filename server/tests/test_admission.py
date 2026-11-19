@@ -82,3 +82,44 @@ async def test_tts_empty_audio_returns_503(monkeypatch):
         resp = await client.post("/tts", json={"text": "hello", "emotion": "neutral"})
     assert resp.status_code == 503
     assert resp.json()["detail"] == "espeak_not_available"
+
+
+class _Hist:
+    turn_count = 3
+
+
+@pytest.mark.asyncio
+async def test_new_connection_waits_for_the_old_one_to_stash():
+    """2026-11-18: the robot reconnected 6 ms after hanging up mid-reply; the old connection
+    was still finishing its turn and hadn't stashed, so the game in progress was lost."""
+    from app.admission import ConverseSessionRegistry
+
+    reg = ConverseSessionRegistry()
+    old, hist = object(), _Hist()
+    await reg.register(robot_id="r", websocket=old)
+    reg.mark_closing("r", old)  # hung up; its turn is still running
+
+    async def finish_turn():
+        await asyncio.sleep(0.05)
+        await reg.unregister(robot_id="r", websocket=old, history=hist)
+
+    task = asyncio.create_task(finish_turn())
+    await reg.wait_closed("r")
+    assert reg.take_stashed_history("r") is hist
+    await task
+
+
+@pytest.mark.asyncio
+async def test_replaced_connection_is_waited_for_and_wait_times_out():
+    from app.admission import ConverseSessionRegistry
+
+    reg = ConverseSessionRegistry()
+    old, new = object(), object()
+    await reg.register(robot_id="r", websocket=old)
+    assert await reg.register(robot_id="r", websocket=new) is old  # marked closing
+    t0 = asyncio.get_running_loop().time()
+    await reg.wait_closed("r", timeout_s=0.05)  # old never unregisters: give up
+    assert asyncio.get_running_loop().time() - t0 < 1.0
+    await reg.unregister(robot_id="r", websocket=old, history=_Hist())
+    await reg.wait_closed("r", timeout_s=0.05)
+    assert reg.take_stashed_history("r") is not None

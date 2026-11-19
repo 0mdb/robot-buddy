@@ -33,6 +33,7 @@ import logging
 import re
 import time
 import uuid
+from collections.abc import Callable
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
@@ -124,7 +125,11 @@ async def converse(ws: WebSocket):
         except Exception:
             pass
 
-    # Restore stashed history from a previous connection, or start fresh.
+    # Restore stashed history from a previous connection, or start fresh. The previous
+    # connection may still be closing (finishing a turn) and not have stashed yet: wait for
+    # it. 2026-11-18: the robot reconnected 6 ms after hanging up mid-reply, found no stash,
+    # and Owen's Rocket Math round was gone.
+    await registry.wait_closed(robot_id)
     stashed = registry.take_stashed_history(robot_id)
     if stashed is not None and not resume:
         # Someone else, or a while later: the last conversation (a game in progress, its
@@ -288,6 +293,7 @@ async def converse(ws: WebSocket):
                 log.debug("Unknown message type: %s", msg_type)
 
     except WebSocketDisconnect:
+        registry.mark_closing(robot_id, ws)
         log.info(
             "Conversation WebSocket disconnected (robot_id=%s turns=%d)",
             robot_id,
@@ -300,6 +306,7 @@ async def converse(ws: WebSocket):
         except Exception:
             pass
     finally:
+        registry.mark_closing(robot_id, ws)
         if spec is not None:
             await _drop_speculation(spec, history)
         if active is not None and not active.task.done():
@@ -731,6 +738,23 @@ async def _generate_and_stream_live(
     # one tag application per turn.
     sent_first = False
     coalesce_buf: list[str] = []
+    # A drill round's words, put right before they are spoken (games.drill.fix_sentence);
+    # built at the first sentence, once the backend has added the child's words.
+    fixer: Callable[[str], str] | None = None
+    fixer_built = False
+    spoken: list[str] = []
+
+    def _fix(text: str) -> str:
+        nonlocal fixer, fixer_built
+        if not fixer_built:
+            fixer_built = True
+            fixer = history.drill_sentence_fixer()
+        out = fixer(text) if fixer is not None else text
+        if out != text:
+            log.info("game: reply words corrected (%r -> %r)", text[:80], out[:80])
+        if out:
+            spoken.append(out)
+        return out
 
     async def _dispatch_tts(
         text: str,
@@ -797,16 +821,19 @@ async def _generate_and_stream_live(
                                 }
                             )
                     elif isinstance(event, Sentence):
-                        if not sent_first:
+                        said = _fix(event.text)
+                        if not said:
+                            pass
+                        elif not sent_first:
                             await _dispatch_tts(
-                                event.text,
+                                said,
                                 tg,
                                 emotion=emotion_for_tts,
                                 intensity=intensity_for_tts,
                             )
                             sent_first = True
                         else:
-                            coalesce_buf.append(event.text)
+                            coalesce_buf.append(said)
                 if parser.done and coalesce_buf:
                     # The spoken text is complete; the fields after it are
                     # still generating. Start the continuation's TTS now
@@ -848,16 +875,19 @@ async def _generate_and_stream_live(
                 # Flush the final buffered fragment (short-sentence tail).
                 for event in parser.close():
                     if isinstance(event, Sentence):
+                        said = _fix(event.text)
+                        if not said:
+                            continue
                         if not sent_first:
                             await _dispatch_tts(
-                                event.text,
+                                said,
                                 tg,
                                 emotion=emotion_for_tts,
                                 intensity=intensity_for_tts,
                             )
                             sent_first = True
                         else:
-                            coalesce_buf.append(event.text)
+                            coalesce_buf.append(said)
                 # Coalesce everything after the first sentence into a single
                 # TTS call with `neutral` so no paralinguistic cue is prepended
                 # a second time.
@@ -874,7 +904,8 @@ async def _generate_and_stream_live(
                 # isn't left waiting (learning-games.md; Rocket Math playtests 2026-11-18).
                 end = parser.final_response()
                 game_tail = history.game_tail_line(
-                    parser.full_text(), end.notes if end is not None else ""
+                    " ".join(spoken) if fixer is not None else parser.full_text(),
+                    end.notes if end is not None else "",
                 )
                 if game_tail:
                     log.info("game: added the unasked question to the reply")
@@ -958,7 +989,7 @@ async def _generate_and_stream_live(
         await ws.send_json({"type": "error", "message": error_message})
         return
 
-    full_text = parser.full_text()
+    full_text = " ".join(spoken) if fixer is not None else parser.full_text()
     if game_tail:
         full_text = f"{full_text} {game_tail}".strip()
 
