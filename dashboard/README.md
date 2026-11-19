@@ -12,7 +12,7 @@ npm install
 npm run dev
 ```
 
-Opens at `http://localhost:5173/`. Vite proxies all API/WS calls to the Pi at `192.168.55.100:8080` (configured in `vite.config.ts`).
+Opens at `http://localhost:5173/`. Vite proxies all API/WS calls to the Pi at `192.168.55.25:8080` (configured in `vite.config.ts`).
 
 ### Production Build
 

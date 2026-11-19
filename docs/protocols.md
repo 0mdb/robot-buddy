@@ -242,13 +242,13 @@ JSON artifacts, and supports A/B comparison.
 
 ```bash
 # Face benchmark against live supervisor (5 scenarios, 100 samples each)
-just mcu-benchmark --target face --base-url http://192.168.55.201:8080
+just mcu-benchmark --target face --base-url http://192.168.55.25:8080
 
 # Custom sample count + output directory
 just mcu-benchmark --target face --samples 200 --out docs/perf
 
 # Reflex benchmark (idle only — safe default)
-just mcu-benchmark --target reflex --base-url http://192.168.55.201:8080
+just mcu-benchmark --target reflex --base-url http://192.168.55.25:8080
 
 # Reflex with motion scenario (requires explicit opt-in)
 just mcu-benchmark --target reflex --allow-motion --base-url http://...

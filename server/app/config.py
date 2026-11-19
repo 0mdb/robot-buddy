@@ -160,7 +160,7 @@ class Settings:
     # Skip the tool-selection pass on turns with no tool cue (preamble.needs_tool_pass).
     mcp_preamble_gate: bool = _env_bool("MCP_PREAMBLE_GATE", True)
     mcp_server_url: str = os.environ.get(
-        "MCP_SERVER_URL", "http://192.168.55.201:8080/mcp/"
+        "MCP_SERVER_URL", "http://192.168.55.25:8080/mcp/"
     )
     mcp_tool_budget_ms: int = int(os.environ.get("MCP_TOOL_BUDGET_MS", "500"))
     tts_max_utterance_s: float = float(os.environ.get("TTS_MAX_UTTERANCE_S", "15.0"))

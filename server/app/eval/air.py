@@ -1957,7 +1957,7 @@ def main() -> int:
 
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument(
-        "--robot", default="192.168.55.180", help="supervisor host (port 8080)"
+        "--robot", default="192.168.55.25", help="supervisor host (port 8080)"
     )
     ap.add_argument(
         "--server", default="http://localhost:8100", help="planner server (/tts)"

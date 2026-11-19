@@ -311,7 +311,7 @@ download-wakewords:
 
 # ── MCU Benchmark ───────────────────────────────────────
 
-# Run MCU benchmark harness (e.g. just mcu-benchmark --target face --base-url http://192.168.55.201:8080)
+# Run MCU benchmark harness (e.g. just mcu-benchmark --target face --base-url http://192.168.55.25:8080)
 mcu-benchmark *args:
     cd {{project}}/supervisor && uv run python -m supervisor.api.mcu_benchmark {{args}}
 
