@@ -19,6 +19,7 @@ from pathlib import Path
 
 from app.llm.games import checker as checker  # noqa: F401  (games.checker)
 from app.llm.games import drill as drill  # noqa: F401  (games.drill)
+from app.llm.games import guess as guess  # noqa: F401  (games.guess)
 from app.llm.games import rocket as rocket  # noqa: F401  (games.rocket)
 from app.llm.games import sound_swap as _sound_swap
 

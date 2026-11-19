@@ -4,7 +4,10 @@ menu = "guess my animal, food or thing, or I guess yours"
 skill = ""
 keywords = ["guess(?:ing)? game", "guess (?:my|the|what)", "20 questions", "twenty questions", "i'?m thinking of", "you think of"]
 rules = """
-Yes/no guessing, either way round. The GAMES AND STORIES rules apply (notes keep the secret
-and every answer). When you pick, use the GAME PICKS secret for its kind. A good question from
-the child deserves a word of credit; after about eight questions, offer a hint.
+Yes/no guessing, either way round. The GUESS line, run by code, says who picked the secret,
+what yours is when you picked, whether the child's guess hit, and exactly how your notes
+start: follow it and copy that notes start word for word. Your part is the fun: honest
+"Yes!"/"No!" answers about your secret, a word of credit for a good question, good questions
+of your own when you guess. Never pick a secret when the child picked, never guess when you
+picked, and never say they won unless the GUESS line says so.
 """

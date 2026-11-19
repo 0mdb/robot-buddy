@@ -661,6 +661,10 @@ class ConversationHistory:
                 self.game_picks.seed,
                 self._grade_of(card.id, card.skill),
             )
+        elif card.id == "guess":
+            check = games.guess.status(
+                self._reply_pairs(), self.game_picks.picks, last_user
+            )
         elif not asked and card.id == "number_detective":
             check = games.checker.check_guess(last_notes, last_user)
         return f"{text}\n{check}" if check else text
