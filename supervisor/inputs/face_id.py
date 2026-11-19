@@ -11,6 +11,15 @@
   name someone: the tracker averages each member's score over a face's checks and names
   the face only when the best member leads the next by ``MATCH_MARGIN`` (a single
   off-angle frame named Ben's face as a child at 0.384, 2026-11-18).
+- **Naming bar:** a wrong name is worse than a generic hello, and a name also sets a
+  person's NEARBY limits. A face gets a *new* name only when the averaged score reaches
+  ``NAME_SCORE`` (above SFace's 0.363) over at least ``NAME_CHECKS`` checks; once named it
+  keeps the name while that member stays above ``MATCH_THRESHOLD``. (2026-11-18: Ben, at
+  1 m and off to one side, was greeted as his son at 0.438 / 0.432: his own live scores
+  were only 0.38-0.45, so the 0.08 lead alone did not stop it.) Both are live params
+  (``vision.face_name_score``, ``vision.face_name_checks``).
+- **Runner-up:** every face reports the second-best member and score
+  (``id_runner`` / ``id_runner_score``), so a mix-up can be read from the logs.
 - **Samples vary:** enrollment skips a frame nearly identical to one already taken, and a
   full gallery drops its most redundant sample, not its oldest: 20 near-copies from one
   sitting (0.90 alike) matched live faces at only 0.37-0.6.
@@ -34,6 +43,8 @@ DEFAULT_MODEL = (
 GALLERY_DIR = "household_faces"
 MATCH_THRESHOLD = 0.363
 MATCH_MARGIN = 0.08  # best member's averaged score over the runner-up's
+NAME_SCORE = 0.50  # averaged score needed to give a face a new name
+NAME_CHECKS = 2  # checks of this face before it can get a new name
 MAX_SAMPLES = 20
 SAME_SAMPLE_SIM = (
     0.95  # enrollment: a frame this alike to one already taken adds nothing
@@ -209,11 +220,18 @@ class FaceIdTracker:
     CARRY_DIST = 0.15
 
     def __init__(
-        self, embedder: FaceEmbedder, gallery: FaceGallery, id_hz: float = 3.0
+        self,
+        embedder: FaceEmbedder,
+        gallery: FaceGallery,
+        id_hz: float = 3.0,
+        name_score: float = NAME_SCORE,
+        name_checks: int = NAME_CHECKS,
     ) -> None:
         self.embedder = embedder
         self.gallery = gallery
         self.id_hz = id_hz
+        self.name_score = name_score
+        self.name_checks = name_checks
         self.ms = 0.0
         self._prev: list[dict] = []
         self._last_id_t = 0.0
@@ -301,9 +319,11 @@ class FaceIdTracker:
 
     def _decide(self, face: dict, scores: dict[str, float]) -> tuple[str | None, float]:
         """Fold one check into the face's running scores and name it if one member leads
-        clearly: at or above the threshold and ``MATCH_MARGIN`` over the runner-up. An
-        unclear check keeps the name the face already had while that member still
-        clears the threshold."""
+        clearly: at or above ``name_score``, ``MATCH_MARGIN`` over the runner-up, after
+        ``name_checks`` checks. Otherwise the face keeps the name it already had while that
+        member still clears ``MATCH_THRESHOLD``. Sets ``_runner`` / ``_runner_score`` on
+        the face (the second-best member)."""
+        face["_n"] = int(face.get("_n", 0)) + 1
         ev: dict[str, float] = face.setdefault("_ev", {})
         for mid, sim in scores.items():
             ev[mid] = (
@@ -317,10 +337,21 @@ class FaceIdTracker:
             return None, -1.0
         ranked = sorted(ev.items(), key=lambda kv: kv[1], reverse=True)
         best_id, best = ranked[0]
-        runner = ranked[1][1] if len(ranked) > 1 else -1.0
-        if best >= MATCH_THRESHOLD and best - runner >= MATCH_MARGIN:
-            return best_id, best
+        runner_id, runner = ranked[1] if len(ranked) > 1 else (None, -1.0)
+        face["_runner"], face["_runner_score"] = runner_id, runner
         prior = face.get("member_id")
+        if (
+            best_id == prior
+            and best >= MATCH_THRESHOLD
+            and best - runner >= MATCH_MARGIN
+        ):
+            return best_id, best
+        if (
+            best >= self.name_score
+            and best - runner >= MATCH_MARGIN
+            and face["_n"] >= self.name_checks
+        ):
+            return best_id, best
         if prior is not None and ev.get(prior, -1.0) >= MATCH_THRESHOLD:
             return prior, ev[prior]
         return None, best
@@ -348,6 +379,10 @@ class FaceIdTracker:
                 f["member_id"] = None
                 f["_id_t"] = best.get("_id_t", 0.0) if best is not None else 0.0
             f["_ev"] = dict(best.get("_ev", {})) if best is not None else {}
+            f["_n"] = best.get("_n", 0) if best is not None else 0
+            if best is not None and "id_runner" in best:
+                f["id_runner"] = best["id_runner"]
+                f["id_runner_score"] = best["id_runner_score"]
 
         if self._enroll is not None:
             self._enroll_step(pairs, frame, scale, now)
@@ -372,6 +407,10 @@ class FaceIdTracker:
                 faces[i]["member_id"] = mid
                 faces[i]["id_score"] = round(sim, 3)
                 faces[i]["_id_t"] = now
+                faces[i]["id_runner"] = faces[i].get("_runner")
+                faces[i]["id_runner_score"] = round(
+                    float(faces[i].get("_runner_score", -1.0)), 3
+                )
 
         self._prev = faces
         return [{k: v for k, v in f.items() if not k.startswith("_")} for f in faces]

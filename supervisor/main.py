@@ -87,6 +87,8 @@ def _build_vision_worker_config(registry: object) -> dict[str, object]:
             bool(registry.get_value("vision.face_id_enabled", True))
         ),  # type: ignore[attr-defined]
         "face_id_hz": _get_float(registry, "vision.face_id_hz", 3.0),
+        "face_name_score": _get_float(registry, "vision.face_name_score", 0.5),
+        "face_name_checks": _get_int(registry, "vision.face_name_checks", 2),
         "face_gallery_path": str(_face_gallery_path()),
     }
 
@@ -564,6 +566,8 @@ async def async_main(args: argparse.Namespace) -> None:
             "vision.face_hz",
             "vision.face_id_enabled",
             "vision.face_id_hz",
+            "vision.face_name_score",
+            "vision.face_name_checks",
         }
         _VISION_POLICY_PARAMS = {
             "vision.stale_ms",

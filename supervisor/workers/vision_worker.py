@@ -77,6 +77,8 @@ class VisionWorker(BaseWorker):
         # Recognition (SFace) against the household gallery; path from Core's config
         self._face_id_enabled = True
         self._face_id_hz = 3.0
+        self._face_name_score = 0.5
+        self._face_name_checks = 2
         self._face_gallery_path = ""
         self._face_id: Any | None = None
         self._pending_face_cmds: list[tuple[str, dict]] = []
@@ -211,6 +213,14 @@ class VisionWorker(BaseWorker):
                 self._face_id_hz = max(0.2, float(p["face_id_hz"]))
                 if self._face_id is not None:
                     self._face_id.id_hz = self._face_id_hz
+            if "face_name_score" in p:
+                self._face_name_score = float(p["face_name_score"])
+                if self._face_id is not None:
+                    self._face_id.name_score = self._face_name_score
+            if "face_name_checks" in p:
+                self._face_name_checks = max(1, int(p["face_name_checks"]))
+                if self._face_id is not None:
+                    self._face_id.name_checks = self._face_name_checks
             if p.get("face_gallery_path") and not self._face_gallery_path:
                 self._face_gallery_path = str(p["face_gallery_path"])
 
@@ -315,7 +325,11 @@ class VisionWorker(BaseWorker):
             )
 
             self._face_id = FaceIdTracker(
-                FaceEmbedder(), FaceGallery(self._face_gallery_path), self._face_id_hz
+                FaceEmbedder(),
+                FaceGallery(self._face_gallery_path),
+                self._face_id_hz,
+                name_score=self._face_name_score,
+                name_checks=self._face_name_checks,
             )
         return self._face_id
 

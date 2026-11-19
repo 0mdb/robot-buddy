@@ -1913,13 +1913,14 @@ class TickLoop:
             return float(reg.get_value("conversation.history_days", 3)) if reg else 3.0
 
         def present() -> list[str]:
-            # Who the camera recognises: names stay on the robot, in this file.
+            # Who the camera recognises: names stay on the robot, in this file. Everyone
+            # recognised since faces came into view, not just this instant: people look
+            # away while they talk (2026-11-18: Ben, greeted by name, then answered
+            # turned away and was logged as "Child").
+            mids = {f.get("member_id") for f in self.world.faces}
+            mids |= self._event_bus.identified
             return sorted(
-                {
-                    self._household_names[mid]
-                    for f in self.world.faces
-                    if (mid := f.get("member_id")) in self._household_names
-                }
+                {self._household_names[m] for m in mids if m in self._household_names}
             )
 
         return ConversationHistory(

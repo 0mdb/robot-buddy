@@ -841,6 +841,33 @@ def create_default_registry() -> ParamRegistry:
     )
     reg.register(
         ParamDef(
+            name="vision.face_name_score",
+            type="float",
+            min=0.363,
+            max=0.9,
+            step=0.01,
+            default=0.5,
+            owner="vision",
+            safety="safe",
+            doc="Averaged face match needed to name someone new (greeting, NEARBY limits); "
+            "a named face keeps its name down to 0.363",
+        )
+    )
+    reg.register(
+        ParamDef(
+            name="vision.face_name_checks",
+            type="int",
+            min=1,
+            max=10,
+            step=1,
+            default=2,
+            owner="vision",
+            safety="safe",
+            doc="Recognitions of a face before it can be given a new name",
+        )
+    )
+    reg.register(
+        ParamDef(
             name="gaze.face_track",
             type="bool",
             default=True,

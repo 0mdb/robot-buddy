@@ -171,7 +171,11 @@ function Line({ e }: { e: HistoryEntry }) {
     )
   }
   const buddy = e.role === 'buddy'
-  const who = buddy ? 'Buddy' : e.role === 'typed' ? 'Typed' : (e.who?.join(' / ') ?? '') || 'Child'
+  const who = buddy
+    ? 'Buddy'
+    : e.role === 'typed'
+      ? 'Typed'
+      : (e.who?.join(' / ') ?? '') || 'Someone'
   const tag =
     buddy && e.source && e.source !== 'conversation' ? (SOURCE_LABEL[e.source] ?? e.source) : ''
   return (

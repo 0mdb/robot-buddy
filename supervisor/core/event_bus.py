@@ -80,6 +80,11 @@ class PlannerEventBus:
         self._soc_critical_pct = soc_critical_pct
         self._next_seq = 1
 
+    @property
+    def identified(self) -> frozenset[str]:
+        """Members recognised since faces came into view (cleared when they are gone)."""
+        return frozenset(self._identified)
+
     def set_soc_thresholds(self, warn_pct: int, critical_pct: int) -> None:
         """Update SoC warn/critical thresholds at runtime (param change)."""
         self._soc_warn_pct = warn_pct
@@ -226,6 +231,8 @@ class PlannerEventBus:
                         {
                             "member_id": mid,
                             "id_score": f.get("id_score"),
+                            "runner_id": f.get("id_runner"),
+                            "runner_score": f.get("id_runner_score"),
                             "bearing_deg": f.get("bearing_deg"),
                             "range_mm": f.get("range_mm"),
                         },

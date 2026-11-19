@@ -128,9 +128,12 @@ def _pair(cx: float, who: int, score: float = 0.9, w: float = 0.2):
 FRAME = np.zeros((480, 640, 3), np.uint8)
 
 
-def _tracker(tmp_path, table, id_hz=100.0):
+def _tracker(tmp_path, table, id_hz=100.0, name_checks=1):
     return FaceIdTracker(
-        FakeEmbedder(table), FaceGallery(tmp_path / "g.json"), id_hz=id_hz
+        FakeEmbedder(table),
+        FaceGallery(tmp_path / "g.json"),
+        id_hz=id_hz,
+        name_checks=name_checks,
     )
 
 
@@ -244,7 +247,11 @@ def test_person_identified_once_per_presence():
     tick(1100.0 + FACE_APPEAR_MS, [face])
     ids = [e for e in bus.latest(50) if e.type == "vision.person_identified"]
     assert len(ids) == 1 and ids[0].payload["member_id"] == "m_a"
+    assert bus.identified == {"m_a"}
+    tick(1200.0 + FACE_APPEAR_MS, [{**face, "member_id": None}])  # looked away
+    assert bus.identified == {"m_a"}
     tick(2000.0 + FACE_APPEAR_MS + FACE_LOST_MS, [])  # gone
+    assert bus.identified == set()
     tick(10_000.0, [face])
     tick(10_000.0 + FACE_APPEAR_MS, [face])
     ids = [e for e in bus.latest(50) if e.type == "vision.person_identified"]
@@ -312,9 +319,9 @@ def test_removing_a_member_forgets_their_face(api):
     assert ("vision", VISION_FACE_FORGET, {"member_id": mid}) in workers._sent
 
 
-def _two_members(tmp_path, table):
+def _two_members(tmp_path, table, name_checks=1):
     a, b = _qr_pair()
-    t = _tracker(tmp_path, table(a, b))
+    t = _tracker(tmp_path, table(a, b), name_checks=name_checks)
     t.gallery.add("m_adult", [a])
     t.gallery.add("m_kid", [b])
     return t
@@ -360,6 +367,48 @@ def test_a_clear_lead_over_checks_still_names_the_other(tmp_path):
         for k in range(3)
     ]
     assert names[-1] == "m_kid"
+
+
+def test_a_weak_lead_does_not_name_a_new_face(tmp_path):
+    """2026-11-18: Ben (own live score ~0.35 at that angle) greeted as his son at 0.438."""
+    t = _two_members(
+        tmp_path, lambda a, b: {1: _probe(a, b, 0.33, 0.44)}, name_checks=2
+    )
+    names = [
+        t.process([_pair(0.5, 1)], FRAME, 2.0, 1.0 + k)[0]["member_id"]
+        for k in range(5)
+    ]
+    assert names == [None] * 5
+
+
+def test_a_new_name_needs_more_than_one_check(tmp_path):
+    t = _two_members(tmp_path, lambda a, b: {1: _probe(a, b, 0.1, 0.7)}, name_checks=2)
+    (f,) = t.process([_pair(0.5, 1)], FRAME, 2.0, 1.0)
+    assert f["member_id"] is None
+    (f,) = t.process([_pair(0.5, 1)], FRAME, 2.0, 2.0)
+    assert f["member_id"] == "m_kid"
+
+
+def test_a_named_face_keeps_its_name_below_the_naming_bar(tmp_path):
+    t = _two_members(
+        tmp_path,
+        lambda a, b: {1: _probe(a, b, 0.7, 0.1), 2: _probe(a, b, 0.40, 0.1)},
+    )
+    t.process([_pair(0.5, 1)], FRAME, 2.0, 1.0)
+    for k in range(4):
+        (f,) = t.process([_pair(0.5, 2)], FRAME, 2.0, 2.0 + k)
+    assert f["member_id"] == "m_adult" and f["id_score"] < t.name_score
+
+
+def test_the_runner_up_is_reported(tmp_path):
+    t = _two_members(tmp_path, lambda a, b: {1: _probe(a, b, 0.7, 0.3)})
+    (f,) = t.process([_pair(0.5, 1)], FRAME, 2.0, 1.0)
+    assert f["member_id"] == "m_adult"
+    assert f["id_runner"] == "m_kid" and f["id_runner_score"] == pytest.approx(
+        0.3, abs=0.01
+    )
+    (f,) = t.process([_pair(0.51, 1)], FRAME, 2.0, 1.001)  # carried between checks
+    assert f["id_runner"] == "m_kid"
 
 
 def test_enroll_skips_repeated_views_and_keeps_a_partial_capture(tmp_path):
