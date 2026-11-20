@@ -162,7 +162,7 @@ sees cell voltage; battery telemetry comes from the HAT's INA219 on the Pi's
 | 1x 100nF (C1) | ESTOP → GND | e-stop debounce |
 | 4x 100nF (C4,C5,C7,C8) | rail / U4 decoupling | |
 | 1x 10µF (C9) | +3V3 → GND | +3V3 bulk (X3) |
-| 1x 1000µF (C3) | +5V → GND, at U2 pad 9 | TB6612 VM bulk |
+| 1x 1000µF (C3) | +5V → GND, at U2 pad 9 | TB6612 VM bulk: Rubycon 10ZLH1000MEFC10X12.5, radial, ≤ 14 mm seated (deck headroom 17.4) |
 | 1x 100µF (C6) | +5V → GND | +5V bulk |
 
 ---

@@ -460,7 +460,8 @@ check(
 )
 SIGNOFF.append(
     "Heights under the Pi deck (17.4 mm from board top to deck underside, measured "
-    "2026-11-09): C3 Rubycon 16ZLH1000MEFC10X16 is 10 x 16; U2 on female headers ~11 mm"
+    "2026-11-09): C3 Rubycon 10ZLH1000MEFC10X12.5 is 14.0 max seated (NOT a 10 x 16: 17.5 "
+    "seated); U2 on 8.5 mm female headers ~11.6 mm"
 )
 SIGNOFF.append(
     "USB-C plug for the Pi link: STRAIGHT plug, overmold + boot <= ~22 mm from the receptacle, "

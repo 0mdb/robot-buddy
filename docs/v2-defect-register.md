@@ -257,10 +257,15 @@ x 30.
 The deck (x −75..25, |y| ≤ 29.5) covers the whole board, underside at chassis z 24. The board top
 face is at z 6.6, so the headroom is **17.4 mm**. The "12 mm budget" is the CAD envelope
 (`REFLEX_Z`), with 5.4 mm spare above it. Tall parts:
-- **C3:** **chosen 2026-11-09 (Ben): Rubycon 16ZLH1000MEFC10X16.** Was unpicked (O2). It must be Ø10, 5 mm pitch, ≤ ~16 mm tall, ≥ 10 V
-  (16 V preferred) and low-ESR. A 10 × 20 does not fit. Candidate: Rubycon
-  **16ZLH1000MEFC10X16** (10 × 16, 5 mm pitch, ~28 mΩ, 1.76 A ripple per distributor listings;
-  confirm on the datasheet and re-run the §O ripple numbers against it). 1.4 mm to the deck.
+- **C3:** **Rubycon 10ZLH1000MEFC10X12.5** (DigiKey `1189-1072-ND`, ordered 2026-11-19): 1000 µF
+  10 V, Ø10 × 12.5, 5 mm pitch, **14.0 mm max seated**, 39 mΩ, 1.33 A ripple at 100 kHz (DigiKey
+  listing). **3.4 mm to the deck.** 10 V on the 5 V rail is 2× derating; 1.33 A against the §O
+  150 mA RMS continuous is ~11 % of rating.
+  - _Superseded 2026-11-19:_ the 2026-11-09 pick, 16ZLH1000MEFC10X16 (10 × 16), is listed at
+    **17.5 mm max seated**, above the 17.4 mm headroom; its "1.4 mm to the deck" was computed
+    from the 16 mm body, not the seated height. **Lesson: clear the seated height, not the body.**
+  - The June DigiKey cap on hand, Nichicon UPW1C102MPD (`493-1790-ND`), is 10 × 20: bench
+    bring-up only, never under the deck.
 - **U2** on 8.5 mm female headers: about 11.6 mm. OK.
 - **J9 (JST-VH vertical) and J1/J2/J7 (XH vertical)** with plugs mated and the wires turning
   toward the cable exits: check in CAD once the M12 relayout is done. No 3D model for J9 in
@@ -953,7 +958,7 @@ than the XH already being done by hand, so there was nothing to gain.
 | JLC (SMT, 21 parts) | Hand-solder |
 |---|---|
 | 0402 R/C, U4 TSSOP-16, J5 Qwiic JST-SH | J1, J2, J6, J7, J9, J10 |
-| **C3 1000 µF + C6 100 µF — SMD electrolytic** | U1 Waveshare module, U2 TB6612 breakout |
+| **C3 1000 µF + C6 100 µF — SMD electrolytic** (⚠ reverted to radial THT, hand-soldered: see O2) | U1 Waveshare module, U2 TB6612 breakout |
 
 **C3 and C6 were moved from THT radial to SMD** (`CP_Elec_10x10.5` / `CP_Elec_6.3x5.4`)
 specifically so C3 is machine-placed: VM has only 0.5 V of margin post-A3, so its position
@@ -1574,7 +1579,7 @@ No gerbers are generated until every line is checked and initialled.
 - [x] `pin_map.h` updated to v2 (`pcb_qc.py` §3 passes, M13)
 - [ ] U2 3D proxy corrected to 20.32 × 20.32 × 11 and the STEP regenerated
 - [x] Headroom measured: 17.4 mm to the deck (M14)
-- [ ] C3 radial part picked: Ø10 × ≤ 16, e.g. 16ZLH1000MEFC10X16, §O ripple re-run
+- [x] C3 radial part picked: 10ZLH1000MEFC10X12.5, 14.0 mm seated, ripple ~11 % of rating (M14) _(2026-11-19)_
 - [x] All BOM lines have verified LCSC numbers, package = footprint
 - [x] M12: encoder plug + cable depth measured (7 mm), `PLUG_DEPTH` set, layout clear of `plug_keepouts()` (`pcb_qc.py` §5) _(2026-11-10)_
 
