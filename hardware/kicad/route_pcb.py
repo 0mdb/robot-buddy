@@ -255,8 +255,12 @@ for _try in range(1, ROUTE_TRIES + 1):
     result = subprocess.run(
         [
             "java",
+            # Headless + GUI off: otherwise freerouting opens its "User Settings" window on
+            # every run (2026-11-20). Scout's routers already ran headless.
+            "-Djava.awt.headless=true",
             "-jar",
             JAR,
+            "--gui.enabled=false",
             "-de",
             DSN_CLS,
             "-do",
