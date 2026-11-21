@@ -24,6 +24,10 @@ stt = [
 tts = [
     "orpheus-speech>=0.1",
 ]
+# Voice ID (app/voice): ECAPA-TDNN speaker embeddings on the CPU; uses torch from vllm.
+voice = [
+    "speechbrain>=1.0",
+]
 all = [
     "vllm>=0.19",
     "transformers>=5.5",

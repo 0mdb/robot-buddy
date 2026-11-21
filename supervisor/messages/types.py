@@ -60,6 +60,8 @@ AI_CONVERSATION_DONE = "ai.conversation.done"
 AI_CONVERSATION_FIRST_AUDIO = "ai.conversation.first_audio"
 AI_CONVERSATION_ASSISTANT_TEXT = "ai.conversation.assistant_text"
 AI_CONVERSATION_USER_TEXT = "ai.conversation.user_text"
+# Voice ID: who the server thinks spoke the turn (server app/voice, docs/voice-id.md).
+AI_CONVERSATION_SPEAKER = "ai.conversation.speaker"
 AI_CONVERSATION_ERROR = "ai.conversation.error"
 # Phase C: hybrid preamble tool-call summary + typed per-turn error.
 AI_CONVERSATION_TOOL_CALL = "ai.conversation.tool_call"

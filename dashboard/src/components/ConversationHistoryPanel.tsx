@@ -170,6 +170,19 @@ function Line({ e }: { e: HistoryEntry }) {
       </div>
     )
   }
+  if (e.role === 'voice') {
+    const unsure = e.voice === 'unsure'
+    return (
+      <div style={{ fontSize: 11, color: 'var(--text-dim)', margin: '0 0 2px 16px' }}>
+        voice: {unsure ? `unsure${e.best ? ` (closest ${e.best})` : ''}` : e.voice}{' '}
+        {(e.score ?? 0).toFixed(2)}
+        {e.runner ? `, next ${e.runner} ${(e.runner_score ?? 0).toFixed(2)}` : ''}
+        {e.conversation ? `; conversation: ${e.conversation}` : ''}
+        {` · ${(e.speech_s ?? 0).toFixed(1)} s`}
+        {e.learned ? ' · learned' : ''}
+      </div>
+    )
+  }
   const buddy = e.role === 'buddy'
   const who = buddy
     ? 'Buddy'

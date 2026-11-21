@@ -567,6 +567,7 @@ def create_app(
         household.save(roster_path, r)
         learning.forget(member_id)
         await workers.send_to("vision", VISION_FACE_FORGET, {"member_id": member_id})
+        await _forget_voice(member_id)
         from supervisor.messages.types import PERSONALITY_CMD_RESET_MEMORY
 
         # What Buddy remembers about them goes too (memory is per member).
@@ -574,6 +575,22 @@ def create_app(
             "personality", PERSONALITY_CMD_RESET_MEMORY, {"member_id": member_id}
         )
         return _roster_reply(r)
+
+    async def _forget_voice(member_id: str | None) -> None:
+        """Voiceprints and saved turn audio live on the server (server app/voice): delete
+        them too. Best effort: if the server is down, the roster ids sent with the next
+        conversation drop a removed member's prints there."""
+        base = tts_endpoint.removesuffix("/tts") if tts_endpoint else ""
+        if not base:
+            return
+        url = f"{base}/voice/prints" + (f"/{member_id}" if member_id else "")
+        try:
+            import httpx
+
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                (await client.delete(url)).raise_for_status()
+        except Exception as e:  # noqa: BLE001 -- the roster change must still succeed
+            log.warning("voice prints not deleted on the server (%s): %s", url, e)
 
     # -- Face enrollment (inputs/face_id.py) ---------------------------------
     # Face prints are keyed by member id in the roster's sidecar directory; names never
@@ -650,6 +667,7 @@ def create_app(
     async def forget_household():
         """Parent 'Forget everyone': delete the roster and everything stored beside it."""
         household.forget_everyone(roster_path)
+        await _forget_voice(None)
         from supervisor.messages.types import PERSONALITY_CMD_RESET_MEMORY
 
         # Facts tied to members go with them; household-wide facts stay ("Forget

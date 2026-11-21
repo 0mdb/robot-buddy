@@ -43,6 +43,7 @@ from supervisor.messages.types import (
     AI_CONVERSATION_ERROR,
     AI_CONVERSATION_FIRST_AUDIO,
     AI_CONVERSATION_GESTURE,
+    AI_CONVERSATION_SPEAKER,
     AI_CONVERSATION_TOOL_CALL,
     AI_CONVERSATION_TRANSCRIPTION,
     AI_CONVERSATION_TURN_ERROR,
@@ -552,6 +553,21 @@ class AIWorker(BaseWorker):
                                 "tags": tags,
                             },
                         )
+
+                elif msg_type == "speaker":
+                    self.send(
+                        AI_CONVERSATION_SPEAKER,
+                        {
+                            "session_id": self._session_id,
+                            "turn_id": self._turn_id,
+                            "server_turn_id": msg.get("turn_id", ""),
+                            "speech_s": msg.get("speech_s"),
+                            "turn": msg.get("turn") or {},
+                            "session": msg.get("session") or {},
+                            "learned": bool(msg.get("learned")),
+                            "learn_why": msg.get("learn_why", ""),
+                        },
+                    )
 
                 elif msg_type == "practice":
                     record = msg.get("record")

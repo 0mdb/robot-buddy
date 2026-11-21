@@ -63,6 +63,17 @@ test('a visit shows who spoke, the reply, its expression and timing', async () =
       { t: t + 5, role: 'child', text: 'can we play', session: 's1', who: ['Test Kid'] },
       { t: t + 6, role: 'timing', reply_ms: 1400, late_resumes: 1 },
       {
+        t: t + 6.5,
+        role: 'voice',
+        voice: 'Test Kid',
+        score: 0.71,
+        runner: 'Other Kid',
+        runner_score: 0.52,
+        conversation: 'Test Kid',
+        speech_s: 2.4,
+        learned: true,
+      },
+      {
         t: t + 7,
         role: 'buddy',
         source: 'conversation',
@@ -78,6 +89,11 @@ test('a visit shows who spoke, the reply, its expression and timing', async () =
   expect(screen.getByText('excited')).toBeTruthy()
   expect(screen.getByText(/replied after 1.4 s, kept listening 1×/)).toBeTruthy()
   expect(screen.getByText('greeting')).toBeTruthy()
+  expect(
+    screen.getByText(
+      /voice: Test Kid 0.71, next Other Kid 0.52; conversation: Test Kid · 2.4 s · learned/,
+    ),
+  ).toBeTruthy()
 
   fireEvent.click(screen.getByLabelText(/Show Buddy's own lines/))
   expect(screen.queryByText('Hi, Test Kid!')).toBeNull()

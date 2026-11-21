@@ -92,3 +92,5 @@ server/eval_out/
 # Fetched by deploy/fetch_models.sh (too big for git)
 supervisor/models/face_recognition_sface_2021dec.onnx
 supervisor/models/*.part
+# Downloaded by the server on first use (voice ID's ECAPA model)
+server/models/

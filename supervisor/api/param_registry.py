@@ -1427,6 +1427,19 @@ def create_default_registry() -> ParamRegistry:
     )
     reg.register(
         ParamDef(
+            name="conversation.voice_id_use",
+            type="bool",
+            default=False,
+            owner="supervisor",
+            safety="safe",
+            doc="Use the server's voice match to tell who is talking when the camera can't "
+            "(nobody or several people in view): per-person memory, learning progress and "
+            "the same-person check. Off until the voice bake-off sets its thresholds; the "
+            "guesses are logged (voice.speaker) and kept in conversation history either way",
+        )
+    )
+    reg.register(
+        ParamDef(
             name="conversation.quiet_mode",
             type="bool",
             default=False,

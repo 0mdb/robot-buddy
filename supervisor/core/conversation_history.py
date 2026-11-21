@@ -29,6 +29,7 @@ from supervisor.messages.types import (
     AI_CONVERSATION_ASSISTANT_TEXT,
     AI_CONVERSATION_DONE,
     AI_CONVERSATION_EMOTION,
+    AI_CONVERSATION_SPEAKER,
     AI_CONVERSATION_TRANSCRIPTION,
     AI_CONVERSATION_USER_TEXT,
 )
@@ -52,11 +53,13 @@ class ConversationHistory:
         days: Callable[[], float],
         present: Callable[[], list[str]] | None = None,
         clock: Callable[[], float] = time.time,
+        names: Callable[[], dict[str, str]] | None = None,
     ) -> None:
         self.path = Path(path)
         self._enabled = enabled
         self._days = days
         self._present = present or (lambda: [])
+        self._names = names or (lambda: {})
         self._clock = clock
         self._last_prune = -1e18
         # The reply's expression arrives before its text.
@@ -93,6 +96,27 @@ class ConversationHistory:
             )
         elif env.type == AI_CONVERSATION_DONE:
             self._emotion.pop(key, None)
+        elif env.type == AI_CONVERSATION_SPEAKER:
+            # Voice ID's guess, for checking it against who was really there.
+            turn = p.get("turn") or {}
+            sess = p.get("session") or {}
+            self._write(
+                role="voice",
+                session=key[0],
+                voice=self._name(turn.get("member_id")) or "unsure",
+                best=self._name(turn.get("best_id")),
+                score=turn.get("score"),
+                runner=self._name(turn.get("runner_id")),
+                runner_score=turn.get("runner_score"),
+                conversation=self._name(sess.get("member_id")),
+                speech_s=p.get("speech_s"),
+                learned=bool(p.get("learned")) or None,
+            )
+
+    def _name(self, member_id: Any) -> str | None:
+        if not member_id:
+            return None
+        return self._names().get(str(member_id)) or "someone enrolled"
 
     def reply_timing(self, after_speech_ms: float, late_resumes: int) -> None:
         """How long the child waited: end of their speech to Buddy's first sound."""

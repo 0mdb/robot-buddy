@@ -87,6 +87,7 @@ from supervisor.messages.types import (
     PERSONALITY_EVENT_GUARDRAIL_TRIGGERED,
     PERSONALITY_EVENT_MEMORY_EXTRACT,
     PERSONALITY_EVENT_PRACTICE,
+    AI_CONVERSATION_SPEAKER,
     PERSONALITY_EVENT_SPEECH_ACTIVITY,
     PERSONALITY_EVENT_SYSTEM_STATE,
     PERSONALITY_LLM_PROFILE,
@@ -297,6 +298,8 @@ class TickLoop:
         # starts fresh: the last conversation's end and who it was with (member id or None).
         self._last_conv_mono = float("-inf")
         self._conv_member: str | None = None
+        self._voice_guess: dict | None = None
+        self._roster_ok = False  # the roster was read and is enabled
 
         # PE system event forwarding state
         self._pe_boot_sent: bool = False
@@ -943,6 +946,7 @@ class TickLoop:
             if self.world.session_id:
                 profile = dict(env.payload)
                 self._add_present_faces(profile)
+                self._add_voice_labels(profile)
                 self._pick_memory(profile)
                 self._add_learner(profile)
                 profile["turn_id"] = self.world.turn_id
@@ -961,6 +965,11 @@ class TickLoop:
                     "personality", PERSONALITY_EVENT_MEMORY_EXTRACT, payload
                 )
             )
+
+        # Voice ID's guess for the last turn (server app/voice) → used by
+        # _speaker_member_id() when conversation.voice_id_use is on
+        elif env.type == AI_CONVERSATION_SPEAKER:
+            self._take_voice_guess(env.payload)
 
         # A learning-game answer checked by the server → the recognised child's progress
         elif env.type == PERSONALITY_EVENT_PRACTICE:
@@ -1928,6 +1937,7 @@ class TickLoop:
             enabled,
             days,
             present,
+            names=lambda: self._household_names,
         )
 
     def _refresh_household_kinds(self, now_ms: float) -> None:
@@ -1955,8 +1965,10 @@ class TickLoop:
                 if r.enabled
                 else {}
             )
+            self._roster_ok = bool(r.enabled)
         except Exception as e:  # noqa: BLE001 -- a bad roster file must not stop the loop
             log.debug("roster read failed: %s", e)
+            self._roster_ok = False
             self.world.household_kinds = {}
             self._household_names = {}
             self._household_ages = {}
@@ -2131,13 +2143,85 @@ class TickLoop:
             log.warning("learner not added: %s", e)
 
     def _speaker_member_id(self) -> str | None:
-        """The recognised household member in front of the camera when they are the only
-        face in view (then they are most likely the one talking); otherwise None."""
+        """Who is talking: the recognised household member when they are the only face in
+        view (then they are most likely the one talking). Otherwise, with
+        ``conversation.voice_id_use`` on, this conversation's voice match: for a child out
+        of frame, or to pick the talker out of several faces. A single recognised face
+        still wins over the voice (a disagreement is logged)."""
         faces = self.world.audience_faces()
-        if len(faces) != 1:
+        face_mid = None
+        if len(faces) == 1:
+            mid = faces[0].get("member_id")
+            if mid and mid in self.world.household_kinds:
+                face_mid = str(mid)
+        if face_mid:
+            return face_mid
+        voice_mid = self._voice_member_id()
+        if voice_mid is None:
             return None
-        mid = faces[0].get("member_id")
-        return str(mid) if mid and mid in self.world.household_kinds else None
+        recognised = {f.get("member_id") for f in faces if f.get("member_id")}
+        if len(faces) > 1 and recognised and voice_mid not in recognised:
+            return None  # several people in view and the voice is none of them
+        return voice_mid
+
+    _VOICE_FRESH_S = 60.0
+
+    def _voice_member_id(self) -> str | None:
+        """The conversation's voice match, if voice ID is in use and the guess is recent."""
+        if self._param_registry is None or not bool(
+            self._param_registry.get_value("conversation.voice_id_use", False)
+        ):
+            return None
+        g = self._voice_guess
+        if not g or time.monotonic() - g["mono"] > self._VOICE_FRESH_S:
+            return None
+        mid = g.get("member_id")
+        return mid if mid and mid in self.world.household_kinds else None
+
+    def _take_voice_guess(self, payload: dict) -> None:
+        """Keep the server's voice match (the conversation's, else the turn's) and log it
+        beside what the camera thought, so the two can be compared before voice is used."""
+        turn = payload.get("turn") or {}
+        sess = payload.get("session") or {}
+        mid = sess.get("member_id") or turn.get("member_id")
+        self._voice_guess = {"member_id": mid, "mono": time.monotonic()}
+        faces = self.world.audience_faces()
+        face_mids = sorted(str(f.get("member_id")) for f in faces if f.get("member_id"))
+        log.info(
+            "voice.speaker turn=%s(%.2f) best=%s(%.2f) runner=%s(%.2f) session=%s(%.2f) "
+            "faces=%d recognised=%s speech=%.1fs learned=%s (%s)",
+            turn.get("member_id"),
+            float(turn.get("score") or 0.0),
+            turn.get("best_id"),
+            float(turn.get("score") or 0.0),
+            turn.get("runner_id"),
+            float(turn.get("runner_score") or 0.0),
+            sess.get("member_id"),
+            float(sess.get("score") or 0.0),
+            len(faces),
+            face_mids,
+            float(payload.get("speech_s") or 0.0),
+            payload.get("learned"),
+            payload.get("learn_why", ""),
+        )
+
+    def _add_voice_labels(self, profile: dict) -> None:
+        """For voice ID on the server: who the camera is sure is talking (the one face in
+        view, recognised), which the server learns voiceprints from; and the roster's ids,
+        so prints of removed members are dropped even if the robot was offline then."""
+        faces = self.world.audience_faces()
+        if len(faces) == 1:
+            f = faces[0]
+            mid = f.get("member_id")
+            if mid and mid in self.world.household_kinds:
+                profile["face_speaker"] = {
+                    "member_id": str(mid),
+                    "score": round(float(f.get("id_score") or 0.0), 3),
+                    "faces": 1,
+                    "bearing_deg": f.get("bearing_deg"),
+                }
+        if self._roster_ok:
+            profile["roster_ids"] = sorted(self.world.household_kinds)
 
     _SAME_CONVERSATION_S = 15.0
 

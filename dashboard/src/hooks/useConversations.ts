@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 export interface HistoryEntry {
   t: number // unix seconds
-  role: 'child' | 'buddy' | 'typed' | 'timing'
+  role: 'child' | 'buddy' | 'typed' | 'timing' | 'voice'
   text?: string
   source?: string // buddy lines: conversation, greeter, planner, speech_policy, ...
   session?: string
@@ -14,6 +14,15 @@ export interface HistoryEntry {
   stt_ms?: number
   reply_ms?: number // end of the child's speech to Buddy's first sound
   late_resumes?: number
+  // role 'voice': the server's voice ID guess for the turn just heard (names, robot-side)
+  voice?: string // the name, or 'unsure'
+  best?: string
+  score?: number
+  runner?: string
+  runner_score?: number
+  conversation?: string // the match over the whole conversation so far
+  speech_s?: number
+  learned?: boolean // this turn was added to the person's voiceprints
 }
 
 export interface ConversationHistory {

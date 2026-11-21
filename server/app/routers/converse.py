@@ -10,6 +10,7 @@ Protocol:
         {"type": "cancel"}
         {"type": "text", "text": "..."}  # bypass STT, send text directly
         {"type": "profile", "profile": {...}}  # personality profile (PE spec §12.5)
+            # may carry "face_speaker" {member_id, score, faces} and "roster_ids" for voice ID
 
     Server → Client:
         {"type": "listening"}
@@ -18,6 +19,8 @@ Protocol:
         {"type": "gestures", "names": ["nod"]}
         {"type": "memory_tags", "tags": [{"tag": "likes_dinosaurs", "category": "topic"}]}
         {"type": "practice", "record": {...}}  # a drill answer checked by code (learning games)
+        {"type": "speaker", "turn_id": "...", "turn": {...}, "session": {...}, ...}
+            # voice ID after the turn (VOICE_ID on; app/voice): member_id or null
         {"type": "audio", "data": "<base64 PCM 16kHz 16-bit mono>", "chunk_index": N}
         {"type": "done"}
         {"type": "error", "message": "..."}
@@ -38,6 +41,7 @@ from collections.abc import Callable
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from app.ai_runtime import get_stt, get_tts
+from app.voice.service import VoiceSession, get_voice_service
 from app.config import settings
 from app.llm.base import LLMBusyError, LLMError, LLMTimeoutError, LLMUnavailableError
 from app.llm.base import PlannerLLMBackend
@@ -162,6 +166,31 @@ async def converse(ws: WebSocket):
     llm = ws.app.state.llm
     mcp_client: McpClient | None = getattr(ws.app.state, "mcp_client", None)
 
+    # Voice ID / turn audio capture (app/voice, docs/voice-id.md); None when off.
+    voice_svc = get_voice_service()
+    vsess: VoiceSession | None = voice_svc.session() if voice_svc else None
+    voice_tasks: set[asyncio.Task[None]] = set()
+
+    def _voice(turn: _Speculation) -> None:
+        if vsess is None or not turn.pcm:
+            return
+
+        async def _run() -> None:
+            msg = await vsess.process(
+                turn.pcm,
+                turn_task=turn.task,
+                turn_meta=turn.meta,
+                face=vsess.face,
+                robot_id=robot_id,
+            )
+            if msg is not None:
+                with contextlib.suppress(Exception):
+                    await ws.send_json(msg)
+
+        t = asyncio.create_task(_run())
+        voice_tasks.add(t)
+        t.add_done_callback(voice_tasks.discard)
+
     await ws.send_json({"type": "listening"})
 
     spec: _Speculation | None = None
@@ -203,13 +232,20 @@ async def converse(ws: WebSocket):
                     # the real end of utterance confirms it (or "resume" drops it).
                     if spec is None and audio_buffer:
                         gate = _GatedWS(ws)
+                        meta: dict[str, object] = {}
                         spec = _Speculation(
                             gate=gate,
                             snapshot=history.snapshot(),
                             started=time.monotonic(),
                             task=asyncio.create_task(
-                                _audio_turn(gate, bytes(audio_buffer), **turn_kw)
+                                _audio_turn(
+                                    gate,
+                                    bytes(audio_buffer),
+                                    turn_meta=meta,
+                                    **turn_kw,
+                                )
                             ),
+                            meta=meta,
                         )
                     continue
                 if spec is not None:
@@ -221,6 +257,7 @@ async def converse(ws: WebSocket):
                         (time.monotonic() - active.started) * 1000,
                     )
                     await active.gate.commit()
+                    _voice(active)
                     continue
                 if not audio_buffer:
                     await ws.send_json(
@@ -229,13 +266,18 @@ async def converse(ws: WebSocket):
                     continue
                 pcm = bytes(audio_buffer)
                 audio_buffer.clear()
+                meta = {}
                 active = _Speculation(
                     gate=None,
                     snapshot=history.snapshot(),
                     started=time.monotonic(),
-                    task=asyncio.create_task(_audio_turn(ws, pcm, **turn_kw)),
+                    task=asyncio.create_task(
+                        _audio_turn(ws, pcm, turn_meta=meta, **turn_kw)
+                    ),
                     pcm=pcm,
+                    meta=meta,
                 )
+                _voice(active)
 
             elif msg_type == "resume":
                 if spec is not None:
@@ -281,6 +323,8 @@ async def converse(ws: WebSocket):
                 profile = msg.get("profile")
                 if isinstance(profile, dict):
                     history.update_profile(profile)
+                    if vsess is not None:
+                        vsess.update_profile(profile)
 
             elif msg_type == "cancel":
                 if spec is not None:
@@ -314,6 +358,9 @@ async def converse(ws: WebSocket):
             # history is written before "done"; sends to a closed socket just fail).
             with contextlib.suppress(Exception):
                 await active.task
+        if voice_tasks:
+            # Let the last turn's clip be saved (the embedding is quick).
+            await asyncio.wait(set(voice_tasks), timeout=5.0)
         await registry.unregister(robot_id=robot_id, websocket=ws, history=history)
 
 
@@ -374,6 +421,7 @@ class _Speculation:
     started: float
     task: asyncio.Task[None]
     pcm: bytes = b""  # the utterance, kept so a late resume can merge it
+    meta: dict[str, object] = dataclasses.field(default_factory=dict)  # text, turn_id
 
 
 async def _drop_speculation(
@@ -399,16 +447,21 @@ async def _audio_turn(
     mcp_client: McpClient | None,
     override_temperature: float | None,
     override_max_output_tokens: int | None,
+    turn_meta: dict[str, object] | None = None,
 ) -> None:
     """One spoken turn: transcribe, reply, then listen again."""
     t_stt = time.monotonic()
     user_text = strip_wake_word(await _transcribe_audio(pcm))
     stt_latency_ms = round((time.monotonic() - t_stt) * 1000)
+    if turn_meta is not None:
+        turn_meta["text"] = user_text
     if not user_text.strip():
         await ws.send_json({"type": "error", "message": "Could not understand audio"})
         await ws.send_json({"type": "listening"})
         return
     turn_id = uuid.uuid4().hex[:12]
+    if turn_meta is not None:
+        turn_meta["turn_id"] = turn_id
     await ws.send_json(
         {
             "type": "transcription",

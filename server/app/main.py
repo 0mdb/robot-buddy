@@ -21,6 +21,8 @@ from app.llm.factory import create_llm_backend
 from app.llm.mcp_client import McpClient
 from app.routers.converse import router as converse_router
 from app.routers.eval import router as eval_router
+from app.routers.voice import router as voice_router
+from app.voice.service import get_voice_service
 from app.routers.plan import router as plan_router
 from app.routers.tts import router as tts_router
 
@@ -155,6 +157,14 @@ async def lifespan(app: FastAPI):
             except Exception:
                 log.exception("STT preload failed; it will load on first use")
 
+    # Voice ID (app/voice): load the speaker model now, not on the first turn.
+    voice = get_voice_service()
+    if voice is not None and voice.config.voice_id:
+        try:
+            await asyncio.to_thread(voice.embedder.warm)
+        except Exception:
+            log.exception("voice id: model load failed; it will retry on first use")
+
     # Hybrid tool-use preamble (task #7): persistent MCP client to the
     # supervisor. Connect attempt is non-blocking — a failed initial connect
     # just means the preamble skips tools until reconnect succeeds.
@@ -189,6 +199,7 @@ app.include_router(plan_router)
 app.include_router(converse_router)
 app.include_router(tts_router)
 app.include_router(eval_router)
+app.include_router(voice_router)
 
 
 @app.get("/health")
