@@ -418,6 +418,11 @@ _3 items complete (LLM session memory, TTS resampler hardening, conversation stu
 inside buddy-server; Buddy's screen and speaker are one client. Screen side, PIN + face ID
 unlock, the service boundary and the risk tiers: `docs/screen-ui-and-admin.md`.
 - [ ] `[opus]` **Dashboard login first** (`docs/screen-ui-and-admin.md` §4): supervisor HTTP, WebSocket and MCP endpoints have no auth today, so anyone on the LAN can change household, memory, guardrails and grade ceilings
+- [x] `[opus]` **Jarvis text-only skeleton** _(2026-11-18: `jarvis/`, own pyproject/venv, port 8200, env in `~/.config/jarvis/jarvis.env`, data in `~/.local/share/jarvis`. Device token + `X-Jarvis-User` owner check, audit + per-owner history (JSONL, 0600), Ollama tool loop on Buddy's already-loaded gemma4 26B (no extra VRAM), HA read tier as GET-only REST tools `home_list`/`home_state` with a domain allow-list (no person/device_tracker/camera), `speak:false` for personal tools, text CLI. `just jarvis-run` / `just jarvis` / `just jarvis-test` / `just jarvis-service`. Not installed as a service yet; no HA token yet.)_
+  - [ ] Dedicated non-admin HA user + long-lived token; try real house questions
+  - [ ] Tool-use eval for gemma4 26B on Jarvis's tools (adapt `server/app/eval`)
+  - [ ] Voice path: how a spoken turn reaches Jarvis (wake word, voice ID threshold, handoff, unsure-ID fallback) — not specified yet
+  - [ ] Reversible tier via HA's MCP server: entity allow-list + confirm step
 - [ ] `[opus]` Screen settings: kid menu (swipe down from the top), PIN + face ID grown-up settings, Jarvis client mode (design; needs `docs/protocols.md` and face spec §9.5 amendments, incl. the swipe-vs-pet rule; shares the scene protocol with `learning-games.md` §9)
 
 Ben: "a mode for myself: check local Home Assistant, bank accounts, or other things local models look after. Buddy is how we tune the speech interface; the house and the robot use the same stack." Same pipeline (wake word, speculative end of turn, Whisper, LLM, Orpheus, follow-up windows) and the same air rig for tuning; a different profile, tools, and memory.

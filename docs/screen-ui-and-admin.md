@@ -133,7 +133,9 @@ supervisor ─┼─> kid conversations       admin conversations│
 - Local LLM only (Ollama on the same box). No household names or personal data to external
   APIs, the same boundary as Buddy. Tool use likely needs a larger local model than Buddy's
   gemma-4-E4B, loaded on demand (VRAM is shared with Orpheus); see the Owner mode plan.
-- Tools via MCP: the Home Assistant MCP server for house control and status; a quotes source
+- Tools: the read tier is HA's REST API with GET only (built 2026-11-18, `jarvis/`), so it
+  cannot change anything whatever the model asks; house control (reversible tier) goes
+  through the Home Assistant MCP server; a quotes source
   for stocks; later calendar etc. Its tool list is its own; Buddy's HA whitelist
   (`docs/home-assistant-integration.md`) is unchanged.
 - Auth: the supervisor calls Jarvis with a per-device token plus the unlocked adult's

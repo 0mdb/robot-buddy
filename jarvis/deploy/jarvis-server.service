@@ -1,0 +1,17 @@
+# Jarvis (owner assistant) on the dev box, reading the main checkout.
+# Install: just jarvis-service. Logs: journalctl --user -fu jarvis-server
+# Env: ~/.config/jarvis/jarvis.env (see jarvis/env.example). Data: ~/.local/share/jarvis
+[Unit]
+Description=Jarvis owner assistant
+After=buddy-ollama.service
+Wants=buddy-ollama.service
+
+[Service]
+WorkingDirectory=%h/robot-buddy/jarvis
+ExecStart=%h/robot-buddy/jarvis/.venv/bin/python -m jarvis
+UMask=0077
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

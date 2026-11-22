@@ -94,6 +94,29 @@ devbox-services:
     systemctl --user enable --now buddy-ollama.service buddy-server.service
     systemctl --user --no-pager status buddy-ollama.service buddy-server.service | grep -E "Active|●"
 
+# ── Jarvis (owner assistant, jarvis/README.md) ─────────────
+
+# Run Jarvis in the foreground (env: ~/.config/jarvis/jarvis.env)
+jarvis-run:
+    cd {{project}}/jarvis && uv run python -m jarvis
+
+# Ask Jarvis from the terminal; no args opens a prompt
+jarvis *text:
+    cd {{project}}/jarvis && uv run python -m jarvis.cli "{{text}}"
+
+# Run Jarvis tests
+jarvis-test *filter:
+    cd {{project}}/jarvis && uv run --extra dev pytest tests/ -v {{filter}}
+
+# Install + start the Jarvis systemd user service (reads the main checkout)
+jarvis-service:
+    cd {{project}}/jarvis && uv sync
+    mkdir -p ~/.config/systemd/user
+    cp jarvis/deploy/jarvis-server.service ~/.config/systemd/user/
+    systemctl --user daemon-reload
+    systemctl --user enable --now jarvis-server.service
+    systemctl --user --no-pager status jarvis-server.service | grep -E "Active|●"
+
 run-server:
     bash -lc 'set -a; [ -f "{{project}}/.env" ] && source "{{project}}/.env"; set +a; cd "{{project}}/server" && uv run python -m app.main'
 
