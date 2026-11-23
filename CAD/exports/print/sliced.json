@@ -77,14 +77,14 @@
   "up": "-x"
  },
  "RB-PRT-002_bulkhead@PETG": {
-  "cad_g": 54.68630628176712,
-  "cm3": 38.55,
-  "grams": 48.19,
+  "cad_g": 52.83917785066458,
+  "cm3": 37.4,
+  "grams": 46.75,
   "mat": "PETG",
   "mismatch": [],
   "qty": 1,
   "support": false,
-  "time": "1h 33m 33s",
+  "time": "1h 28m 30s",
   "up": "v:-0.965926,0,-0.258819"
  },
  "RB-PRT-003_pi_deck": {
@@ -317,6 +317,17 @@
   "support": false,
   "time": "29m 29s",
   "up": "-x"
+ },
+ "RB-PRT-070_sonar_holder@PETG": {
+  "cad_g": 11.788630666707212,
+  "cm3": 8.37,
+  "grams": 10.46,
+  "mat": "PETG",
+  "mismatch": [],
+  "qty": 1,
+  "support": false,
+  "time": "26m 46s",
+  "up": "v:-0.996195,0,0.087156"
  },
  "belt_lug6": {
   "cad_g": 7.844111962106823,

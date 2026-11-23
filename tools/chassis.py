@@ -1536,7 +1536,6 @@ def rebuild_manifest(win: str) -> list[str]:
         # 2026-11-09: Camera Module 3 envelope (on the bulkhead's camera bosses)
         *camera_module_lines(cad + r"\library\camera_module3_envelope.SLDPRT"),
         *hcsr04_lines(cad + r"\library\hcsr04_envelope.SLDPRT"),
-        *pam8302_lines(cad + r"\library\pam8302_envelope.SLDPRT"),
         *bmi270_lines(cad + r"\library\bmi270_envelope.SLDPRT"),
         *sonar_holder_lines(cad + r"\parts\RB-PRT-070_sonar_holder.SLDPRT"),
         # P6m2 (2026-11-08): the mic disc envelope + its TPU washers (the disc hangs in the canopy's hump)
@@ -1617,7 +1616,6 @@ def rebuild_manifest(win: str) -> list[str]:
             f"comp|idler_spacer_{sd}|{cad}\\parts\\RB-PRT-023_idler_spacer.SLDPRT|{row(*wheel_at(dt.belt_fit()['x_fit'], s, idler_z()))}"
             for sd, s in (("L", +1), ("R", -1))
         ],
-        f"comp|amp|{cad}\\library\\pam8302_envelope.SLDPRT|{row(ROT_I, (0, 0, 0))}",
         f"comp|imu|{cad}\\library\\bmi270_envelope.SLDPRT|{row(ROT_I, (0, 0, 0))}",
         *hardware_comps(cad + r"\library"),
         "interfere",
@@ -2480,21 +2478,9 @@ def sonar_holder_features() -> list[tuple]:
     f.append(
         ("add", sr_box(26.5, 35.5, 2.25, 9.0, 16.5, 17.5))
     )  # crystal-channel shelf
-    # snap ridges on the pocket's long sides, truncated at the trim
-    rz = 0.67 * (1 - (yt - 13.75) / 4.0)
-    ya, _ = sr_map(8.0, 0.0)
-    yb, _ = sr_map(54.0, 0.0)
-    for zw, sgn in ((1.5, 1), (22.5, -1)):
-        za_ = sr_map(31.0, zw)[1]
-        zt_ = sr_map(31.0, zw + sgn * 0.67)[1]
-        zr_ = sr_map(31.0, zw + sgn * rz)[1]
-        poly = [
-            (SR_FRONT - 13.75, za_),
-            (SR_FRONT - 13.75, zt_),
-            (SR_TRIM, zr_),
-            (SR_TRIM, za_),
-        ]
-        f.append(("add", ("prismy", poly, min(ya, yb), max(ya, yb))))
+    # (snap ridges removed 2026-11-13, Ben: the PCB needed too much force to go in. The trim
+    # had cut their 4 mm lead-in ramp to 1.6, leaving a ~0.4 step, and the short box can't
+    # flex in the wall window; the 4 x M1.6 screws hold the PCB)
     # M1.6 bosses in the box's corners, PCB front (yh 12.25) forward 6, each in a corner
     # column from the front plate back to the PCB (the wall's corner blocks are kept for
     # them; a column leaves no stray face in the wall's front plane)
@@ -2824,7 +2810,7 @@ SPK_BAND_DROP = 3.0  # clamp top band reaches this far below the rim top (joins 
 # thread-forming screws through the PCB into printed bosses. Its PCB (x 76.9-78) sits 0.8
 # in front of the face board's edge-entry plugs (top edge, back side, x <= 76.1) and above
 # the board's top (z 102): that needs the lens at z 117, hence BH_H 130.
-BH_CAM = (0.0, 117.0, 3.1)  # lens hole y, z, r: the Ø5.75 barrel + 0.22/side
+BH_CAM = (0.0, 117.0, 3.4)  # lens hole y, z, r: the Ø5.78 barrel + 0.5/side (2026-11-22, was 3.1)
 CAM_PCB = (25.0, 23.862, 1.12)  # width (y), height (z), thickness
 CAM_LENS_UP = 14.4  # lens centre above the PCB's bottom edge
 CAM_HOLES = (
@@ -2843,8 +2829,17 @@ CAM_HOLES = (
 CAM_BLOCK, CAM_BLOCK_D = 10.9, 4.85  # lens block side, its front off the PCB front
 CAM_RING_R, CAM_RING_H = 4.1, 0.55  # lens ring proud of the block
 CAM_BARREL_R, CAM_BARREL_L = 5.78 / 2, 1.55  # beyond the ring: tip 6.95 off the PCB front
-CAM_PCB_OFF = 4.0  # PCB front behind the wall's back face: barrel tip 0.05 inside the face
-CAM_POCKET_CLR = 0.3  # pocket clearance, sides and floor
+CAM_PCB_OFF = 4.5  # PCB front behind the wall's back face: barrel tip 0.55 inside the face
+CAM_POCKET_CLR = 0.3  # block pocket clearance, sides and floor (the block doesn't move)
+# 2026-11-22 (TODO "Camera pocket: clearance for the focusing lens", 2026-11-17): screwed in,
+# the VCM could not move the lens. The barrel + ring travel ~0.3 forward toward macro, and the
+# ring's Ø8.8 counterbore floor was 0.3 ahead of it, the barrel tip 0.05 inside the face in a
+# 0.22/side hole. Now the PCB sits 0.5 further back (tip 0.55 inside the face at rest), the
+# ring's counterbore is Ø9.6 with its floor CAM_TRAVEL + CAM_MOVE_CLR ahead of the ring, and the
+# barrel has 0.5/side. Vignetting: a 37.5° half-diagonal ray from the barrel's rim at the tip
+# reaches r 2.89 + 0.55 tan 37.5 = 3.31 at the face (< 3.4), so even the full barrel is clear.
+CAM_TRAVEL, CAM_MOVE_CLR = 0.3, 0.5  # lens forward travel to macro, clearance beyond it
+CAM_RING_CB_R = CAM_RING_R + 0.7  # ring counterbore, Ø9.6
 CAM_TAB = (1.7, 9.0, 5.75, 1.37)  # flex tab: z from the PCB bottom, |y| envelope, proud
 CAM_CONN = (
     19.61,
@@ -3099,10 +3094,10 @@ def bulkhead_features() -> tuple[list[tuple], list[tuple]]:
             ("cut", ("cylx", cy + dy, cz + dz, xc - 0.1, xc + CAM_PILOT_D, CAM_PILOT_R))
         )
     hp = CAM_BLOCK / 2 + CAM_POCKET_CLR
-    dp = CAM_BLOCK_D - CAM_PCB_OFF + CAM_POCKET_CLR  # 1.15 (wall 3.0)
-    dr = dp + CAM_RING_H  # 1.7
+    dp = CAM_BLOCK_D - CAM_PCB_OFF + CAM_POCKET_CLR  # 0.65 (wall 3.0)
+    dr = CAM_BLOCK_D + CAM_RING_H - CAM_PCB_OFF + CAM_TRAVEL + CAM_MOVE_CLR  # 1.7
     pre.append(("cut", ("box", x0 - 0.1, x0 + dp, cy - hp, cy + hp, cz - hp, cz + hp)))
-    pre.append(("cut", ("cylx", cy, cz, x0 - 0.1, x0 + dr, CAM_RING_R + CAM_POCKET_CLR)))
+    pre.append(("cut", ("cylx", cy, cz, x0 - 0.1, x0 + dr, CAM_RING_CB_R)))
     # P7 (tick 92, Q25 (a) Ben 2026-11-02): pocket for a pre-boxed micro speaker on the back
     # face, behind the grille's inboard half: a 1.6 rim standing SPK_DEPTH off the face round
     # the module + gasket, and two M3 insert bosses above it for the clamp plate's screws
@@ -3162,7 +3157,7 @@ def bulkhead_features() -> tuple[list[tuple], list[tuple]]:
     post: list[tuple] = [("add", ("box", fx0, fx1, fy0, fy1, fz0, fz1))]
     for y in BULK_HOLES_Y:  # 2026-11-11: F1 pocket bosses past the foot's back face
         post.append(("add", ("cylz", BULK_HOLE_X, y, fz0, fz1, bh_foot_boss_r())))
-    post += bulkhead_amp_features()  # 2026-11-13: amp bracket, right, above the mount
+    # 2026-11-22 (Ben): amp bracket removed (bulkhead_amp_features no longer applied)
     post += cover_guide_features()  # 2026-11-13: canopy wall guides aft of the seam
     # 2026-11-11: the front is cut on the wall's front-face plane (coplanar: it only trims the
     # foot, never the wall), so face-down the face and the foot's front are one flat
@@ -3174,11 +3169,26 @@ def bulkhead_features() -> tuple[list[tuple], list[tuple]]:
     # over the plate, outboard of the tabs (|y| <= 15.9) and the foot (29.5): a flat at z 0
     # would bear on the plate, and S5's "fix plane z 0" bonded it (S5c 5.72 -> 9.91 MPa at
     # the flange root). The foot stays the only seat.
+    # 2026-11-22 (Ben: "this wedge is protruding through the rad"): the flat z BH_FLANGE_GAP
+    # trim ran forward under the wall too, whose bottom slopes up 15° to the face (z 0 at the
+    # back face, 0.78 at the front); it sliced that slope and the r 8 corner round's foot at a
+    # shallow angle and left a tapered slit. Now the flat trim stops at the wall's back face
+    # (x BH_PIVOT, where the flanges are), and under the wall the trim is parallel to the
+    # wall's tilted bottom, BH_FLANGE_GAP up: it meets the flat one at the back-face edge and
+    # cuts the round square to its own end.
+    xp = BH_PIVOT[0]
+    lean_t = math.tan(math.radians(BH_TILT))
+    xe = BH_XF + 2.0
+    under_wall = [
+        (xp, -5.0),
+        (xe, -5.0),
+        (xe, BH_FLANGE_GAP + (xe - xp) * lean_t),
+        (xp, BH_FLANGE_GAP),
+    ]
     for sgn in (-1, 1):
         ys = sorted((sgn * (fy1 + 0.5), sgn * (BH_W / 2 + 1)))
-        post.append(
-            ("trim", ("box", fx0 - 15.0, BH_XF + 1.0, *ys, -5.0, BH_FLANGE_GAP))
-        )
+        post.append(("trim", ("box", fx0 - 15.0, xp, *ys, -5.0, BH_FLANGE_GAP)))
+        post.append(("trim", ("prismy", under_wall, *ys)))
     tw, th, td = BH_TAB
     for sgn in (-1, 1):
         cyy = sgn * BULK_TAB_Y
@@ -3553,14 +3563,14 @@ def bulkhead_lines(path: str) -> list[str]:
             return f"cyl|x|{cy} {cz}|{x0} {x1}|{r}|{kind}"
         if sh[0] == "prismy":  # Top plane: sketch (x, -z), extrude +Y
             _, poly, y0, y1 = sh
-            pts = [f"{x:.4f} {-z:.4f}" for x, z in poly]
+            pts = [f"{x:.6f} {-z:.6f}" for x, z in poly]
             segs = "M " + pts[0] + "".join(" L " + p for p in pts[1:])
             return f"prof|{y0} {y1}|{segs}|{kind}|top"
         if sh[0] == "prismx":  # Right plane: sketch (-z, y), extrude +X
             _, poly, x0, x1 = sh
-            pts = [f"{-z:.4f} {y:.4f}" for y, z in poly]
+            pts = [f"{-z:.6f} {y:.6f}" for y, z in poly]
             segs = "M " + pts[0] + "".join(" L " + p for p in pts[1:])
-            return f"prof|{x0:.4f} {x1:.4f}|{segs}|{kind}|right"
+            return f"prof|{x0:.6f} {x1:.6f}|{segs}|{kind}|right"
         _, cx, cy, z0, z1, r = sh
         return f"cyl|z|{cx} {cy}|{z0} {z1}|{r}|{kind}"
 
@@ -5769,8 +5779,13 @@ AMP_WIRE = 6.0  # soldered wire + insulation standing off the parts side (envelo
 # after the cap rounds): a CG_T tab from the wall's back face (inside the cap's side flange,
 # merged with it) running CG_L aft of the seam, its outer face CG_CLR inside the canopy wall's
 # inner face, over z CG_Z (skirt line up); a CG_CH x 45° lead-in on its outer top edge, aft of
-# the seam, for the canopy dropping on. Right side: merges with the amp backing plate.
+# the seam, for the canopy dropping on. (Both sides get the lead-in since the amp bracket went, 2026-11-22.)
 CG_T, CG_L, CG_CLR, CG_CH = 2.0, 8.0, 0.2, 1.5
+# 2026-11-22 (Ben: a sliver standing proud of the side round): the tabs ran 0.5 into the wall,
+# but at their outer face (|y| 51) the r 8 side round leaves the wall only ~0.29 thick, so their
+# front poked ~0.2 out through the round (a 14 mm ridge, z 30.5-45). 0.1 stays inside it; the
+# tab is joined to the side flange anyway (1 mm overlap in y over its whole length).
+CG_INTO = 0.1
 CG_Z = (CAN_Z0 + 0.5, 45.0)
 
 
@@ -5785,16 +5800,14 @@ def cover_guide_features() -> list[tuple]:
     z0, z1 = CG_Z
     poly = [
         (bh_seam_x(z0) - CG_L, z0),
-        (bh_back_x(z0) + 0.5, z0),
-        (bh_back_x(z1) + 0.5, z1),
+        (bh_back_x(z0) + CG_INTO, z0),
+        (bh_back_x(z1) + CG_INTO, z1),
         (bh_seam_x(z1) - CG_L, z1),
     ]
     ch = [(yo + 0.1, z1 - CG_CH - 0.1), (yo + 0.1, z1 + 0.1), (yo - CG_CH - 0.1, z1 + 0.1)]
     out: list[tuple] = []
     for sg in (-1, 1):
         out.append(("add", ("prismy", poly, *sorted((sg * yi, sg * yo)))))
-        if sg == AMP_SIDE:  # the amp's backing plate stands over it to z 46.95: no lead-in
-            continue
         out.append(
             (
                 "cut",
