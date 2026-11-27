@@ -47,5 +47,9 @@ ESTOP_N).
   2026-11-27). Axes as the chip reports them: check yaw sign and gravity on Z on the first board.
 - Control / safety fixes: see the module headers in `../reflex-core/src/{control,safety}.rs`.
 - The ESP32 build on the robot has `BRINGUP_OPEN_LOOP_TEST 1` (control and safety tasks not
-  started); this firmware always runs them. A bring-up binary is still to port.
+  started). Here it is the `bringup` feature (`cargo run --release --features bringup`): each
+  motor fwd/rev at max_pwm/4, BRINGUP_DIAG at 10 Hz (decoded by `ReflexClient`, checked on the
+  Nucleo 2026-11-27); without it control and safety always run.
+- Encoders: internal pull-ups plus a ~750 ns input filter (the ESP32 PCNT had a 1 µs glitch
+  filter; Embassy's QEI sets none).
 - Not ported (out of scope for now): cliff ToF (VL53L4CD), V5_SENSE, IMU ODR trigger (TIM16).

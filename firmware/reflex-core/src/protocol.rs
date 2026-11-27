@@ -354,6 +354,36 @@ impl State {
     }
 }
 
+/// BRINGUP_DIAG payload (13 bytes, `protocol.h::BringupDiagPayload`): raw encoder counts
+/// during the open-loop motor test.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct BringupDiag {
+    /// 0 idle, 1 left fwd, 2 left rev, 3 right fwd, 4 right rev.
+    pub phase: u8,
+    /// 0 left, 1 right.
+    pub side: u8,
+    pub forward: bool,
+    pub pwm_duty: u16,
+    pub raw_l: i32,
+    pub raw_r: i32,
+}
+
+impl BringupDiag {
+    pub const LEN: usize = 13;
+
+    pub fn write(&self) -> [u8; Self::LEN] {
+        let mut b = [0u8; Self::LEN];
+        b[0] = self.phase;
+        b[1] = self.side;
+        b[2] = self.forward as u8;
+        b[3..5].copy_from_slice(&self.pwm_duty.to_le_bytes());
+        b[5..9].copy_from_slice(&self.raw_l.to_le_bytes());
+        b[9..13].copy_from_slice(&self.raw_r.to_le_bytes());
+        b
+    }
+}
+
 /// TIME_SYNC_RESP payload: `{ping_seq:u32, t_src_us:u64}`.
 pub fn time_sync_resp(ping_seq: u32, t_src_us: u64) -> [u8; 12] {
     let mut b = [0u8; 12];

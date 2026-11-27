@@ -13,6 +13,9 @@ board-nucleo = ["embassy-stm32/stm32g431rb"]
 board-v3 = ["embassy-stm32/stm32g431cb"]
 # Bench without an IMU: do not raise IMU_FAIL (which would gate the motors).
 no-imu-fault = []
+# Open-loop motor/encoder bring-up instead of control + safety (app_main.cpp
+# BRINGUP_OPEN_LOOP_TEST): each motor fwd/rev at max_pwm/4, BRINGUP_DIAG at 10 Hz.
+bringup = []
 
 [dependencies]
 embassy-stm32 = { version = "0.6", features = ["defmt", "time-driver-any", "memory-x", "unstable-pac", "exti"] }

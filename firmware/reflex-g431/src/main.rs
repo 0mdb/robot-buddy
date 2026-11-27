@@ -15,6 +15,7 @@
 //! VCP (USART2 on PA2/PA3), see README.md.
 #![no_std]
 #![no_main]
+#![cfg_attr(feature = "bringup", allow(dead_code))]
 
 mod imu;
 mod motor;
@@ -23,7 +24,9 @@ mod sonar;
 
 use defmt::{info, warn};
 use embassy_executor::Spawner;
-use embassy_futures::select::{Either, select};
+use embassy_futures::select::{Either3, select3};
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::channel::Channel;
 use embassy_stm32::comp::{self, Comp, Hysteresis, InvertingInput};
 use embassy_stm32::gpio::{Input, Level, Output, OutputType, Pull, Speed};
 use embassy_stm32::peripherals::{TIM2, TIM3};
@@ -31,7 +34,7 @@ use embassy_stm32::spi::{self, Spi};
 use embassy_stm32::time::{hz, mhz};
 use embassy_stm32::timer::complementary_pwm::{ComplementaryPwm, ComplementaryPwmPin};
 use embassy_stm32::timer::input_capture::{CapturePin, InputCapture};
-use embassy_stm32::timer::low_level::CountingMode;
+use embassy_stm32::timer::low_level::{CountingMode, FilterValue};
 use embassy_stm32::timer::qei::Qei;
 use embassy_stm32::timer::simple_pwm::PwmPin;
 use embassy_stm32::usart::{self, BufferedUart};
@@ -41,7 +44,7 @@ use embedded_io_async::{Read, Write};
 use reflex_core::control::{self, Controller};
 use reflex_core::kinematics::{clamp_i16, counts_to_mm, delta_to_mm_s};
 use reflex_core::link::{Link, MAX_TX_FRAME};
-use reflex_core::protocol::{Command, State, fault};
+use reflex_core::protocol::{BringupDiag, Command, State, fault};
 use reflex_core::safety::{self, MotorAction, OvercurrentMonitor};
 use shared::{now_us, post_action, with};
 use {defmt_rtt as _, panic_probe as _};
@@ -73,6 +76,9 @@ const OC_STALL_TICKS: u16 = 30;
 const TEL_PERIOD_MS: u64 = 50;
 const SAFETY_PERIOD_MS: u64 = 20;
 const SONAR_PERIOD_MS: u64 = 50;
+
+/// BRINGUP_DIAG samples from the bring-up task to the link task.
+static DIAG: Channel<CriticalSectionRawMutex, BringupDiag, 4> = Channel::new();
 
 fn clocks() -> embassy_stm32::Config {
     use embassy_stm32::rcc::*;
@@ -174,8 +180,22 @@ async fn main(spawner: Spawner) {
     );
 
     // ---- Encoders: TIM2 (PA5/PB3) left, TIM3 (PB4/PA4) right ----
-    let qei_l = Qei::new(p.TIM2, p.PA5, p.PB3, Default::default());
-    let qei_r = Qei::new(p.TIM3, p.PB4, p.PA4, Default::default());
+    // Internal pull-ups as well as the encoder board's: a missing encoder reads still, not noise.
+    let qcfg = {
+        let mut c = embassy_stm32::timer::qei::Config::default();
+        c.ch1_pull = Pull::Up;
+        c.ch2_pull = Pull::Up;
+        c
+    };
+    let qei_l = Qei::new(p.TIM2, p.PA5, p.PB3, qcfg);
+    let qei_r = Qei::new(p.TIM3, p.PB4, p.PA4, qcfg);
+    // Input filter fDTS/16, N = 8: ~750 ns at 170 MHz (the ESP32 PCNT used a 1 µs glitch filter).
+    for tim in [pac::TIM2.ccmr_input(0), pac::TIM3.ccmr_input(0)] {
+        tim.modify(|w| {
+            w.set_icf(0, FilterValue::FDTS_DIV16_N8);
+            w.set_icf(1, FilterValue::FDTS_DIV16_N8);
+        });
+    }
 
     // ---- IMU: LSM6DSV16X on SPI2 (PB13 SCK, PB15 MOSI, PB14 MISO, PB12 CS) ----
     let mut scfg = spi::Config::default();
@@ -217,8 +237,16 @@ async fn main(spawner: Spawner) {
     let mut motors = motors;
     motors.enable();
 
-    spawner.spawn(control_task(motors, qei_l, qei_r, imu).unwrap());
-    spawner.spawn(safety_task(led).unwrap());
+    #[cfg(not(feature = "bringup"))]
+    {
+        spawner.spawn(control_task(motors, qei_l, qei_r, imu).unwrap());
+        spawner.spawn(safety_task(led).unwrap());
+    }
+    #[cfg(feature = "bringup")]
+    {
+        let _ = (imu, led);
+        spawner.spawn(bringup_task(motors, qei_l, qei_r).unwrap());
+    }
     spawner.spawn(sonar_task(sonar).unwrap());
     spawner.spawn(link_task(uart).unwrap());
 }
@@ -306,6 +334,62 @@ async fn control_task(
     }
 }
 
+/// Open-loop bring-up (`app_main.cpp::open_loop_test_task`): 2 s wait, then each motor forward
+/// and reverse at max_pwm/4 for 1.5 s, BRINGUP_DIAG every 100 ms, brake + 0.5 s + an IDLE
+/// sample between phases, hard kill at the end. Raw counts are 16-bit QEI extended to i32.
+#[cfg(feature = "bringup")]
+#[embassy_executor::task]
+async fn bringup_task(mut motors: motor::Motors, qei_l: Qei<'static, TIM2>, qei_r: Qei<'static, TIM3>) {
+    use embassy_time::Timer;
+    let cfg = with(|s| s.cfg);
+    let duty = (cfg.max_pwm / 4) as f32;
+    let (mut prev_l, mut prev_r) = (qei_l.count(), qei_r.count());
+    let (mut raw_l, mut raw_r) = (0i32, 0i32);
+    let mut counts = || {
+        let (cl, cr) = (qei_l.count(), qei_r.count());
+        raw_l = raw_l.wrapping_add(cl.wrapping_sub(prev_l) as i16 as i32);
+        raw_r = raw_r.wrapping_add(cr.wrapping_sub(prev_r) as i16 as i32);
+        (prev_l, prev_r) = (cl, cr);
+        (raw_l, raw_r)
+    };
+    Timer::after_millis(2000).await;
+    motors.enable();
+    let phases = [
+        (1u8, motor::Side::Left, true),
+        (2, motor::Side::Left, false),
+        (3, motor::Side::Right, true),
+        (4, motor::Side::Right, false),
+    ];
+    for (phase, side, forward) in phases {
+        info!("bringup phase {} {} {}", phase, side, if forward { "fwd" } else { "rev" });
+        let (start_l, start_r) = counts();
+        motors.set(side, if forward { duty } else { -duty }, cfg.max_pwm);
+        for _ in 0..15 {
+            Timer::after_millis(100).await;
+            let (l, r) = counts();
+            DIAG.send(BringupDiag {
+                phase,
+                side: (side == motor::Side::Right) as u8,
+                forward,
+                pwm_duty: duty as u16,
+                raw_l: l,
+                raw_r: r,
+            })
+            .await;
+        }
+        let (l, r) = counts();
+        info!("  delta L {} R {}", l - start_l, r - start_r);
+        motors.set(side, 0.0, cfg.max_pwm);
+        motors.brake();
+        Timer::after_millis(500).await;
+        let (l, r) = counts();
+        let side_u8 = (side == motor::Side::Right) as u8;
+        DIAG.send(BringupDiag { phase: 0, side: side_u8, forward, pwm_duty: 0, raw_l: l, raw_r: r }).await;
+    }
+    motors.hard_kill();
+    info!("bringup done");
+}
+
 #[embassy_executor::task]
 async fn safety_task(mut led: Output<'static>) {
     let mut ticker = Ticker::every(Duration::from_millis(SAFETY_PERIOD_MS));
@@ -368,8 +452,13 @@ async fn link_task(uart: BufferedUart<'static>) {
     let mut buf = [0u8; 64];
     let mut out = [0u8; MAX_TX_FRAME];
     loop {
-        match select(rx.read(&mut buf), ticker.next()).await {
-            Either::First(Ok(n)) => {
+        match select3(rx.read(&mut buf), ticker.next(), DIAG.receive()).await {
+            Either3::Third(d) => {
+                if let Some(n) = link.bringup_frame(&d, embassy_time::Instant::now().as_micros(), &mut out) {
+                    let _ = tx.write_all(&out[..n]).await;
+                }
+            }
+            Either3::First(Ok(n)) => {
                 let mut replies: [([u8; MAX_TX_FRAME], usize); 4] = [([0; MAX_TX_FRAME], 0); 4];
                 let mut nrep = 0;
                 let now = now_us();
@@ -389,8 +478,8 @@ async fn link_task(uart: BufferedUart<'static>) {
                     let _ = tx.write_all(&f[..*len]).await;
                 }
             }
-            Either::First(Err(e)) => warn!("uart rx error {}", e),
-            Either::Second(()) => {
+            Either3::First(Err(e)) => warn!("uart rx error {}", e),
+            Either3::Second(()) => {
                 let s = with(|s| {
                     let imu = s.imu.unwrap_or_default();
                     State {

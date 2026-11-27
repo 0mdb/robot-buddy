@@ -107,11 +107,20 @@ def main() -> None:
         (int(p.TelType.STATE), 100_000, 5_000_000_123, state_v2),
         (p.COMMON_PROTOCOL_VERSION_ACK, 0, 42, bytes([2])),
         (p.COMMON_TIME_SYNC_RESP, 2, 777, struct.pack("<IQ", 77, 777)),
+        (
+            int(p.TelType.BRINGUP_DIAG),
+            3,
+            888,
+            struct.pack("<BBBHii", 3, 1, 1, 255, -40, 1234),
+        ),
     ]:
         frame = p.build_packet_v2(ty, seq, t, payload)
         at = 1 if ty == p.COMMON_PROTOCOL_VERSION_ACK else 2
         parsed = p.parse_frame(frame[:-1], protocol_version=at)
         assert (parsed.pkt_type, parsed.payload, parsed.seq) == (ty, payload, seq)
+        if ty == p.TelType.BRINGUP_DIAG:
+            d = p.BringupDiagPayload.unpack(parsed.payload)
+            assert (d.phase, d.raw_l, d.raw_r) == (3, -40, 1234)
         if ty == p.TelType.STATE:
             s = p.StatePayload.unpack(parsed.payload, protocol_version=2)
             assert (s.range_mm, s.cmd_seq_last_applied) == (287, 4242)

@@ -55,6 +55,17 @@ fn supervisor_vectors() {
 }
 
 #[test]
+fn bringup_diag_matches_supervisor_layout() {
+    let d = protocol::BringupDiag { phase: 3, side: 1, forward: true, pwm_duty: 255, raw_l: -40, raw_r: 1234 };
+    let text = include_str!("vectors.txt");
+    let row = text
+        .lines()
+        .find(|l| l.starts_with("m2h ") && l.split(' ').nth(3) == Some(&format!("{:x}", tel::BRINGUP_DIAG)[..]))
+        .unwrap();
+    assert_eq!(&d.write()[..], &hex(row.split(' ').nth(6).unwrap())[..]);
+}
+
+#[test]
 fn state_payload_matches_supervisor_layout() {
     // Same values as gen_vectors.py's STATE row.
     let s = protocol::State {

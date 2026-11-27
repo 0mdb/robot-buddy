@@ -88,6 +88,16 @@ impl Link {
         self.build(tel::STATE, now_us, &payload[..n], out)
     }
 
+    /// Build a BRINGUP_DIAG frame (v2).
+    pub fn bringup_frame(
+        &mut self,
+        d: &protocol::BringupDiag,
+        now_us: u64,
+        out: &mut [u8; MAX_TX_FRAME],
+    ) -> Option<usize> {
+        self.build(tel::BRINGUP_DIAG, now_us, &d.write(), out)
+    }
+
     fn build(&mut self, ty: u8, now_us: u64, data: &[u8], out: &mut [u8]) -> Option<usize> {
         let seq = self.tx_seq;
         self.tx_seq = self.tx_seq.wrapping_add(1);
