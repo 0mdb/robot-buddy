@@ -1,15 +1,53 @@
 # nucleo-g431: phase 0 bench firmware
 
 Rust + Embassy bring-up for the shared STM32G431 core (`~/kicad-libs/docs/shared-mcu-core.md`),
-on a NUCLEO-G431RB. Today: blink LD2 (PA5) and log over defmt/RTT. Next: the phase 0 gate,
-DRV8876 CS → COMP → TIM1 break stall cutoff.
+on a NUCLEO-G431RB.
 
 ```sh
-cargo run --release      # build, flash over the on-board ST-LINK V3, stream defmt logs
+cargo run --release              # blink: LD2 (PA5) + defmt/RTT, proves build -> flash -> log
+cargo run --release --bin stall  # phase 0 gate: DRV8876 CS -> COMP1 -> TIM1 break stall cutoff
 ```
 
 Needs: `rustup target add thumbv7em-none-eabihf`, `cargo install probe-rs-tools --locked`.
 probe-rs cannot auto-detect the chip; the runner passes `--chip STM32G431RBTx`.
+
+## Native Ubuntu (dev box)
+
+Once: `sudo cp 69-stlink.rules /etc/udev/rules.d/ && sudo udevadm control --reload && sudo udevadm trigger`,
+then replug the Nucleo (`ben` is already in `plugdev`). `probe-rs list` should no longer say
+"inaccessible".
+
+## Stall gate (`src/bin/stall.rs`)
+
+Pololu 4036 DRV8876 carrier + a TT motor, motor supply 5 V from a bench supply limited to ~2 A.
+
+| Carrier | Nucleo | Notes |
+|---|---|---|
+| EN/IN1 | D7 (PA8, TIM1_CH1) | PWM 20 kHz; the break forces it low (brake) |
+| PH/IN2 | D2 (PA10) | direction |
+| SLEEP | D4 (PB5) | driven high at start; also feeds VREF through 10 k, so ITRIP ≈ 1.3 A at 3.3 V |
+| PMODE | **GND** | must be tied: the carrier leaves it floating = independent half-bridge mode |
+| FAULT | D3 (PB3) | open drain, internal pull-up |
+| CS | A1 (PA1) | COMP1 INP + ADC1; 2.49 k on the carrier = 2.5 V/A |
+| GND | GND | common ground with the motor supply |
+| VIN / OUT1 / OUT2 | bench 5 V / motor | |
+
+The trip threshold is ¾ VREFINT = 0.91 V ≈ 365 mA (`THRESHOLD` in the source). TT notes from
+2026-11-20: running ≈ 0.4 V CS (160 mA), stall 1.2-1.7 V. B1 (blue button) steps the modes; each
+soft-starts the motor over 200 ms at 60 % duty and logs a line every 20 ms:
+
+1. **MEASURE** (break off): running and hand-stall CS current, start-up peak. Confirms the threshold
+   sits between running and stall with margin.
+2. **LATCH** (break on, AOE=0): does the soft start trip? Stall the shaft by hand: the trip line
+   should appear at once and the motor stays braked; firmware re-arms 2 s later.
+3. **CYCLE** (break on, AOE=1): the break ends each PWM cycle early = cycle-by-cycle limit.
+   Firmware declares a stall after 300 ms of continuous limiting and turns the bridge off.
+4. **IDLE**.
+
+Gate passes when LATCH cuts a hand stall without firmware in the path and running never trips.
+Open question for the bench (unverified): IPROPI may sense only the drive-phase (high-side)
+current, reading ~0 while EN is low (brake). Check the DRV8876 datasheet and a scope on CS
+before trusting the CYCLE-mode numbers.
 
 ## WSL2 (Windows dev box)
 

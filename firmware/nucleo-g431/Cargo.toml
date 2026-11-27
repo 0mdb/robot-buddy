@@ -3,6 +3,7 @@ name = "nucleo-g431"
 version = "0.1.0"
 edition = "2024"
 publish = false
+default-run = "nucleo-g431"
 description = "Phase 0 bench firmware for the shared STM32G431 core, on a NUCLEO-G431RB"
 
 [dependencies]
