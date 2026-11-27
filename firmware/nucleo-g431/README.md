@@ -7,7 +7,22 @@ on a NUCLEO-G431RB.
 cargo run --release              # blink: LD2 (PA5) + defmt/RTT, proves build -> flash -> log
 cargo run --release --bin selftest  # COMP1 -> TIM1 break with no driver: jumper A2 -> A1
 cargo run --release --bin stall  # phase 0 gate: DRV8876 CS -> COMP1 -> TIM1 break stall cutoff
+cargo run --release --bin link   # reflex wire protocol on the ST-LINK VCP (USART2, 115200)
 ```
+
+## Host link (`src/bin/link.rs`), no carrier needed
+
+The reflex protocol from `../reflex-core` on USART2 (PA2/PA3), which the ST-LINK V3 bridges to
+`/dev/ttyACM0`: v2 handshake, time sync, STATE at 20 Hz, ESTOP / CLEAR_FAULTS / SET_CONFIG, the
+400 ms command-timeout fault. No motors: STATE's wheel speeds are the twist target slewed at
+the accel limits. With `cargo run --release --bin link` running, from the repo root:
+
+```sh
+supervisor/.venv/bin/python firmware/nucleo-g431/link_check.py /dev/ttyACM0
+```
+
+drives it with the supervisor's own `SerialTransport` + `ReflexClient`, unchanged, and prints
+PASS/FAIL per check. On the robot the link is USART1 (PA9/PA10) to the Pi's UART.
 
 ## Self-test (`src/bin/selftest.rs`), no carrier needed
 
