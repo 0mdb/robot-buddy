@@ -1533,6 +1533,8 @@ def rebuild_manifest(win: str) -> list[str]:
         *speaker_gasket_lines(cad + r"\parts\RB-PRT-061_speaker_gasket.SLDPRT"),
         *speaker_module_lines(cad + r"\library\speaker_module_envelope.SLDPRT"),
         *p2_plug_lines(cad + r"\library\p2_plug_envelope.SLDPRT"),
+        # 2026-11-24: charge jack placeholder (PJ-043H) in the canopy's rear wall
+        *jack_env_lines(cad + r"\library\pj043h_jack_envelope.SLDPRT"),
         # 2026-11-09: Camera Module 3 envelope (on the bulkhead's camera bosses)
         *camera_module_lines(cad + r"\library\camera_module3_envelope.SLDPRT"),
         *hcsr04_lines(cad + r"\library\hcsr04_envelope.SLDPRT"),
@@ -1603,6 +1605,7 @@ def rebuild_manifest(win: str) -> list[str]:
         f"comp|hcsr04|{cad}\\library\\hcsr04_envelope.SLDPRT|{row(*sonar_place())}",
         f"comp|sonar_holder|{cad}\\parts\\RB-PRT-070_sonar_holder.SLDPRT|{row(*speaker_tilt())}",
         f"comp|mic_disc|{cad}\\library\\mic_disc_envelope.SLDPRT|{row(ROT_I, (0, 0, 0))}",
+        f"comp|charge_jack|{cad}\\library\\pj043h_jack_envelope.SLDPRT|{row(ROT_I, (0, 0, 0))}",
         f"comp|xvf_core|{cad}\\library\\xvf_core_envelope.SLDPRT|{row(ROT_I, (0, 0, 0))}",
         *[
             f"comp|mic_washer_{i}{tag}|{cad}\\parts\\RB-PRT-062_mic_washer.SLDPRT|{row(ROT_I, (hx, hy, z))}"
@@ -5497,6 +5500,74 @@ def canopy_rear_edges() -> tuple[float, list[str]]:
     return dv_v + 2 * dv_a, [vent, *apron]
 
 
+# Charge jack (Ben, 2026-11-24; TODO charge-input item): Same Sky PJ-043H (4.0 x 1.7,
+# EIAJ-2, panel mount) on the REAR wall, wired to the UPS HAT (B)'s 8.4 V input, so Buddy
+# charges with the canopy on. In the flat band between the two vent fields (z 48..70,
+# |y| <= 33), off-centre at +y so the power switch + shutdown button can share the band at
+# y <= 8 later. A recess keeps the jack's front below the outer face (bumps, little
+# fingers); a pad inside thickens the wall so the panel left under the recess is CAN_JACK_PANEL.
+# PLACEHOLDER mechanics until the part is measured (datasheet not read): Ø8 thread, Ø11
+# flange/nut, Ø10 x 18 body + lugs behind the panel. Recess Ø17 leaves room for a nut socket.
+# 2026-11-24 build: CLASHES with the Pi stack (196 mm3; its port end is at x -64.5, ~15 mm
+# behind the panel), and the real PJ-043H looks like a 15.7 x 13 x 13.4 rear-mounted box (no
+# nut), so this spot is wrong. Location is open (TODO charge-input item): roof rear, side wall
+# or a rear spot behind an unused Pi port.
+CAN_JACK = (18.0, 59.0)  # y, z of the jack axis (along x)
+CAN_JACK_HOLE = 8.2  # placeholder: Ø8 thread + 0.1 a side
+CAN_JACK_RECESS = (17.0, 3.0)  # Ø, depth from the outer face
+CAN_JACK_PANEL = 2.0  # wall left under the recess (the jack's panel thickness)
+CAN_JACK_PAD = 21.0  # inner pad Ø (2 mm round the recess)
+JACK_ENV = (
+    (11.0, 2.5),
+    (8.0, CAN_JACK_PANEL),
+    (10.0, 18.0),
+)  # placeholder envelope: (Ø, length) of flange/nut in the recess, thread, body behind
+
+
+def canopy_jack() -> tuple[list[str], float]:
+    """Rear-wall charge jack: inner pad, recess and hole (x along the jack axis). Returns
+    the lines and the volume they add."""
+    jy, jz = CAN_JACK
+    rd, rdep = CAN_JACK_RECESS
+    x_out, x_in = CAN_X0, CAN_X0 + CAN_T
+    x_floor = x_out + rdep
+    x_back = x_floor + CAN_JACK_PANEL
+    # the pad's disc must stay on the flat rear wall, clear of both vent fields
+    r = CAN_JACK_PAD / 2
+    assert jz - r > CAN_VENT_Z[0][1] + 0.3 and jz + r < CAN_VENT_Z[1][0] - 0.3, jz
+    assert jy + r <= CAN_HW - CAN_R[0] and x_back > x_in
+    lines = [
+        f"cyl|x|{jy} {jz}|{x_out + 0.1} {x_back}|{r}|boss",
+        f"cyl|x|{jy} {jz}|{x_out - 0.1} {x_floor}|{rd / 2}|cut",
+        f"cyl|x|{jy} {jz}|{x_out - 0.1} {x_back + 0.1}|{CAN_JACK_HOLE / 2}|cut",
+    ]
+    vol = (
+        math.pi * r * r * (x_back - x_in)
+        - math.pi * (rd / 2) ** 2 * rdep
+        - math.pi * (CAN_JACK_HOLE / 2) ** 2 * CAN_JACK_PANEL
+    )
+    return lines, vol
+
+
+def jack_env_lines(path: str) -> list[str]:
+    """PJ-043H placeholder envelope (interference only), chassis frame: flange/nut in the
+    recess (front 0.5 under the outer face), thread through the panel, body behind."""
+    jy, jz = CAN_JACK
+    x = CAN_X0 + CAN_JACK_RECESS[1] - JACK_ENV[0][1]
+    lines, vol = [f"part|{path}"], 0.0
+    for d, ln in JACK_ENV:
+        lines.append(f"cyl|x|{jy} {jz}|{x:.3f} {x + ln:.3f}|{d / 2}|boss")
+        vol += math.pi * (d / 2) ** 2 * ln
+        x += ln
+    r = max(d for d, _ in JACK_ENV) / 2
+    x0 = CAN_X0 + CAN_JACK_RECESS[1] - JACK_ENV[0][1]
+    lines += [
+        f"expect|vol {vol:.1f} {vol * 0.01:.1f}|box {x0:.2f} {x:.2f} {jy - r} {jy + r} {jz - r} {jz + r} 0.05",
+        "save",
+    ]
+    return lines
+
+
 def mic_geom() -> dict:
     """Mic-disc layout in the chassis frame (P6m2 hump): hole and mic xy, the board's z
     span and the lower washers' bottoms (the screw heads' seat)."""
@@ -6047,10 +6118,11 @@ def canopy_lines(path: str) -> list[str]:
         + ";".join(canopy_rim_round()[1]),
         *canopy_vents()[0],
         *canopy_rear_edges()[1],
+        *canopy_jack()[0],
         *canopy_mic_lines()[0],
         *canopy_seam()["lines"],
         PART_LABELS["canopy"],
-        f"expect|vol {f['vol'] + hood_screw()['vol'] + canopy_mic_lines()[1] + canopy_seam()['vol']:.1f} {f['vol'] * 0.03:.1f}|box {CAN_X0} {fp[0]:.2f} {-hw} {hw} {-CAN_TAB[2]} {e[1]:.2f} 0.5",
+        f"expect|vol {f['vol'] + hood_screw()['vol'] + canopy_mic_lines()[1] + canopy_seam()['vol'] + canopy_jack()[1]:.1f} {f['vol'] * 0.03:.1f}|box {CAN_X0} {fp[0]:.2f} {-hw} {hw} {-CAN_TAB[2]} {e[1]:.2f} 0.5",
         "save",
     ]
     return lines

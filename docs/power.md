@@ -14,7 +14,7 @@ No board in this robot sees cell voltage.
 ## Topology (single-rail, 5 V)
 
 ```
-  USB-C (AC) ──► Waveshare UPS HAT (B) ──► 5 V / 5 A ─┬─► Pi 5
+  8.4 V DC ───► Waveshare UPS HAT (B) ──► 5 V / 5 A ─┬─► Pi 5
                  2× 18650 Li-ion (2S, 7.4 V nom)      │     └─► USB 5 V ─► ESP32-face
                  + charger + UPS switchover           │     └─► J9 5 V ──► ESP32-reflex board
                  + INA219 fuel gauge — all internal   │
@@ -56,7 +56,10 @@ element, no pack connector, and no pack voltage anywhere outside the HAT.
 - **2× 18650 Li-ion in series (2S, 7.4 V nominal)**, in the HAT's own holders.
   Start with whatever's on hand; for real runtime (≥1 hr) replace with
   Samsung 30Q / LG HG2 / Molicel P26A from a reputable US source.
-- Charging is the HAT's job, over its own USB-C input. No external charger is
+- Charging is the HAT's job, over its own **8.4 V / 2 A DC input** ("8.4V
+  interface" on the Waveshare wiki; use the Waveshare 8.4 V charger, since they
+  warn other supplies can damage the board). Through the cover this comes out
+  on a panel jack (TODO: charge-input extension). No external charger is
   needed in normal use; a bench 18650 charger stays useful for capacity tests
   and cell rotation.
 
