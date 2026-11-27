@@ -138,6 +138,15 @@ class TestClientsFollowVersion:
         FaceClient(t).send_gesture(1, 100)  # type: ignore[arg-type]
         assert len(t.sent[0]) > 15  # v2 header present
 
+    def test_no_desync_while_negotiating(self):
+        t = _FakeTransport(1)
+        t.negotiating = True
+        ReflexClient(t)  # type: ignore[arg-type]
+        frame = build_packet_v2(TelType.STATE, 1, 2, _STATE_V2)
+        for _ in range(5):
+            t.cb(parse_frame(frame[:-1], protocol_version=1))
+        assert t.renegotiations == 0
+
     def test_desync_triggers_renegotiate(self):
         t = _FakeTransport(1)
         client = ReflexClient(t)  # type: ignore[arg-type]

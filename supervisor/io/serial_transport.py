@@ -129,6 +129,11 @@ class SerialTransport:
         self._running = False
         self._close()
 
+    @property
+    def negotiating(self) -> bool:
+        """A v2 handshake is scheduled or in flight (frames may be in the other envelope)."""
+        return self._negotiate_task is not None and not self._negotiate_task.done()
+
     def request_renegotiate(self) -> None:
         """Run the v2 handshake in the background unless one is already running. Called after
         every open, and by clients that see envelope desync (wrong STATE length)."""

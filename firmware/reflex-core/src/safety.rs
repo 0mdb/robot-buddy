@@ -272,6 +272,10 @@ pub struct RearGuard {
 }
 
 impl RearGuard {
+    pub const fn new() -> Self {
+        Self { blocked: false, blind_since_us: None }
+    }
+
     pub fn blocked(&self) -> bool {
         self.blocked
     }
@@ -292,6 +296,28 @@ impl RearGuard {
             }
         }
         self.blocked
+    }
+}
+
+/// Motor overcurrent (v3): the DRV8876 current sense trips COMP1/COMP2 -> TIM1 break, which
+/// ends that PWM cycle in hardware (automatic output enable: a cycle-by-cycle current limit, so
+/// start-up inrush does not latch). Limiting that persists is a stall: reported as STALL
+/// (Ben 2026-11-27).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct OvercurrentMonitor {
+    run: u16,
+}
+
+impl OvercurrentMonitor {
+    pub const fn new() -> Self {
+        Self { run: 0 }
+    }
+
+    /// Call once per control tick with whether the break tripped during it. True once trips
+    /// have been seen on `limit_ticks` consecutive ticks.
+    pub fn update(&mut self, tripped: bool, limit_ticks: u16) -> bool {
+        self.run = if tripped { self.run.saturating_add(1) } else { 0 };
+        self.run >= limit_ticks
     }
 }
 
@@ -480,6 +506,16 @@ mod tests {
         let blind = RangeSample { mm: 0, status: range_status::TIMEOUT };
         assert!(g.update(&cfg, blind, 10_000));
         assert!(!g.update(&cfg, blind, 10_000 + 1_000_000));
+    }
+
+    #[test]
+    fn overcurrent_needs_persistence() {
+        let mut m = OvercurrentMonitor::new();
+        for _ in 0..5 {
+            assert!(!m.update(true, 30)); // inrush: a few ticks
+        }
+        assert!(!m.update(false, 30));
+        assert!((0..30).map(|_| m.update(true, 30)).last().unwrap());
     }
 
     #[test]

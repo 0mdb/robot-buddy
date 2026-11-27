@@ -1,0 +1,11 @@
+[build]
+target = "thumbv7em-none-eabihf"
+
+[target.thumbv7em-none-eabihf]
+# Bench (NUCLEO-G431RB). The v3 board is an STM32G431CBUx: flash it over SWD with
+# --chip STM32G431CBUx, or from the Pi over USART1 (stm32flash).
+runner = "probe-rs run --chip STM32G431RBTx"
+rustflags = ["-C", "link-arg=-Tlink.x", "-C", "link-arg=-Tdefmt.x"]
+
+[env]
+DEFMT_LOG = "info"

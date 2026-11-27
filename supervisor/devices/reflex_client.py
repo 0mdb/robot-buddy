@@ -254,6 +254,11 @@ class ReflexClient:
             try:
                 state = StatePayload.unpack(pkt.payload, protocol_version=version)
             except ValueError as e:
+                if getattr(self._transport, "negotiating", False):
+                    # Before/during the handshake a v2-only MCU already sends v2 STATE:
+                    # expected, and a handshake is coming anyway.
+                    self._rx_bad_payload_packets += 1
+                    return
                 # Wrong length = envelope desync (e.g. a lost v2 ACK, or the MCU reset to
                 # v1): re-run the handshake rather than parse garbage (PROTOCOL.md 3.2).
                 self._rx_bad_payload_packets += 1
