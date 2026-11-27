@@ -5,8 +5,9 @@ Writes firmware/reflex-core/tests/vectors.txt, read by tests/wire_compat.rs. Re-
 the file) whenever supervisor/devices/protocol.py changes.
 
 Line format (space separated, hex without 0x):
-  <dir> <version> <frame incl. 0x00> <type> <seq> <t_src_us> <payload or ->
+  <dir> <envelope> <frame incl. 0x00> <type> <seq> <t_src_us> <payload or ->
 dir: h2m = built by the supervisor for the MCU, m2h = what the MCU must emit for the supervisor.
+Protocol v2 only (PROTOCOL.md 3.2, amended 2026-11-27): the one v1 envelope is the handshake.
 """
 
 from __future__ import annotations
@@ -33,98 +34,88 @@ def line(
 def main() -> None:
     rows: list[str] = []
 
-    # Host -> MCU, v1 (the supervisor's builders are v1-only).
+    # Host -> MCU. The handshake request is always a v1 envelope (the MCU's state is
+    # unknown); everything after it is v2 (PROTOCOL.md 3.2, amended 2026-11-27).
+    for frame, seq, version in [
+        (p.build_set_protocol_version(0, 2), 0, 2),
+        (p.build_set_protocol_version(255, 1), 255, 1),
+    ]:
+        rows.append(
+            line(
+                "h2m", 1, frame, p.COMMON_SET_PROTOCOL_VERSION, seq, 0, bytes([version])
+            )
+        )
+
+    v2 = {"protocol_version": 2}
     h2m = [
         (
-            p.build_set_protocol_version(0, 2),
-            p.COMMON_SET_PROTOCOL_VERSION,
-            0,
-            bytes([2]),
-        ),
-        (
-            p.build_set_protocol_version(255, 1),
-            p.COMMON_SET_PROTOCOL_VERSION,
-            255,
-            bytes([1]),
-        ),
-        (
-            p.build_set_twist(1, 250, -1200),
+            p.build_set_twist(1, 250, -1200, t_src_us=11, **v2),
             p.CmdType.SET_TWIST,
             1,
+            11,
             struct.pack("<hh", 250, -1200),
         ),
         (
-            p.build_set_twist(300, -32768, 32767),
+            p.build_set_twist(0xFFFFFFFF, -32768, 32767, t_src_us=2**63 + 5, **v2),
             p.CmdType.SET_TWIST,
-            300 & 0xFF,
+            0xFFFFFFFF,
+            2**63 + 5,
             struct.pack("<hh", -32768, 32767),
         ),
-        (p.build_set_twist(7, 0, 0), p.CmdType.SET_TWIST, 7, struct.pack("<hh", 0, 0)),
-        (p.build_stop(2, 3), p.CmdType.STOP, 2, bytes([3])),
-        (p.build_estop(3), p.CmdType.ESTOP, 3, b""),
-        (p.build_clear_faults(4), p.CmdType.CLEAR_FAULTS, 4, struct.pack("<H", 0xFFFF)),
+        (p.build_stop(2, 3, t_src_us=12, **v2), p.CmdType.STOP, 2, 12, bytes([3])),
+        (p.build_estop(3, t_src_us=0, **v2), p.CmdType.ESTOP, 3, 0, b""),
         (
-            p.build_clear_faults(0, 0x0040),
+            p.build_clear_faults(4, t_src_us=14, **v2),
             p.CmdType.CLEAR_FAULTS,
-            0,
-            struct.pack("<H", 0x0040),
+            4,
+            14,
+            struct.pack("<H", 0xFFFF),
         ),
         (
-            p.build_set_config(5, 0x03, struct.pack("<f", 2.5)),
+            p.build_set_config(5, 0x03, struct.pack("<f", 2.5), t_src_us=15, **v2),
             p.CmdType.SET_CONFIG,
             5,
+            15,
             bytes([3]) + struct.pack("<f", 2.5),
         ),
         (
-            p.build_set_config(6, 0x30, struct.pack("<I", 400)),
+            p.build_set_config(70000, 0x30, struct.pack("<I", 400), t_src_us=16, **v2),
             p.CmdType.SET_CONFIG,
-            6,
+            70000,
+            16,
             bytes([0x30]) + struct.pack("<I", 400),
         ),
+        (
+            p.build_time_sync_req(0x01020304, 77, t_src_us=123456789, **v2),
+            p.COMMON_TIME_SYNC_REQ,
+            0x01020304,
+            123456789,
+            struct.pack("<II", 77, 0),
+        ),
     ]
-    for frame, ty, seq, payload in h2m:
-        rows.append(line("h2m", 1, frame, int(ty), seq, 0, payload))
-
-    # Host -> MCU, v2 envelope (TIME_SYNC_REQ and commands after the handshake).
-    for ty, seq, t, payload in [
-        (p.COMMON_TIME_SYNC_REQ, 0x01020304, 123456789, struct.pack("<II", 77, 0)),
-        (int(p.CmdType.SET_TWIST), 0xFFFFFFFF, 2**63 + 5, struct.pack("<hh", -1, 1)),
-        (int(p.CmdType.ESTOP), 0, 0, b""),
-    ]:
-        rows.append(
-            line("h2m", 2, p.build_packet_v2(ty, seq, t, payload), ty, seq, t, payload)
-        )
+    for frame, ty, seq, t, payload in h2m:
+        rows.append(line("h2m", 2, frame, int(ty), seq, t, payload))
 
     # MCU -> host: frames the firmware must produce byte-for-byte.
     state_v1 = struct.pack("<hhhhhhHHB", 120, -118, -35, 12, -4, 1003, 0x0042, 287, 0)
     state_v2 = state_v1 + struct.pack("<II", 4242, 99_000_001)
     assert len(state_v1) == p.StatePayload._FMT.size
     assert p.StatePayload.unpack(state_v1).range_mm == 287
-    for ver, ty, seq, t, payload in [
-        (1, int(p.TelType.STATE), 9, 0, state_v1),
-        (2, int(p.TelType.STATE), 100_000, 5_000_000_123, state_v2),
-        (1, p.COMMON_PROTOCOL_VERSION_ACK, 0, 0, bytes([1])),
-        (2, p.COMMON_PROTOCOL_VERSION_ACK, 1, 42, bytes([2])),
-        (2, p.COMMON_TIME_SYNC_RESP, 2, 777, struct.pack("<IQ", 77, 777)),
+    # The G431 firmware only emits v2. The supervisor must read the ACK at v1 (it has not
+    # switched yet) and everything else at v2.
+    for ty, seq, t, payload in [
+        (int(p.TelType.STATE), 100_000, 5_000_000_123, state_v2),
+        (p.COMMON_PROTOCOL_VERSION_ACK, 0, 42, bytes([2])),
+        (p.COMMON_TIME_SYNC_RESP, 2, 777, struct.pack("<IQ", 77, 777)),
     ]:
-        frame = (
-            p.build_packet(ty, seq, payload)
-            if ver == 1
-            else p.build_packet_v2(ty, seq, t, payload)
-        )
-        parsed = p.parse_frame(frame[:-1], protocol_version=ver)
-        assert parsed.payload == payload and parsed.pkt_type == ty
-        rows.append(
-            line(
-                "m2h",
-                ver,
-                frame,
-                ty,
-                seq if ver == 2 else seq & 0xFF,
-                t if ver == 2 else 0,
-                payload,
-            )
-        )
+        frame = p.build_packet_v2(ty, seq, t, payload)
+        at = 1 if ty == p.COMMON_PROTOCOL_VERSION_ACK else 2
+        parsed = p.parse_frame(frame[:-1], protocol_version=at)
+        assert (parsed.pkt_type, parsed.payload, parsed.seq) == (ty, payload, seq)
+        if ty == p.TelType.STATE:
+            s = p.StatePayload.unpack(parsed.payload, protocol_version=2)
+            assert (s.range_mm, s.cmd_seq_last_applied) == (287, 4242)
+        rows.append(line("m2h", 2, frame, ty, seq, t, payload))
 
     OUT.write_text(
         "# generated by gen_vectors.py from supervisor/devices/protocol.py; do not edit\n"

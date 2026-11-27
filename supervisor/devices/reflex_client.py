@@ -32,6 +32,8 @@ log = logging.getLogger(__name__)
 
 # Kinematics (must match config.h)
 WHEELBASE_MM = 150.0
+# Consecutive wrong-length STATE frames (20 Hz) before re-running the handshake.
+_DESYNC_STREAK = 3
 
 # ConfigParam IDs — must match ConfigParam enum in config.h
 REFLEX_PARAM_IDS: dict[str, int] = {
@@ -70,6 +72,9 @@ class ReflexTelemetry:
     fault_flags: int = 0
     range_mm: int = 0
     range_status: int = RangeStatus.NOT_READY
+    # v2 only (0 under v1): last command seq the MCU applied, and when (MCU µs, low 32 bits).
+    cmd_seq_last_applied: int = 0
+    t_cmd_applied_us: int = 0
     rx_mono_ms: float = 0.0
     seq: int = 0
     # Latest BRINGUP_DIAG sample. Populated only when the reflex firmware was
@@ -109,6 +114,7 @@ class ReflexClient:
         self._rx_state_packets = 0
         self._rx_bad_payload_packets = 0
         self._rx_unknown_packets = 0
+        self._bad_state_streak = 0
         # Command causality tracking
         self.last_cmd_seq: int = 0
         self.last_cmd_tx_ns: int = 0
@@ -124,7 +130,7 @@ class ReflexClient:
 
     def send_twist(self, v_mm_s: int, w_mrad_s: int) -> None:
         seq = self._next_seq()
-        pkt = build_set_twist(seq, v_mm_s, w_mrad_s)
+        pkt = build_set_twist(seq, v_mm_s, w_mrad_s, **self._envelope())
         self.last_cmd_seq = seq
         self.last_cmd_tx_ns = time.monotonic_ns()
         self._transport.write(pkt)
@@ -139,7 +145,7 @@ class ReflexClient:
 
     def send_stop(self, reason: int = 0) -> None:
         seq = self._next_seq()
-        pkt = build_stop(seq, reason)
+        pkt = build_stop(seq, reason, **self._envelope())
         self.last_cmd_seq = seq
         self.last_cmd_tx_ns = time.monotonic_ns()
         self._transport.write(pkt)
@@ -154,7 +160,7 @@ class ReflexClient:
 
     def send_estop(self) -> None:
         seq = self._next_seq()
-        pkt = build_estop(seq)
+        pkt = build_estop(seq, **self._envelope())
         self._transport.write(pkt)
         self._tx_packets += 1
         if self._capture and self._capture.active:
@@ -162,7 +168,7 @@ class ReflexClient:
 
     def send_clear_faults(self, mask: int = 0xFFFF) -> None:
         seq = self._next_seq()
-        pkt = build_clear_faults(seq, mask)
+        pkt = build_clear_faults(seq, mask, **self._envelope())
         self._transport.write(pkt)
         self._tx_packets += 1
         if self._capture and self._capture.active:
@@ -193,7 +199,7 @@ class ReflexClient:
             value_bytes = struct.pack("<i", int(value))
 
         seq = self._next_seq()
-        pkt = build_set_config(seq, param_id, value_bytes)
+        pkt = build_set_config(seq, param_id, value_bytes, **self._envelope())
         sent = self._transport.write(pkt)
         self._tx_packets += 1
         if not sent:
@@ -228,6 +234,10 @@ class ReflexClient:
 
     # -- internals -----------------------------------------------------------
 
+    def _envelope(self) -> dict[str, int]:
+        """Builder kwargs for the negotiated envelope (v2 after the handshake)."""
+        return {"protocol_version": getattr(self._transport, "protocol_version", 1)}
+
     def _next_seq(self) -> int:
         s = self._seq
         self._seq = (self._seq + 1) & 0xFFFFFFFF
@@ -240,12 +250,27 @@ class ReflexClient:
             )
 
         if pkt.pkt_type == TelType.STATE:
+            version = getattr(self._transport, "protocol_version", 1)
             try:
-                state = StatePayload.unpack(pkt.payload)
+                state = StatePayload.unpack(pkt.payload, protocol_version=version)
             except ValueError as e:
+                # Wrong length = envelope desync (e.g. a lost v2 ACK, or the MCU reset to
+                # v1): re-run the handshake rather than parse garbage (PROTOCOL.md 3.2).
                 self._rx_bad_payload_packets += 1
-                log.warning("reflex: bad STATE payload: %s", e)
+                self._bad_state_streak += 1
+                if self._bad_state_streak == 1:
+                    log.warning("reflex: bad STATE payload: %s", e)
+                if self._bad_state_streak == _DESYNC_STREAK:
+                    log.warning(
+                        "reflex: %d bad STATE frames in a row, re-negotiating",
+                        _DESYNC_STREAK,
+                    )
+                    renegotiate = getattr(self._transport, "request_renegotiate", None)
+                    if renegotiate:
+                        renegotiate()
+                    self._bad_state_streak = 0
                 return
+            self._bad_state_streak = 0
             self._rx_state_packets += 1
 
             t = self.telemetry
@@ -258,6 +283,8 @@ class ReflexClient:
             t.fault_flags = state.fault_flags
             t.range_mm = state.range_mm
             t.range_status = state.range_status
+            t.cmd_seq_last_applied = state.cmd_seq_last_applied
+            t.t_cmd_applied_us = state.t_cmd_applied_us
             t.rx_mono_ms = (
                 pkt.t_pi_rx_ns / 1_000_000.0
                 if pkt.t_pi_rx_ns

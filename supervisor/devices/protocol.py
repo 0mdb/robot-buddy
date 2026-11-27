@@ -12,6 +12,7 @@ Protocol version negotiated per-port via SET_PROTOCOL_VERSION (0x07).
 from __future__ import annotations
 
 import struct
+import time
 from dataclasses import dataclass
 from enum import IntEnum
 
@@ -237,15 +238,31 @@ class StatePayload:
     fault_flags: int
     range_mm: int
     range_status: int
+    # v2 tail (0 under v1): last command seq the MCU applied, and when (MCU µs, low 32 bits).
+    cmd_seq_last_applied: int = 0
+    t_cmd_applied_us: int = 0
 
     _FMT = struct.Struct("<hhhhhhHHB")  # 17 bytes — battery_mv removed 2026-04
+    _V2_TAIL = struct.Struct("<II")  # 8 bytes: v2 STATE is 25
 
     @classmethod
-    def unpack(cls, data: bytes) -> StatePayload:
-        if len(data) < cls._FMT.size:
-            raise ValueError(f"STATE payload too short: {len(data)} < {cls._FMT.size}")
+    def unpack(cls, data: bytes, protocol_version: int | None = None) -> StatePayload:
+        """Unpack a STATE payload. With ``protocol_version`` the length must be exact (17 for
+        v1, 25 for v2): a v2 frame read under v1 (or the reverse) is rejected, never parsed as
+        a shorter struct (PROTOCOL.md 3.2 desync guard). Without it, any length >= 17."""
+        v1_len = cls._FMT.size
+        v2_len = v1_len + cls._V2_TAIL.size
+        if protocol_version is not None:
+            want = v2_len if protocol_version >= 2 else v1_len
+            if len(data) != want:
+                raise ValueError(
+                    f"STATE payload {len(data)} bytes, expected {want} for v{protocol_version}"
+                )
+        elif len(data) < v1_len:
+            raise ValueError(f"STATE payload too short: {len(data)} < {v1_len}")
         fields = cls._FMT.unpack_from(data)
-        return cls(*fields)
+        tail = cls._V2_TAIL.unpack_from(data, v1_len) if len(data) >= v2_len else (0, 0)
+        return cls(*fields, *tail)
 
 
 @dataclass(slots=True)
@@ -536,33 +553,102 @@ def build_packet_v2(
     return cobs_encode(raw) + b"\x00"
 
 
+def build_command(
+    pkt_type: int,
+    seq: int,
+    payload: bytes = b"",
+    *,
+    protocol_version: int = 1,
+    t_src_us: int | None = None,
+) -> bytes:
+    """Build a host -> MCU packet in the negotiated envelope (PROTOCOL.md 3.2, amended
+    2026-11-27: after the handshake every command goes out as v2). ``t_src_us`` defaults to
+    the Pi's monotonic clock in µs."""
+    if protocol_version >= 2:
+        if t_src_us is None:
+            t_src_us = time.monotonic_ns() // 1000
+        return build_packet_v2(pkt_type, seq, t_src_us, payload)
+    return build_packet(pkt_type, seq, payload)
+
+
 def build_set_protocol_version(seq: int, version: int = 2) -> bytes:
     """Build a SET_PROTOCOL_VERSION packet."""
     return build_packet(COMMON_SET_PROTOCOL_VERSION, seq, bytes([version & 0xFF]))
 
 
-def build_set_twist(seq: int, v_mm_s: int, w_mrad_s: int) -> bytes:
-    return build_packet(CmdType.SET_TWIST, seq, _TWIST_FMT.pack(v_mm_s, w_mrad_s))
+def build_set_twist(
+    seq: int,
+    v_mm_s: int,
+    w_mrad_s: int,
+    *,
+    protocol_version: int = 1,
+    t_src_us: int | None = None,
+) -> bytes:
+    return build_command(
+        CmdType.SET_TWIST,
+        seq,
+        _TWIST_FMT.pack(v_mm_s, w_mrad_s),
+        protocol_version=protocol_version,
+        t_src_us=t_src_us,
+    )
 
 
-def build_stop(seq: int, reason: int = 0) -> bytes:
-    return build_packet(CmdType.STOP, seq, _STOP_FMT.pack(reason))
+def build_stop(
+    seq: int, reason: int = 0, *, protocol_version: int = 1, t_src_us: int | None = None
+) -> bytes:
+    return build_command(
+        CmdType.STOP,
+        seq,
+        _STOP_FMT.pack(reason),
+        protocol_version=protocol_version,
+        t_src_us=t_src_us,
+    )
 
 
-def build_estop(seq: int) -> bytes:
-    return build_packet(CmdType.ESTOP, seq)
+def build_estop(
+    seq: int, *, protocol_version: int = 1, t_src_us: int | None = None
+) -> bytes:
+    return build_command(
+        CmdType.ESTOP,
+        seq,
+        protocol_version=protocol_version,
+        t_src_us=t_src_us,
+    )
 
 
-def build_clear_faults(seq: int, mask: int = 0xFFFF) -> bytes:
-    return build_packet(CmdType.CLEAR_FAULTS, seq, _CLEAR_FMT.pack(mask))
+def build_clear_faults(
+    seq: int,
+    mask: int = 0xFFFF,
+    *,
+    protocol_version: int = 1,
+    t_src_us: int | None = None,
+) -> bytes:
+    return build_command(
+        CmdType.CLEAR_FAULTS,
+        seq,
+        _CLEAR_FMT.pack(mask),
+        protocol_version=protocol_version,
+        t_src_us=t_src_us,
+    )
 
 
-def build_set_config(seq: int, param_id: int, value_bytes: bytes) -> bytes:
+def build_set_config(
+    seq: int,
+    param_id: int,
+    value_bytes: bytes,
+    *,
+    protocol_version: int = 1,
+    t_src_us: int | None = None,
+) -> bytes:
     """Build a SET_CONFIG packet. value_bytes must be exactly 4 bytes (LE)."""
     if len(value_bytes) != 4:
         raise ValueError(f"SET_CONFIG value must be 4 bytes, got {len(value_bytes)}")
-    return build_packet(
-        CmdType.SET_CONFIG, seq, _CONFIG_FMT.pack(param_id, value_bytes)
+    return build_command(
+        CmdType.SET_CONFIG,
+        seq,
+        _CONFIG_FMT.pack(param_id, value_bytes),
+        protocol_version=protocol_version,
+        t_src_us=t_src_us,
     )
 
 
@@ -585,37 +671,102 @@ def build_face_set_state(
     gaze_x: int = 0,
     gaze_y: int = 0,
     brightness: int = 200,
+    *,
+    protocol_version: int = 1,
+    t_src_us: int | None = None,
 ) -> bytes:
     payload = _FACE_SET_STATE_FMT.pack(mood_id, intensity, gaze_x, gaze_y, brightness)
-    return build_packet(FaceCmdType.SET_STATE, seq, payload)
+    return build_command(
+        FaceCmdType.SET_STATE,
+        seq,
+        payload,
+        protocol_version=protocol_version,
+        t_src_us=t_src_us,
+    )
 
 
-def build_face_gesture(seq: int, gesture_id: int, duration_ms: int = 0) -> bytes:
+def build_face_gesture(
+    seq: int,
+    gesture_id: int,
+    duration_ms: int = 0,
+    *,
+    protocol_version: int = 1,
+    t_src_us: int | None = None,
+) -> bytes:
     payload = _FACE_GESTURE_FMT.pack(gesture_id, duration_ms)
-    return build_packet(FaceCmdType.GESTURE, seq, payload)
+    return build_command(
+        FaceCmdType.GESTURE,
+        seq,
+        payload,
+        protocol_version=protocol_version,
+        t_src_us=t_src_us,
+    )
 
 
-def build_face_set_system(seq: int, mode: int, phase: int = 0, param: int = 0) -> bytes:
+def build_face_set_system(
+    seq: int,
+    mode: int,
+    phase: int = 0,
+    param: int = 0,
+    *,
+    protocol_version: int = 1,
+    t_src_us: int | None = None,
+) -> bytes:
     payload = _FACE_SET_SYSTEM_FMT.pack(mode, phase, param)
-    return build_packet(FaceCmdType.SET_SYSTEM, seq, payload)
+    return build_command(
+        FaceCmdType.SET_SYSTEM,
+        seq,
+        payload,
+        protocol_version=protocol_version,
+        t_src_us=t_src_us,
+    )
 
 
-def build_face_set_talking(seq: int, talking: bool, energy: int = 0) -> bytes:
+def build_face_set_talking(
+    seq: int,
+    talking: bool,
+    energy: int = 0,
+    *,
+    protocol_version: int = 1,
+    t_src_us: int | None = None,
+) -> bytes:
     """Build a SET_TALKING packet (speaking animation state + energy)."""
     payload = _FACE_SET_TALKING_FMT.pack(1 if talking else 0, max(0, min(255, energy)))
-    return build_packet(FaceCmdType.SET_TALKING, seq, payload)
+    return build_command(
+        FaceCmdType.SET_TALKING,
+        seq,
+        payload,
+        protocol_version=protocol_version,
+        t_src_us=t_src_us,
+    )
 
 
-def build_face_set_flags(seq: int, flags: int) -> bytes:
+def build_face_set_flags(
+    seq: int, flags: int, *, protocol_version: int = 1, t_src_us: int | None = None
+) -> bytes:
     """Build a SET_FLAGS packet (renderer/animation feature toggles)."""
     payload = _FACE_SET_FLAGS_FMT.pack(flags & FACE_FLAGS_ALL)
-    return build_packet(FaceCmdType.SET_FLAGS, seq, payload)
+    return build_command(
+        FaceCmdType.SET_FLAGS,
+        seq,
+        payload,
+        protocol_version=protocol_version,
+        t_src_us=t_src_us,
+    )
 
 
-def build_face_set_conv_state(seq: int, conv_state: int) -> bytes:
+def build_face_set_conv_state(
+    seq: int, conv_state: int, *, protocol_version: int = 1, t_src_us: int | None = None
+) -> bytes:
     """Build a SET_CONV_STATE packet (conversation phase for border animation)."""
     payload = _FACE_SET_CONV_STATE_FMT.pack(conv_state & 0xFF)
-    return build_packet(FaceCmdType.SET_CONV_STATE, seq, payload)
+    return build_command(
+        FaceCmdType.SET_CONV_STATE,
+        seq,
+        payload,
+        protocol_version=protocol_version,
+        t_src_us=t_src_us,
+    )
 
 
 # -- TIME_SYNC packet building / parsing ------------------------------------
@@ -679,6 +830,16 @@ def parse_frame(frame: bytes, *, protocol_version: int = 1) -> ParsedPacket:
     crc_calc = crc16(body)
     if crc_recv != crc_calc:
         raise ValueError(f"CRC mismatch: recv=0x{crc_recv:04X} calc=0x{crc_calc:04X}")
+
+    # The ESP32 firmware switches to v2 before it ACKs, so the ACK to the (v1) handshake can
+    # arrive in a v2 envelope while we are still at v1. Lengths tell them apart: v1 ACK body
+    # = 3 bytes, v2 ACK body = 14 (PROTOCOL.md 3.2, amended 2026-11-27).
+    if (
+        protocol_version < 2
+        and body[0] == COMMON_PROTOCOL_VERSION_ACK
+        and len(body) == _V2_HEADER_SIZE + 1
+    ):
+        protocol_version = 2
 
     if protocol_version >= 2 and len(body) >= _V2_HEADER_SIZE:
         # v2: [type:u8][seq:u32-LE][t_src_us:u64-LE][payload:N]

@@ -278,9 +278,24 @@ Header overhead: 13 bytes (was 2 in v1). CRC covers everything except itself.
 
 Pi sends `SET_PROTOCOL_VERSION(version=2)` at connection. If ACK within 500ms, switch to v2 envelope. Otherwise fall back to v1 for that device.
 
+**Amended 2026-11-27: v2 is the protocol; v1 is legacy (ESP32 firmware only).**
+- The request is always sent in a **v1 envelope** (the MCU's state is unknown). Every MCU must
+  accept it in that form, including v2-only firmware.
+- The ACK may arrive in **either envelope**: the ESP32 firmware switches first and ACKs in v2;
+  the supervisor tells them apart by decoded length (v1 ACK = 5 bytes, v2 ACK = 16 bytes).
+- After the ACK, the Pi sends **all commands in the v2 envelope** (u32 seq, `t_src_us` = Pi
+  monotonic µs). Before this amendment the Pi kept sending v1-envelope commands, which the MCU
+  accepted only because they decode to < 15 bytes.
+- **STM32G431 firmware (reflex v3 onward) is v2-only:** it sends v2 from boot, accepts the v1
+  handshake request and nothing else in v1, and ACKs in v2. An MCU reset therefore cannot
+  desync the envelope (a UART link does not drop on MCU reset).
+- **Desync guard:** STATE payloads must be exactly 17 bytes (v1) or 25 bytes (v2) for the
+  negotiated version; a wrong length is rejected (never parsed as a shorter struct) and repeated
+  rejects trigger a fresh handshake.
+
 **Handshake behavior:**
 - **Per-port negotiation:** Each MCU port (reflex, face) negotiates independently. Mixed mode (e.g., `reflex_proto=v2, face_proto=v1`) is explicitly supported and logged.
-- **Retry on reconnect:** On serial reconnect (USB replug, MCU reboot), Core re-sends `SET_PROTOCOL_VERSION` once. No continuous retry — if the MCU is v1-only, it stays v1.
+- **Retry on reconnect:** On every serial connect and reconnect (USB replug, MCU reboot), the transport sends `SET_PROTOCOL_VERSION` once the port is open and its 200 ms post-connect discard window (ROM text) has passed, up to 3 tries 1 s apart (amended 2026-11-27: it used to be sent before the port opened, so it was never sent; sent at once, its ACK would have been discarded). No continuous retry — if the MCU is v1-only, it stays v1.
 - **MCU reboot:** Triggers serial reconnect, which triggers fresh handshake.
 - **Logging:** Core logs negotiated protocol version per port at startup and on every reconnect: `reflex_proto=v1|v2`, `face_proto=v1|v2`.
 

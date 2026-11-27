@@ -1,7 +1,8 @@
 //! Byte-for-byte compatibility with the Pi supervisor (`supervisor/devices/protocol.py`), using
 //! vectors that `gen_vectors.py` writes from the supervisor's own builders.
 
-use reflex_core::protocol::{self, Command, Version, build, parse};
+use reflex_core::link::Link;
+use reflex_core::protocol::{self, Command, Version, build, parse, tel};
 
 fn hex(s: &str) -> Vec<u8> {
     if s == "-" {
@@ -36,15 +37,26 @@ fn supervisor_vectors() {
 
         if f[0] == "h2m" {
             assert!(!matches!(Command::decode(&p), Command::Ignored { .. }), "decoded as ignored: {l}");
+            // Through the v2-only link: the handshake gets an ACK, every v2 command is applied.
+            let mut link = Link::new();
+            let (mut acks, mut cmds) = (0, 0);
+            link.feed(&frame, 0, |_| acks += 1, |_, s| {
+                assert_eq!(s, seq);
+                cmds += 1
+            });
+            let common = ty == protocol::cmd::SET_PROTOCOL_VERSION || ty == protocol::cmd::TIME_SYNC_REQ;
+            assert_eq!((acks, cmds), if common { (1, 0) } else { (0, 1) }, "link: {l}");
+        } else {
+            assert_eq!(version, Version::V2, "MCU output must be v2: {l}");
         }
         n += 1;
     }
-    assert!(n >= 15, "only {n} vectors");
+    assert!(n >= 13, "only {n} vectors");
 }
 
 #[test]
 fn state_payload_matches_supervisor_layout() {
-    // Same values as gen_vectors.py's STATE rows.
+    // Same values as gen_vectors.py's STATE row.
     let s = protocol::State {
         speed_l_mm_s: 120,
         speed_r_mm_s: -118,
@@ -59,13 +71,12 @@ fn state_payload_matches_supervisor_layout() {
         t_cmd_applied_us: 99_000_001,
     };
     let text = include_str!("vectors.txt");
-    for (ver, want_len) in [(Version::V1, 17), (Version::V2, 25)] {
-        let tag = if ver == Version::V1 { "m2h 1 " } else { "m2h 2 " };
-        let row = text.lines().find(|l| l.starts_with(tag) && l.split(' ').nth(3) == Some("80")).unwrap();
-        let want = hex(row.split(' ').nth(6).unwrap());
-        let mut b = [0u8; protocol::State::LEN_V2];
-        let n = s.write(ver, &mut b);
-        assert_eq!(n, want_len);
-        assert_eq!(&b[..n], &want[..]);
-    }
+    let row = text
+        .lines()
+        .find(|l| l.starts_with("m2h ") && l.split(' ').nth(3) == Some(&format!("{:x}", tel::STATE)[..]))
+        .unwrap();
+    let want = hex(row.split(' ').nth(6).unwrap());
+    let mut b = [0u8; protocol::State::LEN_V2];
+    let n = s.write(Version::V2, &mut b);
+    assert_eq!(&b[..n], &want[..]);
 }

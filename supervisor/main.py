@@ -338,8 +338,7 @@ async def async_main(args: argparse.Namespace) -> None:
             port=reflex_port, baudrate=cfg.serial.baudrate, label="reflex"
         )
         reflex = ReflexClient(reflex_transport, capture=capture)
-        await reflex_transport.start()
-        await reflex_transport.negotiate_v2()
+        await reflex_transport.start()  # negotiates v2 itself once the port is open
 
         # ── Face MCU ─────────────────────────────────────────────
         if not args.no_face:
@@ -348,7 +347,6 @@ async def async_main(args: argparse.Namespace) -> None:
             )
             face = FaceClient(face_transport, capture=capture)
             await face_transport.start()
-            await face_transport.negotiate_v2()
 
         # ── API components ─────────────────────────────────────
         registry = create_default_registry()

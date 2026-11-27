@@ -1,5 +1,9 @@
 """Mock reflex MCU using a PTY pair for development without hardware.
 
+Speaks protocol v2 only, like the STM32G431 reflex firmware (PROTOCOL.md 3.2, amended
+2026-11-27): v2 envelopes from boot, the v1-envelope SET_PROTOCOL_VERSION is the one v1 frame
+it accepts, and it ACKs in v2.
+
 Usage:
     mock = MockReflex()
     mock.start()
@@ -15,22 +19,29 @@ import os
 import struct
 import threading
 import time
+import tty
 
 from supervisor.devices.protocol import (
+    COMMON_PROTOCOL_VERSION_ACK,
+    COMMON_SET_PROTOCOL_VERSION,
     COMMON_TIME_SYNC_REQ,
     COMMON_TIME_SYNC_RESP,
     CmdType,
     Fault,
     TelType,
-    build_packet,
+    build_packet_v2,
     parse_frame,
 )
 
+from supervisor.io.cobs import decode as cobs_decode
+
 log = logging.getLogger(__name__)
 
+_V2_MIN_FRAME = 15  # v2 header 13 + crc 2: anything shorter is a v1 envelope
+
 _STATE_FMT = struct.Struct(
-    "<hhhhhhHHB"
-)  # matches StatePayload (battery_mv removed 2026-04)
+    "<hhhhhhHHBII"
+)  # v2 StatePayload: 17-byte core + cmd_seq_last_applied, t_cmd_applied_us
 
 
 class MockReflex:
@@ -56,10 +67,16 @@ class MockReflex:
         self._thread_tx: threading.Thread | None = None
         self._last_cmd_time: float = 0.0
         self._seq: int = 0
+        self._cmd_seq_last: int = 0
+        self._t_cmd_applied_us: int = 0
         self._cmd_timeout_s = 0.4  # matches reflex config.h
 
     def start(self) -> None:
         self._master_fd, self._slave_fd = os.openpty()
+        # Raw from the start: a cooked slave echoes our own STATE frames back into _rx_loop
+        # until the client opens it, and the leftover bytes corrupt the first real frame
+        # (the v2 handshake).
+        tty.setraw(self._slave_fd)
         self.device_path = os.ttyname(self._slave_fd)
         log.info("mock_reflex: PTY at %s", self.device_path)
 
@@ -112,29 +129,43 @@ class MockReflex:
                 else:
                     buf.append(b)
 
+    def _send(self, pkt_type: int, payload: bytes) -> None:
+        now_us = time.monotonic_ns() // 1000
+        try:
+            os.write(
+                self._master_fd,
+                build_packet_v2(pkt_type, self._next_seq(), now_us, payload),
+            )
+        except OSError:
+            pass
+
     def _handle_frame(self, frame: bytes) -> None:
         try:
-            pkt = parse_frame(frame)
+            pkt = parse_frame(frame, protocol_version=2)
         except ValueError as e:
             log.debug("mock_reflex: bad frame: %s", e)
+            return
+
+        # The handshake request comes in a v1 envelope (5 bytes decoded, so parse_frame fell
+        # back to v1): the only v1 frame accepted. Always ACK v2.
+        if pkt.pkt_type == COMMON_SET_PROTOCOL_VERSION:
+            self._send(COMMON_PROTOCOL_VERSION_ACK, bytes([2]))
+            return
+        if len(cobs_decode(frame)) < _V2_MIN_FRAME:
+            log.debug("mock_reflex: dropped v1 frame type 0x%02X", pkt.pkt_type)
             return
 
         # TIME_SYNC: respond immediately, don't update cmd timeout
         if pkt.pkt_type == COMMON_TIME_SYNC_REQ:
             if len(pkt.payload) >= 8:
                 ping_seq = struct.unpack_from("<I", pkt.payload, 0)[0]
-                now_us = int(time.monotonic() * 1_000_000)
-                resp_payload = struct.pack("<IQ", ping_seq, now_us)
-                resp = build_packet(
-                    COMMON_TIME_SYNC_RESP, self._next_seq(), resp_payload
-                )
-                try:
-                    os.write(self._master_fd, resp)
-                except OSError:
-                    pass
+                now_us = time.monotonic_ns() // 1000
+                self._send(COMMON_TIME_SYNC_RESP, struct.pack("<IQ", ping_seq, now_us))
             return
 
         self._last_cmd_time = time.monotonic()
+        self._cmd_seq_last = pkt.seq
+        self._t_cmd_applied_us = (time.monotonic_ns() // 1000) & 0xFFFFFFFF
 
         if pkt.pkt_type == CmdType.SET_TWIST:
             if len(pkt.payload) >= 4:
@@ -200,14 +231,12 @@ class MockReflex:
             self.fault_flags,
             self.range_mm,
             self.range_status,
+            self._cmd_seq_last,
+            self._t_cmd_applied_us,
         )
-        pkt = build_packet(TelType.STATE, self._next_seq(), payload)
-        try:
-            os.write(self._master_fd, pkt)
-        except OSError:
-            pass
+        self._send(TelType.STATE, payload)
 
     def _next_seq(self) -> int:
         s = self._seq
-        self._seq = (self._seq + 1) & 0xFF
+        self._seq = (self._seq + 1) & 0xFFFFFFFF
         return s

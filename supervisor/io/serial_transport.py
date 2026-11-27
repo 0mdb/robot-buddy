@@ -40,6 +40,11 @@ _RX_STALL_TIMEOUT_MS = 3000.0
 _MCU_RESET_MARKER = b"ESP-ROM:"
 
 
+_POST_CONNECT_DISCARD_S = 0.2  # _feed drops everything this long after open (ROM text)
+_NEGOTIATE_ATTEMPTS = 3  # v2 handshake tries per connect (all our MCUs speak v2)
+_NEGOTIATE_RETRY_S = 1.0
+
+
 class SerialTransport:
     """Async wrapper around pyserial with COBS frame extraction and reconnect."""
 
@@ -48,10 +53,16 @@ class SerialTransport:
         port: str,
         baudrate: int = 115200,
         label: str = "serial",
+        *,
+        auto_negotiate: bool = True,
     ) -> None:
         self.port = port
         self.baudrate = baudrate
         self.label = label
+        # Send SET_PROTOCOL_VERSION(2) after every open (PROTOCOL.md 3.2, amended 2026-11-27).
+        self.auto_negotiate = auto_negotiate
+        self._negotiate_task: asyncio.Task[bool] | None = None
+        self.negotiations = 0
 
         self._ser: serial.Serial | None = None
         self._buf = bytearray()
@@ -117,6 +128,31 @@ class SerialTransport:
     async def stop(self) -> None:
         self._running = False
         self._close()
+
+    def request_renegotiate(self) -> None:
+        """Run the v2 handshake in the background unless one is already running. Called after
+        every open, and by clients that see envelope desync (wrong STATE length)."""
+        if self._loop is None or not self._connected:
+            return
+        if self._negotiate_task is not None and not self._negotiate_task.done():
+            return
+        self.negotiations += 1
+        self._negotiate_task = self._loop.create_task(self._negotiate_with_retry())
+
+    async def _negotiate_with_retry(self) -> bool:
+        # Wait out _feed's post-connect discard window (ROM text), or the ACK is thrown away;
+        # then retry: an ESP32 reset by the port open may still be booting.
+        wait_s = self._connect_mono + _POST_CONNECT_DISCARD_S + 0.05 - time.monotonic()
+        if wait_s > 0:
+            await asyncio.sleep(wait_s)
+        for attempt in range(_NEGOTIATE_ATTEMPTS):
+            if not self._connected:
+                return False
+            if await self.negotiate_v2():
+                return True
+            if attempt + 1 < _NEGOTIATE_ATTEMPTS:
+                await asyncio.sleep(_NEGOTIATE_RETRY_S)
+        return False
 
     async def negotiate_v2(self, timeout_s: float = 0.5) -> bool:
         """Send SET_PROTOCOL_VERSION(2) and wait for ACK.
@@ -276,6 +312,8 @@ class SerialTransport:
             log.info("%s: connected to %s", self.label, self.port)
             if self._on_connect:
                 self._on_connect()
+            if self.auto_negotiate:
+                self.request_renegotiate()
             return True
         except (serial.SerialException, OSError) as e:
             self._last_error = str(e)
@@ -327,7 +365,7 @@ class SerialTransport:
         if self._saw_mcu_reset(data):
             return
         # Discard data for 200ms after connect to flush ROM bootloader text.
-        if time.monotonic() - self._connect_mono < 0.2:
+        if time.monotonic() - self._connect_mono < _POST_CONNECT_DISCARD_S:
             self._buf.clear()
             return
         for b in data:

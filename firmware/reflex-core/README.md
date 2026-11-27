@@ -5,7 +5,8 @@ Hardware-free reflex MCU logic for the STM32G431 port, `no_std`, no allocation. 
 
 - `protocol`: COBS + CRC16 framing, v1/v2 envelopes, command decode, STATE layout
   (`protocol.{h,cpp}`, `usb_rx.cpp`).
-- `link`: the host session: version handshake, time sync, TX seq, last command seq.
+- `link`: the host session, **protocol v2 only** (v1 exists only on the ESP32s): accepts the v1
+  handshake request and ACKs in v2, drops other v1 frames; time sync, TX seq, last command seq.
 - `config`: defaults and SET_CONFIG IDs (`config.{h,cpp}`).
 - Not yet ported: control (FF + PI, rate limits, yaw damping) and safety (soft/hard stop, tilt,
   stall, obstacle latch).

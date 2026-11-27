@@ -196,6 +196,7 @@ class FaceClient:
             gaze_x_i8,
             gaze_y_i8,
             brightness_u8,
+            **self._envelope(),
         )
         self._transport.write(pkt)
         self._tx_packets += 1
@@ -218,7 +219,7 @@ class FaceClient:
         if not self.connected:
             return
         seq = self._next_seq()
-        pkt = build_face_gesture(seq, gesture_id, duration_ms)
+        pkt = build_face_gesture(seq, gesture_id, duration_ms, **self._envelope())
         self._transport.write(pkt)
         self._tx_packets += 1
         if self._capture and self._capture.active:
@@ -233,7 +234,7 @@ class FaceClient:
         if not self.connected:
             return
         seq = self._next_seq()
-        pkt = build_face_set_system(seq, mode, 0, param)
+        pkt = build_face_set_system(seq, mode, 0, param, **self._envelope())
         self._transport.write(pkt)
         self._tx_packets += 1
         if self._capture and self._capture.active:
@@ -250,7 +251,7 @@ class FaceClient:
             return
         energy_u8 = max(0, min(255, int(energy)))
         seq = self._next_seq()
-        pkt = build_face_set_talking(seq, talking, energy_u8)
+        pkt = build_face_set_talking(seq, talking, energy_u8, **self._envelope())
         self._transport.write(pkt)
         self._tx_packets += 1
         self.last_talking_energy_cmd = energy_u8 if talking else 0
@@ -275,7 +276,7 @@ class FaceClient:
         self._last_flags_val = flags_u8
 
         seq = self._next_seq()
-        pkt = build_face_set_flags(seq, flags_u8)
+        pkt = build_face_set_flags(seq, flags_u8, **self._envelope())
         self._transport.write(pkt)
         self._tx_packets += 1
         self.last_flags_cmd = flags_u8
@@ -303,7 +304,7 @@ class FaceClient:
         self._last_conv_state_val = conv_state
 
         seq = self._next_seq()
-        pkt = build_face_set_conv_state(seq, int(conv_state))
+        pkt = build_face_set_conv_state(seq, int(conv_state), **self._envelope())
         self._transport.write(pkt)
         self._tx_packets += 1
         if self._capture and self._capture.active:
@@ -343,6 +344,10 @@ class FaceClient:
         }
 
     # -- internals -----------------------------------------------------------
+
+    def _envelope(self) -> dict[str, int]:
+        """Builder kwargs for the negotiated envelope (v2 after the handshake)."""
+        return {"protocol_version": getattr(self._transport, "protocol_version", 1)}
 
     def _next_seq(self) -> int:
         s = self._seq
