@@ -6,6 +6,7 @@
 
 pub mod config;
 pub mod control;
+pub mod imu;
 pub mod kinematics;
 pub mod link;
 pub mod protocol;

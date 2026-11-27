@@ -262,6 +262,39 @@ impl Safety {
     }
 }
 
+/// Rear sonar guard (v3, local only): blocked below `range_stop_mm`, released above
+/// `range_release_mm`. Only OK readings change it; TIMEOUT (nothing behind) releases after the
+/// same blind time the front latch uses, since a reverse with nothing behind is the common case.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct RearGuard {
+    blocked: bool,
+    blind_since_us: Option<u32>,
+}
+
+impl RearGuard {
+    pub fn blocked(&self) -> bool {
+        self.blocked
+    }
+
+    pub fn update(&mut self, cfg: &Config, r: RangeSample, now_us: u32) -> bool {
+        if r.status == range_status::OK {
+            self.blind_since_us = None;
+            if r.mm < cfg.range_stop_mm {
+                self.blocked = true;
+            } else if r.mm > cfg.range_release_mm {
+                self.blocked = false;
+            }
+        } else if r.status == range_status::TIMEOUT && self.blocked {
+            let since = *self.blind_since_us.get_or_insert(now_us);
+            if elapsed_ms(since, now_us) >= cfg.range_blind_release_ms as u32 {
+                self.blocked = false;
+                self.blind_since_us = None;
+            }
+        }
+        self.blocked
+    }
+}
+
 /// HC-SR04 echo pulse -> sample (`range_ultrasonic.cpp`): 5.83 µs per mm round trip;
 /// no echo = TIMEOUT; an echo at or beyond the timeout = OUT_OF_RANGE.
 pub fn range_from_echo(echo_us: Option<u32>, timeout_us: u32) -> RangeSample {
@@ -433,6 +466,20 @@ mod tests {
         let t0 = u32::MAX - 100_000;
         run(&mut s, &cfg, t0, 300, |i| i.last_cmd_us = Some(u32::MAX - 100_000));
         assert_eq!(s.faults(), 0, "300 ms across the wrap is not a timeout");
+    }
+
+    #[test]
+    fn rear_guard_hysteresis_and_blind_release() {
+        let cfg = Config::DEFAULTS;
+        let ok = |mm| RangeSample { mm, status: range_status::OK };
+        let mut g = RearGuard::default();
+        assert!(g.update(&cfg, ok(200), 0));
+        assert!(g.update(&cfg, ok(300), 1));
+        assert!(!g.update(&cfg, ok(400), 2));
+        assert!(g.update(&cfg, ok(100), 3));
+        let blind = RangeSample { mm: 0, status: range_status::TIMEOUT };
+        assert!(g.update(&cfg, blind, 10_000));
+        assert!(!g.update(&cfg, blind, 10_000 + 1_000_000));
     }
 
     #[test]

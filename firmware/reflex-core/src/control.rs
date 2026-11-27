@@ -33,6 +33,9 @@ pub struct Input {
     pub gyro_z_rad_s: f32,
     /// Active fault flags.
     pub faults: u16,
+    /// Rear sonar sees something within range_stop_mm (`safety::RearGuard`): no reversing.
+    /// v3 only, local to the MCU (not reported; Ben 2026-11-27).
+    pub rear_blocked: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -127,6 +130,15 @@ impl Controller {
             self.rl_r = self.rl_r.min(0.0);
         }
 
+        // 3c. Rear guard: nothing may drive backwards into what the rear sonar sees, including
+        // an escape.
+        if i.rear_blocked {
+            tl = tl.max(0.0);
+            tr = tr.max(0.0);
+            self.rl_l = self.rl_l.max(0.0);
+            self.rl_r = self.rl_r.max(0.0);
+        }
+
         // 4. Rate limit.
         let max_a = cfg.max_a_mm_s2 as f32;
         self.rl_l = rate_limit(self.rl_l, tl, max_a, dt);
@@ -140,6 +152,11 @@ impl Controller {
         // 6-7. FF + PI, deadband.
         let mut u_l = deadband_comp(cfg, ff_pi(cfg, &mut self.pi_l, rl_l, i.v_meas_l, dt), rl_l);
         let mut u_r = deadband_comp(cfg, ff_pi(cfg, &mut self.pi_r, rl_r, i.v_meas_r, dt), rl_r);
+
+        if i.rear_blocked {
+            u_l = u_l.max(0.0);
+            u_r = u_r.max(0.0);
+        }
 
         // 8. Fault gate. Any fault zeroes the output at once (the safety state machine decides
         // brake vs. coast); an escape may only drive backwards.
@@ -260,6 +277,21 @@ mod tests {
         // Commanded straight, gyro says turning left (+): right track slowed, left sped up.
         let o = c.step(&cfg, &Input { dt_s: DT, v_cmd_mm_s: 0.0, gyro_z_rad_s: 1.0, ..Default::default() });
         assert!(o.target_l > 0.0 && o.target_r < 0.0, "{o:?}");
+    }
+
+    #[test]
+    fn rear_guard_blocks_reversing_and_escape() {
+        let cfg = cfg();
+        let mut c = Controller::new();
+        let back = Input { dt_s: DT, v_cmd_mm_s: -200.0, rear_blocked: true, ..Default::default() };
+        let o = run(&mut c, &cfg, back, 50);
+        assert!(o.u_l >= 0.0 && o.u_r >= 0.0 && o.target_l >= 0.0, "{o:?}");
+        let esc = Input { faults: fault::OBSTACLE, ..back };
+        let o = run(&mut c, &cfg, esc, 50);
+        assert!(o.u_l == 0.0 && o.u_r == 0.0, "{o:?}");
+        // Forward is still allowed.
+        let fwd = Input { v_cmd_mm_s: 200.0, ..back };
+        assert!(run(&mut c, &cfg, fwd, 50).u_l > 0.0);
     }
 
     #[test]
