@@ -1,0 +1,25 @@
+[package]
+name = "nucleo-g431"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Phase 0 bench firmware for the shared STM32G431 core, on a NUCLEO-G431RB"
+
+[dependencies]
+embassy-stm32 = { version = "0.6", features = ["stm32g431rb", "defmt", "time-driver-any", "memory-x", "unstable-pac", "exti"] }
+embassy-executor = { version = "0.10", features = ["platform-cortex-m", "executor-thread", "defmt"] }
+embassy-time = { version = "0.5", features = ["defmt", "defmt-timestamp-uptime", "tick-hz-32_768"] }
+defmt = "1.0"
+defmt-rtt = "1.0"
+panic-probe = { version = "1.0", features = ["print-defmt"] }
+cortex-m = { version = "0.7", features = ["inline-asm", "critical-section-single-core"] }
+cortex-m-rt = "0.7"
+
+[profile.release]
+debug = 2
+lto = "fat"
+codegen-units = 1
+opt-level = "s"
+
+[profile.dev]
+opt-level = 1
