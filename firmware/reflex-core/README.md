@@ -18,7 +18,7 @@ Hardware-free reflex MCU logic for the STM32G431 port, `no_std`, no allocation. 
   QEI), IMU, ultrasonic capture, telemetry/control/safety tasks.
 
 ```sh
-cargo test                                    # host tests
+cargo test                                    # host tests (unit, wire compat, closed loop)
 python3 tests/gen_vectors.py                  # (from the repo root) regenerate supervisor vectors
 ```
 
