@@ -2,9 +2,9 @@
 target = "thumbv7em-none-eabihf"
 
 [target.thumbv7em-none-eabihf]
-# Connect under reset: the Nucleo NRST is wired to the ST-LINK, and it recovers a probe left
-# mid-session by a killed probe-rs (JtagNoDeviceConnected).
-runner = "probe-rs run --connect-under-reset --chip STM32G431RBTx"
+# Plain attach. --connect-under-reset worked under WSL but times out on the native-Ubuntu box
+# (2026-11-27); add it back by hand to recover a probe left mid-session (JtagNoDeviceConnected).
+runner = "probe-rs run --chip STM32G431RBTx"
 rustflags = ["-C", "link-arg=-Tlink.x", "-C", "link-arg=-Tdefmt.x"]
 
 [env]

@@ -36,7 +36,7 @@ def check(name: str, ok: bool, detail: str = "") -> None:
     print(f"{'PASS' if ok else 'FAIL'}  {name}  {detail}")
 
 
-async def main(port: str) -> int:
+async def main(port: str, v1_only: bool) -> int:
     transport = SerialTransport(port, label="reflex")
     client = ReflexClient(transport)
     states: list[float] = []
@@ -65,13 +65,18 @@ async def main(port: str) -> int:
     await asyncio.sleep(1.0)
     check("STATE v1 ~20 Hz", 15 <= len(states) <= 25, f"{len(states)} in 1 s")
 
-    # 2. v2 handshake.
-    check("v2 handshake", await transport.negotiate_v2(timeout_s=0.5))
+    # 2. v2 handshake. --v1 skips it: that is how the robot runs today, because main.py calls
+    # negotiate_v2() before the port is open, and the ACK (sent in a v2 envelope by both ESP32s
+    # and this port) is parsed as v1 by the supervisor anyway. See docs/TODO.md.
+    if not v1_only:
+        check("v2 handshake", await transport.negotiate_v2(timeout_s=0.5))
 
     # 3. Time sync round trip.
     ping = 0x1234
     t0 = time.monotonic()
-    transport.write(build_time_sync_req(1, ping, protocol_version=2, t_src_us=0))
+    transport.write(
+        build_time_sync_req(1, ping, protocol_version=transport.protocol_version)
+    )
     for _ in range(20):
         if sync:
             break
@@ -95,17 +100,18 @@ async def main(port: str) -> int:
     check(
         "no faults while commanded", t.fault_flags == 0, f"flags {t.fault_flags:#06x}"
     )
-    # Commands go out in v1 envelopes (u8 seq), so the MCU echoes the low byte.
-    echo = (
-        struct.unpack_from("<I", raw_state[-1], 17)[0]
-        if len(raw_state[-1]) >= 25
-        else -1
-    )
-    check(
-        "seq echo (v2 cmd_seq_last_applied)",
-        echo == client.last_cmd_seq & 0xFF,
-        f"echo {echo}, last tx seq {client.last_cmd_seq}",
-    )
+    # Commands go out in v1 envelopes (u8 seq), so the MCU echoes the low byte. v2 only.
+    if not v1_only:
+        echo = (
+            struct.unpack_from("<I", raw_state[-1], 17)[0]
+            if len(raw_state[-1]) >= 25
+            else -1
+        )
+        check(
+            "seq echo (v2 cmd_seq_last_applied)",
+            echo == client.last_cmd_seq & 0xFF,
+            f"echo {echo}, last tx seq {client.last_cmd_seq}",
+        )
 
     # 5. Stop commanding: CMD_TIMEOUT after 400 ms, speeds ramp to 0.
     await asyncio.sleep(1.2)
@@ -127,10 +133,12 @@ async def main(port: str) -> int:
     check("ESTOP latched", client.telemetry.has_fault(Fault.ESTOP))
     client.send_clear_faults()
     await asyncio.sleep(0.2)
+    # CMD_TIMEOUT re-latches at once while no command arrives (as safety.cpp does); ESTOP must go.
+    flags = client.telemetry.fault_flags
     check(
         "CLEAR_FAULTS",
-        client.telemetry.fault_flags == 0,
-        f"flags {client.telemetry.fault_flags:#06x}",
+        not flags & Fault.ESTOP and flags & ~Fault.CMD_TIMEOUT == 0,
+        f"flags {flags:#06x}",
     )
 
     await transport.stop()
@@ -140,4 +148,5 @@ async def main(port: str) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(asyncio.run(main(sys.argv[1] if len(sys.argv) > 1 else "/dev/ttyACM0")))
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    sys.exit(asyncio.run(main(args[0] if args else "/dev/ttyACM0", "--v1" in sys.argv)))
