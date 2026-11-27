@@ -192,6 +192,22 @@ build-reflex:
         {{project}}/esp32-reflex/build/compile_commands.json \
         {{project}}/esp32-reflex/build/compile_commands.json
 
+# ---- STM32G431 reflex (firmware/reflex-g431, replaces esp32-reflex on the v3 board) ----
+
+# Host tests of the hardware-free reflex logic (protocol v2, control, safety, IMU conversion)
+test-reflex-core:
+    cd {{project}}/firmware/reflex-core && cargo test
+
+# Build the v3 board firmware and a .bin for the Pi-side UART flash (deploy/flash_reflex_g431.sh)
+build-reflex-g431:
+    cd {{project}}/firmware/reflex-g431 && cargo build --release --no-default-features --features board-v3 --target-dir target/v3
+    llvm-objcopy -O binary {{project}}/firmware/reflex-g431/target/v3/thumbv7em-none-eabihf/release/reflex-g431 {{project}}/firmware/reflex-g431/target/v3/reflex-g431.bin
+    @ls -l {{project}}/firmware/reflex-g431/target/v3/reflex-g431.bin
+
+# Run on the NUCLEO-G431RB bench over SWD (no IMU attached), RTT log in the terminal
+bench-reflex-g431:
+    cd {{project}}/firmware/reflex-g431 && cargo run --release --features no-imu-fault
+
 # Build face firmware (also filters GCC-specific flags from compile_commands.json for clang/clang-tidy)
 build-face:
     @expected="{{project}}/esp32-face"; \
