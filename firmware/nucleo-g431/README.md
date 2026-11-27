@@ -5,8 +5,19 @@ on a NUCLEO-G431RB.
 
 ```sh
 cargo run --release              # blink: LD2 (PA5) + defmt/RTT, proves build -> flash -> log
+cargo run --release --bin selftest  # COMP1 -> TIM1 break with no driver: jumper A2 -> A1
 cargo run --release --bin stall  # phase 0 gate: DRV8876 CS -> COMP1 -> TIM1 break stall cutoff
 ```
+
+## Self-test (`src/bin/selftest.rs`), no carrier needed
+
+One jumper from **A2 (PA4, DAC1_OUT1) to A1 (PA1, COMP1_INP)**; nothing else on A1. The DAC stands
+in for the CS pin. For each comparator threshold (¼, ½, ¾, 1 × VREFINT) it sweeps the DAC up
+until COMP1 trips, checks the break fired (BIF set, MOE cleared, PA8 forced low from 100 % duty),
+sweeps down to the release point, and times threshold + 100 mV step → PA8 low with the DWT cycle
+counter (an upper bound: includes DAC settling and the ~1.5 µs break filter). Pass: trip within
+25 mV of the fraction of the factory-calibrated VREFINT, release below trip, break seen, latency
+under 10 µs. Ends with `SELFTEST PASS` / `FAIL`.
 
 Needs: `rustup target add thumbv7em-none-eabihf`, `cargo install probe-rs-tools --locked`.
 probe-rs cannot auto-detect the chip; the runner passes `--chip STM32G431RBTx`.
