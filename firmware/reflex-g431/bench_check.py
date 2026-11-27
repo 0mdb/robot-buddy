@@ -97,6 +97,7 @@ async def main(port: str) -> int:
         stalled_at is not None and 0.5 <= stalled_at <= 1.2,
         f"after {stalled_at if stalled_at is None else round(stalled_at, 2)} s",
     )
+    await asyncio.sleep(0.15)  # next STATE (20 Hz) carries the last applied seq
     t = client.telemetry
     check(
         "seq echo",

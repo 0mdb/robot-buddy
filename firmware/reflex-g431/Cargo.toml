@@ -18,7 +18,7 @@ no-imu-fault = []
 bringup = []
 
 [dependencies]
-embassy-stm32 = { version = "0.6", features = ["defmt", "time-driver-any", "memory-x", "unstable-pac", "exti"] }
+embassy-stm32 = { version = "0.6", features = ["defmt", "time-driver-tim15", "memory-x", "unstable-pac", "exti"] }
 embassy-executor = { version = "0.10", features = ["platform-cortex-m", "executor-thread", "defmt"] }
 embassy-time = { version = "0.5", features = ["defmt", "defmt-timestamp-uptime", "tick-hz-1_000_000"] }
 embassy-sync = "0.8"

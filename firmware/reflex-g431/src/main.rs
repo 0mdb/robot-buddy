@@ -76,6 +76,9 @@ const OC_STALL_TICKS: u16 = 30;
 const TEL_PERIOD_MS: u64 = 50;
 const SAFETY_PERIOD_MS: u64 = 20;
 const SONAR_PERIOD_MS: u64 = 50;
+/// Independent watchdog, fed by the control loop (the ESP32 put control_task on its task WDT).
+/// A hung firmware resets, and the EN lines fall to their pull-downs: brake.
+const WATCHDOG_US: u32 = 250_000;
 
 /// BRINGUP_DIAG samples from the bring-up task to the link task.
 static DIAG: Channel<CriticalSectionRawMutex, BringupDiag, 4> = Channel::new();
@@ -125,6 +128,25 @@ async fn main(spawner: Spawner) {
         id.dev_id() & 0x0fff,
         id.rev_id()
     );
+    // Reset cause (RCC_CSR), then clear the flags for the next boot.
+    let csr = pac::RCC.csr().read();
+    let cause = if csr.iwdgrstf() {
+        "watchdog"
+    } else if csr.borrstf() {
+        "brown-out/power-on"
+    } else if csr.sftrstf() {
+        "software"
+    } else if csr.pinrstf() {
+        "NRST pin"
+    } else {
+        "other"
+    };
+    if csr.iwdgrstf() {
+        warn!("reset cause: {}", cause);
+    } else {
+        info!("reset cause: {}", cause);
+    }
+    pac::RCC.csr().modify(|w| w.set_rmvf(true));
     let cfg = with(|s| s.cfg);
 
     // ---- Board-specific pins ----
@@ -239,7 +261,9 @@ async fn main(spawner: Spawner) {
 
     #[cfg(not(feature = "bringup"))]
     {
-        spawner.spawn(control_task(motors, qei_l, qei_r, imu).unwrap());
+        let mut wdg = embassy_stm32::wdg::IndependentWatchdog::new(p.IWDG, WATCHDOG_US);
+        wdg.unleash();
+        spawner.spawn(control_task(motors, qei_l, qei_r, imu, wdg).unwrap());
         spawner.spawn(safety_task(led).unwrap());
     }
     #[cfg(feature = "bringup")]
@@ -257,6 +281,7 @@ async fn control_task(
     qei_l: Qei<'static, TIM2>,
     qei_r: Qei<'static, TIM3>,
     mut imu: Option<imu::Imu>,
+    mut wdg: embassy_stm32::wdg::IndependentWatchdog<'static, peripherals::IWDG>,
 ) {
     let hz = with(|s| s.cfg.control_hz).max(1) as u64;
     let mut ticker = Ticker::every(Duration::from_micros(1_000_000 / hz));
@@ -268,6 +293,7 @@ async fn control_task(
     info!("control @ {} Hz", hz);
     loop {
         ticker.next().await;
+        wdg.pet();
         let now = now_us();
         let dt_us = now.wrapping_sub(prev_t).max(1);
         prev_t = now;
